@@ -4461,3 +4461,20 @@ Obstructions recorded (not fixed):
 - **`IrisHoles` removed (lane V2, user request, 2026-09-25).** The record was
   empty; `endToEnd_refinement` and every capstone now take no hypothesis
   (INTERP_DESIGN.md "STATEMENT CHANGE (lane V2)").
+
+## `OutputAliasPrefix.firstSegment_facts` exceeds the default heartbeat budget (2026-09-28)
+
+A full private build (`build_private.py`, Lean 4.34.0) fails at
+`Vsa/Sim/OutputAliasPrefix.lean:80:12`: `(deterministic) timeout at isDefEq,
+maximum number of heartbeats (200000)` in `firstSegment_facts`, with and
+without `backward.isDefEq.respectTransparency = false`. `snapshot_firstTrace`,
+`firstSegment_facts` and `snapshot_firstSegment` then report `sorryAx`.
+Affected: the audit chains importing it, `Vsa/Sim/AstAccessAudit/*` and
+`Vsa/Sim/OutputAliasRun*` / `OutputAliasRefutation` (31 modules). No library
+root (`Vsa`, `VsaIris`, `VsaBoot`, `VsaRun`) imports it, so the final theorem
+and the stage-c/`check_final_axioms.sh` audits are unaffected. Missing
+supplier: a `firstSegment_facts` proof whose `first | …` alternatives do not
+attempt the expensive `isDefEq` (one generated fact per conjunct).
+
+`Vsa/Sim/SnprintfSpec20.lean` needs more than 13.7 GB resident to elaborate;
+on a 15 GB machine it compiles only with swap.

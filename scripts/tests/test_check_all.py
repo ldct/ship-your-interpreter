@@ -16,9 +16,14 @@ SOURCE_STAGES = (
     "gen_m4_term_row",
     "gen_ih_clause",
     "gen_footprint_row",
+    "gen_interp_steps",
+    "gen_interp_steps",
+    "gen_iris_cases",
+    "gen_resp",
     "check_discipline",
     "ih_clause_status",
 )
+GENERATOR_STAGES = tuple(dict.fromkeys(SOURCE_STAGES[:-2]))
 COMPILED_STAGES = {"build", "freshness", "boundary", "axioms"}
 
 
@@ -71,6 +76,9 @@ class CheckAllTests(unittest.TestCase):
             "gen_m4_term_row",
             "gen_ih_clause",
             "gen_footprint_row",
+            "gen_interp_steps",
+            "gen_iris_cases",
+            "gen_resp",
             "check_discipline",
             "ih_clause_status",
             "check_validation",
@@ -132,7 +140,7 @@ class CheckAllTests(unittest.TestCase):
         self.assertTrue(COMPILED_STAGES.isdisjoint(self._trace()), self._trace())
 
     def test_each_generator_failure_aborts_before_compiled_stages(self) -> None:
-        for generator in SOURCE_STAGES[:5]:
+        for generator in GENERATOR_STAGES:
             with self.subTest(generator=generator):
                 self.trace_path.unlink(missing_ok=True)
                 result = self._run(fail_stage=generator)

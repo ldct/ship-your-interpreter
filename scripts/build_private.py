@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -87,8 +88,15 @@ def module_name(source: Path) -> str:
 
 
 def discover_modules(repo: Path, include_executable: bool = False) -> dict[str, Module]:
-    """Discover current Vsa library modules and parse their imports."""
-    sources = sorted((repo / "Vsa").rglob("*.lean")) + [repo / "Vsa.lean"]
+    """Discover the Vsa, VsaIris and VsaBoot library modules and their imports."""
+    sources = [
+        *sorted((repo / "Vsa").rglob("*.lean")),
+        repo / "Vsa.lean",
+        *sorted((repo / "VsaIris").rglob("*.lean")),
+        repo / "VsaIris.lean",
+        repo / "VsaBoot.lean",
+    ]
+    sources = [source for source in sources if source.is_file()]
     if include_executable:
         sources.append(repo / "VsaRun.lean")
     modules: dict[str, Module] = {}
@@ -216,13 +224,54 @@ def log_path(output_root: Path, module: Module) -> Path:
     return output_root / "logs" / f"{module.name.replace('.', '_')}.log"
 
 
+def flatten_options(table: dict, prefix: str = "") -> list[tuple[str, object]]:
+    """Flatten TOML dotted keys (`a.b = v` parses as `{"a": {"b": v}}`).
+
+    >>> flatten_options({"backward": {"isDefEq": {"respectTransparency": False}}})
+    [('backward.isDefEq.respectTransparency', False)]
+    """
+    flat: list[tuple[str, object]] = []
+    for key, value in table.items():
+        name = f"{prefix}{key}"
+        if isinstance(value, dict):
+            flat.extend(flatten_options(value, f"{name}."))
+        else:
+            flat.append((name, value))
+    return flat
+
+
+def lean_options(repo: Path, module: Module) -> list[str]:
+    """Return `-D` flags for the `leanOptions` of the module's `lean_lib`.
+
+    Lake applies a library's `leanOptions` to the modules under its root;
+    the private build must elaborate with the same options.
+    """
+    lakefile = repo / "lakefile.toml"
+    if not lakefile.is_file():
+        return []
+    config = tomllib.loads(lakefile.read_text(encoding="utf-8"))
+    root = module.name.split(".", 1)[0]
+    flags: list[str] = []
+    for library in config.get("lean_lib", []):
+        if library.get("name") != root:
+            continue
+        for key, value in flatten_options(library.get("leanOptions", {})):
+            if isinstance(value, bool):
+                value = "true" if value else "false"
+            flags.append(f"-D{key}={value}")
+    return flags
+
+
 def compile_module(repo: Path, output_root: Path, module: Module) -> None:
     """Compile one module through `lake env` and reject unsafe proof warnings."""
     output = output_path(output_root, module)
     log = log_path(output_root, module)
     output.parent.mkdir(parents=True, exist_ok=True)
     log.parent.mkdir(parents=True, exist_ok=True)
-    shell = 'LEAN_PATH="$1${LEAN_PATH:+:$LEAN_PATH}" lean -o "$2" "$3"'
+    shell = (
+        'root="$1" out="$2" src="$3"; shift 3; '
+        'LEAN_PATH="$root${LEAN_PATH:+:$LEAN_PATH}" lean "$@" -o "$out" "$src"'
+    )
     with tempfile.TemporaryDirectory(
         prefix=f".{output.stem}-", dir=output.parent
     ) as staging:
@@ -238,6 +287,7 @@ def compile_module(repo: Path, output_root: Path, module: Module) -> None:
                 str(output_root),
                 str(staged),
                 str(module.source),
+                *lean_options(repo, module),
             ],
             cwd=repo,
             capture_output=True,

@@ -206,9 +206,8 @@ inductive DstAt (S : Nat → Prop) (Mt : Mem) (k : Nat) : SinkDst → List (BitV
       DstAt S Mt k (.buffer buf size) out
 
 /-- **The sink** at `k` sending to `dst`, after the output `out` from an empty
-sink over the memory `Mt0`: its words, the destination, and the frame (only
-the count word and the buffer changed). -/
-structure SinkAt (S : Nat → Prop) (Mt0 Mt : Mem) (k : Nat) (dst : SinkDst)
+sink: its words and the destination. -/
+structure SinkAt (S : Nat → Prop) (Mt : Mem) (k : Nat) (dst : SinkDst)
     (out : List (BitVec 8)) : Prop where
   own : ∀ i, i < 32 → S (k + i)
   al : k % 8 = 0
@@ -218,7 +217,50 @@ structure SinkAt (S : Nat → Prop) (Mt0 Mt : Mem) (k : Nat) (dst : SinkDst)
   len : ldv .ld Mt (k + 24) = BitVec.ofNat 64 out.length
   short : out.length < 2 ^ 62
   dstAt : DstAt S Mt k dst out
-  frame : ∀ a, ¬ dst.Byte k a → imgM Mt a = imgM Mt0 a
+
+/-- One or more emits from `Mt` to `Mt'`: the sink after the output `out`,
+and only the sink's count word and buffer changed. -/
+structure Emitted (S : Nat → Prop) (Mt Mt' : Mem) (k : Nat) (dst : SinkDst)
+    (out : List (BitVec 8)) : Prop where
+  sink : SinkAt S Mt' k dst out
+  frame : ∀ a, ¬ dst.Byte k a → imgM Mt' a = imgM Mt a
+
+/-- The bytes a sink reads: its four words, and the stream's descriptor word
+or the buffer. -/
+def SinkDst.Read (k : Nat) : SinkDst → Nat → Prop
+  | .stream f _, a => (k ≤ a ∧ a < k + 32) ∨ (f ≤ a ∧ a < f + 4)
+  | .buffer buf size, a => (k ≤ a ∧ a < k + 32) ∨ (buf ≤ a ∧ a < buf + size)
+
+/-- A load depends only on its bytes. -/
+theorem ldv_congr (kd : MKind) {Mt Mt' : Mem} {a : Nat}
+    (h : ∀ j, j < widthOfM kd → imgM Mt' (a + j) = imgM Mt (a + j)) : ldv kd Mt' a = ldv kd Mt a := by
+  unfold ldv bytesAt
+  congr 1
+  exact List.map_congr_left fun j hj => h j (List.mem_range.mp hj)
+
+/-- **Transport**: a sink survives any memory that agrees on its bytes. -/
+theorem SinkAt.transport {S : Nat → Prop} {Mt Mt' : Mem} {k : Nat} {dst : SinkDst}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k dst out)
+    (hag : ∀ a, dst.Read k a → imgM Mt' a = imgM Mt a) : SinkAt S Mt' k dst out := by
+  have hw : ∀ o, o + 8 ≤ 32 → ldv .ld Mt' (k + o) = ldv .ld Mt (k + o) := fun o ho =>
+    ldv_congr .ld fun j hj => hag _ (by
+      have : j < 8 := hj
+      cases dst with
+      | stream => exact .inl ⟨by omega, by omega⟩
+      | buffer => exact .inl ⟨by omega, by omega⟩)
+  refine { h with fw := ?_, len := ?_, dstAt := ?_ }
+  · have := hw 0 (by omega); rw [Nat.add_zero] at this; rw [this]; exact h.fw
+  · rw [hw 24 (by omega)]; exact h.len
+  · cases hd : h.dstAt with
+    | stream hfd hne hoff =>
+      refine .stream ⟨hfd.own, ?_, hfd.lo, hfd.hi, hfd.small⟩ hne hoff
+      rw [ldv_congr .lw fun j hj => hag _ (.inr ⟨by omega, by have : j < 4 := hj; omega⟩)]
+      exact hfd.val
+    | buffer hb hoff hsz h8 h16 hc =>
+      refine .buffer hb hoff hsz ?_ ?_ fun j hj hjs => ?_
+      · rw [hw 8 (by omega)]; exact h8
+      · rw [hw 16 (by omega)]; exact h16
+      · rw [hag _ (.inr ⟨by omega, by omega⟩)]; exact hc j hj hjs
 
 theorem SinkDst.byte_count {k : Nat} {dst : SinkDst} {a : Nat} (h1 : k + 24 ≤ a) (h2 : a < k + 32) :
     dst.Byte k a := by
@@ -227,25 +269,25 @@ theorem SinkDst.byte_count {k : Nat} {dst : SinkDst} {a : Nat} (h1 : k + 24 ≤ 
   | buffer => exact .inl ⟨h1, h2⟩
 
 /-- A stream's word and a buffer's words lie outside the count word. -/
-theorem SinkAt.fw_ld {S : Nat → Prop} {Mt0 Mt : Mem} {k : Nat} {dst : SinkDst}
-    {out : List (BitVec 8)} (h : SinkAt S Mt0 Mt k dst out) {Mt' : Mem}
+theorem SinkAt.fw_ld {S : Nat → Prop} {Mt : Mem} {k : Nat} {dst : SinkDst}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k dst out) {Mt' : Mem}
     (hag : ∀ a, a < k + 24 → imgM Mt' a = imgM Mt a) :
     ldv .ld Mt' k = BitVec.ofNat 64 dst.fw :=
   (ldv_ld_congr fun j hj => hag _ (by omega)).trans h.fw
 
 /-- **One byte `c` counted** without a buffer store (a stream, or a full
 buffer): the count word takes `len + 1`. -/
-theorem SinkAt.bump {S : Nat → Prop} {Mt0 Mt : Mem} {k : Nat} {dst : SinkDst}
-    {out : List (BitVec 8)} (h : SinkAt S Mt0 Mt k dst out) (c : BitVec 8)
+theorem SinkAt.bump {S : Nat → Prop} {Mt : Mem} {k : Nat} {dst : SinkDst}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k dst out) (c : BitVec 8)
     (hfull : ∀ buf size, dst = .buffer buf size → size ≤ out.length + 1)
     (hsh' : (out ++ [c]).length < 2 ^ 62) :
-    SinkAt S Mt0 (writeLog Mt [(k + 24, 8, BitVec.ofNat 64 (out.length + 1))]) k dst (out ++ [c]) := by
+    SinkAt S (writeLog Mt [(k + 24, 8, BitVec.ofNat 64 (out.length + 1))]) k dst (out ++ [c]) := by
   have hal := h.al
   have hsh := h.short
   have hmiss : ∀ a, a < k + 24 ∨ k + 32 ≤ a →
       imgM (writeLog Mt [(k + 24, 8, BitVec.ofNat 64 (out.length + 1))]) a = imgM Mt a :=
     fun a ha => imgM_store_miss _ _ (by omega)
-  refine { h with fw := ?_, len := ?_, short := hsh', dstAt := ?_, frame := ?_ }
+  refine { h with fw := ?_, len := ?_, short := hsh', dstAt := ?_ }
   · rw [ldv_ld_miss _ _ (by omega)]; exact h.fw
   · rw [ldv_store_hit, List.length_append, List.length_singleton]
   · cases h.dstAt with
@@ -261,17 +303,13 @@ theorem SinkAt.bump {S : Nat → Prop} {Mt0 Mt : Mem} {k : Nat} {dst : SinkDst}
         have hj' : j < out.length := by omega
         rw [hmiss _ (by omega), List.getElem_append_left hj']
         exact hc j hj' hjs
-  · intro a ha
-    rw [hmiss a (by
-      refine Classical.byContradiction fun hn => ha (SinkDst.byte_count (by omega) (by omega)))]
-    exact h.frame a ha
 
 /-- **One byte `c` stored** in a buffer with room, then counted. -/
-theorem SinkAt.put {S : Nat → Prop} {Mt0 Mt : Mem} {k buf size : Nat}
-    {out : List (BitVec 8)} (h : SinkAt S Mt0 Mt k (.buffer buf size) out) (c : BitVec 8)
+theorem SinkAt.put {S : Nat → Prop} {Mt : Mem} {k buf size : Nat}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k (.buffer buf size) out) (c : BitVec 8)
     (hroom : out.length + 1 < size) {v : BitVec 64} (hv : sbData v = c)
     (hsh' : (out ++ [c]).length < 2 ^ 62) :
-    SinkAt S Mt0 (writeLog (writeLog Mt [(buf + out.length, 1, v)])
+    SinkAt S (writeLog (writeLog Mt [(buf + out.length, 1, v)])
       [(k + 24, 8, BitVec.ofNat 64 (out.length + 1))]) k (.buffer buf size) (out ++ [c]) := by
   have hal := h.al
   have hsh := h.short
@@ -285,7 +323,7 @@ theorem SinkAt.put {S : Nat → Prop} {Mt0 Mt : Mem} {k buf size : Nat}
   have hbw : ∀ x, x + 8 ≤ buf + out.length ∨ buf + out.length + 1 ≤ x →
       ldv .ld (writeLog Mt [(buf + out.length, 1, v)]) x = ldv .ld Mt x :=
     fun x hx => ldv_ld_miss _ _ hx
-  refine { h with fw := ?_, len := ?_, short := hsh', dstAt := ?_, frame := ?_ }
+  refine { h with fw := ?_, len := ?_, short := hsh', dstAt := ?_ }
   · rw [ldv_ld_miss _ _ (by omega), hbw _ (by omega)]; exact h.fw
   · rw [ldv_store_hit, List.length_append, List.length_singleton]
   · refine .buffer hb hoff hsz ?_ ?_ fun j hj hjs => ?_
@@ -298,9 +336,5 @@ theorem SinkAt.put {S : Nat → Prop} {Mt0 Mt : Mem} {k buf size : Nat}
       · have hj' : j < out.length := by omega
         rw [imgM_store_miss _ _ (by omega), List.getElem_append_left hj']
         exact hc j hj' hjs
-  · intro a ha
-    have ha' : ¬ ((k + 24 ≤ a ∧ a < k + 32) ∨ (buf ≤ a ∧ a < buf + size)) := ha
-    rw [hmiss a (by omega), imgM_store_miss _ _ (by omega)]
-    exact h.frame a ha
 
 end Dc.Mach

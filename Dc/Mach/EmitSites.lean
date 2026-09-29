@@ -15,8 +15,9 @@ k->len++;
 Each copy starts at the `beqz` on the sink's first word, with the count and
 the count plus one already in registers, and ends after the store of the new
 count (the join). `emit_<pc>` runs one copy for a `SinkAt` sink: the byte is
-counted (`SinkAt.bump`) or stored and counted (`SinkAt.put`); the register
-that held the new count still holds it. The copies differ only in their
+counted (`SinkAt.bump`) or stored and counted (`SinkAt.put`), and only the
+sink's count word and buffer change (`Emitted`); the register that held the
+new count still holds it. The copies differ only in their
 registers and PCs; the proofs share the tactics below.
 -/
 
@@ -27,8 +28,8 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 set_option linter.unusedSimpArgs false
 
-theorem SinkAt.own' {S : Nat → Prop} {Mt0 Mt : Mem} {k : Nat} {dst : SinkDst}
-    {out : List (BitVec 8)} (h : SinkAt S Mt0 Mt k dst out) {x : Nat} (h1 : k ≤ x)
+theorem SinkAt.own' {S : Nat → Prop} {Mt : Mem} {k : Nat} {dst : SinkDst}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k dst out) {x : Nat} (h1 : k ≤ x)
     (h2 : x < k + 32) : S x := by
   have := h.own (x - k) (by omega); rwa [Nat.add_sub_cancel' h1] at this
 
@@ -43,41 +44,44 @@ macro "own_by " h:term : tactic =>
              refine ($h).own' ?_ ?_ <;> (revert hx'; sx_addr)))
 
 /-- `bump` at the machine's address and value. -/
-theorem SinkAt.bump_at {S : Nat → Prop} {Mt0 Mt : Mem} {k : Nat} {dst : SinkDst}
-    {out : List (BitVec 8)} (h : SinkAt S Mt0 Mt k dst out) (c : BitVec 8)
+theorem SinkAt.bump_at {S : Nat → Prop} {Mt : Mem} {k : Nat} {dst : SinkDst}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k dst out) (c : BitVec 8)
     (hfull : ∀ buf size, dst = .buffer buf size → size ≤ out.length + 1)
     (hsh : out.length + 1 < 2 ^ 62) {A : Nat} {v : BitVec 64} (hA : A = k + 24)
     (hv : v.toNat = out.length + 1) :
-    SinkAt S Mt0 (writeLog Mt [(A, 8, v)]) k dst (out ++ [c]) := by
+    Emitted S Mt (writeLog Mt [(A, 8, v)]) k dst (out ++ [c]) := by
   have hv' : v = BitVec.ofNat 64 (out.length + 1) :=
     BitVec.eq_of_toNat_eq (by rw [hv, BitVec.toNat_ofNat]; omega)
   subst hA hv'
-  exact h.bump c hfull (by simpa using hsh)
+  refine ⟨h.bump c hfull (by simpa using hsh), fun a ha => imgM_store_miss _ _ ?_⟩
+  exact Classical.byContradiction fun hn => ha (SinkDst.byte_count (by omega) (by omega))
 
 /-- `put` at the machine's addresses and values. -/
-theorem SinkAt.put_at {S : Nat → Prop} {Mt0 Mt : Mem} {k buf size : Nat}
-    {out : List (BitVec 8)} (h : SinkAt S Mt0 Mt k (.buffer buf size) out) (c : BitVec 8)
+theorem SinkAt.put_at {S : Nat → Prop} {Mt : Mem} {k buf size : Nat}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k (.buffer buf size) out) (c : BitVec 8)
     (hroom : out.length + 1 < size) (hsh : out.length + 1 < 2 ^ 62) {A B : Nat}
     {v w : BitVec 64} (hA : A = buf + out.length) (hv : sbData v = c) (hB : B = k + 24)
     (hw : w.toNat = out.length + 1) :
-    SinkAt S Mt0 (writeLog (writeLog Mt [(A, 1, v)]) [(B, 8, w)]) k (.buffer buf size)
+    Emitted S Mt (writeLog (writeLog Mt [(A, 1, v)]) [(B, 8, w)]) k (.buffer buf size)
       (out ++ [c]) := by
   have hw' : w = BitVec.ofNat 64 (out.length + 1) :=
     BitVec.eq_of_toNat_eq (by rw [hw, BitVec.toNat_ofNat]; omega)
   subst hA hB hw'
-  exact h.put c hroom hv (by simpa using hsh)
+  refine ⟨h.put c hroom hv (by simpa using hsh), fun a ha => ?_⟩
+  have ha' : ¬ ((k + 24 ≤ a ∧ a < k + 32) ∨ (buf ≤ a ∧ a < buf + size)) := ha
+  rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
 
 /-- The words of a buffer sink. -/
-theorem SinkAt.bufWords {S : Nat → Prop} {Mt0 Mt : Mem} {k buf size : Nat}
-    {out : List (BitVec 8)} (h : SinkAt S Mt0 Mt k (.buffer buf size) out) :
+theorem SinkAt.bufWords {S : Nat → Prop} {Mt : Mem} {k buf size : Nat}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k (.buffer buf size) out) :
     OwnedBytes S buf size ∧ (buf + size ≤ k ∨ k + 32 ≤ buf) ∧ size < 2 ^ 62 ∧
       ldv .ld Mt (k + 8) = BitVec.ofNat 64 buf ∧ ldv .ld Mt (k + 16) = BitVec.ofNat 64 size := by
   cases h.dstAt with
   | buffer hb hoff hsz h8 h16 _ => exact ⟨hb, hoff, hsz, h8, h16⟩
 
 /-- The stream of a stream sink. -/
-theorem SinkAt.streamFd {S : Nat → Prop} {Mt0 Mt : Mem} {k f fd : Nat}
-    {out : List (BitVec 8)} (h : SinkAt S Mt0 Mt k (.stream f fd) out) :
+theorem SinkAt.streamFd {S : Nat → Prop} {Mt : Mem} {k f fd : Nat}
+    {out : List (BitVec 8)} (h : SinkAt S Mt k (.stream f fd) out) :
     FdAt S Mt f fd ∧ fd ≠ 1 ∧ (f + 4 ≤ k ∨ k + 32 ≤ f) := by
   cases h.dstAt with
   | stream hfd hne hoff => exact ⟨hfd, hne, hoff⟩
@@ -189,14 +193,14 @@ macro "emit_tac " j:num kr:num fr:num ch:term:max : tactic =>
 -/
 
 theorem emit_800000f4 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt0 Mt : Mem}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
-    (hs : SinkAt S Mt0 Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
+    (hs : SinkAt S Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 20).toNat = k) (hfr : (R 13).toNat = dst.fw)
     (hlr : (R 14).toNat = out.length) (hl1 : (R 11).toNat = out.length + 1)
     (hc : lo8 (R 12) = c) (h1 : (R 16).toNat = 1)
     (hk : ∀ R' Mt', Keeps [13, 14] R' R → (R' 14).toNat = out.length + 1 →
-      SinkAt S Mt0 Mt' k dst (out ++ [c]) → DW live S Q 0x80000108#64 R' Mt') :
+      Emitted S Mt Mt' k dst (out ++ [c]) → DW live S Q 0x80000108#64 R' Mt') :
     DW live S Q 0x800000f4#64 R Mt := by
   emit_tac 0x80000108 20 13 c
 
@@ -214,14 +218,14 @@ one, `a5` the byte, `s3 = 1`.
 -/
 
 theorem emit_80000310 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt0 Mt : Mem}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
-    (hs : SinkAt S Mt0 Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
+    (hs : SinkAt S Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 13).toNat = dst.fw)
     (hlr : (R 12).toNat = out.length) (hl1 : (R 14).toNat = out.length + 1)
     (hc : lo8 (R 15) = c) (h1 : (R 19).toNat = 1)
     (hk : ∀ R' Mt', Keeps [13, 14] R' R → (R' 14).toNat = out.length + 1 →
-      SinkAt S Mt0 Mt' k dst (out ++ [c]) → DW live S Q 0x80000320#64 R' Mt') :
+      Emitted S Mt Mt' k dst (out ++ [c]) → DW live S Q 0x80000320#64 R' Mt') :
     DW live S Q 0x80000310#64 R Mt := by
   emit_tac 0x80000320 9 13 c
 
@@ -239,13 +243,13 @@ one; the byte `%`.
 -/
 
 theorem emit_80000398 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt0 Mt : Mem}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
-    (hs : SinkAt S Mt0 Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
+    (hs : SinkAt S Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 14).toNat = dst.fw)
     (hlr : (R 13).toNat = out.length) (hl1 : (R 15).toNat = out.length + 1)
     (hk : ∀ R' Mt', Keeps [13, 14, 15] R' R → (R' 15).toNat = out.length + 1 →
-      SinkAt S Mt0 Mt' k dst (out ++ [37#8]) → DW live S Q 0x800003ac#64 R' Mt') :
+      Emitted S Mt Mt' k dst (out ++ [37#8]) → DW live S Q 0x800003ac#64 R' Mt') :
     DW live S Q 0x80000398#64 R Mt := by
   emit_tac 0x800003ac 9 14 (37#8)
 
@@ -263,14 +267,14 @@ one, `a3` the argument word.
 -/
 
 theorem emit_800002c4 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt0 Mt : Mem}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
-    (hs : SinkAt S Mt0 Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
+    (hs : SinkAt S Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 14).toNat = dst.fw)
     (hlr : (R 12).toNat = out.length) (hl1 : (R 15).toNat = out.length + 1)
     (hc : lo8 (R 13) = c)
     (hk : ∀ R' Mt', Keeps [12, 14, 15] R' R → (R' 15).toNat = out.length + 1 →
-      SinkAt S Mt0 Mt' k dst (out ++ [c]) → DW live S Q 0x800002f0#64 R' Mt') :
+      Emitted S Mt Mt' k dst (out ++ [c]) → DW live S Q 0x800002f0#64 R' Mt') :
     DW live S Q 0x800002c4#64 R Mt := by
   emit_tac 0x800002f0 9 14 c
 
@@ -288,13 +292,13 @@ one; the byte `0`.
 -/
 
 theorem emit_80000450 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt0 Mt : Mem}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
-    (hs : SinkAt S Mt0 Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
+    (hs : SinkAt S Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 14).toNat = dst.fw)
     (hlr : (R 13).toNat = out.length) (hl1 : (R 15).toNat = out.length + 1)
     (hk : ∀ R' Mt', Keeps [13, 14, 15] R' R → (R' 15).toNat = out.length + 1 →
-      SinkAt S Mt0 Mt' k dst (out ++ [48#8]) → DW live S Q 0x80000464#64 R' Mt') :
+      Emitted S Mt Mt' k dst (out ++ [48#8]) → DW live S Q 0x80000464#64 R' Mt') :
     DW live S Q 0x80000450#64 R Mt := by
   emit_tac 0x80000464 9 14 (48#8)
 
@@ -312,13 +316,13 @@ one; the byte `-`.
 -/
 
 theorem emit_800004a8 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt0 Mt : Mem}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
-    (hs : SinkAt S Mt0 Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
+    (hs : SinkAt S Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 13).toNat = dst.fw)
     (hlr : (R 12).toNat = out.length) (hl1 : (R 14).toNat = out.length + 1)
     (hk : ∀ R' Mt', Keeps [12, 13, 14] R' R → (R' 14).toNat = out.length + 1 →
-      SinkAt S Mt0 Mt' k dst (out ++ [45#8]) → DW live S Q 0x800004d0#64 R' Mt') :
+      Emitted S Mt Mt' k dst (out ++ [45#8]) → DW live S Q 0x800004d0#64 R' Mt') :
     DW live S Q 0x800004a8#64 R Mt := by
   emit_tac 0x800004d0 9 13 (45#8)
 
@@ -336,14 +340,14 @@ one, `a4` the byte, `a0 = 1`.
 -/
 
 theorem emit_80000270 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt0 Mt : Mem}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
-    (hs : SinkAt S Mt0 Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
+    (hs : SinkAt S Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 11).toNat = dst.fw)
     (hlr : (R 13).toNat = out.length) (hl1 : (R 12).toNat = out.length + 1)
     (hc : lo8 (R 14) = c) (h1 : (R 10).toNat = 1)
     (hk : ∀ R' Mt', Keeps [11, 12, 13] R' R → (R' 13).toNat = out.length + 1 →
-      SinkAt S Mt0 Mt' k dst (out ++ [c]) → DW live S Q 0x80000284#64 R' Mt') :
+      Emitted S Mt Mt' k dst (out ++ [c]) → DW live S Q 0x80000284#64 R' Mt') :
     DW live S Q 0x80000270#64 R Mt := by
   emit_tac 0x80000284 9 11 c
 

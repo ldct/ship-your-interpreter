@@ -227,6 +227,13 @@ against `Num.div`; `bc_divmod`, `bc_modulo` against `Num.divmod`/
   deepest library chain below it, read off the prologues; `Dc.Depth` and
   the admissibility bound of M0 discharge every stack store's side
   condition.
+- The two `_start` instructions that set `gp` (`0x80000000`/`0x80000004`)
+  run before `DW` holds (`gp` is read-only there): a boot segment from the
+  loader state to `DW` at `0x80000008`.
+- `Halts` from a printing run: the `DWO` run from the boot state to
+  `_exit`'s store (`dcExit_haltFact`, `Dc/Mach/Htif.lean`) through
+  `wp_lroW`, `wp_exitW` and `vsa_adequacy_exit`, with the boot ownership
+  split (the VSA pattern: `VsaIris/Interp/EndToEnd.lean`).
 - Boot image: the loader memory of the ELF with `prog` patched in, as a
   kernel term (`dcBoot`), with the native `ElfLoads`-style check and a
   replay script (the WHILE `experiments/review-v2/Replay.lean` pattern).
@@ -277,5 +284,5 @@ libc; regenerate the decode and step tables after any change to the ELF.
 | Semantics, interpreter, adequacy, validation tooling | done |
 | Port, libc, layout | done |
 | M0 statement and resources | done |
-| M1 machine layer | generators done; tables compiling |
+| M1 machine layer | done: decode and step tables compile (`gen_dc_decode.py`, `gen_dc_steps.py`, `--check` in `check_all.sh`); observed `lb` steps `stL_80004120`/`stL_800041c8` (`Dc/Mach/LoadObs.lean`); HTIF `tohost_<pc>` sites, `stP_<pc>` print steps (`Dc/Mach/Tohost.lean`), `DWO`, `dcExit_haltFact` (`Dc/Mach/Htif.lean`); `dx_run` on straight-line code, a loop and a call (`strlen_loop`, `main_scriptLen`); `strlen_spec` (`Dc/Mach/Strlen.lean`). The `gp` boot pair and `Halts` from a run are M11 items |
 | M2–M12 | open |

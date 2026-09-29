@@ -48,11 +48,10 @@ import Vsa.Sim.DecodeTable.Batch08Part25
 import Vsa.Sim.DecodeTable.Batch09Part03
 import Vsa.Sim.DecodeTable.Batch11Part18
 import Vsa.Sim.DecodeTable.Batch15Part24
-import Vsa.Sim.DecodeTable.Batch16Part28
 import Vsa.Sim.DecodeTable.Batch16Part29
 import Vsa.Sim.DecodeTable.Batch16Part31
 
-/-! The dc step table, `0x80004cf4` to `0x80004ed0` (see `scripts/dc/gen_dc_steps.py`). -/
+/-! The dc step table, `0x80004cec` to `0x80004ec8` (see `scripts/dc/gen_dc_steps.py`). -/
 
 open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
@@ -62,6 +61,9 @@ namespace Dc.Mach
 
 open VsaIris Vsa.Sim Vsa.MemRepr VsaIris.Sym VsaIris.Inst VsaIris.MallocFast
 
+def dxT_80004cec : List BBlock := [⟨[], some (⟨0x80004cec#64, 0x03b4e063#32, 0x63#8, 0xe0#8, 0xb4#8, 0x03#8, .br bop.BLTU true, 9, 27, 0x20#13, 0x0#21, 0#12⟩ : TInstr)⟩]
+def dxF_80004cec : List BBlock := [⟨[], some (⟨0x80004cec#64, 0x03b4e063#32, 0x63#8, 0xe0#8, 0xb4#8, 0x03#8, .br bop.BLTU false, 9, 27, 0x20#13, 0x0#21, 0#12⟩ : TInstr)⟩]
+def dx_80004cf0 : List BBlock := [{ body := [mkLine 0x80004cf0#64 0x000dc583#32], term := none }]
 def dx_80004cf4 : List BBlock := [{ body := [mkLine 0x80004cf4#64 0x000bc503#32], term := none }]
 def dx_80004cf8 : List BBlock := [{ body := [mkLine 0x80004cf8#64 0xfffb8b93#32], term := none }]
 def dx_80004cfc : List BBlock := [{ body := [mkLine 0x80004cfc#64 0x001d8d93#32], term := none }]
@@ -188,8 +190,85 @@ def dx_80004ec0 : List BBlock := [{ body := [mkLine 0x80004ec0#64 0x00100613#32]
 def dxT_80004ec4 : List BBlock := [⟨[], some (⟨0x80004ec4#64, 0x00e65e63#32, 0x63#8, 0x5e#8, 0xe6#8, 0x00#8, .br bop.BGE true, 12, 14, 0x1c#13, 0x0#21, 0#12⟩ : TInstr)⟩]
 def dxF_80004ec4 : List BBlock := [⟨[], some (⟨0x80004ec4#64, 0x00e65e63#32, 0x63#8, 0x5e#8, 0xe6#8, 0x00#8, .br bop.BGE false, 12, 14, 0x1c#13, 0x0#21, 0#12⟩ : TInstr)⟩]
 def dx_80004ec8 : List BBlock := [{ body := [mkLine 0x80004ec8#64 0x00178793#32], term := none }]
-def dx_80004ecc : List BBlock := [{ body := [mkLine 0x80004ecc#64 0xfff7071b#32], term := none }]
-def dx_80004ed0 : List BBlock := [{ body := [mkLine 0x80004ed0#64 0x02fc3023#32], term := none }]
+
+theorem dc_at_80004cec {m : Mem} (h : TextLoaded dcText m) :
+
+    m[(0x80004cec : Nat)]? = some (0x63 : BitVec 8) ∧
+    m[(0x80004ced : Nat)]? = some (0xe0 : BitVec 8) ∧
+    m[(0x80004cee : Nat)]? = some (0xb4 : BitVec 8) ∧
+    m[(0x80004cef : Nat)]? = some (0x03 : BitVec 8) :=
+
+  ⟨h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_left dcCodeNode1247_1278 (List.mem_append_left dcCodeNode1232_1247 (List.mem_append_right dcCodeNode1217_1224 (List.mem_append_right dcCodeNode1224_1228 (List.mem_append_right dcCodeNode1228_1230 (List.mem_append_left dcCodeChunk1231 ((by decide : ((0x80004cec : Nat), (0x63#8 : BitVec 8)) ∈ dcCodeChunk1230)))))))))))))),
+   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_left dcCodeNode1247_1278 (List.mem_append_left dcCodeNode1232_1247 (List.mem_append_right dcCodeNode1217_1224 (List.mem_append_right dcCodeNode1224_1228 (List.mem_append_right dcCodeNode1228_1230 (List.mem_append_left dcCodeChunk1231 ((by decide : ((0x80004ced : Nat), (0xe0#8 : BitVec 8)) ∈ dcCodeChunk1230)))))))))))))),
+   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_left dcCodeNode1247_1278 (List.mem_append_left dcCodeNode1232_1247 (List.mem_append_right dcCodeNode1217_1224 (List.mem_append_right dcCodeNode1224_1228 (List.mem_append_right dcCodeNode1228_1230 (List.mem_append_left dcCodeChunk1231 ((by decide : ((0x80004cee : Nat), (0xb4#8 : BitVec 8)) ∈ dcCodeChunk1230)))))))))))))),
+   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_left dcCodeNode1247_1278 (List.mem_append_left dcCodeNode1232_1247 (List.mem_append_right dcCodeNode1217_1224 (List.mem_append_right dcCodeNode1224_1228 (List.mem_append_right dcCodeNode1228_1230 (List.mem_append_left dcCodeChunk1231 ((by decide : ((0x80004cef : Nat), (0x03#8 : BitVec 8)) ∈ dcCodeChunk1230))))))))))))))⟩
+
+
+theorem st_80004cec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {R : Nat → BitVec 64} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    (hT : (R 9).toNat < (R 27).toNat → DW live S Q 0x80004d0c#64 R Mt) (hF : ¬ ((R 9).toNat < (R 27).toNat) → DW live S Q 0x80004cf0#64 R Mt) :
+    DW live S Q 0x80004cec#64 R Mt := by
+  by_cases hc : (R 9).toNat < (R 27).toNat
+  · exact
+    swp_step dxT_80004cec [9, 27] [] [] [] 0 rfl (by decide) (by decide) (by decide)
+      (fun a _ => trivial) hlive
+      (fun m hm hLD => by unfold dxT_80004cec ChainFacts; chain_facts hm with "Dc.Mach.dc_at_"; exact (guard_bltu _ _).2 hc)
+      (by decide) (by decide) (fun h => absurd h (by decide)) (by decide) (fun a h => by cases h)
+      (fun a h => by cases h) rfl
+      (by intro x hx hg; simp only [List.mem_cons, List.not_mem_nil, or_false] at hx; rcases hx with rfl | rfl <;> first | rfl | exact absurd rfl hg)
+      (fun _ _ _ _ => rfl) rfl (hT hc)
+  · exact
+    swp_step dxF_80004cec [9, 27] [] [] [] 0 rfl (by decide) (by decide) (by decide)
+      (fun a _ => trivial) hlive
+      (fun m hm hLD => by unfold dxF_80004cec ChainFacts; chain_facts hm with "Dc.Mach.dc_at_"; exact (guard_false (guard_bltu _ _)).2 hc)
+      (by decide) (by decide) (fun h => absurd h (by decide)) (by decide) (fun a h => by cases h)
+      (fun a h => by cases h) rfl
+      (by intro x hx hg; simp only [List.mem_cons, List.not_mem_nil, or_false] at hx; rcases hx with rfl | rfl <;> first | rfl | exact absurd rfl hg)
+      (fun _ _ _ _ => rfl) rfl (hF hc)
+
+theorem dc_at_80004cf0 {m : Mem} (h : TextLoaded dcText m) :
+
+    m[(0x80004cf0 : Nat)]? = some (0x83 : BitVec 8) ∧
+    m[(0x80004cf1 : Nat)]? = some (0xc5 : BitVec 8) ∧
+    m[(0x80004cf2 : Nat)]? = some (0x0d : BitVec 8) ∧
+    m[(0x80004cf3 : Nat)]? = some (0x00 : BitVec 8) :=
+
+  ⟨h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_left dcCodeNode1247_1278 (List.mem_append_left dcCodeNode1232_1247 (List.mem_append_right dcCodeNode1217_1224 (List.mem_append_right dcCodeNode1224_1228 (List.mem_append_right dcCodeNode1228_1230 (List.mem_append_right dcCodeChunk1230 ((by decide : ((0x80004cf0 : Nat), (0x83#8 : BitVec 8)) ∈ dcCodeChunk1231)))))))))))))),
+   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_left dcCodeNode1247_1278 (List.mem_append_left dcCodeNode1232_1247 (List.mem_append_right dcCodeNode1217_1224 (List.mem_append_right dcCodeNode1224_1228 (List.mem_append_right dcCodeNode1228_1230 (List.mem_append_right dcCodeChunk1230 ((by decide : ((0x80004cf1 : Nat), (0xc5#8 : BitVec 8)) ∈ dcCodeChunk1231)))))))))))))),
+   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_left dcCodeNode1247_1278 (List.mem_append_left dcCodeNode1232_1247 (List.mem_append_right dcCodeNode1217_1224 (List.mem_append_right dcCodeNode1224_1228 (List.mem_append_right dcCodeNode1228_1230 (List.mem_append_right dcCodeChunk1230 ((by decide : ((0x80004cf2 : Nat), (0x0d#8 : BitVec 8)) ∈ dcCodeChunk1231)))))))))))))),
+   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_left dcCodeNode1247_1278 (List.mem_append_left dcCodeNode1232_1247 (List.mem_append_right dcCodeNode1217_1224 (List.mem_append_right dcCodeNode1224_1228 (List.mem_append_right dcCodeNode1228_1230 (List.mem_append_right dcCodeChunk1230 ((by decide : ((0x80004cf3 : Nat), (0x00#8 : BitVec 8)) ∈ dcCodeChunk1231))))))))))))))⟩
+
+
+theorem st_80004cf0 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {R : Nat → BitVec 64} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    (hea : LdOK ((R 27) + sign_extend (m := 64) (0x000#12)).toNat 1)
+    (hLDS : ∀ b ∈ accAddrs ((R 27) + sign_extend (m := 64) (0x000#12)).toNat 1, S b)
+    (hk : DW live S Q 0x80004cf4#64 (upd R 11 (ldv .lbu Mt ((R 27) + sign_extend (m := 64) (0x000#12)).toNat)) Mt) :
+    DW live S Q 0x80004cf0#64 R Mt :=
+  swp_step dx_80004cf0 [11, 27] [bytesAt (imgM Mt) ((R 27) + sign_extend (m := 64) (0x000#12)).toNat 1] (accAddrs ((R 27) + sign_extend (m := 64) (0x000#12)).toNat 1) [] 0 rfl (by decide) (by decide) (by decide)
+    (fun a _ => trivial) hlive
+    (fun m hm hLD => by unfold dx_80004cf0 ChainFacts; chain_facts hm with "Dc.Mach.dc_at_"; exact ⟨hea, lpins1_img hLD⟩)
+    (by decide) (by decide) (fun h => absurd h (by decide)) (by decide) hLDS
+    (fun a h => by cases h) rfl
+    (by intro x hx hg; simp only [List.mem_cons, List.not_mem_nil, or_false] at hx; rcases hx with rfl | rfl <;> first | rfl | exact absurd rfl hg)
+    (fun x _ _ hx => upd_other _ _ (fun e => hx (e ▸ (by decide : 11 ∈ [11, 27])))) rfl hk
+
+theorem stR_80004cf0 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {R : Nat → BitVec 64} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    (hea : LdOK ((R 27) + sign_extend (m := 64) (0x000#12)).toNat 1)
+    (hLDT : ∀ b ∈ accAddrs ((R 27) + sign_extend (m := 64) (0x000#12)).toNat 1, (b, dcROImg b) ∈ dcRO)
+    (hk : DW live S Q 0x80004cf4#64 (upd R 11 (ldvf .lbu dcROImg ((R 27) + sign_extend (m := 64) (0x000#12)).toNat)) Mt) :
+    DW live S Q 0x80004cf0#64 R Mt :=
+  swp_step dx_80004cf0 [11, 27] [bytesAt dcROImg ((R 27) + sign_extend (m := 64) (0x000#12)).toNat 1] [] [] 0 rfl (by decide) (by decide) (by decide)
+    (fun a _ => trivial) hlive
+    (fun m hm hLD => by unfold dx_80004cf0 ChainFacts; chain_facts hm with "Dc.Mach.dc_at_"; exact ⟨hea, lpins1_fn (fun b hb => by rw [hm _ (List.mem_append_right _ (hLDT b hb))]; rfl)⟩)
+    (by decide) (by decide) (fun h => absurd h (by decide)) (by decide) (fun a h => by cases h)
+    (fun a h => by cases h) rfl
+    (by intro x hx hg; simp only [List.mem_cons, List.not_mem_nil, or_false] at hx; rcases hx with rfl | rfl <;> first | rfl | exact absurd rfl hg)
+    (fun x _ _ hx => upd_other _ _ (fun e => hx (e ▸ (by decide : 11 ∈ [11, 27])))) rfl hk
 
 theorem dc_at_80004cf4 {m : Mem} (h : TextLoaded dcText m) :
 
@@ -4106,59 +4185,5 @@ theorem st_80004ec8 {live : Nat → Prop} {S : Nat → Prop}
     (fun a h => by cases h) rfl
     (by intro x hx hg; simp only [List.mem_cons, List.not_mem_nil, or_false] at hx; rcases hx with rfl <;> first | rfl | exact absurd rfl hg)
     (fun x _ _ hx => upd_other _ _ (fun e => hx (e ▸ (by decide : 15 ∈ [15])))) rfl hk
-
-theorem dc_at_80004ecc {m : Mem} (h : TextLoaded dcText m) :
-
-    m[(0x80004ecc : Nat)]? = some (0x1b : BitVec 8) ∧
-    m[(0x80004ecd : Nat)]? = some (0x07 : BitVec 8) ∧
-    m[(0x80004ece : Nat)]? = some (0xf7 : BitVec 8) ∧
-    m[(0x80004ecf : Nat)]? = some (0xff : BitVec 8) :=
-
-  ⟨h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_right dcCodeNode1217_1247 (List.mem_append_left dcCodeNode1262_1278 (List.mem_append_right dcCodeNode1247_1254 (List.mem_append_right dcCodeNode1254_1258 (List.mem_append_right dcCodeNode1258_1260 (List.mem_append_left dcCodeChunk1261 ((by decide : ((0x80004ecc : Nat), (0x1b#8 : BitVec 8)) ∈ dcCodeChunk1260)))))))))))))),
-   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_right dcCodeNode1217_1247 (List.mem_append_left dcCodeNode1262_1278 (List.mem_append_right dcCodeNode1247_1254 (List.mem_append_right dcCodeNode1254_1258 (List.mem_append_right dcCodeNode1258_1260 (List.mem_append_left dcCodeChunk1261 ((by decide : ((0x80004ecd : Nat), (0x07#8 : BitVec 8)) ∈ dcCodeChunk1260)))))))))))))),
-   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_right dcCodeNode1217_1247 (List.mem_append_left dcCodeNode1262_1278 (List.mem_append_right dcCodeNode1247_1254 (List.mem_append_right dcCodeNode1254_1258 (List.mem_append_right dcCodeNode1258_1260 (List.mem_append_left dcCodeChunk1261 ((by decide : ((0x80004ece : Nat), (0xf7#8 : BitVec 8)) ∈ dcCodeChunk1260)))))))))))))),
-   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_right dcCodeNode1217_1247 (List.mem_append_left dcCodeNode1262_1278 (List.mem_append_right dcCodeNode1247_1254 (List.mem_append_right dcCodeNode1254_1258 (List.mem_append_right dcCodeNode1258_1260 (List.mem_append_left dcCodeChunk1261 ((by decide : ((0x80004ecf : Nat), (0xff#8 : BitVec 8)) ∈ dcCodeChunk1260))))))))))))))⟩
-
-
-theorem st_80004ecc {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {R : Nat → BitVec 64} {Mt : Mem}
-    (hlive : ∀ p ∈ dcText, live p.1)
-    (hk : DW live S Q 0x80004ed0#64 (upd R 14 (sign_extend (m := 64) (Sail.BitVec.extractLsb ((R 14) + sign_extend (m := 64) (0xfff#12)) 31 0))) Mt) :
-    DW live S Q 0x80004ecc#64 R Mt :=
-  swp_step dx_80004ecc [14] [] [] [] 0 rfl (by decide) (by decide) (by decide)
-    (fun a _ => trivial) hlive
-    (fun m hm hLD => by unfold dx_80004ecc ChainFacts; chain_facts hm with "Dc.Mach.dc_at_")
-    (by decide) (by decide) (fun h => absurd h (by decide)) (by decide) (fun a h => by cases h)
-    (fun a h => by cases h) rfl
-    (by intro x hx hg; simp only [List.mem_cons, List.not_mem_nil, or_false] at hx; rcases hx with rfl <;> first | rfl | exact absurd rfl hg)
-    (fun x _ _ hx => upd_other _ _ (fun e => hx (e ▸ (by decide : 14 ∈ [14])))) rfl hk
-
-theorem dc_at_80004ed0 {m : Mem} (h : TextLoaded dcText m) :
-
-    m[(0x80004ed0 : Nat)]? = some (0x23 : BitVec 8) ∧
-    m[(0x80004ed1 : Nat)]? = some (0x30 : BitVec 8) ∧
-    m[(0x80004ed2 : Nat)]? = some (0xfc : BitVec 8) ∧
-    m[(0x80004ed3 : Nat)]? = some (0x02 : BitVec 8) :=
-
-  ⟨h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_right dcCodeNode1217_1247 (List.mem_append_left dcCodeNode1262_1278 (List.mem_append_right dcCodeNode1247_1254 (List.mem_append_right dcCodeNode1254_1258 (List.mem_append_right dcCodeNode1258_1260 (List.mem_append_right dcCodeChunk1260 ((by decide : ((0x80004ed0 : Nat), (0x23#8 : BitVec 8)) ∈ dcCodeChunk1261)))))))))))))),
-   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_right dcCodeNode1217_1247 (List.mem_append_left dcCodeNode1262_1278 (List.mem_append_right dcCodeNode1247_1254 (List.mem_append_right dcCodeNode1254_1258 (List.mem_append_right dcCodeNode1258_1260 (List.mem_append_right dcCodeChunk1260 ((by decide : ((0x80004ed1 : Nat), (0x30#8 : BitVec 8)) ∈ dcCodeChunk1261)))))))))))))),
-   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_right dcCodeNode1217_1247 (List.mem_append_left dcCodeNode1262_1278 (List.mem_append_right dcCodeNode1247_1254 (List.mem_append_right dcCodeNode1254_1258 (List.mem_append_right dcCodeNode1258_1260 (List.mem_append_right dcCodeChunk1260 ((by decide : ((0x80004ed2 : Nat), (0xfc#8 : BitVec 8)) ∈ dcCodeChunk1261)))))))))))))),
-   h _ (List.mem_append_left dcRO (List.mem_append_right dcCodeNode0_974 (List.mem_append_left dcCodeNode1461_1949 (List.mem_append_right dcCodeNode974_1217 (List.mem_append_left dcCodeNode1339_1461 (List.mem_append_left dcCodeNode1278_1339 (List.mem_append_right dcCodeNode1217_1247 (List.mem_append_left dcCodeNode1262_1278 (List.mem_append_right dcCodeNode1247_1254 (List.mem_append_right dcCodeNode1254_1258 (List.mem_append_right dcCodeNode1258_1260 (List.mem_append_right dcCodeChunk1260 ((by decide : ((0x80004ed3 : Nat), (0x02#8 : BitVec 8)) ∈ dcCodeChunk1261))))))))))))))⟩
-
-
-theorem st_80004ed0 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {R : Nat → BitVec 64} {Mt : Mem}
-    (hlive : ∀ p ∈ dcText, live p.1)
-    (hea : StOK ((R 24) + sign_extend (m := 64) (0x020#12)).toNat 8)
-    (hS : ∀ b ∈ accAddrs ((R 24) + sign_extend (m := 64) (0x020#12)).toNat 8, S b)
-    (hk : DW live S Q 0x80004ed4#64 R (writeLog Mt [(((R 24) + sign_extend (m := 64) (0x020#12)).toNat, 8, (R 15))])) :
-    DW live S Q 0x80004ed0#64 R Mt :=
-  swp_step dx_80004ed0 [15, 24] [] [] (accAddrs ((R 24) + sign_extend (m := 64) (0x020#12)).toNat 8) 0 rfl (by decide) (by decide) (by decide)
-    (fun a ha => outL_single _ ha) hlive
-    (fun m hm hLD => by unfold dx_80004ed0 ChainFacts; chain_facts hm with "Dc.Mach.dc_at_"; exact hea)
-    (by decide) (by decide) (fun h => absurd h (by decide)) (by decide) (fun a h => by cases h)
-    hS rfl
-    (by intro x hx hg; simp only [List.mem_cons, List.not_mem_nil, or_false] at hx; rcases hx with rfl | rfl <;> first | rfl | exact absurd rfl hg)
-    (fun _ _ _ _ => rfl) rfl hk
 
 end Dc.Mach

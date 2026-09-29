@@ -1,4 +1,5 @@
 import Dc.Mach.Steps
+import Dc.Mach.Htif
 import VsaIris.Vsa.AllocTac
 
 /-!
@@ -8,11 +9,13 @@ import VsaIris.Vsa.AllocTac
 twin of `sx_run` (`VsaIris/Vsa/AllocTac.lean`, whose side-condition tactics
 `sx_side`, `sx_norm`, `sx_mem` it reuses). At a literal PC it tries the step
 lemmas of the instruction in order — `st_<pc>` (owned bytes), `stR_<pc>`
-(`.rodata` loads), `stO_<pc>` (observed `sltu`/`sltiu`) — and takes the first
+(`.rodata` loads), `stO_<pc>` (observed `sltu`/`sltiu`), `stL_<pc>` (observed
+`lb` of an owned byte) — and takes the first
 whose side conditions `sx_side` closes (else `st_<pc>` with its side
 conditions left open). `h : ∀ p ∈ dcText, live p.1`.
 
 The run stops at a branch it cannot decide, at a symbolic PC (`ret`, `jr`),
+at a `tohost` store (`stP_<pc>`, `Tohost.lean`, takes the printed byte),
 at a PC listed after `at` (the entries of functions with their own specs, so
 a call is closed by the callee's spec), or after the fuel (default 400
 instructions; `dx_run [n] h`).
@@ -71,7 +74,8 @@ close, else `st_<pc>` with its open side conditions. -/
 def dxStep (h : Syntax) (g : MVarId) : TacticM (Option (List MVarId × List MVarId)) := do
   let some pc ← g.withContext (do swpPC? (← g.getType)) | return none
   let base := Name.mkStr (Name.mkStr .anonymous "Dc") "Mach"
-  let names := ["st_", "stR_", "stO_"].map fun p => Name.mkStr base s!"{p}{hex8 pc}"
+  if (← getEnv).contains (Name.mkStr base s!"stP_{hex8 pc}") then return none
+  let names := ["st_", "stR_", "stO_", "stL_"].map fun p => Name.mkStr base s!"{p}{hex8 pc}"
   let mut fallback : Option (List MVarId × List MVarId × Tactic.SavedState) := none
   for nm in names do
     let saved ← saveState

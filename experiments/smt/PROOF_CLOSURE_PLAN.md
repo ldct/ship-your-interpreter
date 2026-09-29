@@ -4461,3 +4461,15 @@ Obstructions recorded (not fixed):
 - **`IrisHoles` removed (lane V2, user request, 2026-09-25).** The record was
   empty; `endToEnd_refinement` and every capstone now take no hypothesis
   (INTERP_DESIGN.md "STATEMENT CHANGE (lane V2)").
+
+## dc machine layer: `lb` is outside `MKind` (dc M1, 2026-09-29; RESOLVED)
+
+The reflected block model has no signed byte load, so dc's two `lb`s
+(`_bc_shift_addsub`, `0x80004120`, `0x800041c8`) had no step lemma. They are
+observed ALU steps over one owned byte read totally: `aluStepT_of_obs`,
+`swp_aluM`, `exec_lb_tot` (`Dc/Mach/LoadObs.lean`), instantiated by the
+generator as `stL_<pc>`. Still open for dc and scheduled in `Dc/PLAN.md`
+M11: the `_start` `gp` pair (no `DW` step: `gp` is read-only in `DW`) and
+the `Halts` conclusion from a printing run (`dcExit_haltFact` supplies the
+halting step; the boot ownership split and adequacy are the missing
+suppliers).

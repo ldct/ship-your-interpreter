@@ -628,4 +628,86 @@ theorem fmt_s {live : Nat → Prop} {S : Nat → Prop}
     · gnorm; exact hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)
     · gnorm
 
+/-! ## The calls of `emit_unsigned` (`0x8000040c`, `0x80000464`)
+
+```
+8000040c li a2,10 ; 80000410 mv a0,s1 ; 80000414 jal emit_unsigned   → 80000418
+80000464 li a2,8  ; 80000468 mv a0,s1 ; 8000046c jal emit_unsigned   → 80000470
+```
+-/
+
+/-- The state after a call that changes only the callee's frame below
+`format`'s and the sink. -/
+theorem FmtState.called {S : Nat → Prop} {M0 : Mem} {sp k : Nat} {dst : SinkDst}
+    {R0 : Nat → BitVec 64} {ap : Nat} {out out' : List (BitVec 8)} {R R' : Nat → BitVec 64}
+    {M M' : Mem} (h : FmtState S M0 sp k dst R0 ap out R M) (hs : SinkAt S M' k dst out')
+    (hfrm : ∀ a, (a < sp - 96 - 96 ∨ sp - 96 ≤ a) → ¬ dst.Byte k a → imgM M' a = imgM M a)
+    (hr : Keeps [1, 5, 8, 10, 11, 12, 13, 14, 15, 16, 17, 25] R' R) (h25 : (R' 25).toNat = ap) :
+    FmtState S M0 sp k dst R0 ap out' R' M' :=
+  have hlo := h.fr.lo
+  { h.regs hr h25 with
+    sink := hs
+    frame := fun a ha hb => (hfrm a (by omega) hb).trans (h.frame a ha hb)
+    saved := h.saved.transport fun a h1 h2 =>
+      hfrm a (by omega) fun hb => by have := h.off a (SinkDst.read_of_byte hb); omega }
+
+/-- `emit_unsigned`'s frame below `format`'s. -/
+theorem FmtState.euFrame {S : Nat → Prop} {M0 : Mem} {sp k : Nat} {dst : SinkDst}
+    {R0 : Nat → BitVec 64} {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (h : FmtState S M0 sp k dst R0 ap out R M) : StackFrame S (sp - 96) 96 :=
+  have hf := h.fr
+  have := hf.lo
+  have := hf.al
+  ⟨fun a h1 h2 => hf.own a (by omega) (by omega), by omega, by have := hf.hi; omega, by omega⟩
+
+set_option hygiene false in
+/-- The call of `emit_unsigned` in base `$b` and the next site. -/
+macro "eu_call_tac " b:num : tactic =>
+  `(tactic| (
+    have hs := hst.sink
+    have hlo := hst.fr.lo
+    have htx : tohostAddr = 0x8001ad00 := rfl
+    dx_run hlive at 0x80000040
+    refine emit_unsigned_spec hlive hst.euFrame hs
+      (fun a ha => by have := hst.off a ha; omega) (b := $b) (by omega) _ ?_ ?_ ?_ ?_ ?_
+      fun R' M' hk' hs' hfrm => ?_
+    · gnorm; exact hst.rsp
+    · gnorm; exact hst.rk
+    · gnorm
+    · gnorm; rw [hu]; exact hsh
+    · gnorm <;> decide
+    have hst' := hst.called (R' := R') hs' hfrm
+      ((hk'.mono (by decide)).trans (by keeps_to (Keeps.refl _ _)))
+      (by rw [hk'.get 25]; gnorm; exact hst.rap)
+    gnorm
+    refine next_lem hlive hst' (by rw [hk'.get 8]; gnorm; exact hq) hro ?_ ?_
+    · intro hb R'' hs''; gnorm_at hs''; rw [hu] at hs''; exact hK.1 hb R'' M' hs''
+    · intro hb R'' hs''; gnorm_at hs''; rw [hu] at hs''; exact hK.2 hb R'' M' hs''))
+
+/-- **`emit_unsigned(k, u, 10)`** from `0x8000040c`, then the next site. -/
+theorem fmt_dec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {u : Nat}
+    (hu : (R 11).toNat = u) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
+    (hsh : out.length + ndig 10 u < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ udigits 10 u) q b) :
+    DW live S Q 0x8000040c#64 R M := by
+  have next_lem := @fmt_next_80000418
+  eu_call_tac 10
+
+/-- **`emit_unsigned(k, u, 8)`** from `0x80000464`, then the next site. -/
+theorem fmt_oct {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {u : Nat}
+    (hu : (R 11).toNat = u) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
+    (hsh : out.length + ndig 8 u < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ udigits 8 u) q b) :
+    DW live S Q 0x80000464#64 R M := by
+  have next_lem := @fmt_next_80000470
+  eu_call_tac 8
+
 end Dc.Mach

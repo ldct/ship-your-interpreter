@@ -24,3 +24,6 @@ subDir = "Iris"
 
 [[lean_lib]]
 name = "VsaBoot"
+
+[[lean_lib]]
+name = "Dc"

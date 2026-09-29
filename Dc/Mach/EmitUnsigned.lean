@@ -210,4 +210,258 @@ theorem eu_emit {live : Nat → Prop} {S : Nat → Prop}
     · gnorm; rw [e2]; exact h2
     · gnorm; rw [e2]; exact h2'
 
+/-! ## The digit loop (`0x80000084`)
+
+```
+80000084 mv a1,s3 ; 80000088 mv a0,s0 ; 8000008c jal __umoddi3
+80000090 add a0,s6,a0 ; 80000094 lbu a5,0(a0) ; 80000098 mv a1,s3 ; 8000009c mv a0,s0
+800000a0 sb a5,0(s2) ; 800000a4 jal __hidden___udivdi3 ; 800000a8 mv s5,s0 ; 800000ac mv a5,s2
+800000b0 mv s0,a0 ; 800000b4 addi s2,s2,1 ; 800000b8 bgeu s5,s3,80000084
+```
+-/
+
+/-- `subw` of two words `n` apart, `n < 2^31`. -/
+theorem subw_eq {x y : BitVec 64} {n : Nat} (h : x.toNat = y.toNat + n) (hn : n < 2 ^ 31) :
+    sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0 - Sail.BitVec.extractLsb y 31 0) =
+      BitVec.ofNat 64 n := by
+  have hz : (Sail.BitVec.extractLsb x 31 0 - Sail.BitVec.extractLsb y 31 0 : BitVec 32) =
+      BitVec.ofNat 32 n := by
+    apply BitVec.eq_of_toNat_eq
+    simp only [Sail.BitVec.extractLsb, BitVec.toNat_sub, BitVec.extractLsb_toNat, BitVec.toNat_ofNat]
+    have := x.isLt
+    omega
+  rw [hz]
+  simp only [sign_extend, Sail.BitVec.signExtend]
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.signExtend_eq_setWidth_of_msb_false (by simp [BitVec.msb_eq_decide]; omega)]
+  simp; omega
+
+/-- `udivV` by a nonzero divisor. -/
+theorem udivV_toNat {x y : BitVec 64} (hy : y.toNat ≠ 0) : (udivV x y).toNat = x.toNat / y.toNat := by
+  have : y ≠ 0#64 := fun e => hy (by rw [e]; rfl)
+  rw [udivV, ite_eq_right_of_eq_false _ _ (eq_false this), BitVec.toNat_udiv]
+
+/-- `"0123456789abcdef"` at `0x800079c8` in `.rodata`. -/
+theorem digit_ro : ∀ i, i < 16 →
+    dcROImg (0x800079c8 + i) = digitChar i ∧ (0x800079c8 + i, dcROImg (0x800079c8 + i)) ∈ dcRO := by
+  decide
+
+theorem ldvf_lbu (f : Nat → BitVec 8) (a : Nat) : ldvf .lbu f a = zero_extend (m := 64) (f a) := by
+  simp [ldvf, bytesAt, bytesVal, widthOfM]
+
+/-- At most `m` digits below `b ^ m`. -/
+theorem ndig_le {b : Nat} (hb : 2 ≤ b) : ∀ m v, 1 ≤ m → v < b ^ m → ndig b v ≤ m := by
+  intro m
+  induction m with
+  | zero => intro v h; omega
+  | succ m ih =>
+    intro v _ hv
+    by_cases h : b ≤ v
+    · rw [ndig_of_ge hb h]
+      have : v / b < b ^ m := by
+        rw [Nat.div_lt_iff_lt_mul (by omega)]; rwa [← Nat.pow_succ]
+      have h1 : 1 ≤ m := by
+        refine Classical.byContradiction fun h0 => ?_
+        have : m = 0 := by omega
+        subst this; simp at hv; omega
+      have := ih (v / b) h1 this; omega
+    · rw [ndig_of_lt (by omega)]; omega
+
+/-- At most 22 octal or decimal digits of a 64-bit value. -/
+theorem ndig_le22 {b v : Nat} (hb : 8 ≤ b) (hv : v < 2 ^ 64) : ndig b v ≤ 22 := by
+  refine ndig_le (by omega) 22 v (by omega) (Nat.lt_of_lt_of_le hv ?_)
+  calc 2 ^ 64 ≤ 8 ^ 22 := by decide
+    _ ≤ b ^ 22 := Nat.pow_le_pow_left hb 22
+
+/-- The digit loop at `0x80000084`, iteration `n`: `s0 = v / b ^ n`, `s2`
+at the digit `n` (at `sp - 88 + n`), the digits `0 … n-1` stored. -/
+theorem eu_digits {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k b v : Nat} {dst : SinkDst} {out : List (BitVec 8)}
+    {Me : Mem} (hfr : StackFrame S sp 96) (hoff : ∀ a, dst.Read k a → a < sp - 96 ∨ sp ≤ a)
+    (hb : 8 ≤ b ∧ b ≤ 10) (hv : v < 2 ^ 64) (R0 : Nat → BitVec 64) (hal : (R0 1).toNat % 4 = 0)
+    (hsh : out.length + ndig b v < 2 ^ 62)
+    (hk : ∀ R' M', Keeps euClob R' R0 → SinkAt S M' k dst (out ++ udigits b v) →
+      (∀ a, (a < sp - 96 ∨ sp ≤ a) → ¬ dst.Byte k a → imgM M' a = imgM Me a) →
+      DW live S Q (R0 1) R' M') :
+    ∀ m n (R : Nat → BitVec 64) (M : Mem), ndig b v - n = m → n < ndig b v →
+      (R 8).toNat = v / b ^ n →
+      (R 18).toNat = sp - 88 + n → (R 9).toNat = sp - 88 → (R 19).toNat = b → (R 20).toNat = k →
+      R 22 = 0x800079c8#64 → (R 2).toNat = sp - 96 → R 2 + 96#64 = R0 2 →
+      Keeps [1, 2, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] R R0 →
+      EUSaved M (sp - 96) R0 → (∀ j, j < n → imgM M (sp - 88 + j) = dg b v j) →
+      SinkAt S M k dst out → (∀ a, (a < sp - 96 ∨ sp ≤ a) → imgM M a = imgM Me a) →
+      DW live S Q 0x80000084#64 R M := by
+  have hlo := hfr.lo
+  have hhi := hfr.hi
+  have hal2 := hfr.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hN := ndig_le22 hb.1 hv
+  intro m
+  induction m with
+  | zero => intro n R M hm hn; omega
+  | succ m ih =>
+  intro n R M hm hn h8 h18 h9 h19 h20 h22 h2 h2' hkeep hsv hdig hs hfrm
+  have hklo := hs.lo
+  have hkhi := hs.hi
+  have hkal := hs.al
+  obtain ⟨vn, hvn⟩ : ∃ vn, vn = v / b ^ n := ⟨_, rfl⟩
+  rw [← hvn] at h8
+  have hvn64 : vn < 2 ^ 64 := by rw [hvn]; exact Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hv
+  dx_run hlive at 0x80007958
+  refine umoddi3_spec hlive _ (by gnorm <;> decide) fun R1 hk1 hr1 => ?_
+  gnorm
+  have hd : vn % b < 10 := by have := Nat.mod_lt vn (show b > 0 by omega); omega
+  have e10 : (R1 10).toNat = vn % b := by
+    rw [hr1]; gnorm; rw [BitVec.toNat_umod, h8, h19]
+  have e22 : R1 22 = 0x800079c8#64 := by rw [hk1.get 22]; gnorm; exact h22
+  dx_run hlive at 0x80000094
+  refine stR_80000094 hlive ?_ ?_ ?_
+  · gnorm; rw [e22, BitVec.toNat_add, e10]; simp only [LdOK]; gnorm; omega
+  · gnorm; rw [e22, BitVec.toNat_add, e10]; gnorm
+    rw [show (2147514824 + vn % b) % 18446744073709551616 = 0x800079c8 + vn % b by omega]
+    intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx
+    exact (digit_ro _ (by omega)).2
+  have ea : (R1 22 + R1 10).toNat = 0x800079c8 + vn % b := by
+    rw [e22, BitVec.toNat_add, e10]; gnorm; omega
+  gnorm
+  rw [ea, ldvf_lbu, (digit_ro _ (by omega)).1]
+  have e18 : (R1 18).toNat = sp - 88 + n := by rw [hk1.get 18]; gnorm; exact h18
+  have e8 : (R1 8).toNat = vn := by rw [hk1.get 8]; gnorm; exact h8
+  have e19 : (R1 19).toNat = b := by rw [hk1.get 19]; gnorm; exact h19
+  dx_run hlive at 0x80007910
+  all_goals (try dc_frame hfr)
+  refine udivdi3_spec hlive _ (by gnorm <;> decide) fun R2 hk2 hq _ => ?_
+  gnorm
+  gnorm_at hq
+  have hb0 : b ≠ 0 := by omega
+  have f10 : (R2 10).toNat = vn / b := by rw [hq, udivV_toNat (by rw [e19]; exact hb0), e8, e19]
+  have f8 : (R2 8).toNat = vn := by rw [hk2.get 8]; gnorm; exact e8
+  have f19 : (R2 19).toNat = b := by rw [hk2.get 19]; gnorm; exact e19
+  have f18 : (R2 18).toNat = sp - 88 + n := by rw [hk2.get 18]; gnorm; exact e18
+  have f9 : (R2 9).toNat = sp - 88 := by rw [hk2.get 9]; gnorm; rw [hk1.get 9]; gnorm; exact h9
+  have f20 : (R2 20).toNat = k := by rw [hk2.get 20]; gnorm; rw [hk1.get 20]; gnorm; exact h20
+  have f22 : R2 22 = 0x800079c8#64 := by rw [hk2.get 22]; gnorm; exact e22
+  have f2 : R2 2 = R 2 := by rw [hk2.get 2]; gnorm; rw [hk1.get 2]; gnorm
+  have fkeep : Keeps [1, 2, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] R2 R0 :=
+    (hk2.mono (by decide)).trans (by
+      keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac hkeep)))
+  rw [e18]
+  -- the memory after the digit store
+  have hn24 : n < 22 := by omega
+  have hin : ∀ a, (a < sp - 96 ∨ sp ≤ a) → imgM (writeLog M [(sp - 88 + n, 1,
+      zero_extend (m := 64) (digitChar (vn % b)))]) a = imgM M a :=
+    fun a ha => imgM_store_miss _ _ (by omega)
+  have hsv1 := hsv.transport (M' := writeLog M [(sp - 88 + n, 1,
+      zero_extend (m := 64) (digitChar (vn % b)))]) fun a h1 h2 => imgM_store_miss _ _ (by omega)
+  have hs1 := hs.transport (Mt' := writeLog M [(sp - 88 + n, 1,
+      zero_extend (m := 64) (digitChar (vn % b)))]) fun a ha => hin a (hoff a ha)
+  have hdig1 : ∀ j, j < n + 1 → imgM (writeLog M [(sp - 88 + n, 1,
+      zero_extend (m := 64) (digitChar (vn % b)))]) (sp - 88 + j) = dg b v j := by
+    intro j hj
+    by_cases e : j = n
+    · subst e; rw [imgM_sb, sbData_zext, dg, ← hvn]
+    · rw [imgM_store_miss _ _ (by omega)]; exact hdig j (by omega)
+  have hfrm1 : ∀ a, (a < sp - 96 ∨ sp ≤ a) → imgM (writeLog M [(sp - 88 + n, 1,
+      zero_extend (m := 64) (digitChar (vn % b)))]) a = imgM Me a :=
+    fun a ha => (hin a ha).trans (hfrm a ha)
+  by_cases hlast : n + 1 < ndig b v
+  · have hge : b ≤ vn := hvn ▸ ndig_ge (by omega) v n hlast
+    dx_run hlive at 0x80000084
+    refine ih (n + 1) _ _ ?_ hlast ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ (by keeps_tac fkeep) hsv1 hdig1
+      hs1 hfrm1
+    · omega
+    · gnorm; rw [f10, hvn, div_pow_succ]
+    · gnorm; rw [BitVec.toNat_add, f18]; gnorm; try omega
+    · gnorm; exact f9
+    · gnorm; exact f19
+    · gnorm; exact f20
+    · gnorm; exact f22
+    · gnorm; rw [f2]; exact h2
+    · gnorm; rw [f2]; exact h2'
+  · have hN1 : ndig b v = n + 1 := by omega
+    have hlt : vn < b := by
+      have := ndig_lt (b := b) (by omega) v; rw [hN1, Nat.add_sub_cancel] at this; rw [hvn]; exact this
+    dx_run hlive at 0x800000bc
+    apply st_800000bc hlive
+    rw [subw_eq (n := n) (by gnorm; rw [f18, f9]; try omega) (by omega)]
+    dx_run hlive at 0x800000e8
+    all_goals (try own_by hs1)
+    have hsh32 : BitVec.ofNat 64 n <<< 32 >>> 32 = BitVec.ofNat 64 n := by
+      apply BitVec.eq_of_toNat_eq
+      simp only [BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft, BitVec.toNat_ofNat,
+        Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+      omega
+    have hN24 : ndig b v ≤ 24 := by omega
+    refine eu_emit (M0 := writeLog M [(sp - 88 + n, 1, zero_extend (m := 64) (digitChar (vn % b)))])
+      hlive hfr hoff R0 hal hN24 (dg b v) hsh (fun R' M' hk' hE => ?_) n _ _ (by omega)
+      ?_ ?_ ?_ ?_ ?_ ?_ ?_ (by keeps_tac fkeep) hsv1 (by rw [hN1]; exact hdig1) ?_
+    · refine hk R' M' hk' ?_ fun a ha hb => (hE.frame a hb).trans (hfrm1 a ha)
+      rw [udigits, ← emitted_zero]; exact hE.sink
+    · gnorm; rw [BitVec.toNat_add, f9, BitVec.toNat_ofNat]; omega
+    · gnorm; rw [hsh32, BitVec.add_sub_cancel, BitVec.toNat_add, f9]; gnorm; omega
+    · gnorm
+      rw [show (R2 20 + 24#64).toNat = k + 24 by rw [BitVec.toNat_add, f20]; gnorm; omega, hs1.len,
+        ofNat_toNat_lt (by omega)]
+      omega
+    · gnorm
+    · gnorm; exact f20
+    · gnorm; rw [f2]; exact h2
+    · gnorm; rw [f2]; exact h2'
+    · rw [hN1, emitted_all, List.append_nil]; exact Emitted.refl hs1
+
+/-! ## The entry (`0x80000040`)
+
+```
+80000040 addi sp,sp,-96 ; 80000044 sd s1,72(sp) ; 80000048 sd s3,56(sp)
+8000004c addi s1,sp,8 ; 80000050 slli s3,a2,0x20 ; 80000054 sd s0,80(sp)
+80000058 sd s2,64(sp) ; 8000005c sd s4,48(sp) ; 80000060 sd s6,32(sp)
+80000064 sd ra,88(sp) ; 80000068 sd s5,40(sp) ; 8000006c srli s3,s3,0x20
+80000070 mv s0,a1 ; 80000074 mv s4,a0 ; 80000078 mv s2,s1
+8000007c auipc s6,0x8 ; 80000080 addi s6,s6,-1716
+```
+-/
+
+/-- **`emit_unsigned(k, v, b)`** at `0x80000040`, `b ∈ [8, 10]`, with a
+96-byte frame below `sp` apart from the sink: the sink receives
+`udigits b v`; only the frame and the sink's count word and buffer change;
+clobbers `t0`, `a0`–`a7`. -/
+theorem emit_unsigned_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k b : Nat} {dst : SinkDst} {out : List (BitVec 8)}
+    (hfr : StackFrame S sp 96) (hs : SinkAt S M k dst out)
+    (hoff : ∀ a, dst.Read k a → a < sp - 96 ∨ sp ≤ a) (hb : 8 ≤ b ∧ b ≤ 10)
+    (R : Nat → BitVec 64) (hsp : (R 2).toNat = sp) (h10 : (R 10).toNat = k)
+    (h12 : R 12 = BitVec.ofNat 64 b) (hsh : out.length + ndig b (R 11).toNat < 2 ^ 62)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps euClob R' R → SinkAt S M' k dst (out ++ udigits b (R 11).toNat) →
+      (∀ a, (a < sp - 96 ∨ sp ≤ a) → ¬ dst.Byte k a → imgM M' a = imgM M a) →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x80000040#64 R M := by
+  have hlo := hfr.lo
+  have hhi := hfr.hi
+  have hal2 := hfr.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  dx_run hlive at 0x80000084
+  all_goals (try dc_frame hfr)
+  refine eu_digits hlive hfr hoff hb (R 11).isLt R hal hsh hk (ndig b (R 11).toNat - 0) 0 _ _ rfl
+    (ndig_pos _ _) ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ (by keeps_tac (Keeps.refl _ _)) ?_ (fun j hj => absurd hj (by omega))
+    (hs.transport fun a ha => ?_) ?_
+  · gnorm; simp
+  · gnorm; rw [BitVec.toNat_add, BitVec.toNat_add, hsp]; gnorm; omega
+  · gnorm; rw [BitVec.toNat_add, BitVec.toNat_add, hsp]; gnorm; omega
+  · gnorm; rw [h12]
+    simp only [BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft, BitVec.toNat_ofNat,
+      Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+    omega
+  · gnorm; exact h10
+  · gnorm
+  · gnorm; rw [BitVec.toNat_add, hsp]; gnorm; omega
+  · gnorm; exact add_lits_cancel _ _ _ (by decide)
+  · constructor <;> (simp (disch := sx_addr) only [ldv_ld_hit_eq, ldv_ld_miss]; gnorm)
+  · have := hoff a ha
+    simp (disch := sx_addr) only [imgM_store_miss]
+  · intro a ha
+    simp (disch := sx_addr) only [imgM_store_miss]
+
 end Dc.Mach

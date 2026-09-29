@@ -1185,4 +1185,180 @@ theorem fmt_tab {live : Nat → Prop} {S : Nat → Prop}
   case true.u => exact fmt_tab_true_u hlive hst h15 hk
   case true.o => exact fmt_tab_true_o hlive hst h15 hk
 
+/-! ## Flags (`0x800001d0`)
+
+```
+800001d0 bne a5,s4,80000304 ; 800001d4 lbu a5,1(s0) ; 800001d8 beq a5,s6,80000350
+800001dc addi s0,s0,1 ; 800001e0 li a4,0 ; 800001e4 beq a5,s5,80000360   → 800001e8
+80000350 lbu a5,2(s0) ; 80000354 li a4,1 ; 80000358 addi s0,s0,2
+8000035c bne a5,s5,800001e8 ; 80000360 lbu a5,1(s0) ; 80000364 addi s0,s0,1  → 80000368
+```
+From `%` at `p` to the dispatch with `s0` at the conversion character, `a4`
+the `#` flag, `a5` the character.
+-/
+
+theorem zext_ofNat (b : BitVec 8) : zero_extend (m := 64) b = BitVec.ofNat 64 b.toNat := by
+  apply BitVec.eq_of_toNat_eq; rw [toNat_zext8, BitVec.toNat_ofNat]; have := b.isLt; omega
+
+/-- The `#` flag in `a4`. -/
+abbrev altW (alt : Bool) : BitVec 64 := if alt then 1#64 else 0#64
+
+/-- The dispatch's entry for the flags. -/
+abbrev tabPC (lng : Bool) : BitVec 64 := if lng then 0x80000368#64 else 0x800001e8#64
+
+/-- The loop head at a conversion without flags: `%` at `p`, the character
+`kc` at `p + 1`. -/
+theorem fmt_flags_ff {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
+    (h15 : (R 15).toNat = 37) {kc : BitVec 8} (hkc : kc.toNat ≠ 35 ∧ kc.toNat ≠ 108)
+    (hro : RoBytes (p + 1) [kc])
+    (hk : ∀ R', FmtState S M0 sp k dst R0 ap out R' M → (R' 8).toNat = p + 1 → R' 14 = altW false →
+      R' 15 = BitVec.ofNat 64 kc.toNat → DW live S Q (tabPC false) R' M) :
+    DW live S Q 0x800001d0#64 R M := by
+  have h20 := hst.pct
+  have h21 := hst.ell
+  have h22 := hst.hash
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  obtain ⟨hb1, hb2, hb3, hb4, -⟩ := hro
+  have hlt := kc.isLt
+  have ea : (R 8 + 1#64).toNat = p + 1 := by rw [BitVec.toNat_add, hp]; gnorm; omega
+  dx_run hlive at 0x800001d4
+  dx_ro hlive
+  · gnorm; rw [ea]; simp only [LdOK]; omega
+  · gnorm; rw [ea]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; rw [hb1]; exact hb2
+  gnorm
+  rw [ea, ldvf_lbu, hb1, zext_ofNat]
+  dx_run hlive at 0x800001e8
+  refine hk _ (hst.regs (by keeps_tac (Keeps.refl _ _)) (by gnorm; exact hst.rap)) ?_ ?_ ?_
+  · gnorm; rw [BitVec.toNat_add, hp]; gnorm; omega
+  · gnorm; rfl
+  · gnorm
+
+/-- `%#` then the character `kc` at `p + 2`. -/
+theorem fmt_flags_tf {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
+    (h15 : (R 15).toNat = 37) {kc : BitVec 8} (hkc : kc.toNat ≠ 35 ∧ kc.toNat ≠ 108)
+    (hro : RoBytes (p + 1) [35#8, kc])
+    (hk : ∀ R', FmtState S M0 sp k dst R0 ap out R' M → (R' 8).toNat = p + 2 → R' 14 = altW true →
+      R' 15 = BitVec.ofNat 64 kc.toNat → DW live S Q (tabPC false) R' M) :
+    DW live S Q 0x800001d0#64 R M := by
+  have h20 := hst.pct
+  have h21 := hst.ell
+  have h22 := hst.hash
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  obtain ⟨hb1, hb2, hb3, hb4, hc1, hc2, hc3, hc4, -⟩ := hro
+  have hlt := kc.isLt
+  have ea : (R 8 + 1#64).toNat = p + 1 := by rw [BitVec.toNat_add, hp]; gnorm; omega
+  have ea2 : (R 8 + 2#64).toNat = p + 2 := by rw [BitVec.toNat_add, hp]; gnorm; omega
+  dx_run hlive at 0x800001d4
+  dx_ro hlive
+  · gnorm; rw [ea]; simp only [LdOK]; omega
+  · gnorm; rw [ea]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; rw [hb1]; exact hb2
+  gnorm
+  rw [ea, ldvf_lbu, hb1, zext_ofNat]
+  dx_run hlive at 0x80000350
+  dx_ro hlive
+  · gnorm; rw [ea2]; simp only [LdOK]; omega
+  · gnorm; rw [ea2]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; rw [hc1]; exact hc2
+  gnorm
+  rw [ea2, ldvf_lbu, hc1, zext_ofNat]
+  dx_run hlive at 0x800001e8
+  rotate_left
+  · intro hc; exfalso; simp only [ne_eq, Classical.not_not] at hc; gnorm_at hc
+    have := congrArg BitVec.toNat hc; gnorm_at this; rw [BitVec.toNat_ofNat] at this; omega
+  intro _
+  refine hk _ (hst.regs (by keeps_tac (Keeps.refl _ _)) (by gnorm; exact hst.rap)) ?_ ?_ ?_
+  · gnorm; exact ea2
+  · gnorm; rfl
+  · gnorm
+
+/-- `%l` then the character `kc` at `p + 2`. -/
+theorem fmt_flags_ft {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
+    (h15 : (R 15).toNat = 37) {kc : BitVec 8}
+    (hro : RoBytes (p + 1) [108#8, kc])
+    (hk : ∀ R', FmtState S M0 sp k dst R0 ap out R' M → (R' 8).toNat = p + 2 → R' 14 = altW false →
+      R' 15 = BitVec.ofNat 64 kc.toNat → DW live S Q (tabPC true) R' M) :
+    DW live S Q 0x800001d0#64 R M := by
+  have h20 := hst.pct
+  have h21 := hst.ell
+  have h22 := hst.hash
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  obtain ⟨hb1, hb2, hb3, hb4, hc1, hc2, hc3, hc4, -⟩ := hro
+  have hlt := kc.isLt
+  have ea : (R 8 + 1#64).toNat = p + 1 := by rw [BitVec.toNat_add, hp]; gnorm; omega
+  have ea2 : (R 8 + 1#64 + 1#64).toNat = p + 2 := by
+    rw [BitVec.toNat_add, BitVec.toNat_add, hp]; gnorm; omega
+  dx_run hlive at 0x800001d4
+  dx_ro hlive
+  · gnorm; rw [ea]; simp only [LdOK]; omega
+  · gnorm; rw [ea]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; rw [hb1]; exact hb2
+  gnorm
+  rw [ea, ldvf_lbu, hb1, zext_ofNat]
+  dx_run hlive at 0x80000360
+  dx_ro hlive
+  · gnorm; rw [ea2]; simp only [LdOK]; omega
+  · gnorm; rw [ea2]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; rw [hc1]; exact hc2
+  gnorm
+  rw [ea2, ldvf_lbu, hc1, zext_ofNat]
+  dx_run hlive at 0x80000368
+  refine hk _ (hst.regs (by keeps_tac (Keeps.refl _ _)) (by gnorm; exact hst.rap)) ?_ ?_ ?_
+  · gnorm; rw [BitVec.toNat_add, ea]; gnorm; omega
+  · gnorm; rfl
+  · gnorm
+
+/-- `%#l` then the character `kc` at `p + 3`. -/
+theorem fmt_flags_tt {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
+    (h15 : (R 15).toNat = 37) {kc : BitVec 8}
+    (hro : RoBytes (p + 1) [35#8, 108#8, kc])
+    (hk : ∀ R', FmtState S M0 sp k dst R0 ap out R' M → (R' 8).toNat = p + 3 → R' 14 = altW true →
+      R' 15 = BitVec.ofNat 64 kc.toNat → DW live S Q (tabPC true) R' M) :
+    DW live S Q 0x800001d0#64 R M := by
+  have h20 := hst.pct
+  have h21 := hst.ell
+  have h22 := hst.hash
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  obtain ⟨hb1, hb2, hb3, hb4, hc1, hc2, hc3, hc4, hd1, hd2, hd3, hd4, -⟩ := hro
+  have hlt := kc.isLt
+  have ea : (R 8 + 1#64).toNat = p + 1 := by rw [BitVec.toNat_add, hp]; gnorm; omega
+  have ea2 : (R 8 + 2#64).toNat = p + 2 := by rw [BitVec.toNat_add, hp]; gnorm; omega
+  have ea3 : (R 8 + 2#64 + 1#64).toNat = p + 3 := by
+    rw [BitVec.toNat_add, ea2]; gnorm; omega
+  dx_run hlive at 0x800001d4
+  dx_ro hlive
+  · gnorm; rw [ea]; simp only [LdOK]; omega
+  · gnorm; rw [ea]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; rw [hb1]; exact hb2
+  gnorm
+  rw [ea, ldvf_lbu, hb1, zext_ofNat]
+  dx_run hlive at 0x80000350
+  dx_ro hlive
+  · gnorm; rw [ea2]; simp only [LdOK]; omega
+  · gnorm; rw [ea2]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; rw [hc1]; exact hc2
+  gnorm
+  rw [ea2, ldvf_lbu, hc1, zext_ofNat]
+  dx_run hlive at 0x80000360
+  dx_ro hlive
+  · gnorm; rw [ea3]; simp only [LdOK]; omega
+  · gnorm; rw [ea3]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; rw [hd1]; exact hd2
+  gnorm
+  rw [ea3, ldvf_lbu, hd1, zext_ofNat]
+  dx_run hlive at 0x80000368
+  refine hk _ (hst.regs (by keeps_tac (Keeps.refl _ _)) (by gnorm; exact hst.rap)) ?_ ?_ ?_
+  · gnorm; rw [BitVec.toNat_add, ea2]; gnorm; omega
+  · gnorm; rfl
+  · gnorm
+
 end Dc.Mach

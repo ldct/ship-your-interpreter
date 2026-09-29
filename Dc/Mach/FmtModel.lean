@@ -169,14 +169,26 @@ theorem ndig_lt {b : Nat} (hb : 2 ≤ b) : ∀ v, v / b ^ (ndig b v - 1) < b := 
 
 /-! ## Strings in `.rodata` -/
 
-/-- The C string `s` at `p` in `.rodata`: its bytes and the NUL are image
-bytes of the ELF's read-only data, below `tohost`. -/
+/-- The bytes `l` at `p` in `.rodata`: image bytes of the ELF's read-only
+data below `tohost`. -/
+def RoBytes (p : Nat) : List (BitVec 8) → Prop
+  | [] => True
+  | b :: l => dcROImg p = b ∧ (p, b) ∈ dcRO ∧ 0x80000000 ≤ p ∧ p + 1 ≤ tohostAddr ∧ RoBytes (p + 1) l
+
+theorem RoBytes.append {p : Nat} : ∀ {l1 l2 : List (BitVec 8)},
+    RoBytes p (l1 ++ l2) ↔ RoBytes p l1 ∧ RoBytes (p + l1.length) l2
+  | [], _ => by simp [RoBytes]
+  | b :: l1, l2 => by
+    simp only [List.cons_append, RoBytes, List.length_cons]
+    rw [RoBytes.append (p := p + 1), show p + 1 + l1.length = p + (l1.length + 1) by omega]
+    constructor
+    · rintro ⟨h1, h2, h3, h4, h5, h6⟩; exact ⟨⟨h1, h2, h3, h4, h5⟩, h6⟩
+    · rintro ⟨⟨h1, h2, h3, h4, h5⟩, h6⟩; exact ⟨h1, h2, h3, h4, h5, h6⟩
+
+/-- The C string `s` at `p` in `.rodata`: its bytes, none NUL, then the NUL. -/
 structure RoStr (p : Nat) (s : List (BitVec 8)) : Prop where
-  val : ∀ i (h : i < s.length), dcROImg (p + i) = s[i]
-  nul : dcROImg (p + s.length) = 0#8
-  mem : ∀ i, i ≤ s.length → (p + i, dcROImg (p + i)) ∈ dcRO
-  lo : 0x80000000 ≤ p
-  hi : p + s.length + 1 ≤ tohostAddr
+  bytes : RoBytes p (s ++ [0#8])
+  nz : ∀ b ∈ s, b ≠ 0#8
 
 /-! ## The sink -/
 

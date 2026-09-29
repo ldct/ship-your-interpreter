@@ -225,11 +225,11 @@ def sqrtFinish (guess : Num) (rs : Nat) : Num := (div guess one rs).getD guess
 def sqrtLoopFuel (x : Num) (rs : Nat) : Nat → Num → Nat → Option Num
   | 0, _, _ => none
   | fuel + 1, guess, cscale =>
-    let (g, diff) := sqrtStep x guess cscale
-    if diff.isNearZero cscale then
-      if cscale < rs + 1 then sqrtLoopFuel x rs fuel g (min (cscale * 3) (rs + 1))
-      else some (sqrtFinish g rs)
-    else sqrtLoopFuel x rs fuel g cscale
+    if (sqrtStep x guess cscale).2.isNearZero cscale then
+      if cscale < rs + 1 then
+        sqrtLoopFuel x rs fuel (sqrtStep x guess cscale).1 (min (cscale * 3) (rs + 1))
+      else some (sqrtFinish (sqrtStep x guess cscale).1 rs)
+    else sqrtLoopFuel x rs fuel (sqrtStep x guess cscale).1 cscale
 
 /-! ## Output (`bc_out_num`, `dc_dump_num`) -/
 

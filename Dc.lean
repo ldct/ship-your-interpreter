@@ -3,3 +3,4 @@ import Dc.Mach.DecodeTable
 import Dc.Mach.Tac
 import Dc.Mach.Strlen
 import Dc.Mach.MainScript
+import Dc.Mach.Bytes

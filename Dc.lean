@@ -9,3 +9,4 @@ import Dc.Mach.Stdio
 import Dc.Mach.Stubs
 import Dc.Mach.HeapInv
 import Dc.Mach.Malloc
+import Dc.Mach.Realloc

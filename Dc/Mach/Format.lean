@@ -87,6 +87,8 @@ structure FmtState (S : Nat → Prop) (M0 : Mem) (sp k : Nat) (dst : SinkDst)
   sink : SinkAt S M k dst out
   frame : ∀ a, (a < sp - 192 ∨ sp ≤ a) → ¬ dst.Byte k a → imgM M a = imgM M0 a
   saved : FmtSaved M (sp - 96) R0
+  off : ∀ a, dst.Read k a → a < sp - 192 ∨ sp ≤ a
+  fr : StackFrame S sp 192
 
 /-- The state through register writes outside the constants: the listed
 registers, and `s9` (the argument pointer, now at `ap'`). -/
@@ -110,6 +112,8 @@ theorem FmtState.regs {S : Nat → Prop} {M0 : Mem} {sp k : Nat} {dst : SinkDst}
   sink := h.sink
   frame := h.frame
   saved := h.saved
+  off := h.off
+  fr := h.fr
 
 /-! ## The "next" sites
 
@@ -234,5 +238,85 @@ theorem fmt_next_800002f0 {live : Nat → Prop} {S : Nat → Prop}
       DW live S Q 0x80000298#64 R' M) :
     DW live S Q 0x800002f0#64 R M := by
   next_tac
+
+/-! ## Pieces -/
+
+/-- What follows a piece whose last byte is at `q`: the byte `b` at `q + 1`
+starts the next piece (loop head) or is the NUL (exit), with the arguments at
+`ap` and the output `out`. -/
+def FmtK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) (M0 : Mem)
+    (sp k : Nat) (dst : SinkDst) (R0 : Nat → BitVec 64) (ap : Nat) (out : List (BitVec 8))
+    (q : Nat) (b : BitVec 8) : Prop :=
+  (b ≠ 0#8 → ∀ R M, FmtState S M0 sp k dst R0 ap out R M → (R 8).toNat = q + 1 →
+    (R 15).toNat = b.toNat → DW live S Q 0x800001d0#64 R M) ∧
+  (b = 0#8 → ∀ R M, FmtState S M0 sp k dst R0 ap out R M → DW live S Q 0x80000298#64 R M)
+
+/-- The state after emits (`Emitted`) and register writes outside the
+constants. -/
+theorem FmtState.emitted {S : Nat → Prop} {M0 : Mem} {sp k : Nat} {dst : SinkDst}
+    {R0 : Nat → BitVec 64} {ap ap' : Nat} {out out' : List (BitVec 8)} {R R' : Nat → BitVec 64}
+    {M M' : Mem} (h : FmtState S M0 sp k dst R0 ap out R M) (hE : Emitted S M M' k dst out')
+    (hr : Keeps [1, 5, 8, 10, 11, 12, 13, 14, 15, 16, 17, 25] R' R) (h25 : (R' 25).toNat = ap') :
+    FmtState S M0 sp k dst R0 ap' out' R' M' :=
+  { h.regs hr h25 with
+    sink := hE.sink
+    frame := fun a ha hb => (hE.frame a hb).trans (h.frame a ha hb)
+    saved := h.saved.transport fun a h1 h2 =>
+      hE.frame a fun hb => by
+        have := h.off a (SinkDst.read_of_byte hb); have := h.fr.lo; omega }
+
+theorem SinkAt.fw_nat {S : Nat → Prop} {M : Mem} {k : Nat} {dst : SinkDst}
+    {out : List (BitVec 8)} (h : SinkAt S M k dst out) {a : Nat} (ha : a = k) :
+    (ldv .ld M a).toNat = dst.fw := by
+  subst ha; rw [h.fw, ofNat_toNat_lt]
+  cases dst with
+  | stream f fd => have := h.streamFd.1.hi; simp only [SinkDst.fw]; omega
+  | buffer => simp only [SinkDst.fw]; omega
+
+theorem SinkAt.len_nat {S : Nat → Prop} {M : Mem} {k : Nat} {dst : SinkDst}
+    {out : List (BitVec 8)} (h : SinkAt S M k dst out) {a : Nat} (ha : a = k + 24) :
+    (ldv .ld M a).toNat = out.length := by
+  subst ha; rw [h.len, ofNat_toNat_lt]; have := h.short; omega
+
+/-- **A literal byte** `c` at the loop head (`0x800001d0`, `c ≠ %`): emitted
+(`emit_80000310`), then the next site `0x80000320`. -/
+theorem fmt_lit {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {c b : BitVec 8}
+    (hc : R 15 = zero_extend (m := 64) c) (hc37 : c ≠ 37#8) (hro : RoBytes (q + 1) [b])
+    (hsh : out.length + 1 < 2 ^ 62) (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [c]) q b) :
+    DW live S Q 0x800001d0#64 R M := by
+  have hs := hst.sink
+  have hkal := hs.al
+  have hklo := hs.lo
+  have hkhi := hs.hi
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hk9 := hst.rk
+  have h20 := hst.pct
+  have hcn : (R 15).toNat ≠ 37 := by
+    rw [hc, toNat_zext8]; intro e; exact hc37 (BitVec.eq_of_toNat_eq (by rw [e]; rfl))
+  dx_run hlive at 0x80000310
+  rotate_left
+  · intro hc'; exfalso; simp only [ne_eq, Classical.not_not] at hc'
+    have := congrArg BitVec.toNat hc'; omega
+  intro _
+  dx_run hlive at 0x80000310
+  all_goals (try own_by hs)
+  refine emit_80000310 hlive hs c hsh _ ?kr ?fr ?lr ?l1 ?c ?one fun R' M' hk' hr14 hE' => ?_
+  case kr => gnorm; exact hk9
+  case fr => gnorm; exact hs.fw_nat hk9
+  case lr => gnorm; exact hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)
+  case l1 =>
+    gnorm; rw [BitVec.toNat_add, hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)]
+    gnorm; omega
+  case c => gnorm; rw [hc, lo8_zext]
+  case one => gnorm; exact hst.one
+  have hst' := hst.emitted (R' := R') (ap' := ap) hE'
+    ((hk'.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _)))
+    (by rw [hk'.get 25]; gnorm; try exact hst.rap)
+  refine fmt_next_80000320 hlive hst' (by rw [hk'.get 8]; gnorm; exact hq) hro
+    (fun hb R'' hs'' => hK.1 hb R'' M' hs'') (fun hb R'' hs'' => hK.2 hb R'' M' hs'')
 
 end Dc.Mach

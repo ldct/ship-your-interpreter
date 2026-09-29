@@ -981,4 +981,208 @@ theorem fmt_o1 {live : Nat → Prop} {S : Nat → Prop}
     (u := uval true a.w) ?_ (by gnorm; exact h14) hro hsh hK
   gnorm; rw [h25, harg.val]; rfl
 
+/-! ## Dispatch (`0x800001e8`, `0x80000368`)
+
+```
+800001e8 beq a5,s4,8000038c ; 800001ec addiw a5,a5,-99 ; 800001f0 zext.b a5,a5
+800001f4 bltu s8,a5,8000020c ; 800001f8 slli a5,a5,0x2 ; 800001fc add a5,a5,s7
+80000200 lw a5,0(a5) ; 80000204 add a5,a5,s7 ; 80000208 jr a5
+80000368 … the same with the table `s2` (after `l`) … 80000388 jr a5
+```
+-/
+
+/-- The handler of a conversion (after `l` when `lng`). -/
+def hpc (lng : Bool) : Conv → Nat
+  | .pct => 0x8000038c
+  | .c => 0x800002b0
+  | .s => 0x80000244
+  | .d => if lng then 0x8000048c else 0x800003fc
+  | .u => if lng then 0x800004d8 else 0x80000428
+  | .o => if lng then 0x80000480 else 0x80000434
+
+theorem DW_pc_eq {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {pc pc' : BitVec 64} {R : Nat → BitVec 64} {M : Mem} (h : pc = pc')
+    (hk : DW live S Q pc' R M) : DW live S Q pc R M := h ▸ hk
+
+set_option hygiene false in
+/-- The table dispatch from the `beq a5,s4` at `0x800001e8`/`0x80000368` to the
+handler `$tgt` (the table in `$t`: `hst.t1` or `hst.t2`). -/
+macro "tab_tac " st:num ld:num t:term:max tgt:num : tactic =>
+  `(tactic| (
+    dx_run hlive at $st
+    dx_run [2] hlive
+    rw [h15]; sx_norm; try simp only [BitVec.reduceAnd]
+    dx_run hlive at $ld
+    rw [$t:term]; gnorm
+    dx_ro hlive
+    · gnorm; decide
+    · gnorm; decide +kernel
+    gnorm
+    dx_run hlive
+    · gnorm; rw [$t:term]; decide +kernel
+    · rw [$t:term]
+      refine DW_pc_eq (pc' := BitVec.ofNat 64 $tgt) (by decide +kernel) (hk _ ?_)
+      keeps_tac (Keeps.refl _ _)))
+
+theorem fmt_tab_false_s {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 115#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x80000244#64 R' M) :
+    DW live S Q 0x800001e8#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x800001ec 0x80000200 hst.t1 0x80000244
+
+theorem fmt_tab_false_c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 99#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x800002b0#64 R' M) :
+    DW live S Q 0x800001e8#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x800001ec 0x80000200 hst.t1 0x800002b0
+
+theorem fmt_tab_false_d {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 100#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x800003fc#64 R' M) :
+    DW live S Q 0x800001e8#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x800001ec 0x80000200 hst.t1 0x800003fc
+
+theorem fmt_tab_false_u {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 117#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x80000428#64 R' M) :
+    DW live S Q 0x800001e8#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x800001ec 0x80000200 hst.t1 0x80000428
+
+theorem fmt_tab_false_o {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 111#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x80000434#64 R' M) :
+    DW live S Q 0x800001e8#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x800001ec 0x80000200 hst.t1 0x80000434
+
+theorem fmt_tab_true_s {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 115#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x80000244#64 R' M) :
+    DW live S Q 0x80000368#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x8000036c 0x80000380 hst.t2 0x80000244
+
+theorem fmt_tab_true_c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 99#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x800002b0#64 R' M) :
+    DW live S Q 0x80000368#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x8000036c 0x80000380 hst.t2 0x800002b0
+
+theorem fmt_tab_true_d {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 100#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x8000048c#64 R' M) :
+    DW live S Q 0x80000368#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x8000036c 0x80000380 hst.t2 0x8000048c
+
+theorem fmt_tab_true_u {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 117#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x800004d8#64 R' M) :
+    DW live S Q 0x80000368#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x8000036c 0x80000380 hst.t2 0x800004d8
+
+theorem fmt_tab_true_o {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (h15 : R 15 = 111#64)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q 0x80000480#64 R' M) :
+    DW live S Q 0x80000368#64 R M := by
+  have h20 := hst.pct
+  have h24 := hst.n18
+  have h15n := congrArg BitVec.toNat h15
+  gnorm_at h15n
+  tab_tac 0x8000036c 0x80000380 hst.t2 0x80000480
+
+/-- **Dispatch** on the conversion character `kk` (in `a5`) from the table
+of the `l` flag `lng`, to its handler. -/
+theorem fmt_tab {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) (lng : Bool) (kk : Conv)
+    (h15 : R 15 = BitVec.ofNat 64 kk.char.toNat)
+    (hk : ∀ R', Keeps [15] R' R → DW live S Q (BitVec.ofNat 64 (hpc lng kk)) R' M) :
+    DW live S Q (if lng then 0x80000368#64 else 0x800001e8#64) R M := by
+  have h20 := hst.pct
+  cases lng <;> cases kk <;>
+    simp only [Conv.char, hpc, Bool.false_eq_true, ite_true, ite_false, BitVec.toNat_ofNat,
+      Nat.reduceMod, Nat.reducePow] at h15 hk ⊢
+  case false.pct =>
+    have h15n := congrArg BitVec.toNat h15; gnorm_at h15n
+    dx_run hlive at 0x8000038c; exact hk _ (Keeps.refl _ _)
+  case true.pct =>
+    have h15n := congrArg BitVec.toNat h15; gnorm_at h15n
+    dx_run hlive at 0x8000038c; exact hk _ (Keeps.refl _ _)
+  case false.s => exact fmt_tab_false_s hlive hst h15 hk
+  case false.c => exact fmt_tab_false_c hlive hst h15 hk
+  case false.d => exact fmt_tab_false_d hlive hst h15 hk
+  case false.u => exact fmt_tab_false_u hlive hst h15 hk
+  case false.o => exact fmt_tab_false_o hlive hst h15 hk
+  case true.s => exact fmt_tab_true_s hlive hst h15 hk
+  case true.c => exact fmt_tab_true_c hlive hst h15 hk
+  case true.d => exact fmt_tab_true_d hlive hst h15 hk
+  case true.u => exact fmt_tab_true_u hlive hst h15 hk
+  case true.o => exact fmt_tab_true_o hlive hst h15 hk
+
 end Dc.Mach

@@ -4,8 +4,7 @@ import Dc.Semantics
 # An executable dc interpreter, sound for the semantics
 
 `run lm fuel st f` follows the rules of `Dc.Loop` / `Dc.Tos` one step per
-unit of fuel; `none` means the fuel ran out or the program reached a command
-outside the model. `run_sound` shows that every result is derivable, so
+unit of fuel; `none` means the fuel ran out. `run_sound` shows that every result is derivable, so
 `runOut_sound` turns an evaluation into a proof of `Runs`.
 -/
 
@@ -40,7 +39,7 @@ def run (lm : Nat) : Nat → St → Frame → Option (St × Status)
       match Num.sqrtLoopFuel x (max st'.scale x.scale) fuel (Num.sqrtInit x).1 (Num.sqrtInit x).2 with
       | some y => run lm fuel (st'.push (.num y)) ⟨rest, td, false⟩
       | none => none
-    | .unsupported => none
+    | .system => run lm fuel st ⟨skipSys rest, td, false⟩
 
 /-- The executable counterpart of `Tos`. -/
 def tos (lm : Nat) : Nat → St → List Nat → Nat → Option (St × Status)
@@ -108,7 +107,7 @@ theorem run_tos_sound (lm : Nat) : ∀ n,
           · exact .sqrt (by assumption) (sqrtLoopFuel_sound _ _ _ _ _ _ (by assumption))
               (ihr _ _ _ _ h)
           · cases h
-        · cases h
+        · exact .system (by assumption) (ihr _ _ _ _ h)
     · intro st rest td st' r h
       simp only [tos] at h
       split at h

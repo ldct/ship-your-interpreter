@@ -61,7 +61,7 @@ CASES = [
     "# comment\n1p", "1 # c\n2 f", "[1p]x # c", "1p#", "[p]x",
     "y", "1 y 2 f", " ", "\t1\t2\tf", "\n1\n", "\r1p",
     "[x", "[ab", "[a]]p", "[[]]p", "l", "s", "S", ":", ";", "L", "<",
-    "1 2 \\ f", "@ ` { } $ & ' ( ) , \" \x7f",
+    "1 2 \\ f", "!echo hi\n1p", "1 2 !x", "? 1p", "[?]x 2p", "!<", "@ ` { } $ & ' ( ) , \" \x7f",
     "99999999999999999999999k Kp", "2 64^ 1-k Kp", "4294967297k Kp",
     "9223372036854775807k Kp", "9223372036854775808a P",
     "1 99999999999999999999^p",
@@ -112,8 +112,13 @@ def gen_program(rng: random.Random, depth: int = 0) -> str:
         elif r < 0.96:
             parts.append(rng.choice(["q", "Q", "1Q", "2Q", "3Q"]))
         else:
-            parts.append(rng.choice(["#c\n", "\n", "\t", "y", "3 5 7|", "2v"]))
+            parts.append(rng.choice(["#c\n", "\n", "\t", "y", "3 5 7|", "2v", "!ls\n", "?"]))
     return rng.choice([" ", "", " "]).join(parts)
+
+
+def outside_host(prog: str) -> bool:
+    """`!` runs a shell and `?` reads stdin on the host, unlike the model."""
+    return "?" in prog or re.search(r"!(?![<=>])", prog) is not None
 
 
 def run_dc(prog: str, lm: int, timeout: float):
@@ -147,8 +152,7 @@ def main() -> int:
     rng = random.Random(args.seed)
     progs = CASES + [gen_program(rng) for _ in range(args.random)]
     # `!` (shell escape) and `?` (read stdin) are outside the model.
-    progs = [p for p in progs
-             if "?" not in p and not re.search(r"!(?![<=>])", p)]
+    progs = [p for p in progs if not outside_host(p)]
     failures = 0
     for lm in [int(x) for x in args.line_lengths.split(",")]:
         expected = [run_dc(p, lm, args.timeout) for p in progs]

@@ -15,8 +15,8 @@ replaced and `tail_depth` incremented. `q` and `Q` unwind through
 `Loop lm st f st' r` says: evaluating the frame `f` (the unread rest of the
 string, its `tail_depth`, and the pending `!` flag) from state `st`
 terminates in state `st'` with status `r`. `lm` is the output line length.
-Programs that do not terminate, and programs that reach `!` (shell escape)
-or `?` (read a line from stdin), have no derivation.
+Programs that do not terminate have no derivation. `!` and `?` follow the
+bare-metal environment (`Dc.dcFunc`): no command processor, empty stdin.
 -/
 
 namespace Dc
@@ -110,6 +110,11 @@ inductive Loop (lm : Nat) : St → Frame → St → Status → Prop
   | str {st st'' c rest td neg r} :
       dcFunc lm st c rest.head? neg = .str →
       Loop lm (st.push (.str (scanStr 1 rest).1)) ⟨(scanStr 1 rest).2, td, false⟩ st'' r →
+      Loop lm st ⟨c :: rest, td, neg⟩ st'' r
+  /-- `DC_SYSTEM`: the command line is skipped (`system` fails). -/
+  | system {st st'' c rest td neg r} :
+      dcFunc lm st c rest.head? neg = .system →
+      Loop lm st ⟨skipSys rest, td, false⟩ st'' r →
       Loop lm st ⟨c :: rest, td, neg⟩ st'' r
   /-- `DC_COMMENT` -/
   | comment {st st'' c rest td neg r} :

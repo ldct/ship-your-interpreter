@@ -2,9 +2,11 @@
 #
 #   make RISCV_CC=/path/to/riscv-none-elf-gcc     build dc-riscv-htif.elf
 #
-# Uses the toolchain of c/while-riscv-htif.elf (xPack GNU RISC-V Embedded
-# GCC 15.2.0, newlib) and the same startup code, linker script and flags.
-# The upstream source is downloaded and checked against its SHA-256.
+# Uses the compiler of c/while-riscv-htif.elf (xPack GNU RISC-V Embedded
+# GCC 15.2.0) with its startup code, linker script and flags, and the minimal
+# C library in libc/ instead of newlib (libgcc supplies the 64-bit multiply
+# and divide routines). The upstream source is downloaded and checked
+# against its SHA-256.
 
 BC_VERSION := 1.07.1
 BC_URL     := https://ftp.gnu.org/gnu/bc/bc-$(BC_VERSION).tar.gz
@@ -12,14 +14,17 @@ BC_SHA256  := 62adfca89b0a1c0164c2cdca59ca210c1d44c3ffc46daf9931cf4942664cb02a
 BUILD      ?= build
 
 RISCV_CC     ?= riscv-none-elf-gcc
-RISCV_CFLAGS := -std=gnu11 -O2 -march=rv64i -mabi=lp64 -mcmodel=medany -DDC_HTIF
+RISCV_CFLAGS := -std=gnu11 -O2 -march=rv64i -mabi=lp64 -mcmodel=medany -DDC_HTIF \
+                -fno-builtin -fno-tree-loop-distribute-patterns
+GCC_INCLUDE   = $(shell $(RISCV_CC) -print-file-name=include)
+LIBC_CFLAGS   = -ffreestanding -nostdinc -isystem $(GCC_INCLUDE) -Ilibc/include
 
 DC_SRC := eval.c misc.c numeric.c stack.c string.c array.c
 
-dc-riscv-htif.elf: htif_main.c htif.c crt0.S link.ld $(BUILD)/bc/config.h
-	$(RISCV_CC) $(RISCV_CFLAGS) -I$(BUILD)/bc -I$(BUILD)/bc/h -I$(BUILD)/bc/dc \
-	    -nostartfiles -T link.ld -o $@ crt0.S htif.c htif_main.c \
-	    $(addprefix $(BUILD)/bc/dc/,$(DC_SRC)) $(BUILD)/bc/lib/number.c
+dc-riscv-htif.elf: htif_main.c libc/libc.c libc/include/*.h crt0.S link.ld $(BUILD)/bc/config.h
+	$(RISCV_CC) $(RISCV_CFLAGS) $(LIBC_CFLAGS) -I$(BUILD)/bc -I$(BUILD)/bc/h -I$(BUILD)/bc/dc \
+	    -nostdlib -T link.ld -o $@ crt0.S libc/libc.c htif_main.c \
+	    $(addprefix $(BUILD)/bc/dc/,$(DC_SRC)) $(BUILD)/bc/lib/number.c -lgcc
 
 $(BUILD)/bc/config.h:
 	mkdir -p $(BUILD)

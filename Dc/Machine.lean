@@ -8,6 +8,8 @@ and `dcFunc`, a transcription of `dc_func` (`dc/eval.c`): the effect of one
 command character given the lookahead character, returning the `dc_status`
 that tells the evaluation loop what to do next.
 
+The environment is the bare-metal build (`dc-port/`): standard input is
+at end of file and there is no command processor (`system` fails).
 Only standard output is modelled. Messages written to standard error
 (stack empty, divide by zero, ...) leave no trace except their effect on the
 state. The `unimplemented` diagnostic is split by dc itself: `dc: ` goes to
@@ -91,8 +93,9 @@ inductive Res where
   /-- `v` on a positive number other than one: run the Newton iteration of
   `bc_sqrt` (the number has been popped) -/
   | sqrt (st : St) (x : Num)
-  /-- `!` (shell escape) and `?` (read standard input): outside the model -/
-  | unsupported
+  /-- `DC_SYSTEM`: `!` not followed by a comparison: run the rest of the
+  line as a shell command -/
+  | system
 
 /-! ## Stack and register primitives -/
 
@@ -234,11 +237,13 @@ def dcFunc (lm : Nat) (st : St) (c : Nat) (peek : Option Nat) (neg : Bool) : Res
   | 60 => cmpCmd (· == .lt)                                       -- <
   | 61 => cmpCmd (· == .eq)                                       -- =
   | 62 => cmpCmd (· == .gt)                                       -- >
-  | 63 => .unsupported                                            -- ?
+  -- ?: `dc_readstring (stdin, '\n', '\n')` reads the empty line at end of
+  -- file (the bare-metal build has no console input), and evaluates it
+  | 63 => .evalTos (st.push (.str []))
   | 91 => .str                                                    -- [
   | 33 =>                                                         -- !
     if peek == some 60 || peek == some 61 || peek == some 62 then .negcmp
-    else .unsupported
+    else .system
   | 35 => .comment                                                -- #
   | 97 =>                                                         -- a
     match pop with
@@ -428,6 +433,12 @@ def scanStr : Nat → List Nat → List Nat × List Nat
       else let (b, r) := scanStr (depth - 1) cs; (c :: b, r)
     else if c == 91 then let (b, r) := scanStr (depth + 1) cs; (c :: b, r)
     else let (b, r) := scanStr depth cs; (c :: b, r)
+
+/-- `dc_system`: the command runs to the first newline, which is consumed,
+or to the first NUL byte (`strchr` stops there), which is not. -/
+def skipSys : List Nat → List Nat
+  | [] => []
+  | c :: cs => if c == 10 then cs else if c == 0 then c :: cs else skipSys cs
 
 /-- `skip_past_eol`. -/
 def skipEol : List Nat → List Nat

@@ -61,8 +61,8 @@ def main() -> int:
 
     rng = difftest.random.Random(args.seed)
     progs = difftest.CASES + [difftest.gen_program(rng) for _ in range(args.random)]
-    progs = [p for p in progs
-             if "?" not in p and not difftest.re.search(r"!(?![<=>])", p)]
+    # `!` and `?` are in the model (no shell, empty stdin on the bare-metal
+    # build); only the host comparison, which has both, skips them.
     progs = list(dict.fromkeys(progs))
 
     lean = difftest.run_lean(progs, 70, args.dc_olean)
@@ -95,7 +95,7 @@ def main() -> int:
             print(f"DIFF {p!r}\n   elf:  exit {code} {got!r}\n   lean: {want!r}")
             continue
         agree += 1
-        if args.host_dc:
+        if args.host_dc and not difftest.outside_host(p):
             host = difftest.run_dc(p, 70, 5.0)
             if host is not None and host != got:
                 host_diff += 1

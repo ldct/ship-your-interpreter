@@ -69,7 +69,6 @@ theorem run_tos_succ (lm : Nat) : ∀ n,
             simp only [hv] at h
             rw [sqrtLoopFuel_succ hv]; exact ihr _ _ _ h
         | eofError => exact h
-        | unsupported => cases h
         | evalTos st' => exact iht _ _ _ _ h
         | _ => exact ihr _ _ _ h
     · intro st rest td x h
@@ -141,6 +140,8 @@ theorem Loop.complete {lm st f st' r} : Loop lm st f st' r → ∃ n, run lm n s
   | .str hf hk => by
     obtain ⟨n, h⟩ := Loop.complete hk; exact ⟨n + 1, by simp [run, hf, h]⟩
   | .comment hf hk => by
+    obtain ⟨n, h⟩ := Loop.complete hk; exact ⟨n + 1, by simp [run, hf, h]⟩
+  | .system hf hk => by
     obtain ⟨n, h⟩ := Loop.complete hk; exact ⟨n + 1, by simp [run, hf, h]⟩
   | .negcmp hf hk => by
     obtain ⟨n, h⟩ := Loop.complete hk; exact ⟨n + 1, by simp [run, hf, h]⟩

@@ -194,10 +194,11 @@ binary has not been started.
 | --- | --- |
 | `Dc/Num.lean` | `bc_num` arithmetic: sign flag, magnitude and scale, with the library's truncation, sign and scale rules, output in any base with line wrapping, and `bc_num2long`'s fallback `LONG_MAX` of `0x7fffffff` |
 | `Dc/Machine.lean` | the machine state and `dcFunc`, a transcription of `dc_func` |
-| `Dc/Semantics.lean` | **the big-step semantics** `Loop`/`Tos` of `evalstr` (macros, tail calls, `q`/`Q` unwinding, `bc_sqrt`'s Newton iteration) and `Runs lm prog out` for `dc -e prog` with standard output `out` at line length `lm`. `!` and `?` are outside the model |
+| `Dc/Semantics.lean` | **the big-step semantics** `Loop`/`Tos` of `evalstr` (macros, tail calls, `q`/`Q` unwinding, `bc_sqrt`'s Newton iteration) and `Runs lm prog out` for `dc -e prog` with standard output `out` at line length `lm`, in the bare-metal environment: `!` finds no command processor and `?` reads an empty standard input |
+| `Dc/Refinement.lean` | the target statement: `refinement` derives the correspondence between `Runs 70` and the machine's `Halts`/`Diverges` from the obligations `DcSim` |
 | `Dc/Interp.lean`, `Dc/Adequacy.lean` | a fuel-bounded interpreter with `run_iff` (it computes exactly the derivable evaluations) and `Runs.det` (a program has at most one output) |
 | `Dc/Validation.lean` | generated theorems `Runs 70 prog out ∧ ∀ o, Runs 70 prog o → o = out` for programs whose `out` the RISC-V binary printed |
-| `dc-port/` | the bare-metal HTIF port: `htif_main.c` runs `dc -e` on a program in an 8 KiB buffer, `htif.c` sends standard output (not standard error) to the console; `dc-riscv-htif.elf` is built with the toolchain of the WHILE binary |
+| `dc-port/` | the bare-metal HTIF port: `htif_main.c` runs `dc -e` on a program in an 8 KiB buffer; `libc/` is a minimal C library (standard output to the HTIF console, standard error discarded, empty standard input, a first-fit allocator); `dc-riscv-htif.elf` is built with the compiler of the WHILE binary |
 | `scripts/dc/` | `difftest.py` (Lean interpreter against host dc), `elf_difftest.py` (the ELF on `Vsa.runElf` against the Lean interpreter), `gen_validation.py` |
 
 ```sh

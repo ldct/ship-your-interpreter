@@ -11,7 +11,7 @@ every program the binary can hold.
 ```lean
 theorem Dc.endToEnd (prog : List Nat) (hp : DcAdmissible prog) :
     (∀ out, Runs 70 prog out →
-       Halts (dcBoot prog) (outStr out) 0 ∨ Halts (dcBoot prog) (outStr []) 1 ∨ …) ∧
+       Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
     (∀ s, Halts (dcBoot prog) s 0 → ∃ out, Runs 70 prog out ∧ s = outStr out) ∧
     (Diverges (dcBoot prog) → ¬ ∃ out, Runs 70 prog out)
 ```
@@ -19,9 +19,9 @@ theorem Dc.endToEnd (prog : List Nat) (hp : DcAdmissible prog) :
 - `dcBoot prog`: the configuration after the loader (`initializeMemory`) and
   `setupElf` for the ELF with `prog` written into `dc_script.text`, stated at
   its zero-filled view (`Vsa.Densify.fillZero`, as WHILE's theorem is).
-- `DcAdmissible prog`: `prog.length < 8192`, no NUL byte in `prog`, and the
-  stack bound of M11.
-- The exact form of the first conjunct is decided in M0.
+- `DcAdmissible prog`: `prog.length < 8192`, no NUL byte in `prog`, and
+  `NestBound 70 prog D` (`Dc/Depth.lean`) for the nesting bound `D` of M11.
+- Heap exhaustion is allowed as an outcome: status 1 (decision M0 (a)).
 
 Trust base, as for WHILE: the Lean kernel, the Sail RV64 model, and two
 natively checked links (the ELF parse yields the loader image; the boot
@@ -60,29 +60,21 @@ Each milestone ends with its modules compiled, `#print axioms` on its
 headline theorems, and a commit. Instruction counts are from
 `experiments/dc/disasm.txt`.
 
-### M0. Statement and resources (Refinement.lean)
+### M0. Statement and resources (done)
 
-Decide how resource exhaustion appears in the theorem and restate
-`Dc.DcSim`/`Dc.refinement` accordingly.
-
-- *Heap.* `malloc` returns `NULL` when the bump pointer reaches
-  `__heap_end`; dc then exits with status 1 (`dc_memfail`, `out_of_memory`).
-  Either (a) weaken `term_sim` to "halts with `out` and status 0, or halts
-  with status 1", or (b) add a capacity hypothesis over an allocation-cost
-  instrumentation of the semantics (WHILE's `capacity`). Recommendation:
-  (a); (b) needs a cost model of every `malloc` in the bc library
-  (including Karatsuba temporaries) and can be added later without
-  changing the proof structure.
-- *Stack.* Nested macro evaluation recurses in C (`evalstr` →
-  `dc_eval_and_free_str` → `evalstr`); overflow corrupts the heap, so a
-  hypothesis is unavoidable. Define `Dc.Depth prog d` (some evaluation of
-  `prog`, terminating or not, reaches non-tail nesting depth `d`) as an
-  inductive relation beside `Loop`, and require `∀ d, Depth prog d →
-  d * F + B ≤ 8 MiB` with `F` the per-level frame bytes and `B` the deepest
-  library call chain, both read off the binary (M11).
-- Deliverable: the final statement in `Dc/Refinement.lean`, with the
-  admissibility structure and a control witness showing it is satisfiable
-  (a concrete program).
+- *Heap* (decision (a)): `malloc` returns `NULL` when the bump pointer
+  reaches `__heap_end` and dc exits with status 1 (`dc_memfail`,
+  `out_of_memory`). `DcSim.term_sim` allows that exit
+  (`Dc/Refinement.lean`); `refinement` still gives that every clean halt is
+  a terminating run with the same output, and that divergence excludes
+  termination. A capacity hypothesis (WHILE's `capacity`) can later remove
+  the status-1 disjunct without changing the proof structure.
+- *Stack*: `Dc.nestDepth lm n st f` (`Dc/Depth.lean`) is the deepest
+  non-tail macro nesting within `n` steps, defined for every fuel, so it
+  bounds non-terminating evaluations too; `NestBound lm prog D` is
+  `∀ n, nestDepth lm n St.init ⟨prog, 1, false⟩ ≤ D`. M11 fixes `D` from
+  the binary's frame sizes (`D * F + B ≤ 8 MiB`).
+- Remaining for M12: the concrete `DcAdmissible` and a control witness.
 
 ### M1. Machine layer (Dc/Mach)
 
@@ -284,6 +276,6 @@ libc; regenerate the decode and step tables after any change to the ELF.
 | --- | --- |
 | Semantics, interpreter, adequacy, validation tooling | done |
 | Port, libc, layout | done |
-| M0 statement and resources | open |
+| M0 statement and resources | done |
 | M1 machine layer | generators done; tables compiling |
 | M2–M12 | open |

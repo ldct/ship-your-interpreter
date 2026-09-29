@@ -37,6 +37,11 @@ elab "dx_ro " h:term : tactic => do
   let nm := Name.mkStr (Name.mkStr (Name.mkStr .anonymous "Dc") "Mach") s!"stR_{s}"
   evalTactic (← `(tactic| refine $(mkIdent nm) $h ?_ ?_ ?_))
 
+/-- `keeps_tac` stopping as soon as `h` closes the goal (for a base that is
+itself a chain of writes). -/
+macro "keeps_to " h:term : tactic =>
+  `(tactic| repeat (first | exact $h | refine Keeps.upd _ (by decide) ?_))
+
 /-- The registers the loop may change (all but the callee-saved `s10`, `s11`
 and the temporaries `format` does not touch). -/
 abbrev fmtK : List Nat := [1, 2, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
@@ -452,5 +457,175 @@ theorem fmt_pct {live : Nat → Prop} {S : Nat → Prop}
     (by rw [hk'.get 25]; gnorm; try exact hst.rap)
   exact fmt_next_800003ac hlive hst' (by rw [hk'.get 8]; gnorm; exact hq) hro
     (fun hb R'' hs'' => hK.1 hb R'' M' hs'') (fun hb R'' hs'' => hK.2 hb R'' M' hs'')
+
+/-! ## `%s` (`0x80000244`)
+
+```
+80000244 ld a5,0(s9) ; 80000248 addi s9,s9,8 ; 8000024c lbu a4,0(a5)
+80000250 beqz a4,8000028c ; 80000254 ld a3,24(s1) ; 80000258 li a6,257
+8000025c slli a6,a6,0x30 ; 80000260 li a0,1
+80000264 ld a1,0(s1) ; 80000268 addi a5,a5,1 ; 8000026c addi a2,a3,1
+80000270 … (emit_80000270) → 80000284 lbu a4,0(a5) ; 80000288 bnez a4,80000264
+```
+-/
+
+/-- The `i`-th byte of `.rodata` bytes. -/
+theorem RoBytes.get {p : Nat} : ∀ {l : List (BitVec 8)} (i : Nat) (hi : i < l.length),
+    RoBytes p l → dcROImg (p + i) = l[i] ∧ (p + i, dcROImg (p + i)) ∈ dcRO ∧
+      0x80000000 ≤ p + i ∧ p + i + 1 ≤ tohostAddr
+  | [], i, hi, _ => absurd hi (by simp)
+  | b :: l, 0, _, ⟨h1, h2, h3, h4, _⟩ => by simp only [Nat.add_zero]; rw [h1]; exact ⟨rfl, h2, h3, h4⟩
+  | b :: l, i + 1, hi, ⟨_, _, _, _, h5⟩ => by
+    have := RoBytes.get (p := p + 1) (l := l) i (by simpa using hi) h5
+    rw [show p + (i + 1) = p + 1 + i by omega]; simpa using this
+
+/-- The string loop of `%s` at `0x80000264`: `a5` at the byte `i` of the
+string `str` at `w` (in `a4`), `a3` the count, `a0 = 1`. -/
+theorem fmt_str {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {q w : Nat} {str : List (BitVec 8)} (hstr : RoStr w str)
+    {b : BitVec 8} (hro : RoBytes (q + 1) [b]) (hsh : out.length + str.length < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ str) q b) :
+    ∀ m i (R : Nat → BitVec 64) (M : Mem), str.length - i = m → i < str.length →
+      FmtState S M0 sp k dst R0 ap (out ++ str.take i) R M → (R 8).toNat = q →
+      (R 15).toNat = w + i → R 14 = zero_extend (m := 64) (dcROImg (w + i)) →
+      (R 13).toNat = out.length + i → (R 10).toNat = 1 → DW live S Q 0x80000264#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  intro m
+  induction m with
+  | zero => intro i R M hm hi; omega
+  | succ m ih =>
+  intro i R M hm hi hst hq h15 h14 h13 h10
+  have hs := hst.sink
+  have hkal := hs.al
+  have hklo := hs.lo
+  have hkhi := hs.hi
+  have hk9 := hst.rk
+  have hlen : (out ++ str.take i).length = out.length + i := by simp; omega
+  have hbi := (RoBytes.get i (by simp; omega) hstr.bytes)
+  rw [List.getElem_append_left hi] at hbi
+  dx_run hlive at 0x80000270
+  all_goals (try own_by hs)
+  refine emit_80000270 hlive hs (str[i]) (by rw [hlen]; omega) _ ?kr ?fr ?lr ?l1 ?c ?one
+    fun R' M' hk' hr13 hE' => ?_
+  case kr => gnorm; exact hk9
+  case fr => gnorm; exact hs.fw_nat hk9
+  case lr => gnorm; rw [h13, hlen]
+  case l1 => gnorm; rw [BitVec.toNat_add, h13, hlen]; gnorm; omega
+  case c => gnorm; rw [h14, lo8_zext, hbi.1]
+  case one => gnorm; exact h10
+  have htake : out ++ str.take i ++ [str[i]] = out ++ str.take (i + 1) := by
+    rw [List.append_assoc, List.take_add_one, List.getElem?_eq_getElem hi]; rfl
+  rw [htake] at hE'
+  rw [hlen] at hr13
+  have hst' := hst.emitted (R' := R') (ap' := ap) hE'
+    ((hk'.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _)))
+    (by rw [hk'.get 25]; gnorm; try exact hst.rap)
+  have e15 : (R' 15).toNat = w + i + 1 := by
+    rw [hk'.get 15]; gnorm; rw [BitVec.toNat_add, h15]; gnorm; omega
+  have hbj := RoBytes.get (i + 1) (by simp; omega) hstr.bytes
+  rw [← Nat.add_assoc] at hbj
+  dx_ro hlive
+  · gnorm; rw [e15]; simp only [LdOK]; omega
+  · gnorm; rw [e15]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; exact hbj.2.1
+  gnorm
+  rw [e15, ldvf_lbu]
+  dx_run hlive at 0x80000264 0x8000028c
+  · -- another byte
+    intro hnz
+    have hi1 : i + 1 < str.length := by
+      refine Classical.byContradiction fun hge => hnz ?_
+      have : i + 1 = str.length := by omega
+      rw [hbj.1, List.getElem_append_right (by omega)]; simp [this]; rfl
+    refine ih (i + 1) _ M' (by omega) hi1 (hst'.regs (by keeps_tac (Keeps.refl _ _))
+      (by gnorm; exact hst'.rap)) ?_ ?_ ?_ ?_ ?_
+    · gnorm; rw [hk'.get 8]; gnorm; exact hq
+    · gnorm; exact e15
+    · gnorm; rfl
+    · gnorm; rw [hr13]; try omega
+    · gnorm; rw [hk'.get 10]; gnorm; exact h10
+  · -- the NUL
+    intro hz
+    simp only [ne_eq, Classical.not_not] at hz
+    have hi1 : ¬ i + 1 < str.length := by
+      intro hlt
+      have hne := hstr.nz (str[i + 1]) (List.getElem_mem _)
+      apply hne
+      have := congrArg BitVec.toNat hz
+      gnorm_at this
+      rw [toNat_zext8, hbj.1, List.getElem_append_left hlt] at this
+      exact BitVec.eq_of_toNat_eq this
+    have htk : str.take (i + 1) = str := List.take_of_length_le (by omega)
+    rw [htk] at hst'
+    exact fmt_next_8000028c hlive (hst'.regs (by keeps_tac (Keeps.refl _ _)) (by gnorm; exact hst'.rap))
+      (by gnorm; rw [hk'.get 8]; gnorm; exact hq) hro
+      (fun hb R'' hs'' => hK.1 hb R'' M' hs'') (fun hb R'' hs'' => hK.2 hb R'' M' hs'')
+
+/-- **`%s`** with the argument word `wv` at `ap`, a `.rodata` string `str`. -/
+theorem fmt_s {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {wv : BitVec 64}
+    (harg : ArgW S M ap wv) {str : List (BitVec 8)} (hstr : RoStr wv.toNat str)
+    {b : BitVec 8} (hro : RoBytes (q + 1) [b]) (hsh : out.length + str.length < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ str) q b) :
+    DW live S Q 0x80000244#64 R M := by
+  have hs := hst.sink
+  have hkal := hs.al
+  have hklo := hs.lo
+  have hkhi := hs.hi
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hk9 := hst.rk
+  have h25 := hst.rap
+  have halo := harg.lo
+  have hahi := harg.hi
+  have hb0 := RoBytes.get 0 (by simp) hstr.bytes
+  simp only [Nat.add_zero] at hb0
+  have ew : (ldv .ld M (R 25).toNat).toNat = wv.toNat := by rw [h25, harg.val]
+  dx_run hlive at 0x8000024c
+  all_goals (try own_by harg)
+  dx_ro hlive
+  · gnorm; rw [ew]; simp only [LdOK]; omega
+  · gnorm; rw [ew]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx; exact hb0.2.1
+  gnorm
+  rw [ew, ldvf_lbu]
+  have hst8 : FmtState S M0 sp k dst R0 (ap + 8) out
+      (upd (upd (upd R 15 (ldv .ld M (R 25).toNat)) 25 (R 25 + 8#64)) 14
+        (zero_extend (m := 64) (dcROImg wv.toNat))) M :=
+    hst.regs (by keeps_tac (Keeps.refl _ _)) (by gnorm; rw [BitVec.toNat_add, h25]; gnorm; omega)
+  dx_run hlive at 0x8000028c 0x80000264
+  · -- the empty string
+    intro hz
+    have hnil : str = [] := by
+      cases str with
+      | nil => rfl
+      | cons c l =>
+        exfalso
+        have hne := hstr.nz c List.mem_cons_self
+        apply hne
+        have := congrArg BitVec.toNat hz
+        gnorm_at this
+        rw [toNat_zext8, hb0.1] at this
+        exact BitVec.eq_of_toNat_eq this
+    subst hnil
+    rw [List.append_nil] at hK
+    exact fmt_next_8000028c hlive hst8 (by gnorm; exact hq) hro
+      (fun hb R'' hs'' => hK.1 hb R'' M hs'') (fun hb R'' hs'' => hK.2 hb R'' M hs'')
+  · intro hnz
+    have hlen : 0 < str.length := by
+      refine Nat.pos_of_ne_zero fun h0 => hnz ?_
+      rw [hb0.1, List.getElem_append_right (by omega)]; simp [h0]; rfl
+    dx_run hlive at 0x80000264
+    all_goals (try own_by hs)
+    refine fmt_str hlive hstr hro hsh hK (str.length - 0) 0 _ M rfl hlen ?_ ?_ ?_ ?_ ?_ ?_
+    · simp only [List.take_zero, List.append_nil]
+      exact hst8.regs (by keeps_to (Keeps.refl _ _)) (by gnorm; exact hst8.rap)
+    · gnorm; exact hq
+    · gnorm; rw [ew]; try rfl
+    · gnorm; rw [Nat.add_zero]
+    · gnorm; exact hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)
+    · gnorm
 
 end Dc.Mach

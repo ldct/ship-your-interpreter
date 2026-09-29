@@ -10,3 +10,5 @@ import Dc.Mach.Stubs
 import Dc.Mach.HeapInv
 import Dc.Mach.Malloc
 import Dc.Mach.Realloc
+import Dc.Mach.FmtModel
+import Dc.Mach.EmitSites

@@ -44,6 +44,12 @@ macro "gnorm" : tactic =>
     LeanRV64DExecutable.Functions.sign_extend, Sail.BitVec.signExtend, BitVec.reduceSignExtend,
     BitVec.add_zero, BitVec.reduceAdd, BitVec.reduceOfNat, BitVec.reduceToNat, Nat.reduceAdd])
 
+/-- `gnorm` at a hypothesis. -/
+macro "gnorm_at " h:ident : tactic =>
+  `(tactic| try simp only [upd_apply, Nat.reduceEqDiff, ite_true, ite_false, reduceIte,
+    LeanRV64DExecutable.Functions.sign_extend, Sail.BitVec.signExtend, BitVec.reduceSignExtend,
+    BitVec.add_zero, BitVec.reduceAdd, BitVec.reduceOfNat, BitVec.reduceToNat, Nat.reduceAdd] at $h:ident)
+
 /-- The copy loop of `realloc` at `0x80000a70`: `a5 = s + i`, `a4 = d + i`,
 `a1 = s + n`; leaves at `0x80000a84`. -/
 theorem realloc_copy {live : Nat → Prop} {S : Nat → Prop}

@@ -6,3 +6,6 @@ import Dc.Mach.MainScript
 import Dc.Mach.Bytes
 import Dc.Mach.Libgcc
 import Dc.Mach.Stdio
+import Dc.Mach.Stubs
+import Dc.Mach.HeapInv
+import Dc.Mach.Malloc

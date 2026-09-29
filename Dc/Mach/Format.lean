@@ -1498,4 +1498,239 @@ theorem fmt_conv_tt {live : Nat → Prop} {S : Nat → Prop}
   | u => exact fmt_u1 hlive hst'' hq harg.word hnx hsh hK
   | o => exact fmt_o1 hlive hst'' hq (by rw [hkp.get 14]; exact h14) harg.word hnx (sh_o hsh) hK
 
+/-- `%%` from the loop head. -/
+theorem fmt_pct_ff {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
+    (h15 : (R 15).toNat = 37) {b : BitVec 8}
+    (hro : RoBytes (p + 1) ([37#8] ++ [b])) (hsh : out.length + 1 < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) (p + 1) b) :
+    DW live S Q 0x800001d0#64 R M := by
+  rw [RoBytes.append] at hro
+  obtain ⟨hro1, hro2⟩ := hro
+  simp only [List.length_append, List.length_cons, List.length_nil] at hro2
+  refine fmt_flags_ff hlive hst hp h15 (kc := Conv.pct.char) Conv.pct.char_ne hro1 fun R' hst' h8 h14 h15' => ?_
+  refine fmt_tab hlive hst' false .pct h15' fun R'' hkp => ?_
+  have hst'' := hst'.regs (R' := R'') (ap' := ap) (by keeps_tac (hkp.mono (by decide)))
+    (by rw [hkp.get 25]; exact hst'.rap)
+  have hq : (R'' 8).toNat = p + 1 := by rw [hkp.get 8]; exact h8
+  have hnx : RoBytes (p + 1 + 1) [b] := by rw [show p + 1 + 1 = p + 1 + 1 by omega]; exact hro2
+  exact fmt_pct hlive hst'' hq hnx hsh hK
+
+/-- `%#%` from the loop head. -/
+theorem fmt_pct_tf {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
+    (h15 : (R 15).toNat = 37) {b : BitVec 8}
+    (hro : RoBytes (p + 1) ([35#8] ++ [37#8] ++ [b])) (hsh : out.length + 1 < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) (p + 2) b) :
+    DW live S Q 0x800001d0#64 R M := by
+  rw [RoBytes.append] at hro
+  obtain ⟨hro1, hro2⟩ := hro
+  simp only [List.length_append, List.length_cons, List.length_nil] at hro2
+  refine fmt_flags_tf hlive hst hp h15 (kc := Conv.pct.char) Conv.pct.char_ne hro1 fun R' hst' h8 h14 h15' => ?_
+  refine fmt_tab hlive hst' false .pct h15' fun R'' hkp => ?_
+  have hst'' := hst'.regs (R' := R'') (ap' := ap) (by keeps_tac (hkp.mono (by decide)))
+    (by rw [hkp.get 25]; exact hst'.rap)
+  have hq : (R'' 8).toNat = p + 2 := by rw [hkp.get 8]; exact h8
+  have hnx : RoBytes (p + 2 + 1) [b] := by rw [show p + 2 + 1 = p + 1 + 2 by omega]; exact hro2
+  exact fmt_pct hlive hst'' hq hnx hsh hK
+
+/-- `%l%` from the loop head. -/
+theorem fmt_pct_ft {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
+    (h15 : (R 15).toNat = 37) {b : BitVec 8}
+    (hro : RoBytes (p + 1) ([108#8] ++ [37#8] ++ [b])) (hsh : out.length + 1 < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) (p + 2) b) :
+    DW live S Q 0x800001d0#64 R M := by
+  rw [RoBytes.append] at hro
+  obtain ⟨hro1, hro2⟩ := hro
+  simp only [List.length_append, List.length_cons, List.length_nil] at hro2
+  refine fmt_flags_ft hlive hst hp h15 (kc := Conv.pct.char) hro1 fun R' hst' h8 h14 h15' => ?_
+  refine fmt_tab hlive hst' true .pct h15' fun R'' hkp => ?_
+  have hst'' := hst'.regs (R' := R'') (ap' := ap) (by keeps_tac (hkp.mono (by decide)))
+    (by rw [hkp.get 25]; exact hst'.rap)
+  have hq : (R'' 8).toNat = p + 2 := by rw [hkp.get 8]; exact h8
+  have hnx : RoBytes (p + 2 + 1) [b] := by rw [show p + 2 + 1 = p + 1 + 2 by omega]; exact hro2
+  exact fmt_pct hlive hst'' hq hnx hsh hK
+
+/-- `%#l%` from the loop head. -/
+theorem fmt_pct_tt {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
+    (h15 : (R 15).toNat = 37) {b : BitVec 8}
+    (hro : RoBytes (p + 1) ([35#8, 108#8] ++ [37#8] ++ [b])) (hsh : out.length + 1 < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) (p + 3) b) :
+    DW live S Q 0x800001d0#64 R M := by
+  rw [RoBytes.append] at hro
+  obtain ⟨hro1, hro2⟩ := hro
+  simp only [List.length_append, List.length_cons, List.length_nil] at hro2
+  refine fmt_flags_tt hlive hst hp h15 (kc := Conv.pct.char) hro1 fun R' hst' h8 h14 h15' => ?_
+  refine fmt_tab hlive hst' true .pct h15' fun R'' hkp => ?_
+  have hst'' := hst'.regs (R' := R'') (ap' := ap) (by keeps_tac (hkp.mono (by decide)))
+    (by rw [hkp.get 25]; exact hst'.rap)
+  have hq : (R'' 8).toNat = p + 3 := by rw [hkp.get 8]; exact h8
+  have hnx : RoBytes (p + 3 + 1) [b] := by rw [show p + 3 + 1 = p + 1 + 3 by omega]; exact hro2
+  exact fmt_pct hlive hst'' hq hnx hsh hK
+
+/-! ## The loop (`0x800001d0`) -/
+
+/-- The arguments the pieces take, at `ap`, over `format`'s entry memory
+`M0`, outside the frames and the sink's bytes. -/
+def ArgsAt (S : Nat → Prop) (M0 : Mem) (sp k : Nat) (dst : SinkDst) :
+    Nat → List Piece → List FArg → Prop
+  | _, [], _ => True
+  | ap, .lit _ :: ps, args => ArgsAt S M0 sp k dst ap ps args
+  | ap, .conv _ _ .pct :: ps, args => ArgsAt S M0 sp k dst ap ps args
+  | ap, .conv _ _ kk :: ps, a :: args => (ArgOK S M0 ap kk a ∧
+      ∀ j, j < 8 → (ap + j < sp - 192 ∨ sp ≤ ap + j) ∧ ¬ dst.Byte k (ap + j)) ∧
+      ArgsAt S M0 sp k dst (ap + 8) ps args
+  | _, .conv _ _ _ :: _, [] => False
+
+/-- An argument of `format`'s entry memory in the loop's memory. -/
+theorem ArgOK.transport {S : Nat → Prop} {M0 M : Mem} {ap : Nat} {kk : Conv} {a : FArg}
+    (h : ArgOK S M0 ap kk a) (hag : ∀ j, j < 8 → imgM M (ap + j) = imgM M0 (ap + j)) :
+    ArgOK S M ap kk a :=
+  ⟨⟨h.word.own, h.word.lo, h.word.hi, (ldv_ld_congr hag).trans h.word.val⟩, h.str⟩
+
+/-- The first byte of the format from the pieces `ps` (the NUL at the end). -/
+def fbyte : List Piece → BitVec 8
+  | [] => 0#8
+  | .lit c :: _ => c
+  | .conv .. :: _ => 37#8
+
+theorem fbyte_ne {ps : List Piece} (hok : ∀ pc ∈ ps, pc.ok) (hne : ps ≠ []) : fbyte ps ≠ 0#8 := by
+  cases ps with
+  | nil => exact absurd rfl hne
+  | cons pc ps =>
+    cases pc with
+    | lit c => exact (hok _ List.mem_cons_self).1
+    | conv => simp [fbyte]
+
+theorem fmtBytes_cons (pc : Piece) (ps : List Piece) :
+    fmtBytes (pc :: ps) = pc.bytes ++ fmtBytes ps := by
+  simp [fmtBytes]
+
+theorem fmtBytes_head (ps : List Piece) : ∃ l, fmtBytes ps ++ [0#8] = fbyte ps :: l := by
+  cases ps with
+  | nil => exact ⟨[], rfl⟩
+  | cons pc ps =>
+    cases pc with
+    | lit c => exact ⟨fmtBytes ps ++ [0#8], by simp [fmtBytes, Piece.bytes, fbyte]⟩
+    | conv alt lng kk =>
+      exact ⟨_, by simp only [fmtBytes_cons, Piece.bytes, List.cons_append, List.append_assoc]; rfl⟩
+
+/-- **The loop** of `format` from the head at `0x800001d0`: the pieces `ps`
+at `p` (then the NUL) with the arguments `args` at `ap` produce the rest of
+`outF`, then the exit at `0x80000298`. -/
+theorem fmt_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {outF : List (BitVec 8)} (hshF : outF.length + 1 < 2 ^ 62)
+    (hexit : ∀ ap R M, FmtState S M0 sp k dst R0 ap outF R M → DW live S Q 0x80000298#64 R M) :
+    ∀ (ps : List Piece) (p ap : Nat) (args : List FArg) (out : List (BitVec 8))
+      (R : Nat → BitVec 64) (M : Mem), ps ≠ [] → (∀ pc ∈ ps, pc.ok) →
+      FmtState S M0 sp k dst R0 ap out R M → (R 8).toNat = p → (R 15).toNat = (fbyte ps).toNat →
+      RoBytes p (fmtBytes ps ++ [0#8]) → ArgsAt S M0 sp k dst ap ps args →
+      out ++ fmt ps args = outF → DW live S Q 0x800001d0#64 R M := by
+  intro ps
+  induction ps with
+  | nil => intro p ap args out R M hne; exact absurd rfl hne
+  | cons pc ps ih =>
+  intro p ap args out R M _ hok hst hp h15 hro hargs hout
+  have hokt : ∀ pc ∈ ps, pc.ok := fun x hx => hok x (List.mem_cons_of_mem _ hx)
+  obtain ⟨l, hl⟩ := fmtBytes_head ps
+  rw [fmtBytes_cons, List.append_assoc, hl, RoBytes.append] at hro
+  obtain ⟨hro1, hro2⟩ := hro
+  have hpos : 1 ≤ pc.bytes.length := by cases pc <;> simp [Piece.bytes]
+  -- what follows the piece
+  have hK : ∀ ap' args' out', out' ++ fmt ps args' = outF → ArgsAt S M0 sp k dst ap' ps args' →
+      FmtK live S Q M0 sp k dst R0 ap' out' (p + pc.bytes.length - 1) (fbyte ps) := by
+    intro ap' args' out' hout' hargs'
+    constructor
+    · intro hb R' M' hst' hq h15'
+      have hne : ps ≠ [] := by rintro rfl; exact hb rfl
+      refine ih (p + pc.bytes.length) ap' args' out' R' M' hne hokt hst' (by rw [hq]; omega) h15'
+        (by rw [hl]; exact hro2) hargs' hout'
+    · intro hb R' M' hst'
+      have hnil : ps = [] := by
+        refine Classical.byContradiction fun hne => fbyte_ne hokt hne hb
+      subst hnil
+      simp only [fmt, List.append_nil] at hout'
+      subst hout'
+      exact hexit ap' R' M' hst'
+  -- the next byte alone
+  have hnx : RoBytes (p + pc.bytes.length) [fbyte ps] := by
+    have := hro2; rw [show fbyte ps :: l = [fbyte ps] ++ l from rfl, RoBytes.append] at this
+    exact this.1
+  have hshl : ∀ o, o ++ fmt ps args = outF → o.length + 1 < 2 ^ 62 := fun o h => by
+    have := congrArg List.length h; simp at this; omega
+  cases pc with
+  | lit c =>
+    obtain ⟨hc0, hc37⟩ := hok _ List.mem_cons_self
+    simp only [fmt] at hout
+    have hout2 : (out ++ [c]) ++ fmt ps args = outF := by simpa using hout
+    obtain ⟨hb1, -, -, -, -⟩ := hro1
+    refine fmt_lit hlive hst hp (c := c) ?_ hc37 hnx
+      (by have := hshl _ hout2; simp at this; omega) (hK ap args (out ++ [c]) hout2 hargs)
+    apply BitVec.eq_of_toNat_eq; rw [h15, toNat_zext8]; rfl
+  | conv alt lng kk =>
+    have h37 : (R 15).toNat = 37 := h15
+    obtain ⟨-, -, -, -, hrt⟩ := hro1
+    -- the bytes after `%`, then the next byte
+    have hro' : RoBytes (p + 1) ((if alt then [35#8] else []) ++ (if lng then [108#8] else []) ++
+        [kk.char] ++ [fbyte ps]) := by
+      rw [RoBytes.append]
+      refine ⟨by simpa [Piece.bytes] using hrt, ?_⟩
+      have e : p + 1 + ((if alt then [35#8] else []) ++ (if lng then [108#8] else []) ++
+          [kk.char]).length = p + (Piece.conv alt lng kk).bytes.length := by
+        cases alt <;> cases lng <;> simp [Piece.bytes] <;> omega
+      rw [e]; exact hnx
+    have hlen : p + (Piece.conv alt lng kk).bytes.length - 1 =
+        p + (1 + (if alt then 1 else 0) + (if lng then 1 else 0)) := by
+      cases alt <;> cases lng <;> simp [Piece.bytes] <;> omega
+    by_cases hkk : kk = .pct
+    · subst hkk
+      simp only [fmt] at hout
+      have hout2 : (out ++ [37#8]) ++ fmt ps args = outF := by simpa using hout
+      have hK' := hK ap args (out ++ [37#8]) hout2 hargs
+      rw [hlen] at hK'
+      have hsh := hshl _ hout2
+      simp only [List.length_append, List.length_singleton] at hsh
+      cases alt <;> cases lng <;> simp at hro' hK'
+      · exact fmt_pct_ff hlive hst hp h37 hro' (by omega) hK'
+      · exact fmt_pct_ft hlive hst hp h37 hro' (by omega) hK'
+      · exact fmt_pct_tf hlive hst hp h37 hro' (by omega) hK'
+      · exact fmt_pct_tt hlive hst hp h37 hro' (by omega) hK'
+    · cases args with
+      | nil => cases kk <;> simp [ArgsAt] at hargs; exact (hkk rfl).elim
+      | cons a args =>
+      have hA : (ArgOK S M0 ap kk a ∧ ∀ j, j < 8 → (ap + j < sp - 192 ∨ sp ≤ ap + j) ∧
+          ¬ dst.Byte k (ap + j)) ∧ ArgsAt S M0 sp k dst (ap + 8) ps args := by
+        cases kk <;> first | exact absurd rfl hkk | exact hargs
+      obtain ⟨⟨harg0, hoffa⟩, hargs'⟩ := hA
+      have harg := harg0.transport fun j hj => hst.frame _ (hoffa j hj).1 (hoffa j hj).2
+      have hfmt : fmt (.conv alt lng kk :: ps) (a :: args) = convOut alt lng kk a ++ fmt ps args := by
+        cases kk <;> first | exact absurd rfl hkk | rfl
+      rw [hfmt] at hout
+      have hout2 : (out ++ convOut alt lng kk a) ++ fmt ps args = outF := by simpa using hout
+      have hK' := hK (ap + 8) args (out ++ convOut alt lng kk a) hout2 hargs'
+      rw [hlen] at hK'
+      have hsh : (out ++ convOut alt lng kk a).length + 1 < 2 ^ 62 := by
+        have := congrArg List.length hout2; simp only [List.length_append] at this ⊢; omega
+      cases alt <;> cases lng <;> simp at hro' hK'
+      · exact fmt_conv_ff hlive hst hp h37 kk hkk hro' harg hsh hK'
+      · exact fmt_conv_ft hlive hst hp h37 kk hkk hro' harg hsh hK'
+      · exact fmt_conv_tf hlive hst hp h37 kk hkk hro' harg hsh hK'
+      · exact fmt_conv_tt hlive hst hp h37 kk hkk hro' harg hsh hK'
+
 end Dc.Mach

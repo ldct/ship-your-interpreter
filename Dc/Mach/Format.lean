@@ -1,4 +1,5 @@
 import Dc.Mach.EmitUnsigned
+import VsaIris.Interp.Arm
 
 /-!
 # `format.constprop.0` (`0x80000168`)
@@ -21,7 +22,7 @@ which load the following byte and return to the loop head or leave to
 namespace Dc.Mach
 
 open Lean Elab Tactic Meta
-open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
+open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast VsaIris.Interp
 open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 set_option linter.unusedSimpArgs false
@@ -317,6 +318,139 @@ theorem fmt_lit {live : Nat → Prop} {S : Nat → Prop}
     ((hk'.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _)))
     (by rw [hk'.get 25]; gnorm; try exact hst.rap)
   refine fmt_next_80000320 hlive hst' (by rw [hk'.get 8]; gnorm; exact hq) hro
+    (fun hb R'' hs'' => hK.1 hb R'' M' hs'') (fun hb R'' hs'' => hK.2 hb R'' M' hs'')
+
+/-! ## Arguments -/
+
+/-- An argument word at `ap`: eight owned bytes in RAM holding `w`. -/
+structure ArgW (S : Nat → Prop) (M : Mem) (ap : Nat) (w : BitVec 64) : Prop where
+  own : ∀ i, i < 8 → S (ap + i)
+  lo : tohostAddr + 16 ≤ ap
+  hi : ap + 8 ≤ 0x88000000
+  val : ldv .ld M ap = w
+
+theorem ArgW.own' {S : Nat → Prop} {M : Mem} {ap : Nat} {w : BitVec 64} (h : ArgW S M ap w)
+    {x : Nat} (h1 : ap ≤ x) (h2 : x < ap + 8) : S x := by
+  have := h.own (x - ap) (by omega); rwa [Nat.add_sub_cancel' h1] at this
+
+/-- A `ld`'s low word, sign-extended, is the `lw` at the same address. -/
+theorem lwOfLd (M : Mem) (a : Nat) : ldv .lw M a = sx32 (ldv .ld M a) := by
+  have h8 := toNat_append8 (imgM M) a
+  have h4 := toNat_append4 (imgM M) a
+  have hs := imgLE_split (imgM M) a 4 4
+  have hl := imgLE_lt (imgM M) (a + 4) 4
+  simp only [ldv, bytesVal, bytesAt, widthOfM, List.range_succ, List.range_zero, List.nil_append,
+    List.map_cons, List.map_nil, List.cons_append, List.getD_cons_zero, List.getD_cons_succ, sx32,
+    Nat.add_zero]
+  simp only [LeanRV64DExecutable.Functions.sign_extend, Sail.BitVec.signExtend, BitVec.signExtend_eq]
+  congr 1
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.truncate_eq_setWidth, BitVec.toNat_setWidth, h8, h4, show (8 : Nat) = 4 + 4 from rfl, hs]
+  have hl4 := imgLE_lt (imgM M) a 4
+  simp only [show (256 : Nat) ^ 4 = 2 ^ 32 by decide] at hl4 ⊢
+  omega
+
+/-- A `ld`'s low word, zero-extended, is the `lwu` at the same address. -/
+theorem lwuOfLd (M : Mem) (a : Nat) :
+    ldv .lwu M a = BitVec.ofNat 64 ((ldv .ld M a).toNat % 2 ^ 32) := by
+  have h8 := toNat_append8 (imgM M) a
+  have h4 := toNat_append4 (imgM M) a
+  have hs := imgLE_split (imgM M) a 4 4
+  have hl := imgLE_lt (imgM M) (a + 4) 4
+  have hl4 := imgLE_lt (imgM M) a 4
+  simp only [ldv, bytesVal, bytesAt, widthOfM, List.range_succ, List.range_zero, List.nil_append,
+    List.map_cons, List.map_nil, List.cons_append, List.getD_cons_zero, List.getD_cons_succ,
+    Nat.add_zero]
+  apply BitVec.eq_of_toNat_eq
+  simp only [LeanRV64DExecutable.zero_extend, Sail.BitVec.zeroExtend, BitVec.toNat_setWidth,
+    LeanRV64DExecutable.Functions.sign_extend, Sail.BitVec.signExtend, BitVec.toNat_ofNat]
+  rw [h4, BitVec.signExtend_eq, h8, show (8 : Nat) = 4 + 4 from rfl, hs]
+  simp only [show (256 : Nat) ^ 4 = 2 ^ 32 by decide] at hl hl4 ⊢
+  omega
+
+theorem lo8_sx32 (w : BitVec 64) : lo8 (sx32 w) = w.setWidth 8 := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [lo8, sx32, BitVec.toNat_setWidth, BitVec.truncate_eq_setWidth]
+  rw [BitVec.toNat_signExtend]
+  simp only [BitVec.toNat_setWidth]
+  split <;> omega
+
+/-! ## `%c` (`0x800002b0`) and `%%` (`0x8000038c`)
+
+```
+800002b0 ld a2,24(s1) ; 800002b4 ld a4,0(s1) ; 800002b8 lw a3,0(s9)
+800002bc addi a1,s9,8 ; 800002c0 addi a5,a2,1 ; 800002c4 … (emit_800002c4) → 800002f0
+8000038c ld a3,24(s1) ; 80000390 ld a4,0(s1) ; 80000394 addi a5,a3,1
+80000398 … (emit_80000398) → 800003ac
+```
+The conversion character is at `q` (`s0`).
+-/
+
+/-- **`%c`** with the argument word `w` at `ap`. -/
+theorem fmt_c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {w : BitVec 64}
+    (harg : ArgW S M ap w) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
+    (hsh : out.length + 1 < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ [w.setWidth 8]) q b) :
+    DW live S Q 0x800002b0#64 R M := by
+  have hs := hst.sink
+  have hkal := hs.al
+  have hklo := hs.lo
+  have hkhi := hs.hi
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hk9 := hst.rk
+  have h25 := hst.rap
+  have halo := harg.lo
+  have hahi := harg.hi
+  dx_run hlive at 0x800002c4
+  all_goals (try own_by hs)
+  all_goals (try own_by harg)
+  refine emit_800002c4 hlive hs (w.setWidth 8) hsh _ ?kr ?fr ?lr ?l1 ?c fun R' M' hk' hr15 hE' => ?_
+  case kr => gnorm; exact hk9
+  case fr => gnorm; exact hs.fw_nat hk9
+  case lr => gnorm; exact hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)
+  case l1 =>
+    gnorm; rw [BitVec.toNat_add, hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)]
+    gnorm; omega
+  case c => gnorm; rw [h25, lwOfLd, harg.val, lo8_sx32]
+  have hst' := hst.emitted (R' := R') (ap' := ap) hE'
+    ((hk'.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _)))
+    (by rw [hk'.get 25]; gnorm; try exact h25)
+  refine fmt_next_800002f0 hlive hst' (ap' := ap + 8) ?_ (by rw [hk'.get 8]; gnorm; exact hq) hro
+    (fun hb R'' hs'' => hK.1 hb R'' M' hs'') (fun hb R'' hs'' => hK.2 hb R'' M' hs'')
+  rw [hk'.get 11]; gnorm; rw [BitVec.toNat_add, h25]; gnorm; omega
+
+/-- **`%%`**. -/
+theorem fmt_pct {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
+    {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
+    (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q)
+    {b : BitVec 8} (hro : RoBytes (q + 1) [b]) (hsh : out.length + 1 < 2 ^ 62)
+    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) q b) :
+    DW live S Q 0x8000038c#64 R M := by
+  have hs := hst.sink
+  have hkal := hs.al
+  have hklo := hs.lo
+  have hkhi := hs.hi
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hk9 := hst.rk
+  dx_run hlive at 0x80000398
+  all_goals (try own_by hs)
+  refine emit_80000398 hlive hs hsh _ ?kr ?fr ?lr ?l1 fun R' M' hk' hr15 hE' => ?_
+  case kr => gnorm; exact hk9
+  case fr => gnorm; exact hs.fw_nat hk9
+  case lr => gnorm; exact hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)
+  case l1 =>
+    gnorm; rw [BitVec.toNat_add, hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)]
+    gnorm; omega
+  have hst' := hst.emitted (R' := R') (ap' := ap) hE'
+    ((hk'.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _)))
+    (by rw [hk'.get 25]; gnorm; try exact hst.rap)
+  exact fmt_next_800003ac hlive hst' (by rw [hk'.get 8]; gnorm; exact hq) hro
     (fun hb R'' hs'' => hK.1 hb R'' M' hs'') (fun hb R'' hs'' => hK.2 hb R'' M' hs'')
 
 end Dc.Mach

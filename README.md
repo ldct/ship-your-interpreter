@@ -183,3 +183,34 @@ sources, including `VsaRun.lean`.
 Use the Lean version in `lean-toolchain`. Follow [CLAUDE.md](CLAUDE.md) for
 proof discipline and [TOOLING.md](TOOLING.md) for focused verification.
 Preserve the proof ELF; build interpreter variants in a temporary copy of `c/`.
+
+## GNU dc
+
+A second interpreter, GNU dc 1.4.1 (GNU bc 1.07.1), with a formal semantics
+and a RISC-V build for the same machine model. The refinement proof for its
+binary has not been started.
+
+| File | Content |
+| --- | --- |
+| `Dc/Num.lean` | `bc_num` arithmetic: sign flag, magnitude and scale, with the library's truncation, sign and scale rules, output in any base with line wrapping, and `bc_num2long`'s fallback `LONG_MAX` of `0x7fffffff` |
+| `Dc/Machine.lean` | the machine state and `dcFunc`, a transcription of `dc_func` |
+| `Dc/Semantics.lean` | **the big-step semantics** `Loop`/`Tos` of `evalstr` (macros, tail calls, `q`/`Q` unwinding, `bc_sqrt`'s Newton iteration) and `Runs lm prog out` for `dc -e prog` with standard output `out` at line length `lm`. `!` and `?` are outside the model |
+| `Dc/Interp.lean`, `Dc/Adequacy.lean` | a fuel-bounded interpreter with `run_iff` (it computes exactly the derivable evaluations) and `Runs.det` (a program has at most one output) |
+| `Dc/Validation.lean` | generated theorems `Runs 70 prog out ∧ ∀ o, Runs 70 prog o → o = out` for programs whose `out` the RISC-V binary printed |
+| `dc-port/` | the bare-metal HTIF port: `htif_main.c` runs `dc -e` on a program in an 8 KiB buffer, `htif.c` sends standard output (not standard error) to the console; `dc-riscv-htif.elf` is built with the toolchain of the WHILE binary |
+| `scripts/dc/` | `difftest.py` (Lean interpreter against host dc), `elf_difftest.py` (the ELF on `Vsa.runElf` against the Lean interpreter), `gen_validation.py` |
+
+```sh
+# The ELF (xPack GNU RISC-V Embedded GCC 15.2.0).
+make -C dc-port RISCV_CC=/path/to/riscv-none-elf-gcc BUILD=/tmp/dc-port-build
+
+# Compile Dc/*.lean into DC_OLEAN (Num, Machine, Semantics, Interp,
+# Adequacy, Validation, in that order) with `lake env lean -o`, then:
+python3 -B scripts/dc/difftest.py --olean DC_OLEAN --random 1500
+python3 -B scripts/dc/elf_difftest.py --vsa-olean VSA_PRIVATE_BUILD \
+  --dc-olean DC_OLEAN --random 1500 --host-dc
+python3 -B scripts/dc/gen_validation.py --vsa-olean VSA_PRIVATE_BUILD \
+  --dc-olean DC_OLEAN --check
+```
+
+`elf_difftest.py` needs `Vsa.ElfRun` compiled in the private build.

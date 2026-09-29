@@ -12,3 +12,4 @@ import Dc.Mach.Malloc
 import Dc.Mach.Realloc
 import Dc.Mach.FmtModel
 import Dc.Mach.EmitSites
+import Dc.Mach.EmitUnsigned

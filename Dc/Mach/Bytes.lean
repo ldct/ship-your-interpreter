@@ -182,10 +182,10 @@ theorem zext8_eq_zero (b : BitVec 8) : zero_extend (m := 64) b = 0#64 ↔ b = 0#
 /-- `dc_simp [hs…]`: register lookups at literal registers, the register
 hypotheses `hs`, literal immediates, and `BitVec.ofNat` address arithmetic
 (bounds by `omega`). -/
-macro "dc_simp" " [" ts:Lean.Parser.Tactic.simpLemma,* "]" : tactic =>
+macro "dc_simp" " [" ts:Lean.Parser.Tactic.simpLemma,* "]" loc:(Lean.Parser.Tactic.location)? : tactic =>
   `(tactic| simp (disch := omega) only [upd_apply, Nat.reduceEqDiff, ite_true, ite_false,
     se12_zero, se12_one, se12_fff, se12_ff, BitVec.add_zero, ofNat_add_ofNat, ofNat_toNat_lt,
-    toNat_ofNat_m1, Nat.add_sub_cancel, Nat.add_zero, ldv_lbu, $ts,*])
+    toNat_ofNat_m1, Nat.add_sub_cancel, Nat.add_zero, ldv_lbu, $ts,*] $(loc)?)
 
 /-- A load's or store's address side condition (`LdOK`, `StOKb`, `StOK`) by `omega`. -/
 macro "dc_addr" : tactic => `(tactic| (simp only [LdOK, StOKb, StOK]; omega))

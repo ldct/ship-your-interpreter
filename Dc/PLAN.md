@@ -259,6 +259,9 @@ against `Num.div`; `bc_divmod`, `bc_modulo` against `Num.divmod`/
 Rerun both difftests after any change to the semantics, the port or the
 libc; regenerate the decode and step tables after any change to the ELF.
 
+Last run (current ELF): ELF difftest 1,660 agree, 0 differ, 2 over the
+2,000,000-step limit, of 1,662 programs; host dc differences 0.
+
 ## Known risks
 
 - **Proof size.** The bc library is ~3,500 instructions of digit-array
@@ -285,4 +288,5 @@ libc; regenerate the decode and step tables after any change to the ELF.
 | Port, libc, layout | done |
 | M0 statement and resources | done |
 | M1 machine layer | done: decode and step tables compile (`gen_dc_decode.py`, `gen_dc_steps.py`, `--check` in `check_all.sh`); observed `lb` steps `stL_80004120`/`stL_800041c8` (`Dc/Mach/LoadObs.lean`); HTIF `tohost_<pc>` sites, `stP_<pc>` print steps (`Dc/Mach/Tohost.lean`), `DWO`, `dcExit_haltFact` (`Dc/Mach/Htif.lean`); `dx_run` on straight-line code, a loop and a call (`strlen_loop`, `main_scriptLen`); `strlen_spec` (`Dc/Mach/Strlen.lean`). The `gp` boot pair and `Halts` from a run are M11 items |
-| M2–M12 | open |
+| M2 C library | done: byte functions `memset_spec`, `memcpy_spec`, `memchr_spec`, `strchr_spec`, `strncpy_spec` (`Bytes.lean`); `fputc_spec`, `putchar_spec`, `fwrite_*` over `DWO` (`Stdio.lean`); stubs and exits (`Stubs.lean`); `__muldi3`, `__udivdi3`, `__umoddi3`, `__divdi3`, `__moddi3` (`Libgcc.lean`; dc never calls the 32-bit `__divsi3`/`__udivsi3`/`__umodsi3`, so they have no spec); `HeapInv`, `malloc`/`free`, `realloc` (`HeapInv.lean`, `Malloc.lean`, `Realloc.lean`); the formatter against `Dc.Mach.fmt` (`FmtModel.lean`): `emit_unsigned_spec`, `fmt_loop`, `format_spec`, `vfprintf_spec`, `fprintf_spec` (to any stream; the console gains `fdOut fd (bytesStr (fmt ps args))`, so `stdout` prints and `stderr` only terminates and preserves memory outside the frame), `snprintf_spec` (`EmitSites.lean` … `Printf.lean`). Scope premises, checked against every call site: `%s` arguments are `.rodata` strings (`RoStr`); `fprintf`/`snprintf` take at most six/five register arguments (dc's formats take at most three) |
+| M3–M12 | open |

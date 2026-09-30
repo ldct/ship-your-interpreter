@@ -80,6 +80,15 @@ theorem ofNat_eq_iff {x y : Nat} (hx : x < 2 ^ 64) (hy : y < 2 ^ 64) :
   · intro e; exact Classical.byContradiction fun hne => (ofNat_ne_iff hx hy).2 hne e
   · rintro rfl; rfl
 
+theorem ze_bb (b : Bool) : zero_extend (m := 64) (bool_to_bit b) = boolWord b := by
+  cases b <;> decide
+
+/-- `sltiu r, x, 1` (`seqz`): `x` is zero. -/
+theorem sltiu1 (x : BitVec 64) : zopz0zI_u x 1#64 = decide (x.toNat = 0) := by
+  unfold zopz0zI_u
+  simp [BitVec.toNatInt]
+  omega
+
 /-- `addw` of two small words. -/
 theorem addw_ofNat {a b : Nat} (h : a + b < 2 ^ 31) :
     BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) +
@@ -120,6 +129,11 @@ macro "num_facts " h:term : tactic =>
              have _n9 := ($h).shape.refsLt; have _n10 := ($h).shape.dsLen
              simp only [heapStart, heapEnd] at _n1 _n2 _n4 _n5
              have _htx : tohostAddr = 0x8001ad00 := rfl))
+
+/-- A word (in)equality of `BitVec.ofNat`s and literals as one of naturals
+(`%`-reduced; `omega` closes it with the bounds). -/
+macro "bv_nat" " at " h:ident : tactic =>
+  `(tactic| simp only [ne_eq, ← BitVec.toNat_inj, BitVec.toNat_ofNat] at $h:ident)
 
 /-- Address side conditions (`LdOK`, `StOK`, `StOKb`) by `omega`. -/
 macro "bc_addr" : tactic => `(tactic| (simp only [LdOK, StOK, StOKb]; omega))

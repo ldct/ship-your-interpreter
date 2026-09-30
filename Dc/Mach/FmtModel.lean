@@ -93,15 +93,15 @@ def udigits (b v : Nat) : List (BitVec 8) := ((List.range (ndig b v)).map (dg b 
 def uval (lng : Bool) (w : BitVec 64) : Nat := if lng then w.toNat else w.toNat % 2 ^ 32
 
 /-- The value of a `%d` argument: the word, or its low 32 bits sign-extended. -/
-def dval (lng : Bool) (w : BitVec 64) : BitVec 64 :=
+def fmtDval (lng : Bool) (w : BitVec 64) : BitVec 64 :=
   if lng then w else (w.setWidth 32).signExtend 64
 
 /-- What a conversion that takes an argument produces. -/
 def convOut (alt lng : Bool) : Conv → FArg → List (BitVec 8)
   | .s, a => a.s
   | .c, a => [a.w.setWidth 8]
-  | .d, a => if (dval lng a.w).msb then 45#8 :: udigits 10 (-(dval lng a.w)).toNat
-      else udigits 10 (dval lng a.w).toNat
+  | .d, a => if (fmtDval lng a.w).msb then 45#8 :: udigits 10 (-(fmtDval lng a.w)).toNat
+      else udigits 10 (fmtDval lng a.w).toNat
   | .u, a => udigits 10 (uval lng a.w)
   | .o, a => (if alt && uval lng a.w ≠ 0 then [48#8] else []) ++ udigits 8 (uval lng a.w)
   | .pct, _ => [37#8]

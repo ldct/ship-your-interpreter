@@ -71,7 +71,7 @@ theorem is_zero_loop {live : Nat → Prop} {S : Nat → Prop}
     intro i R hn hi h14 h15 hz hkeep
     have hd := h.getD_lt i
     dx_run hlive
-    all_goals bsimp [h14, h15, h.lbu hi, sxw_pred]
+    all_goals bsimp [h14, h15, h.lbu hi, sxw_ofNat]
     all_goals first | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
     · intro h0
       bsimp [ofNat_eq_zero_iff] at h0
@@ -197,12 +197,12 @@ theorem is_near_zero_loop {live : Nat → Prop} {S : Nat → Prop}
     intro i R hn hi h14 h15 hz hkeep
     have hd := h.getD_lt i
     dx_run hlive
-    all_goals bsimp [h14, h15, h.lbu (show i < o.len + o.scale by omega), sxw_pred]
+    all_goals bsimp [h14, h15, h.lbu (show i < o.len + o.scale by omega), sxw_ofNat]
     all_goals first | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
     · intro h0
       bsimp [ofNat_eq_zero_iff] at h0
       dx_run hlive
-      all_goals bsimp [h14, h15, sxw_pred]
+      all_goals bsimp [h14, h15, sxw_ofNat]
       · intro he
         bsimp [ofNat_eq_zero_iff] at he
         dx_run hlive
@@ -254,7 +254,7 @@ theorem is_near_zero_loop {live : Nat → Prop} {S : Nat → Prop}
             · rw [getD_take (by omega)]; exact hz j (by omega)
             · rw [getD_take (by omega), ← hi1, h1]; exact Nat.le_refl _
         simp only [e2]; bsimp [sltiu1, ze_bb]
-        simp only [show (BitVec.ofNat 64 (o.ds.getD i 0 + 18446744073709551615)).toNat = 0 ↔ o.ds.getD i 0 = 1 by rw [BitVec.toNat_ofNat]; omega]
+        simp only [show o.ds.getD i 0 - 1 = 0 ↔ o.ds.getD i 0 = 1 by omega]
 
 /-- **`bc_is_near_zero(num, s)`** at `0x80004a60`, `0 ≤ s < 2^31`: `a0` is
 `1` if `Num.isNearZero n s`, else `0`; clobbers `a3`–`a5`. -/
@@ -347,7 +347,7 @@ theorem num2long_loop {live : Nat → Prop} {S : Nat → Prop}
     have hnx : o.ds.getD i 0 + (dval (o.ds.take i) * 2 ^ 2 + dval (o.ds.take i)) * 2 ^ 1 =
         dval (o.ds.take (i + 1)) := by rw [hsucc]; omega
     dx_run hlive
-    all_goals bsimp [h14, h13, h12, h16, h.lbu (show i < o.len + o.scale by omega), sxw_pred,
+    all_goals bsimp [h14, h13, h12, h16, h.lbu (show i < o.len + o.scale by omega), sxw_ofNat,
       shl_ofNat, hnx]
     all_goals first | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
     · intro h0

@@ -793,13 +793,13 @@ theorem fmt_dval {live : Nat → Prop} {S : Nat → Prop}
 theorem udigits_length (b v : Nat) : (udigits b v).length = ndig b v := by
   simp [udigits]
 
-theorem sx32_dval (w : BitVec 64) : sx32 w = dval false w := by
-  simp [sx32, dval, BitVec.truncate_eq_setWidth]
+theorem sx32_dval (w : BitVec 64) : sx32 w = fmtDval false w := by
+  simp [sx32, fmtDval, BitVec.truncate_eq_setWidth]
 
 /-- The `%d` output as `fmt_dval` states it. -/
 theorem convOut_d (alt lng : Bool) (a : FArg) :
-    convOut alt lng .d a = (if (dval lng a.w).msb then 45#8 :: udigits 10 (-(dval lng a.w)).toNat
-      else udigits 10 (dval lng a.w).toNat) := rfl
+    convOut alt lng .d a = (if (fmtDval lng a.w).msb then 45#8 :: udigits 10 (-(fmtDval lng a.w)).toNat
+      else udigits 10 (fmtDval lng a.w).toNat) := rfl
 
 /-- The length bound `fmt_dval` needs from the output's. -/
 theorem dval_sh {out : List (BitVec 8)} {v : BitVec 64}
@@ -835,7 +835,7 @@ theorem fmt_d0 {live : Nat → Prop} {S : Nat → Prop}
   rw [convOut_d] at hsh hK
   refine fmt_dval hlive (hst.regs (by keeps_to (Keeps.refl _ _))
       (by gnorm; rw [BitVec.toNat_add, h25]; gnorm; omega)) (by gnorm; exact hq)
-    (v := dval false a.w) ?_ ?_ hro (dval_sh hsh) hK _ (.inl rfl)
+    (v := fmtDval false a.w) ?_ ?_ hro (dval_sh hsh) hK _ (.inl rfl)
   · gnorm; rw [h25, lwOfLd, harg.val, sx32_dval]
   · gnorm; rw [h25, lwOfLd, harg.val, sx32_dval]
 
@@ -853,7 +853,7 @@ theorem fmt_d1 {live : Nat → Prop} {S : Nat → Prop}
   rw [convOut_d] at hsh hK
   refine fmt_dval hlive (hst.regs (by keeps_to (Keeps.refl _ _))
       (by gnorm; rw [BitVec.toNat_add, h25]; gnorm; omega)) (by gnorm; exact hq)
-    (v := dval true a.w) ?_ ?_ hro (dval_sh hsh) hK _ (.inr rfl)
+    (v := fmtDval true a.w) ?_ ?_ hro (dval_sh hsh) hK _ (.inr rfl)
   · gnorm; rw [h25, harg.val]; rfl
   · gnorm; rw [h25, harg.val]; rfl
 

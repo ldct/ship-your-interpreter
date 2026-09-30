@@ -184,15 +184,24 @@ theorem not_blez {k : Nat} (h1 : 1 ≤ k) (h2 : k < 2 ^ 63) :
     ¬ (BitVec.ofNat 64 k).toInt ≤ (0#64).toInt := by
   rw [toInt_ofNat_small h2]; simp; omega
 
+/-- Normalize a decrement before converting word addition to naturals.
+This avoids the deeply nested modulo proof from the generic addition normalizer. -/
+theorem word_pred {k : Nat} (h1 : 1 ≤ k) :
+    BitVec.ofNat 64 k + 18446744073709551615#64 = BitVec.ofNat 64 (k - 1) := by
+  change BitVec.ofNat 64 k + -(1#64) = _
+  rw [BitVec.add_neg_eq_sub]
+  exact BitVec.ofNat_sub_ofNat_of_le k 1 (by decide) h1
+
 /-- Register lookups, literal immediates and `BitVec.ofNat` address arithmetic
 (bounds by `omega`), with the facts `hs`. -/
 macro "bsimp" " [" ts:Lean.Parser.Tactic.simpLemma,* "]" loc:(Lean.Parser.Tactic.location)? : tactic =>
-  `(tactic| simp (disch := omega) only [upd_apply, Nat.reduceEqDiff, ite_true, ite_false, reduceIte,
+  `(tactic| ((try simp (disch := omega) only [$ts,*, word_pred, sxw_ofNat] $(loc)?) <;>
+    (try simp (disch := omega) only [upd_apply, Nat.reduceEqDiff, ite_true, ite_false, reduceIte,
     LeanRV64DExecutable.Functions.sign_extend, Sail.BitVec.signExtend, BitVec.reduceSignExtend,
     BitVec.add_zero, BitVec.reduceAdd, BitVec.reduceOfNat, ofNat_add_ofNat, ofNat_toNat_lt,
     Nat.reduceAdd, Nat.reduceSub, Nat.add_zero, Nat.sub_zero, ldv_lbu, boolWord, Bool.toNat_false, Bool.toNat_true,
     frame16, frame32, frame96, frame16', frame32', frame96',
-    $ts,*] $(loc)?)
+    $ts,*] $(loc)?)))
 
 /-- The bounds of `h : NumAt Mt o`, with the heap's limits as literals. -/
 macro "num_facts " h:term : tactic =>

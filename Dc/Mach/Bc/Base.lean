@@ -114,6 +114,31 @@ theorem max0_ofNat {v : Nat} (hv : v < 2 ^ 63) :
 
 theorem ofNat_congr {x y : Nat} (h : x = y) : BitVec.ofNat 64 x = BitVec.ofNat 64 y := h ▸ rfl
 
+/-- Stack addresses below `sp` (frames of 16, 32, 48, 96 bytes): `sp + (2^64 - c) + k`
+is `sp - c + k`. -/
+theorem ofNat_wrap {x m k : Nat} (c : Nat) (hc : m + c = 2 ^ 64) (h : c ≤ x) :
+    BitVec.ofNat 64 (x + m + k) = BitVec.ofNat 64 (x - c + k) := by
+  apply BitVec.eq_of_toNat_eq; simp only [BitVec.toNat_ofNat]; omega
+
+theorem frame16 {x k : Nat} (h : 16 ≤ x) :
+    BitVec.ofNat 64 (x + 18446744073709551600 + k) = BitVec.ofNat 64 (x - 16 + k) :=
+  ofNat_wrap 16 (by decide) h
+theorem frame32 {x k : Nat} (h : 32 ≤ x) :
+    BitVec.ofNat 64 (x + 18446744073709551584 + k) = BitVec.ofNat 64 (x - 32 + k) :=
+  ofNat_wrap 32 (by decide) h
+theorem frame96 {x k : Nat} (h : 96 ≤ x) :
+    BitVec.ofNat 64 (x + 18446744073709551520 + k) = BitVec.ofNat 64 (x - 96 + k) :=
+  ofNat_wrap 96 (by decide) h
+theorem frame16' {x : Nat} (h : 16 ≤ x) :
+    BitVec.ofNat 64 (x + 18446744073709551600) = BitVec.ofNat 64 (x - 16) := by
+  simpa using frame16 (k := 0) h
+theorem frame32' {x : Nat} (h : 32 ≤ x) :
+    BitVec.ofNat 64 (x + 18446744073709551584) = BitVec.ofNat 64 (x - 32) := by
+  simpa using frame32 (k := 0) h
+theorem frame96' {x : Nat} (h : 96 ≤ x) :
+    BitVec.ofNat 64 (x + 18446744073709551520) = BitVec.ofNat 64 (x - 96) := by
+  simpa using frame96 (k := 0) h
+
 /-- `srli` of a word. -/
 theorem shr_ofNat (v k : Nat) : BitVec.ofNat 64 v >>> k = BitVec.ofNat 64 (v % 2 ^ 64 / 2 ^ k) := by
   apply BitVec.eq_of_toNat_eq
@@ -165,7 +190,8 @@ macro "bsimp" " [" ts:Lean.Parser.Tactic.simpLemma,* "]" loc:(Lean.Parser.Tactic
   `(tactic| simp (disch := omega) only [upd_apply, Nat.reduceEqDiff, ite_true, ite_false, reduceIte,
     LeanRV64DExecutable.Functions.sign_extend, Sail.BitVec.signExtend, BitVec.reduceSignExtend,
     BitVec.add_zero, BitVec.reduceAdd, BitVec.reduceOfNat, ofNat_add_ofNat, ofNat_toNat_lt,
-    Nat.reduceAdd, Nat.add_zero, Nat.sub_zero, ldv_lbu, boolWord, Bool.toNat_false, Bool.toNat_true,
+    Nat.reduceAdd, Nat.reduceSub, Nat.add_zero, Nat.sub_zero, ldv_lbu, boolWord, Bool.toNat_false, Bool.toNat_true,
+    frame16, frame32, frame96, frame16', frame32', frame96',
     $ts,*] $(loc)?)
 
 /-- The bounds of `h : NumAt Mt o`, with the heap's limits as literals. -/

@@ -42,21 +42,16 @@ structure NewNumK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → 
   oom : ∀ R' Mt', R' 2 = BitVec.ofNat 64 (sp - 32) → OutFrame (frameIn sp 32) Mt' Mt0 →
     DW live S Q 0x80002bcc#64 R' Mt'
 
-/-- The state at the digit buffer's `malloc` call (`0x80004298`): the struct
-block `sb` (live in `H`, off the dead chain `F`) holds the sign, lengths and
-reference count; the frame holds `len + scale`, `s0` and `ra`. -/
-structure NewPrep (S : Nat → Prop) (Mt0 Mt : Mem) (H0 H : Heap) (F0 F : List Blk)
+/-- The state of `bc_new_num` once it has its struct block `sb` (live in `H`,
+off the dead chain `F`): the frame holds `s0` and `ra`, and the memory and
+heap relate to the entry's. -/
+structure NewBase (S : Nat → Prop) (Mt0 Mt : Mem) (H0 H : Heap) (F0 F : List Blk)
     (R0 : Nat → BitVec 64) (sp : Nat) (sb : Blk) (len scale : Nat) : Prop where
   inv : HeapInv S Mt H
   sLive : sb ∈ H.live
   sSz : 40 ≤ sb.sz
   dead : DeadChain Mt bcFreeAddr F
   deadOK : ∀ b ∈ F, b ∈ H.live ∧ b ≠ sb ∧ 40 ≤ b.sz
-  wSign : ldv .lw Mt sb.pay = 0#64
-  wLen : ldv .lw Mt (sb.pay + 4) = BitVec.ofNat 64 len
-  wScale : ldv .lw Mt (sb.pay + 8) = BitVec.ofNat 64 scale
-  wRefs : ldv .lw Mt (sb.pay + 12) = BitVec.ofNat 64 1
-  nw : ldv .ld Mt (sp - 32) = BitVec.ofNat 64 (len + scale)
   ra : ldv .ld Mt (sp - 8) = R0 1
   s0 : ldv .ld Mt (sp - 16) = R0 8
   live : LiveFrame H0 sb Mt Mt0
@@ -64,6 +59,17 @@ structure NewPrep (S : Nat → Prop) (Mt0 Mt : Mem) (H0 H : Heap) (F0 F : List B
   liveSub : ∀ c ∈ H0.live, c ∈ H.live
   src : ∀ H' db, H'.live = db :: H.live →
     NewSrc H0 H' F0 F ⟨zeroRep sb.pay db.pay len scale, sb, db⟩
+
+/-- The state at the digit buffer's `malloc` call (`0x80004298`): the struct
+holds the sign, lengths and reference count, the frame `len + scale`. -/
+structure NewPrep (S : Nat → Prop) (Mt0 Mt : Mem) (H0 H : Heap) (F0 F : List Blk)
+    (R0 : Nat → BitVec 64) (sp : Nat) (sb : Blk) (len scale : Nat) : Prop
+    extends NewBase S Mt0 Mt H0 H F0 F R0 sp sb len scale where
+  wSign : ldv .lw Mt sb.pay = 0#64
+  wLen : ldv .lw Mt (sb.pay + 4) = BitVec.ofNat 64 len
+  wScale : ldv .lw Mt (sb.pay + 8) = BitVec.ofNat 64 scale
+  wRefs : ldv .lw Mt (sb.pay + 12) = BitVec.ofNat 64 1
+  nw : ldv .ld Mt (sp - 32) = BitVec.ofNat 64 (len + scale)
 
 /-- The digit buffer's `malloc`, its zeroing and the return, from `0x80004298`. -/
 theorem new_num_digits {live : Nat → Prop} {S : Nat → Prop}
@@ -247,5 +253,350 @@ theorem new_num_digits {live : Nat → Prop} {S : Nat → Prop}
             simp only [freeListAddr, heapStart, heapEnd] at h <;> omega
         · obtain ⟨hbH, hbs, hbz⟩ := hp.deadOK b hb
           exact hothers b hbH hbs _ ⟨by omega, by simp only [Blk.fin, Blk.pay]; omega⟩
+
+/-- The struct's fields, from `0x80004278` (the struct block `sb` in `s0`). -/
+theorem new_num_fields {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {Mt0 Mt : Mem} {H0 H : Heap} {F0 F : List Blk}
+    {R0 : Nat → BitVec 64} {sp : Nat} {sb : Blk} {len scale : Nat}
+    (hb : NewBase S Mt0 Mt H0 H F0 F R0 sp sb len scale) (hsf : StackFrame S sp 32)
+    (hsp : heapEnd + 32 ≤ sp) (hls : len + scale < 2 ^ 31) (hl1 : 1 ≤ len)
+    (hk : NewNumK live S Q R0 Mt0 H0 F0 sp len scale) (hal : (R0 1).toNat % 4 = 0)
+    (R : Nat → BitVec 64) (h15 : R 15 = BitVec.ofNat 64 len) (h11 : R 11 = BitVec.ofNat 64 scale)
+    (h8 : R 8 = BitVec.ofNat 64 sb.pay) (h2 : R 2 = BitVec.ofNat 64 (sp - 32))
+    (hkeep : Keeps [1, 2, 8, 10, 11, 12, 13, 14, 15] R R0) (h20 : R0 2 = BitVec.ofNat 64 sp) :
+    DW live S Q 0x80004278#64 R Mt := by
+  have hi := hb.inv
+  have fb := hi.blk (List.mem_append_right _ hb.sLive)
+  have hsl := fb.lo; have hsf2 := fb.fin; have hst := fb.top; have hsa := fb.al
+  have hsz := hb.sSz
+  simp only [heapStart, heapEnd, Blk.fin, Blk.pay] at hsl hsf2 hst hsp
+  have hspl := hsf.hi; have hspa := hsf.al
+  have hpl : 2147603936 ≤ sb.pay := by simp only [Blk.pay]; omega
+  have hph : sb.pay + 40 ≤ 2273312768 := by simp only [Blk.pay]; omega
+  have hpa : sb.pay % 16 = 0 := by simp only [Blk.pay]; omega
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive (fun a h1 h2 => hi.own a h1 h2) [h15, h11, h8, h2, addw_ofNat] at 0x80004298
+  all_goals try (exact frame_acc hsf (by omega) (by omega))
+  generalize hM2 : writeLog (writeLog (writeLog (writeLog (writeLog Mt [(sb.pay, 4, 0#64)])
+    [(sb.pay + 4, 4, BitVec.ofNat 64 len)]) [(sb.pay + 8, 4, BitVec.ofNat 64 scale)])
+    [(sb.pay + 12, 4, 1#64)]) [(sp - 32, 8, BitVec.ofNat 64 (len + scale))] = Mt2
+  have hsfin : sb.fin = sb.pay + sb.sz := rfl
+  have hout2 : ∀ a, ¬ (sb.pay ≤ a ∧ a < sb.pay + 16) → ¬ (sp - 32 ≤ a ∧ a < sp - 24) →
+      imgM Mt2 a = imgM Mt a := by
+    intro a h1 h2
+    rw [← hM2]
+    repeat rw [imgM_store_miss _ _ (by omega)]
+  have hstk : ∀ a, sp - 24 ≤ a → a + 8 ≤ sp → ldv .ld Mt2 a = ldv .ld Mt a := fun a h1 h2 =>
+    ldv_congr .ld fun j hj => hout2 _ (by omega) (by simp only [widthOfM] at hj; omega)
+  have hbase : NewBase S Mt0 Mt2 H0 H F0 F R0 sp sb len scale :=
+    { inv := hi.transport fun a ha => hout2 a
+        (fun h => live_not_alloc hi hb.sLive ⟨h.1, by omega⟩ ha)
+        (fun h => OutHeap.not_alloc hi ⟨by simp only [heapStart, heapEnd]; omega,
+          by simp only [freeListAddr]; omega, by simp only [bcFreeAddr]; omega⟩ ha)
+      sLive := hb.sLive
+      sSz := hb.sSz
+      dead := hb.dead.frame
+        (ldv_congr .ld fun j hj => by
+          simp only [widthOfM] at hj
+          exact hout2 _ (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega))
+        fun b hb' j hj => by
+          obtain ⟨hbH, hbs, hbz⟩ := hb.deadOK b hb'
+          have fbb := hi.blk (List.mem_append_right _ hbH)
+          have h1 : 2147603920 ≤ b.h := fbb.lo
+          have h2 : b.fin ≤ H.brk := fbb.fin
+          have h3 : H.brk ≤ 2273312768 := fbb.top
+          have hbp : b.pay = b.h + 16 := rfl
+          have hbf : b.fin = b.h + 16 + b.sz := rfl
+          refine hout2 _ (fun h => live_apart hi hbH hb.sLive hbs ⟨by omega, by omega⟩ ⟨h.1, by omega⟩)
+            (by omega)
+      deadOK := hb.deadOK
+      ra := (hstk _ (by omega) (by omega)).trans hb.ra
+      s0 := (hstk _ (by omega) (by omega)).trans hb.s0
+      live := fun c hc hcs a ha => by
+        rw [hout2 a (fun h => live_apart hi (hb.liveSub c hc) hb.sLive hcs ha ⟨h.1, by omega⟩)
+          (fun h => by
+            have fcc := hi.blk (List.mem_append_right _ (hb.liveSub c hc))
+            have := fcc.top; have := fcc.fin
+            simp only [heapEnd, Blk.fin, Blk.pay, Blk.In] at *; omega)]
+        exact hb.live c hc hcs a ha
+      out := fun a ha hf => by
+        have hna : ¬ (heapStart ≤ a ∧ a < heapEnd) := ha.1
+        simp only [heapStart, heapEnd] at hna
+        rw [hout2 a (by omega) (by simp only [frameIn] at hf; omega)]
+        exact hb.out a ha hf
+      liveSub := hb.liveSub
+      src := hb.src }
+  refine new_num_digits hlive (hp := { hbase with
+      wSign := ?_, wLen := ?_, wScale := ?_, wRefs := ?_, nw := ?_ }) hsf hsp hls hl1 hk hal _
+    (by bsimp []) (by bsimp [h8]) (by bsimp [h2]) (by keeps_tac hkeep) h20
+  all_goals rw [← hM2]
+  all_goals simp (disch := omega) only [ldv_lw_miss, ldv_ld_miss, ldv_store_hit]
+  · exact ldv_lw_hitN _ rfl (by simp) (by decide)
+  · exact ldv_lw_hitN _ rfl (toNat_ofNat_mod32 (by omega)) (by omega)
+  · exact ldv_lw_hitN _ rfl (toNat_ofNat_mod32 (by omega)) (by omega)
+  · exact ldv_lw_hitN _ rfl (by simp) (by decide)
+
+/-- The frame after `bc_new_num`'s prologue: `s0` and `ra` saved, nothing else
+changed. -/
+structure NewFrame (Mt0 Mt : Mem) (R0 : Nat → BitVec 64) (sp : Nat) : Prop where
+  ra : ldv .ld Mt (sp - 8) = R0 1
+  s0 : ldv .ld Mt (sp - 16) = R0 8
+  rest : ∀ a, ¬ frameIn sp 32 a → imgM Mt a = imgM Mt0 a
+
+/-- The entry's heap: the allocator invariant, the dead chain `F` of distinct
+live blocks of at least 40 bytes, and ownership of `_bc_Free_list`. -/
+structure NewHeap (S : Nat → Prop) (Mt : Mem) (H : Heap) (F : List Blk) : Prop where
+  inv : HeapInv S Mt H
+  dead : DeadChain Mt bcFreeAddr F
+  deadOK : ∀ b ∈ F, b ∈ H.live ∧ 40 ≤ b.sz
+  nodup : F.Nodup
+  glob : ∀ a, bcFreeAddr ≤ a → a < bcFreeAddr + 8 → S a
+
+/-- Reusing the head `sb` of `_bc_Free_list`, from `0x8000426c`. -/
+theorem new_num_reuse {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {Mt0 Mt : Mem} {H : Heap} {sb : Blk} {F' : List Blk}
+    (hh : NewHeap S Mt0 H (sb :: F')) {R0 : Nat → BitVec 64} {sp len scale : Nat}
+    (hfr : NewFrame Mt0 Mt R0 sp) (hsf : StackFrame S sp 32) (hsp : heapEnd + 32 ≤ sp)
+    (hls : len + scale < 2 ^ 31) (hl1 : 1 ≤ len) (hal : (R0 1).toNat % 4 = 0)
+    (h20 : R0 2 = BitVec.ofNat 64 sp) (hk : NewNumK live S Q R0 Mt0 H (sb :: F') sp len scale)
+    (R : Nat → BitVec 64) (h8 : R 8 = BitVec.ofNat 64 sb.pay) (h15 : R 15 = BitVec.ofNat 64 len)
+    (h11 : R 11 = BitVec.ofNat 64 scale) (h2 : R 2 = BitVec.ofNat 64 (sp - 32))
+    (hkeep : Keeps [1, 2, 8, 10, 11, 12, 13, 14, 15] R R0) :
+    DW live S Q 0x8000426c#64 R Mt := by
+  have hi := hh.inv
+  have hspl := hsf.hi; have hspa := hsf.al
+  simp only [heapEnd] at hsp
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have ⟨hsbL, hsbz⟩ := hh.deadOK sb List.mem_cons_self
+  have fbb := hi.blk (List.mem_append_right _ hsbL)
+  have hsl : 2147603920 ≤ sb.h := fbb.lo
+  have hsf2 : sb.fin ≤ H.brk := fbb.fin
+  have hst : H.brk ≤ 2273312768 := fbb.top
+  have hsa : sb.h % 16 = 0 := fbb.al
+  have hbp : sb.pay = sb.h + 16 := rfl
+  have hbf : sb.fin = sb.h + 16 + sb.sz := rfl
+  have hpl : 2147603936 ≤ sb.pay := by omega
+  have hph : sb.pay + 40 ≤ 2273312768 := by omega
+  have hpa : sb.pay % 16 = 0 := by omega
+  have hdt : DeadChain Mt0 (sb.pay + 16) F' := by cases hh.dead with | cons _ h => exact h
+  have hnx : ldv .ld Mt (sb.pay + 16) = BitVec.ofNat 64 (deadHead F') := by
+    rw [ldv_congr .ld fun j hj => hfr.rest _ (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+    exact hdt.head
+  have hgl' : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hh.glob b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
+  bc_run hlive (fun a h1 h2 => hi.own a h1 h2) [h8, h2, hnx] at 0x80004278
+  all_goals try exact hgl'
+  generalize hM1 : writeLog Mt [(2147601840, 8, BitVec.ofNat 64 (deadHead F'))] = Mt1
+  have hM1a : ∀ a, ¬ (2147601840 ≤ a ∧ a < 2147601848) → imgM Mt1 a = imgM Mt a := by
+    intro a h1; rw [← hM1]; exact imgM_store_miss _ _ (by omega)
+  have hM1b : ∀ a, ¬ (2147601840 ≤ a ∧ a < 2147601848) → ¬ frameIn sp 32 a →
+      imgM Mt1 a = imgM Mt0 a := fun a h1 h2 => (hM1a a h1).trans (hfr.rest a h2)
+  have hstk : ∀ a, sp - 32 ≤ a → a + 8 ≤ sp → ldv .ld Mt1 a = ldv .ld Mt a := fun a h1 h2 =>
+    ldv_congr .ld fun j hj => hM1a _ (by simp only [widthOfM] at hj; omega)
+  have hnd := List.nodup_cons.1 hh.nodup
+  refine new_num_fields hlive (F := F') (H := H) (sb := sb) ?_ hsf (by simp only [heapEnd]; omega) hls hl1
+    hk hal _ (by bsimp [h15]) (by bsimp [h11]) (by bsimp [h8]) (by bsimp [h2]) (by keeps_tac hkeep) h20
+  exact
+    { inv := hi.transport fun a ha => hM1b a
+        (fun h => by rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
+          simp only [freeListAddr, heapStart, heapEnd] at h' <;> omega)
+        (fun h => by rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
+          simp only [freeListAddr, heapStart, heapEnd, frameIn] at h' h <;> omega)
+      sLive := hsbL
+      sSz := hsbz
+      dead := hdt.move (by rw [← hM1, ldv_store_hit]; exact hdt.head.symm) fun b hb j hj => by
+        have ⟨hbL, _⟩ := hh.deadOK b (List.mem_cons_of_mem _ hb)
+        have fb2 := hi.blk (List.mem_append_right _ hbL)
+        have h1 : 2147603920 ≤ b.h := fb2.lo
+        have h2' : b.fin ≤ H.brk := fb2.fin
+        have hbp : b.pay = b.h + 16 := rfl
+        have hbf : b.fin = b.h + 16 + b.sz := rfl
+        exact hM1b _ (by omega) (by simp only [frameIn]; omega)
+      deadOK := fun b hb => ⟨(hh.deadOK b (List.mem_cons_of_mem _ hb)).1,
+        fun e => hnd.1 (e ▸ hb), (hh.deadOK b (List.mem_cons_of_mem _ hb)).2⟩
+      ra := (hstk _ (by omega) (by omega)).trans hfr.ra
+      s0 := (hstk _ (by omega) (by omega)).trans hfr.s0
+      live := fun c hc hcs a ha => by
+        have fc := hi.blk (List.mem_append_right _ hc)
+        have h1 : 2147603920 ≤ c.h := fc.lo
+        have h2' : c.fin ≤ H.brk := fc.fin
+        have hcp : c.pay = c.h + 16 := rfl
+        simp only [Blk.In] at ha
+        exact hM1b a (by omega) (by simp only [frameIn]; omega)
+      out := fun a ha hf => hM1b a (fun h => ha.2.2 (by simp only [bcFreeAddr]; omega)) hf
+      liveSub := fun c hc => hc
+      src := fun H' db e => .reuse rfl e }
+
+/-- A fresh struct from `malloc(40)` (`_bc_Free_list` empty), from `0x800042c8`. -/
+theorem new_num_fresh {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {Mt0 Mt : Mem} {H : Heap}
+    (hh : NewHeap S Mt0 H []) {R0 : Nat → BitVec 64} {sp len scale : Nat}
+    (hfr : NewFrame Mt0 Mt R0 sp) (hsf : StackFrame S sp 32) (hsp : heapEnd + 32 ≤ sp)
+    (hls : len + scale < 2 ^ 31) (hl1 : 1 ≤ len) (hal : (R0 1).toNat % 4 = 0)
+    (h20 : R0 2 = BitVec.ofNat 64 sp) (hk : NewNumK live S Q R0 Mt0 H [] sp len scale)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 len) (h11 : R 11 = BitVec.ofNat 64 scale)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 32)) (hkeep : Keeps [1, 2, 8, 10, 11, 12, 13, 14, 15] R R0) :
+    DW live S Q 0x800042c8#64 R Mt := by
+  have hi := hh.inv
+  have hspl := hsf.hi; have hspa := hsf.al
+  simp only [heapEnd] at hsp
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive (fun a h1 h2 => hi.own a h1 h2) [h2, h10, h11] at 0x8000096c
+  all_goals try (exact frame_acc hsf (by omega) (by omega))
+  generalize hMf : writeLog (writeLog Mt [(sp - 32, 8, BitVec.ofNat 64 len)])
+    [(sp - 32 + 8, 8, BitVec.ofNat 64 scale)] = Mf
+  have hMfa : ∀ a, ¬ frameIn sp 32 a → imgM Mf a = imgM Mt0 a := by
+    intro a h1
+    rw [← hMf, imgM_store_miss _ _ (by simp only [frameIn] at h1; omega),
+      imgM_store_miss _ _ (by simp only [frameIn] at h1; omega)]
+    exact hfr.rest a h1
+  have hnotA : ∀ a, frameIn sp 32 a → ¬ AllocByte H a := fun a hf ha => by
+    rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
+      simp only [freeListAddr, heapStart, heapEnd, frameIn] at h' hf <;> omega
+  have hiF : HeapInv S Mf H := hi.transport fun a ha => hMfa a fun h => hnotA a h ha
+  refine malloc_spec hlive hiF (n := 40) (by decide) _ (by bsimp []) (by bsimp []) ?_
+  intro R1 Mt1 H1 hk1 hpost
+  bsimp []
+  have hstk : ∀ a, sp - 32 ≤ a → a + 8 ≤ sp → ldv .ld Mt1 a = ldv .ld Mf a := fun a h1 h2 =>
+    ldv_congr .ld fun j hj => hpost.frame _ (hnotA _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩)
+  have w0 : ldv .ld Mt1 (sp - 32) = BitVec.ofNat 64 len := by
+    rw [hstk _ (by omega) (by omega), ← hMf, ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  have w8 : ldv .ld Mt1 (sp - 32 + 8) = BitVec.ofNat 64 scale := by
+    rw [hstk _ (by omega) (by omega), ← hMf, ldv_store_hit]
+  have r2 : R1 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk1.get 2]; bsimp [h2]
+  cases hres : hpost.res with
+  | null e1 e2 e3 =>
+    iterate 2 all_goals (try bc_run hlive (fun a h1 h2 => hi.own a h1 h2)
+      [r2, w0, w8, e1] at 0x80002bcc)
+    all_goals try (exact frame_acc hsf (by omega) (by omega))
+    refine hk.oom _ _ (by bsimp [r2]) fun a ha hf => ?_
+    rw [hpost.frame a (OutHeap.not_alloc hiF ha), hMfa a hf]
+  | block sb e1 e2 e3 e4 e5 =>
+    have hi1 := hpost.inv
+    have hsb1 : sb ∈ H1.live := by rw [e3]; exact List.mem_cons_self
+    have fbb := hi1.blk (List.mem_append_right _ hsb1)
+    have hsl : 2147603920 ≤ sb.h := fbb.lo
+    have hsf2 : sb.fin ≤ H1.brk := fbb.fin
+    have hst : H1.brk ≤ 2273312768 := fbb.top
+    have hsz : 40 ≤ sb.sz := e2
+    have hbp : sb.pay = sb.h + 16 := rfl
+    have hbf : sb.fin = sb.h + 16 + sb.sz := rfl
+    have hpl : 2147603936 ≤ sb.pay := by omega
+    have hph : sb.pay + 40 ≤ 2273312768 := by omega
+    bc_run hlive (fun a h1 h2 => hi.own a h1 h2) [r2, w0, w8, e1] at 0x80004278
+    all_goals try (exact frame_acc hsf (by omega) (by omega))
+    rotate_left
+    · intro hc; bv_nat at hc; simp only [Nat.mod_eq_of_lt (show sb.pay < 2 ^ 64 by omega)] at hc
+      omega
+    intro _
+    have hlive1 : ∀ c ∈ H.live, ∀ a, c.In a → imgM Mt1 a = imgM Mt0 a := fun c hc a ha => by
+      have fc := hi.blk (List.mem_append_right _ hc)
+      have h1 : 2147603920 ≤ c.h := fc.lo
+      have h2' : c.fin ≤ H.brk := fc.fin
+      have h3 : H.brk ≤ 2273312768 := fc.top
+      have hcp : c.pay = c.h + 16 := rfl
+      simp only [Blk.In] at ha
+      rw [hpost.frame a (live_not_alloc hiF hc ⟨ha.1, ha.2⟩)]
+      exact hMfa a (by simp only [frameIn]; omega)
+    have hkk : Keeps [1, 2, 8, 10, 11, 12, 13, 14, 15] R1 R0 :=
+      ((Keeps.mono hk1 (by decide)).trans (by keeps_tac Keeps.refl _ _)).trans hkeep
+    refine new_num_fields hlive (F := []) (H := H1) (sb := sb) ?_ hsf (by simp only [heapEnd]; omega)
+      hls hl1 hk hal _ ?_ ?_ ?_ (by bsimp [r2]) (by keeps_tac hkk) h20
+    rotate_left
+    · bsimp [w0]
+    · bsimp [w8]
+    · bsimp [e1]
+    have h0 : ldv .ld Mt0 bcFreeAddr = 0#64 := hh.dead.head
+    exact
+      { inv := hi1
+        sLive := hsb1
+        sSz := hsz
+        dead := .nil (by
+          rw [← h0]
+          refine ldv_congr .ld fun j hj => ?_
+          simp only [widthOfM] at hj
+          rw [hpost.frame _ fun ha => by
+            rcases AllocByte.glob_or_heap hiF ha with h' | h' <;>
+              simp only [freeListAddr, heapStart, heapEnd, bcFreeAddr] at h' <;> omega]
+          exact hMfa _ (by simp only [frameIn, bcFreeAddr]; omega))
+        deadOK := fun b hb => by cases hb
+        ra := by
+          rw [hstk _ (by omega) (by omega), ← hMf, ldv_ld_miss _ _ (by omega),
+            ldv_ld_miss _ _ (by omega)]
+          exact hfr.ra
+        s0 := by
+          rw [hstk _ (by omega) (by omega), ← hMf, ldv_ld_miss _ _ (by omega),
+            ldv_ld_miss _ _ (by omega)]
+          exact hfr.s0
+        live := fun c hc _ a ha => hlive1 c hc a ha
+        out := fun a ha hf => by
+          rw [hpost.frame a (OutHeap.not_alloc hiF ha)]; exact hMfa a hf
+        liveSub := fun c hc => by rw [e3]; exact List.mem_cons_of_mem _ hc
+        src := fun H' db e => .fresh rfl rfl (by rw [e, e3]) }
+
+/-- **`bc_new_num(len, scale)`** at `0x80004250`, `1 ≤ len`,
+`len + scale < 2^31`, with a 32-byte stack frame above the heap: returns in
+`a0` a zero number (`NewNumPost`: struct from the head of `_bc_Free_list` or
+fresh, digit buffer fresh, `n_refs = 1`), or reaches `out_of_memory`;
+clobbers `a0`–`a5`. -/
+theorem bc_new_num_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {H : Heap} {F : List Blk} (hh : NewHeap S Mt H F)
+    {sp len scale : Nat} (hsf : StackFrame S sp 32) (hsp : heapEnd + 32 ≤ sp)
+    (hls : len + scale < 2 ^ 31) (hl1 : 1 ≤ len)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 len) (h11 : R 11 = BitVec.ofNat 64 scale)
+    (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
+    (hk : NewNumK live S Q R Mt H F sp len scale) :
+    DW live S Q 0x80004250#64 R Mt := by
+  have hi := hh.inv
+  have hspl := hsf.hi; have hspa := hsf.al
+  have hsp' := hsp
+  simp only [heapEnd] at hsp'
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hfw : ldv .ld Mt 2147601840 = BitVec.ofNat 64 (deadHead F) := hh.dead.head
+  have hfr : NewFrame Mt (writeLog (writeLog Mt [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)])
+      R sp :=
+    { ra := by rw [show sp - 8 = sp - 32 + 24 by omega, ldv_store_hit]
+      s0 := by rw [show sp - 16 = sp - 32 + 16 by omega, ldv_ld_miss _ _ (by omega), ldv_store_hit]
+      rest := fun a ha => by
+        simp only [frameIn] at ha
+        rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)] }
+  bc_run hlive (fun a h1 h2 => hi.own a h1 h2) [h2] at 0x8000425c
+  all_goals try (exact frame_acc hsf (by omega) (by omega))
+  apply st_8000425c hlive
+  · bsimp []; bc_addr
+  · bsimp []; intro b hb; have := of_mem_accAddrs hb
+    exact hh.glob b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
+  bsimp [hfw]
+  bc_run hlive (fun a h1 h2 => hi.own a h1 h2) [h2, h10, hfw] at 0x8000426c 0x800042c8
+  all_goals try (exact frame_acc hsf (by omega) (by omega))
+  · -- `_bc_Free_list` empty
+    intro h0
+    rcases hFe : F with _ | ⟨b, F'⟩
+    · rw [hFe] at hh hk
+      exact new_num_fresh hlive hh hfr hsf hsp hls hl1 hal h2 hk _ (by bsimp [h10]) (by bsimp [h11])
+        (by bsimp []) (by keeps_tac Keeps.refl _ _)
+    · exfalso
+      rw [hFe] at h0
+      have fbb := hi.blk (List.mem_append_right _ (hh.deadOK b (by rw [hFe]; exact List.mem_cons_self)).1)
+      have h1 : 2147603920 ≤ b.h := fbb.lo
+      have h2' : b.fin ≤ H.brk := fbb.fin
+      have h3 : H.brk ≤ 2273312768 := fbb.top
+      have hbf : b.fin = b.h + 16 + b.sz := rfl
+      simp only [deadHead, Blk.pay] at h0
+      bv_nat at h0
+      simp only [Nat.mod_eq_of_lt (show b.h + 16 < 2 ^ 64 by omega)] at h0
+      omega
+  · -- reuse the head
+    intro h0
+    rcases hFe : F with _ | ⟨sb, F'⟩
+    · rw [hFe] at h0; exact absurd rfl h0
+    rw [hFe] at hh hk
+    exact new_num_reuse hlive hh hfr hsf hsp hls hl1 hal h2 hk _ (by bsimp [hFe, deadHead])
+      (by bsimp [h10]) (by bsimp [h11]) (by bsimp []) (by keeps_tac Keeps.refl _ _)
 
 end Dc.Mach

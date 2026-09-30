@@ -117,6 +117,18 @@ theorem live_apart {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H
   have := apart_of_mem hi.apart (List.mem_append_right _ hb) (List.mem_append_right _ hc) hne
   simp only [Blk.In, Blk.Apart, Blk.fin, Blk.pay] at *; omega
 
+/-- A chain moved to a new first word holding the same pointer, its link words
+unchanged. -/
+theorem DeadChain.move {Mt Mt' : Mem} {a a' : Nat} {l : List Blk} (h : DeadChain Mt a l)
+    (ha : ldv .ld Mt' a' = ldv .ld Mt a)
+    (hb : ∀ b ∈ l, ∀ j, j < 8 → imgM Mt' (b.pay + 16 + j) = imgM Mt (b.pay + 16 + j)) :
+    DeadChain Mt' a' l := by
+  cases h with
+  | nil h0 => exact .nil (ha.trans h0)
+  | cons h0 hl =>
+    exact .cons (ha.trans h0) (hl.frame (ldv_congr .ld fun j hj => hb _ List.mem_cons_self j hj)
+      fun c hc => hb c (List.mem_cons_of_mem _ hc))
+
 /-- A block consed onto the live list is not in the rest of it. -/
 theorem HeapInv.head_not_mem {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H)
     {b : Blk} {L : List Blk} (e : H.live = b :: L) : b ∉ L := fun hb => by

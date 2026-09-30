@@ -112,6 +112,29 @@ theorem max0_ofNat {v : Nat} (hv : v < 2 ^ 63) :
   rw [BitVec.sshiftRight_eq_of_msb_true hmsb, BitVec.not_not, show Int.toNat 63 = 63 from rfl, hsh]
   rw [show (~~~(0#64) : BitVec 64) = BitVec.allOnes 64 by decide, BitVec.and_allOnes]
 
+theorem ofNat_congr {x y : Nat} (h : x = y) : BitVec.ofNat 64 x = BitVec.ofNat 64 y := h ▸ rfl
+
+/-- `srli` of a word. -/
+theorem shr_ofNat (v k : Nat) : BitVec.ofNat 64 v >>> k = BitVec.ofNat 64 (v % 2 ^ 64 / 2 ^ k) := by
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow, BitVec.toNat_ofNat, BitVec.toNat_ofNat]
+  exact (Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (Nat.div_le_self _ _) (Nat.mod_lt _ (by decide)))).symm
+
+/-- `subw` of two small words. -/
+theorem subw_ofNat {a b : Nat} (h : b ≤ a) (ha : a < 2 ^ 31) :
+    BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) -
+      BitVec.extractLsb 31 0 (BitVec.ofNat 64 b)) = BitVec.ofNat 64 (a - b) := by
+  have e : BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) - BitVec.extractLsb 31 0 (BitVec.ofNat 64 b) =
+      BitVec.ofNat 32 (a - b) := by
+    apply BitVec.eq_of_toNat_eq
+    simp [BitVec.toNat_sub]
+    omega
+  rw [e]
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_signExtend]
+  simp [msb32_small (show a - b < 2 ^ 31 by omega)]
+  omega
+
 /-- `addw` of two small words. -/
 theorem addw_ofNat {a b : Nat} (h : a + b < 2 ^ 31) :
     BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) +
@@ -172,14 +195,32 @@ elab "bc_intro_true" : tactic => do
   let (_, g') ← g.intro1
   replaceMainGoal [g']
 
-/-- One round of symbolic execution: `dx_run`, then `bsimp [hs]` on every goal,
-address and heap-ownership side conditions, and branch hypotheses simplified
-(a branch whose hypothesis simplifies to `False` closes). -/
+open Lean Elab Tactic Meta in
+/-- Fails when the goal is a symbolic run at one of the given PCs (so a
+repeated `bc_run` leaves goals at its stops alone). -/
+elab "bc_not_at" stops:(num)* : tactic => do
+  let g ← getMainGoal
+  let pcs := stops.toList.map (·.getNat)
+  if let some pc ← g.withContext (do VsaIris.Sym.swpPC? (← instantiateMVars (← g.getType))) then
+    if pcs.contains pc then throwError "bc_not_at: at a stop"
+
+/-- One round of symbolic execution: `dx_run` (not from a stop), then
+`bsimp [hs]` on every goal, address and heap-ownership side conditions, and
+branch hypotheses decided by `decide` (a false one closes its branch, a true
+one is introduced). -/
 syntax "bc_run " term:max term:max " [" Lean.Parser.Tactic.simpLemma,* "]" (" at " num+)? : tactic
 
 macro_rules
-  | `(tactic| bc_run $hl $hs [$ts,*] $[at $stops*]?) =>
-    `(tactic| (dx_run $hl $[at $stops*]?
+  | `(tactic| bc_run $hl $hs [$ts,*] at $stops*) =>
+    `(tactic| (bc_not_at $stops*
+               dx_run $hl at $stops*
+               all_goals (try bsimp [$ts,*])
+               all_goals (try (first | (simp only [LdOK, StOK, StOKb]; omega) |
+                 exact acc_heap $hs (by omega) (by omega)))
+               all_goals (try (intro hc; exact absurd hc (by decide)))
+               all_goals (try bc_intro_true)))
+  | `(tactic| bc_run $hl $hs [$ts,*]) =>
+    `(tactic| (dx_run $hl
                all_goals (try bsimp [$ts,*])
                all_goals (try (first | (simp only [LdOK, StOK, StOKb]; omega) |
                  exact acc_heap $hs (by omega) (by omega)))

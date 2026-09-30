@@ -315,4 +315,225 @@ theorem cmp_tail2 {live : Nat → Prop} {S : Nat → Prop}
         exact Nat.compare_eq_lt.2 (by omega)
       rw [e] at hk; exact hk
 
+/-- The end of the common digits at `0x80004060`: `a4`/`a5` past the first
+`c = n_len + min s₁ s₂` digits of each (all equal), `a7 = s₁`, `t1 = s₂`. -/
+theorem cmp_junction {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {a b : NumRep} (hp : CmpPair Mt a b)
+    {u : Bool} {R0 R : Nat → BitVec 64}
+    (hk : CmpK live S Q R0 Mt (cmpRes u a.neg (Dc.Num.cmpMag a.num b.num))) (hr : CmpRegs R R0 a u)
+    (h14 : R 14 = BitVec.ofNat 64 (a.val + (a.len + min a.scale b.scale)))
+    (h15 : R 15 = BitVec.ofNat 64 (b.val + (a.len + min a.scale b.scale)))
+    (h17 : R 17 = BitVec.ofNat 64 a.scale) (h6 : R 6 = BitVec.ofNat 64 b.scale)
+    (heq : ∀ i, i < a.len + min a.scale b.scale → a.ds.getD i 0 = b.ds.getD i 0) :
+    DW live S Q 0x80004060#64 R Mt := by
+  have h := hp.ha
+  num_facts h
+  have hb := hp.hb
+  have := hb.shape.pLo; have := hb.shape.vHi; have := hb.shape.size
+  have hlen := hp.len
+  have hkeep := hr.keep
+  have hbv := hb.shape.vHi
+  simp only [heapEnd] at hbv
+  bc_run hlive hS [h14, h15, h17, h6] at 0x80003fd4 0x80004084 0x800040ac
+  · intro he
+    bv_nat at he
+    rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at he
+    refine cmp_eq_path hlive (by keeps_tac hkeep) (by bsimp []) hr.ra ?_ hk
+    rw [cmpMag_of_all_eq h.shape hb.shape hlen fun i hi => heq i (by omega), cmpRes_eq]
+  · intro hne
+    bv_nat at hne
+    rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at hne
+    bc_run hlive hS [h14, h15, h17, h6, toInt_ofNat_small] at 0x80003fd4 0x80004084 0x800040ac
+    · intro hle
+      have hlt : a.scale < b.scale := by omega
+      bc_run hlive hS [h14, h15, h17, h6, subw_ofNat, shl_ofNat, shr_ofNat] at 0x80003fd4 0x80004084 0x800040ac
+      refine cmp_tail2 hlive hS hp hlt hk _ (a.len + min a.scale b.scale) _ rfl (by omega) (by omega)
+        ⟨by keeps_tac hkeep, by bsimp [hr.a0], by bsimp [hr.a2], hr.ra⟩ (by bsimp [h15])
+        ?_ heq
+      bsimp []
+      exact ofNat_congr (by omega)
+    · intro hgt
+      have hlt : b.scale < a.scale := by omega
+      bc_run hlive hS [h14, h15, h17, h6, subw_ofNat, shl_ofNat, shr_ofNat] at 0x80003fd4 0x80004084 0x800040ac
+      refine cmp_tail1 hlive hS hp hlt hk _ (a.len + min a.scale b.scale) _ rfl (by omega) (by omega)
+        ⟨by keeps_tac hkeep, by bsimp [hr.a0], by bsimp [hr.a2], hr.ra⟩ (by bsimp [h14])
+        ?_ heq
+      bsimp []
+      exact ofNat_congr (by omega)
+
+/-- The common-digit loop at `0x80004014`: `a4`/`a5` at digit `i` of each,
+`a3 = c - i` for `c = n_len + min s₁ s₂`, the first `i` digits equal. -/
+theorem cmp_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {a b : NumRep} (hp : CmpPair Mt a b)
+    {u : Bool} {R0 : Nat → BitVec 64}
+    (hk : CmpK live S Q R0 Mt (cmpRes u a.neg (Dc.Num.cmpMag a.num b.num))) :
+    ∀ k i (R : Nat → BitVec 64), a.len + min a.scale b.scale - i = k →
+      i < a.len + min a.scale b.scale → CmpRegs R R0 a u →
+      R 14 = BitVec.ofNat 64 (a.val + i) → R 15 = BitVec.ofNat 64 (b.val + i) →
+      R 13 = BitVec.ofNat 64 (a.len + min a.scale b.scale - i) →
+      R 17 = BitVec.ofNat 64 a.scale → R 6 = BitVec.ofNat 64 b.scale →
+      (∀ j, j < i → a.ds.getD j 0 = b.ds.getD j 0) →
+      DW live S Q 0x80004014#64 R Mt := by
+  have h := hp.ha
+  num_facts h
+  have hb := hp.hb
+  have := hb.shape.pLo; have := hb.shape.vHi; have := hb.shape.size; have := hb.shape.vLo
+  have := hb.shape.ptrLe
+  have hbv := hb.shape.vHi
+  simp only [heapEnd] at hbv
+  have hbl := hb.shape.vLo
+  simp only [heapStart] at hbl
+  have hlen := hp.len
+  have hmin : min a.scale b.scale ≤ a.scale := Nat.min_le_left _ _
+  have hmin2 : min a.scale b.scale ≤ b.scale := Nat.min_le_right _ _
+  intro k
+  induction k with
+  | zero => intro i R h1 h2; omega
+  | succ k ih =>
+    intro i R hn hi hr h14 h15 h13 h17 h6 heq
+    have hkeep := hr.keep
+    have hda := h.getD_lt i
+    have hdb := hb.getD_lt i
+    have la := h.lbu (show i < a.len + a.scale by omega)
+    have lb := hb.lbu (show i < b.len + b.scale by omega)
+    bc_run hlive hS [h14, h15, h13, la, lb, sxw_pred] at 0x80004060 0x80003fc0 0x80004030
+    · intro he
+      bv_nat at he
+      rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at he
+      bc_run hlive hS [h14, h15, h13, sxw_pred] at 0x80004060 0x80003fc0 0x80004030 0x80004014
+      · intro hz
+        bv_nat at hz
+        refine cmp_junction hlive hS hp hk ⟨by keeps_tac hkeep, by bsimp [hr.a0], by bsimp [hr.a2], hr.ra⟩
+          ?_ ?_ (by bsimp [h17]) (by bsimp [h6]) fun j hj => ?_
+        · bsimp []; exact ofNat_congr (by omega)
+        · bsimp []; exact ofNat_congr (by omega)
+        · rcases Nat.lt_or_ge j i with h1 | h1
+          · exact heq j h1
+          · rw [show j = i by omega]; exact he
+      · intro hz
+        bv_nat at hz
+        refine ih (i + 1) _ (by omega) (by omega)
+          ⟨by keeps_tac hkeep, by bsimp [hr.a0], by bsimp [hr.a2], hr.ra⟩ (by bsimp [Nat.add_assoc])
+          (by bsimp [Nat.add_assoc]) (by bsimp [Nat.sub_sub]) (by bsimp [h17]) (by bsimp [h6])
+          fun j hj => ?_
+        rcases Nat.lt_or_ge j i with h1 | h1
+        · exact heq j h1
+        · rw [show j = i by omega]; exact he
+    · intro hne
+      bv_nat at hne
+      rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at hne
+      have hc := cmpMag_of_first_diff h.shape hb.shape hlen (j := i) (by omega) heq hne
+      bc_run hlive hS [h14, h15, la, lb] at 0x80004060 0x80003fc0 0x80004030
+      · intro hlt
+        refine cmp_gt_path hlive hS h (u := u)
+          ⟨by keeps_tac hkeep, by bsimp [hr.a0], by bsimp [hr.a2], hr.ra⟩ ?_
+        rw [hc, Nat.compare_eq_gt.2 hlt] at hk; exact hk
+      · intro hge
+        refine cmp_lt_path hlive hS h (u := u)
+          ⟨by keeps_tac hkeep, by bsimp [hr.a0], by bsimp [hr.a2], hr.ra⟩ ?_
+        rw [hc, Nat.compare_eq_lt.2 (by omega)] at hk; exact hk
+
+/-- **`_bc_do_compare(n1, n2, use_sign, FALSE)`** past the sign test, at
+`0x80003fb0`, on normalised numbers: `a0 = ordWord (cmpRes u neg₁ (Num.cmpMag
+n₁ n₂))`; clobbers `a0`, `a1`, `a3`–`a7`, `t1`. -/
+theorem do_compare_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {a b : NumRep} (ha : NumAt Mt a)
+    (hb : NumAt Mt b) (hna : a.Norm) (hnb : b.Norm) {u : Bool}
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 a.p) (h11 : R 11 = BitVec.ofNat 64 b.p)
+    (h12 : R 12 = boolWord u) (hal : (R 1).toNat % 4 = 0)
+    (hk : CmpK live S Q R Mt (cmpRes u a.neg (Dc.Num.cmpMag a.num b.num))) :
+    DW live S Q 0x80003fb0#64 R Mt := by
+  have h := ha
+  num_facts h
+  have := hb.shape.pLo; have := hb.shape.pHi; have := hb.shape.vHi; have := hb.shape.size
+  have := hb.shape.pAl; have := hb.shape.lenPos
+  have hbp := hb.shape.pHi; have hbp2 := hb.shape.pLo
+  simp only [heapEnd, heapStart] at hbp hbp2
+  have la := ha.len; have lb := hb.len; have sa := ha.scale; have sb := hb.scale
+  have va := ha.value; have vb := hb.value
+  have hr0 : CmpRegs R R a u := ⟨Keeps.refl _ _, h10, h12, hal⟩
+  bc_run hlive hS [h10, h11, la, lb] at 0x80003fc0 0x80004030 0x80003fdc
+  · intro he
+    bv_nat at he
+    rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at he
+    have hp : CmpPair Mt a b := ⟨ha, hb, he⟩
+    -- from `0x80003ff0` with `a6 = min s₁ s₂`
+    have mid : ∀ R', R' 16 = BitVec.ofNat 64 (min a.scale b.scale) → R' 15 = BitVec.ofNat 64 a.len →
+        R' 10 = BitVec.ofNat 64 a.p → R' 11 = BitVec.ofNat 64 b.p → R' 12 = boolWord u →
+        R' 17 = BitVec.ofNat 64 a.scale → R' 6 = BitVec.ofNat 64 b.scale → Keeps cmpClob R' R →
+        DW live S Q 0x80003ff0#64 R' Mt := by
+      intro R' h16 h15 h10' h11' h12' h17 h6 hkp
+      have hmin : min a.scale b.scale ≤ a.scale := Nat.min_le_left _ _
+      bc_run hlive hS [h16, h15, h10', h11', va, vb, addw_ofNat] at 0x80004014
+      · intro _
+        refine cmp_loop hlive hS hp hk _ 0 _ rfl (by omega)
+          ⟨by keeps_tac hkp, by bsimp [h10'], by bsimp [h12'], hal⟩ (by bsimp []) (by bsimp [])
+          (by bsimp [Nat.add_comm]) (by bsimp [h17]) (by bsimp [h6])
+          fun j hj => absurd hj (Nat.not_lt_zero _)
+      · intro hc
+        simp (disch := omega) only [toInt_ofNat_small] at hc
+        simp at hc; omega
+    bc_run hlive hS [h10, h11, la, lb, sa, sb, toInt_ofNat_small] at 0x80004014 0x80003ff0
+    · intro hle
+      refine mid _ (by bsimp [Nat.min_eq_left (show a.scale ≤ b.scale by omega)]) (by bsimp []) (by bsimp [h10]) (by bsimp [h11])
+        (by bsimp [h12]) (by bsimp []) (by bsimp []) (by keeps_tac Keeps.refl _ _)
+    · intro hgt
+      bc_run hlive hS [h10, h11, la, lb, sa, sb] at 0x80003ff0
+      refine mid _ (by bsimp [Nat.min_eq_right (show b.scale ≤ a.scale by omega)]) (by bsimp [])
+        (by bsimp [h10]) (by bsimp [h11]) (by bsimp [h12]) (by bsimp []) (by bsimp [])
+        (by keeps_tac Keeps.refl _ _)
+  · intro hne
+    bv_nat at hne
+    rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at hne
+    bc_run hlive hS [h10, h11, la, lb, toInt_ofNat_small] at 0x80003fc0 0x80004030 0x80003fdc
+    · intro hle
+      refine cmp_lt_path hlive hS ha (u := u) ⟨by keeps_tac Keeps.refl _ _, by bsimp [h10], by bsimp [h12], hal⟩ ?_
+      rw [cmpMag_of_len_lt ha.shape hb.shape hnb (by omega)] at hk; exact hk
+    · intro hgt
+      refine cmp_gt_path hlive hS ha (u := u) ⟨by keeps_tac Keeps.refl _ _, by bsimp [h10], by bsimp [h12], hal⟩ ?_
+      rw [cmpMag_of_len_gt ha.shape hb.shape hna (by omega)] at hk; exact hk
+
+/-! ## `bc_compare` (`0x800049d8`)
+
+```
+800049d8 lw a5,0(a0) ; 800049dc lw a4,0(a1) ; 800049e0 beq a4,a5,800049f8
+800049e4 li a0,-1 ; 800049e8 bnez a5,800049f4 ; 800049ec li a0,1 ; 800049f0 ret ; 800049f4 ret
+800049f8 li a2,1 ; 800049fc j 80003fb0
+```
+-/
+
+/-- **`bc_compare(n1, n2)`** at `0x800049d8` on normalised numbers:
+`a0 = ordWord (Num.cmp n₁ n₂)`; clobbers `a0`–`a7`, `t1`. -/
+theorem bc_compare_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {a b : NumRep} (ha : NumAt Mt a)
+    (hb : NumAt Mt b) (hna : a.Norm) (hnb : b.Norm)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 a.p) (h11 : R 11 = BitVec.ofNat 64 b.p)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R', Keeps [6, 10, 11, 12, 13, 14, 15, 16, 17] R' R →
+      R' 10 = ordWord (Dc.Num.cmp a.num b.num) → DW live S Q (R 1) R' Mt) :
+    DW live S Q 0x800049d8#64 R Mt := by
+  have h := ha
+  num_facts h
+  have := hb.shape.pLo; have := hb.shape.pHi; have := hb.shape.pAl
+  have hbp := hb.shape.pHi; have hbp2 := hb.shape.pLo
+  simp only [heapEnd, heapStart] at hbp hbp2
+  have sga := ha.sign; have sgb := hb.sign
+  cases hna' : a.neg <;> cases hnb' : b.neg <;> rw [hna'] at sga <;> rw [hnb'] at sgb <;>
+    simp only [signWord_false, signWord_true] at sga sgb
+  iterate 3 all_goals (try bc_run hlive hS [h10, h11, sga, sgb, hal] at 0x80003fb0)
+  -- different signs
+  all_goals try (refine hk _ (by keeps_tac Keeps.refl _ _) ?_; bsimp []; simp [Dc.Num.cmp, NumRep.num, ordWord, hna', hnb']; done)
+  -- equal signs
+  all_goals
+    refine do_compare_spec hlive hS ha hb hna hnb (u := true) _ (by bsimp [h10])
+      (by bsimp [h11]) (by bsimp []) (by bsimp [hal]) fun R' hkp h10' => ?_
+  all_goals bsimp []
+  all_goals refine hk R' ((Keeps.mono hkp (by decide)).trans (by keeps_tac Keeps.refl _ _)) ?_
+  all_goals rw [h10']
+  all_goals simp [Dc.Num.cmp, cmpRes, NumRep.num, hna', hnb']
+
 end Dc.Mach

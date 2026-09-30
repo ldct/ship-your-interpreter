@@ -233,6 +233,12 @@ theorem FdAt.transport {S : Nat → Prop} {M M' : Mem} {f fd : Nat} (h : FdAt S 
     (hag : ∀ j, j < 4 → imgM M' (f + j) = imgM M (f + j)) : FdAt S M' f fd :=
   ⟨h.own, (ldv_congr .lw fun j hj => hag j hj).trans h.val, h.lo, h.hi, h.small⟩
 
+/-- Name the memory of a `DW` goal (`hMb : Mb = …`), to state facts about it
+without spelling it. -/
+theorem DW.memEq {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {pc : BitVec 64} {R : Nat → BitVec 64} {M : Mem} (h : ∀ Mb, Mb = M → DW live S Q pc R Mb) :
+    DW live S Q pc R M := h M rfl
+
 /-! ## `vfprintf` (`0x80000748`) -/
 
 /-- **`vfprintf(f, fmt, ap)`** at `0x80000748` to the stream `f` (descriptor
@@ -315,5 +321,107 @@ theorem vfprintf_spec {live : Nat → Prop} {S : Nat → Prop}
     exact (hkp.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _))
   · rw [hfr' a (by omega) fun hb => by have := hb.1; have := hb.2; omega]
     simp (disch := omega) only [imgM_store_miss]
+
+/-! ## `fprintf` (`0x80000774`) -/
+
+/-- The registers `fprintf` may change: `emit_unsigned`'s, `t1` and `t3`. -/
+abbrev fprintfClob : List Nat := [5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 28]
+
+/-- **`fprintf(f, fmt, …)`** at `0x80000774` to the stream `f` (descriptor
+`fd ≠ 1`, not `stdout`), with at most six variable arguments, the words in
+`a2`–`a7`: prints nothing, returns the length of `fmt ps args` as an `int`;
+only the 304 bytes below `sp` change. -/
+theorem fprintf_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp f fd p : Nat} {ps : List Piece} {args : List FArg}
+    (hfr : StackFrame S sp 304) (hfd : FdAt S M f fd) (hne : fd ≠ 1)
+    (hfoff : f + 4 ≤ sp - 304 ∨ sp ≤ f) (hok : ∀ pc ∈ ps, pc.ok)
+    (hro : RoBytes p (fmtBytes ps ++ [0#8])) (hstr : ArgStrs ps args)
+    (hsh : (fmt ps args).length + 1 < 2 ^ 62)
+    (R : Nat → BitVec 64) (hn : args.length ≤ 6)
+    (hargs : ∀ i (h : i < args.length), args[i].w = R (12 + i))
+    (hsp : (R 2).toNat = sp) (h10 : (R 10).toNat = f) (h11 : (R 11).toNat = p)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps fprintfClob R' R →
+      R' 10 = sx32 (BitVec.ofNat 64 (fmt ps args).length) →
+      (∀ a, (a < sp - 304 ∨ sp ≤ a) → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
+    DW live S Q 0x80000774#64 R M := by
+  have hlo := hfr.lo
+  have hhi := hfr.hi
+  have hal2 := hfr.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  dx_run hlive at 0x80000168
+  all_goals (try dc_frame hfr)
+  have e0 : (R 2 + 18446744073709551504#64).toNat = sp - 112 := by
+    rw [BitVec.toNat_add, hsp]; simp only [BitVec.toNat_ofNat]; omega
+  have e : ∀ o, o < 112 → (R 2 + 18446744073709551504#64 + BitVec.ofNat 64 o).toNat =
+      sp - 112 + o :=
+    fun o ho => by rw [BitVec.toNat_add, e0]; simp only [BitVec.toNat_ofNat]; omega
+  simp only [e 64 (by omega), e 56 (by omega), e 16 (by omega), e 72 (by omega), e 80 (by omega),
+    e 88 (by omega), e 96 (by omega), e 104 (by omega), e 24 (by omega), e 32 (by omega),
+    e 40 (by omega), e 8 (by omega)]
+  refine DW.memEq fun Mb hMb => ?_
+  have hag : ∀ a, (a < sp - 112 ∨ sp ≤ a) → imgM Mb a = imgM M a := fun a ha => by
+    rw [hMb]; simp (disch := omega) only [imgM_store_miss]
+  have hra : ldv .ld Mb (sp - 112 + 56) = R 1 := by
+    rw [hMb]; simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss]
+  have hv : ∀ i, i < 6 → ldv .ld Mb (sp - 112 + 64 + 8 * i) = R (12 + i) := by
+    intro i hi
+    rcases (by omega : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 ∨ i = 4 ∨ i = 5) with
+      rfl | rfl | rfl | rfl | rfl | rfl <;>
+    (rw [hMb]; simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss, Nat.mul_zero, Nat.add_zero])
+  refine format_spec hlive (sp := sp - 112) (k := sp - 112 + 16) (ap := sp - 112 + 64)
+    (dst := .stream f fd) (hfr.sub (m := 112) (n := 192) (by omega)) ?hs ?hoff hok hro ?hargs hsh
+    _ ?hsp ?h10 ?h11 ?h12 (by gnorm) fun R' M' hkp h10' hs' hfr' => ?_
+  case hs =>
+    have hown : ∀ i, i < 32 → S (sp - 112 + 16 + i) := fun i hi => hfr.own _ (by omega) (by omega)
+    have hal' : (sp - 112 + 16) % 8 = 0 := by omega
+    have hlo' : tohostAddr + 16 ≤ sp - 112 + 16 := by rw [htx]; omega
+    have hhi' : sp - 112 + 16 + 32 ≤ 0x88000000 := by omega
+    have hfd' : FdAt S Mb f fd := hfd.transport fun j hj => hag _ (by omega)
+    exact {
+      own := hown
+      al := hal'
+      lo := hlo'
+      hi := hhi'
+      fw := by
+        rw [hMb]; simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss, SinkDst.fw]
+        rw [← h10]; apply BitVec.eq_of_toNat_eq
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (R 10).isLt]
+      len := by
+        rw [hMb]; simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss, List.length_nil]
+      short := by simp
+      dstAt := .stream hfd' hne (by omega) }
+  case hoff =>
+    intro a ha
+    rcases ha with ha | ha <;> omega
+  case hargs =>
+    have hw : ArgWords S Mb (sp - 112 + 64) args := fun i hi => by
+      have hi6 : i < 6 := by omega
+      exact ⟨fun j hj => hfr.own _ (by omega) (by omega), by rw [htx]; omega, by omega,
+        (hv i hi6).trans (hargs i hi).symm⟩
+    refine argsAt_of ps _ args hw hstr fun j h1 h2 => ?_
+    exact ⟨by omega, fun hb => by have := hb.1; have := hb.2; omega⟩
+  case hsp => gnorm; exact e0
+  case h10 => gnorm; exact e 16 (by omega)
+  case h11 => gnorm; exact h11
+  case h12 => gnorm; exact e 64 (by omega)
+  gnorm
+  have hsp' : (R' 2).toNat = sp - 112 := by rw [hkp.get 2]; gnorm; exact e0
+  have hra' : ldv .ld M' (sp - 112 + 56) = R 1 := by
+    rw [ldv_ld_congr (Mt' := M') (Mt := Mb) fun j hj =>
+        hfr' _ (.inr (by omega)) fun hb => by have := hb.2; omega]
+    exact hra
+  have e56 : (R' 2 + 56#64).toNat = sp - 112 + 56 := by rw [BitVec.toNat_add, hsp']; gnorm; omega
+  dx_run hlive
+  all_goals (try dc_frame hfr)
+  all_goals simp only [e56, hra']
+  · gnorm; exact hal
+  refine hk _ M' ?_ (by gnorm; exact h10') fun a ha => ?_
+  · refine Keeps.restore (by rw [hkp.get 2]; gnorm; exact add_lits_cancel _ _ _ (by decide)) ?_
+    refine Keeps.restore rfl ?_
+    exact (hkp.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _))
+  · rw [hfr' a (by omega) fun hb => by have := hb.1; have := hb.2; omega]
+    exact hag a (by omega)
 
 end Dc.Mach

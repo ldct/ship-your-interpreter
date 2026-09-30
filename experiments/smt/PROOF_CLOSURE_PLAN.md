@@ -4461,3 +4461,98 @@ Obstructions recorded (not fixed):
 - **`IrisHoles` removed (lane V2, user request, 2026-09-25).** The record was
   empty; `endToEnd_refinement` and every capstone now take no hypothesis
   (INTERP_DESIGN.md "STATEMENT CHANGE (lane V2)").
+
+## dc machine layer: `lb` is outside `MKind` (dc M1, 2026-09-29; RESOLVED)
+
+The reflected block model has no signed byte load, so dc's two `lb`s
+(`_bc_shift_addsub`, `0x80004120`, `0x800041c8`) had no step lemma. They are
+observed ALU steps over one owned byte read totally: `aluStepT_of_obs`,
+`swp_aluM`, `exec_lb_tot` (`Dc/Mach/LoadObs.lean`), instantiated by the
+generator as `stL_<pc>`. Still open for dc and scheduled in `Dc/PLAN.md`
+M11: the `_start` `gp` pair (no `DW` step: `gp` is read-only in `DW`) and
+the `Halts` conclusion from a printing run (`dcExit_haltFact` supplies the
+halting step; the boot ownership split and adequacy are the missing
+suppliers).
+
+
+## Dc number-heap and reference-release obligations
+
+The dc milestones proceed serially from `Dc/PLAN.md` M3 to M4. Existing declarations in
+`Dc/Mach/Bc/{Rep,Heap,New,Small,Scan,Compare}.lean` already supply number
+representations, allocation, sharing, predicates, conversion to long, and
+comparison. The following suppliers remain explicit:
+
+- `NewNumK.oom` requires an execution from `out_of_memory` at `0x80002bcc`;
+  `bc_new_num_spec` reaches that continuation but does not itself prove a
+  status-1 halt. The concrete error/exit chain must supply it.
+- `BcHeap` records object reference counts but does not equate them to all
+  references in the dc state. M9's stack/register/array/global representation
+  must supply that correspondence and the `refs + 1 < 2^31` bound required by
+  sharing operations.
+- Comparison consumes `NumRep.Norm`; number-producing function specs must
+  preserve normalization. Boot and runtime invariants must supply live code,
+  owned globals, initial allocator resources, and stack bounds.
+- M4 still needs `bc_init_numbers`, `bc_int2num`, and `bc_out_long`, followed
+  by their callers. Inlined leading-zero removal has a representation-level
+  model but still needs its machine-site proofs.
+
+`bc_free_num` resource scope must include pointer slots inside other live heap
+objects: `dc_clear_stack` passes `node + 8` at `0x80002d9c`,
+`dc_register_set` passes `node + 8` at `0x800030b4`, and `dc_array_set` /
+`dc_array_free` pass `node + 16` at `0x80003d9c` / `0x80003eb0`, through
+`dc_free_num`'s tail jump at `0x80002ba0` (evidence:
+`experiments/dc/disasm.txt`). Requiring the slot to lie outside the entire heap
+would exclude these callers. The release contract instead needs explicit
+separation from allocator bytes, the released digit block, the retained struct,
+the cached dead-chain links, the global head, and the callee frame. Callers must
+supply these from ownership of their distinct live node blocks.
+
+### M3 representation and heap closure (checked)
+
+`Dc/Mach/Bc/HeapClosure.lean`, imported by `Dc.lean`, completes:
+
+- `BcHeap.foot_disjoint`: distinct represented numbers have disjoint footprints,
+  using object-block uniqueness and the allocator's pairwise block separation.
+- `BcHeap.foot_not_alloc`: number bytes are disjoint from allocator metadata.
+- `BcHeap.transport`: byte agreement on allocator metadata, live payloads, and
+  the cached-struct head preserves the entire number heap.
+- `NewSrc.live_mono` and `NewNumPost.blocks`: allocation preserves previous
+  live blocks and supplies the returned object's struct/digit blocks.
+- `HeapInv.live_nodup` and `NewNumPost.insert`: a successful `bc_new_num`
+  reconstructs `BcHeap` with the new object prepended, for both a fresh struct
+  and a reused dead struct. Existing numbers survive its actual live-block
+  frame; no additional execution supplier is assumed.
+
+All seven public theorems compile and have axioms contained in
+`{propext, Classical.choice, Quot.sound}`; `NewSrc.live_mono` is axiom-free.
+The number representation deliberately admits unnormalized temporary digit
+arrays; `NumRep.Norm` is a separate producer obligation. Reference counts are
+stored faithfully, but correspondence with all dc-state references remains M9.
+The zero-reference ownership transfer through the actual `bc_free_num`
+execution remains M4. No release proof is imported or counted as verified.
+This completes the M3 representation/heap foundation, not those dependent
+machine/state obligations or the final theorem.
+
+### Resolved dc baseline build blockers
+
+The private build driver follows configured Lean options, including
+`backward.isDefEq.respectTransparency = false`, and resolves Lake's dependency
+environment once per build. It handles dependency source roots and module import
+modifiers when building the transitive `Dc` closure.
+
+`Dc/Mach/Bc/Base.lean` supplies `word_pred` and stages `bsimp` normalization
+before generic word-to-natural addition rewriting. This avoids deeply nested
+modulo terms for decrements without raising elaboration limits. `Scan.lean`
+uses the resulting canonical decrement form and `sxw_ofNat`; all three scans
+and comparison compile. `FmtModel.lean` calls the signed formatting value
+`fmtDval`, avoiding collision with the decimal digit-list `dval` in `Bc/Rep`;
+its formatting consumers use the same renamed definition.
+
+The baseline transitive `Dc` build completed 1,061 modules, followed by an
+`import Dc` audit of 14 affected normalization, scan, comparison, and formatter
+theorems. Every audited theorem uses only the three permitted axioms. The M3
+extension resumed the full 1,062-module `Dc` closure successfully and audited
+all 21 baseline/M3 headlines together through `import Dc`.
+Build objects and audit logs are retained outside the checkout in the private
+build tree. These changes affect proof normalization and a definition name;
+no dc semantics or binary bytes changed.

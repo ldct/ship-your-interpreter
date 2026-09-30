@@ -28,7 +28,22 @@ still checks compiled-object freshness, boundary validation, and theorem axioms.
 Reuse the private cache and its manifest. On a new checkout, create an external
 directory with `mktemp -d` and retain it. The driver compiles current sources
 serially, including modules outside `Vsa.lean` and `VsaRun.lean`.
-Dependencies must already be built. `--list` inspects the import order.
+Dependencies must already be built for the default invocation. `--list` inspects
+the import order. Select a module and its transitive imports with `--root`;
+repeat the option for multiple targets. For example, the dc library builds with:
+
+```sh
+python3 -B scripts/build_private.py --root Dc \
+  --output-root /private/tmp/dc-build --resume
+```
+
+On a fresh checkout, fetch the pinned packages with `lake update`, then add
+`--with-dependencies` to compile their imported sources into the same external
+output tree. Existing dependency objects can instead be supplied through
+`LEAN_PATH`. The driver retains Lean module companion objects and IR alongside
+the `.olean` files. Package and target `leanOptions` and compiler arguments from
+`lakefile.toml` are honored; configuration changes invalidate affected cached
+objects. Python 3.11 or later is required.
 
 `check_all.sh` runs generator, discipline, and forbidden-token checks before
 requesting the backend or starting compiled checks. Follow the plan's gate

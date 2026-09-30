@@ -20,3 +20,5 @@ import Dc.Mach.Bc.Base
 import Dc.Mach.Bc.Small
 import Dc.Mach.Bc.Scan
 import Dc.Mach.Bc.Compare
+import Dc.Mach.Bc.Heap
+import Dc.Mach.Bc.New

@@ -303,4 +303,160 @@ theorem bc_is_near_zero_spec {live : Nat → Prop} {S : Nat → Prop}
     refine tail _ ?_ (by bsimp [h10]) (by keeps_tac Keeps.refl _ _)
     bsimp [h11, Nat.min_eq_left (show s ≤ o.scale by omega)]
 
+/-! ## `bc_num2long` (`0x800065a0`)
+
+```
+800065a0 lw a3,4(a0) ; 800065a4 blez a3,80006604 ; 800065a8 ld a2,32(a0)
+800065ac lui a6,0xcccd ; 800065b0 addi a6,a6,-819 (LONG_MAX/10 + 1) ; 800065b4 li a4,0
+800065b8 slli a5,a4,0x2 ; 800065bc lbu a1,0(a2) ; 800065c0 add a5,a5,a4 ; 800065c4 slli a5,a5,0x1
+800065c8 addiw a3,a3,-1 ; 800065cc addi a2,a2,1 ; 800065d0 add a4,a1,a5
+800065d4 beqz a3,800065dc ; 800065d8 blt a4,a6,800065b8
+800065dc li a5,0 ; 800065e0 bnez a3,800065f0
+800065e4 not a5,a4 ; 800065e8 srai a5,a5,0x3f ; 800065ec and a5,a4,a5 (val < 0 → 0)
+800065f0 lw a4,0(a0) ; 800065f4 beqz a4,800065fc ; 800065f8 neg a5,a5
+800065fc mv a0,a5 ; 80006600 ret ; 80006604 li a5,0 ; 80006608 j 800065f0
+```
+-/
+
+/-- The unsigned value `bc_num2long` computes: the integer part, or `0` when
+the loop stops early. -/
+def num2longVal (o : NumRep) : Nat :=
+  if dval (o.ds.take (o.len - 1)) ≤ 214748364 then dval (o.ds.take o.len) else 0
+
+/-- The digit loop at `0x800065b8`: `a4 = dval (take i)`, `a3 = n_len - i`,
+`a2 = n_value + i`, `a6 = LONG_MAX/10 + 1`. -/
+theorem num2long_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {o : NumRep} (h : NumAt Mt o)
+    (R0 : Nat → BitVec 64)
+    (hk : ∀ R', Keeps [11, 12, 13, 14, 15, 16] R' R0 → R' 15 = BitVec.ofNat 64 (num2longVal o) →
+      DW live S Q 0x800065f0#64 R' Mt) :
+    ∀ k i (R : Nat → BitVec 64), o.len - i = k → i < o.len →
+      R 14 = BitVec.ofNat 64 (dval (o.ds.take i)) → dval (o.ds.take i) ≤ 214748364 →
+      R 13 = BitVec.ofNat 64 (o.len - i) → R 12 = BitVec.ofNat 64 (o.val + i) →
+      R 16 = BitVec.ofNat 64 214748365 → Keeps [11, 12, 13, 14, 15, 16] R R0 →
+      DW live S Q 0x800065b8#64 R Mt := by
+  num_facts h
+  intro k
+  induction k with
+  | zero => intro i R h1 h2; omega
+  | succ k ih =>
+    intro i R hn hi h14 hv h13 h12 h16 hkeep
+    have hd := h.getD_lt i
+    have hsucc := dval_take_succ o.ds (m := i) (by omega)
+    have hnx : o.ds.getD i 0 + (dval (o.ds.take i) * 2 ^ 2 + dval (o.ds.take i)) * 2 ^ 1 =
+        dval (o.ds.take (i + 1)) := by rw [hsucc]; omega
+    dx_run hlive
+    all_goals bsimp [h14, h13, h12, h16, h.lbu (show i < o.len + o.scale by omega), sxw_pred,
+      shl_ofNat, hnx]
+    all_goals first | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
+    · intro h0
+      bv_nat at h0
+      have hl : i + 1 = o.len := by omega
+      dx_run hlive at 0x800065f0
+      refine hk _ (by keeps_tac hkeep) ?_
+      have hv1 : dval (o.ds.take (i + 1)) < 2 ^ 63 := by omega
+      bsimp [max0_ofNat hv1]
+      unfold num2longVal
+      rw [ite_eq_left (by rw [show o.len - 1 = i by omega]; exact hv), hl]
+    · intro h0
+      bv_nat at h0
+      dx_run hlive at 0x800065f0
+      all_goals bsimp [h16, toInt_ofNat_small]
+      · intro hlt
+        refine ih (i + 1) _ (by omega) (by omega) ?_ (by omega) ?_ ?_ ?_ (by keeps_tac hkeep)
+        · bsimp []
+        · bsimp [Nat.sub_sub]
+        · bsimp [Nat.add_assoc]
+        · bsimp [h16]
+      · intro hge
+        dx_run hlive at 0x800065f0
+        rotate_left
+        · intro hc; bsimp [] at hc; bv_nat at hc; omega
+        intro _
+        refine hk _ (by keeps_tac hkeep) ?_
+        bsimp []
+        unfold num2longVal
+        have := dval_take_mono o.ds (show i + 1 ≤ o.len - 1 by omega)
+        simp only [show ¬ dval (o.ds.take (o.len - 1)) ≤ 214748364 by omega, ite_false]
+
+/-- `Num.toLong` of an object: `num2longVal` with the sign. -/
+theorem NumRep.toLong_eq {o : NumRep} (hs : NumShape o) :
+    o.num.toLong = if o.neg then -(num2longVal o : Int) else (num2longVal o : Int) := by
+  have hip : o.num.intPart = dval (o.ds.take o.len) := by
+    have := dval_div_take o.ds hs.dig o.len
+    rw [hs.dsLen, Nat.add_sub_cancel_left] at this
+    exact this
+  have hlen := hs.lenPos
+  have h10 : dval (o.ds.take o.len) / 10 = dval (o.ds.take (o.len - 1)) := by
+    have e := dval_take_succ o.ds (m := o.len - 1) (by rw [hs.dsLen]; omega)
+    rw [Nat.sub_add_cancel hlen] at e
+    have := getD_digit hs.dig (o.len - 1)
+    omega
+  simp only [Dc.Num.toLong, hip, h10, num2longVal, NumRep.num_neg, Dc.Num.longMax]
+  by_cases hc : dval (o.ds.take (o.len - 1)) ≤ 214748364
+  · simp [hc]
+  · simp [hc]
+
+/-- **`bc_num2long(num)`** at `0x800065a0`: `a0 = Num.toLong n` (as a 64-bit
+`long`); clobbers `a1`–`a6`. -/
+theorem bc_num2long_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {o : NumRep} (h : NumAt Mt o)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 o.p) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R', Keeps [10, 11, 12, 13, 14, 15, 16] R' R → R' 10 = BitVec.ofInt 64 o.num.toLong →
+      DW live S Q (R 1) R' Mt) :
+    DW live S Q 0x800065a0#64 R Mt := by
+  num_facts h
+  have hl := h.len; have hv := h.value; have hsg := h.sign
+  have hV : num2longVal o ≤ 2147483649 := by
+    unfold num2longVal
+    split
+    · rename_i hc
+      have e := dval_take_succ o.ds (m := o.len - 1) (by omega)
+      rw [Nat.sub_add_cancel h.shape.lenPos] at e
+      have := getD_digit h.shape.dig (o.len - 1)
+      omega
+    · omega
+  dx_run hlive at 0x800065b8
+  all_goals bsimp [h10, hl, hv]
+  all_goals first | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
+  · intro hc; exact absurd hc (not_blez (by omega) (by omega))
+  intro _
+  dx_run hlive at 0x800065b8
+  all_goals bsimp [h10, hl, hv]
+  all_goals first | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
+  refine num2long_loop hlive hS h R (fun R' hkp h15 => ?_) _ 0 _ rfl (by omega) ?_ (by simp) ?_ ?_ ?_
+    (by keeps_tac Keeps.refl _ _)
+  · have h10' : R' 10 = BitVec.ofNat 64 o.p := (hkp.get 10).trans h10
+    have hkR : R' 1 = R 1 := hkp.get 1
+    have hlong := NumRep.toLong_eq h.shape
+    cases hneg : o.neg
+    · rw [hneg, signWord_false] at hsg
+      rw [hneg] at hlong
+      dx_run hlive
+      all_goals bsimp [h10', hsg, h15, hkR, hal]
+      all_goals first | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
+      · intro _
+        dx_run hlive
+        all_goals bsimp [h10', hsg, h15, hkR, hal]
+        refine hk _ (by keeps_tac (hkp.mono (by decide))) ?_
+        bsimp [hlong]
+        simp only [Bool.false_eq_true, ite_false, BitVec.ofInt_natCast]
+      · intro hc; exact absurd trivial hc
+    · rw [hneg, signWord_true] at hsg
+      rw [hneg] at hlong
+      dx_run hlive
+      all_goals bsimp [h10', hsg, h15, hkR, hal]
+      all_goals first | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
+      · intro hc; exact absurd hc (by decide)
+      · intro _
+        dx_run hlive
+        all_goals bsimp [h10', hsg, h15, hkR, hal]
+        refine hk _ (by keeps_tac (hkp.mono (by decide))) ?_
+        bsimp [hlong]
+        rw [BitVec.ofInt_neg, BitVec.ofInt_natCast]
+        exact BitVec.zero_sub _
+  all_goals bsimp [List.take_zero, dval_nil]
+
 end Dc.Mach

@@ -66,6 +66,9 @@ def ordWord : Ordering → BitVec 64
   | .eq => 0#64
   | .gt => 1#64
 
+@[simp] theorem signWord_false : signWord false = 0#64 := rfl
+@[simp] theorem signWord_true : signWord true = 1#64 := rfl
+
 theorem signWord_eq (b : Bool) : signWord b = boolWord b := by cases b <;> rfl
 
 /-- `addiw`'s result on a small word. -/
@@ -88,6 +91,26 @@ theorem sltiu1 (x : BitVec 64) : zopz0zI_u x 1#64 = decide (x.toNat = 0) := by
   unfold zopz0zI_u
   simp [BitVec.toNatInt]
   omega
+
+/-- `slli` of a word. -/
+theorem shl_ofNat (v k : Nat) : BitVec.ofNat 64 v <<< k = BitVec.ofNat 64 (v * 2 ^ k) := by
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq, BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_mul_mod]
+
+/-- `not`, `srai 63`, `and` (`max (v, 0)`) on a nonnegative word. -/
+theorem max0_ofNat {v : Nat} (hv : v < 2 ^ 63) :
+    BitVec.ofNat 64 v &&& shift_bits_right_arith (BitVec.ofNat 64 v ^^^ 18446744073709551615#64) (63#6) =
+      BitVec.ofNat 64 v := by
+  have hx : BitVec.ofNat 64 v ^^^ 18446744073709551615#64 = ~~~(BitVec.ofNat 64 v) := by
+    rw [show (18446744073709551615#64 : BitVec 64) = BitVec.allOnes 64 by decide, BitVec.xor_allOnes]
+  have hmsb : (~~~(BitVec.ofNat 64 v)).msb = true := by
+    rw [BitVec.msb_eq_decide]; simp [BitVec.toNat_not]; omega
+  have hsh : (BitVec.ofNat 64 v) >>> 63 = 0#64 := by
+    apply BitVec.eq_of_toNat_eq; simp [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]; omega
+  unfold shift_bits_right_arith
+  rw [hx, show BitVec.toNatInt (63#6) = 63 from rfl]
+  rw [BitVec.sshiftRight_eq_of_msb_true hmsb, BitVec.not_not, show Int.toNat 63 = 63 from rfl, hsh]
+  rw [show (~~~(0#64) : BitVec 64) = BitVec.allOnes 64 by decide, BitVec.and_allOnes]
 
 /-- `addw` of two small words. -/
 theorem addw_ofNat {a b : Nat} (h : a + b < 2 ^ 31) :

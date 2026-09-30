@@ -19,3 +19,4 @@ import Dc.Mach.Bc.Rep
 import Dc.Mach.Bc.Base
 import Dc.Mach.Bc.Small
 import Dc.Mach.Bc.Scan
+import Dc.Mach.Bc.Compare

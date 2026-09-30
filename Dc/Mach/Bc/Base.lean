@@ -142,7 +142,8 @@ macro "bsimp" " [" ts:Lean.Parser.Tactic.simpLemma,* "]" loc:(Lean.Parser.Tactic
   `(tactic| simp (disch := omega) only [upd_apply, Nat.reduceEqDiff, ite_true, ite_false, reduceIte,
     LeanRV64DExecutable.Functions.sign_extend, Sail.BitVec.signExtend, BitVec.reduceSignExtend,
     BitVec.add_zero, BitVec.reduceAdd, BitVec.reduceOfNat, ofNat_add_ofNat, ofNat_toNat_lt,
-    Nat.reduceAdd, Nat.add_zero, Nat.sub_zero, ldv_lbu, $ts,*] $(loc)?)
+    Nat.reduceAdd, Nat.add_zero, Nat.sub_zero, ldv_lbu, boolWord, Bool.toNat_false, Bool.toNat_true,
+    $ts,*] $(loc)?)
 
 /-- The bounds of `h : NumAt Mt o`, with the heap's limits as literals. -/
 macro "num_facts " h:term : tactic =>
@@ -157,6 +158,33 @@ macro "num_facts " h:term : tactic =>
 (`%`-reduced; `omega` closes it with the bounds). -/
 macro "bv_nat" " at " h:ident : tactic =>
   `(tactic| simp only [ne_eq, ← BitVec.toNat_inj, BitVec.toNat_ofNat] at $h:ident)
+
+open Lean Elab Tactic Meta in
+/-- A goal `P → G` whose `P` holds by `decide`: introduce it. -/
+elab "bc_intro_true" : tactic => do
+  let g ← getMainGoal
+  let ty ← instantiateMVars (← g.getType)
+  let .forallE _ P _ _ := ty | throwError "bc_intro_true: not an implication"
+  unless (← isProp P) do throwError "bc_intro_true: not a proposition"
+  let pg ← mkFreshExprMVar P
+  let gs ← evalTacticAt (← `(tactic| decide)) pg.mvarId!
+  unless gs.isEmpty do throwError "bc_intro_true: decide left goals"
+  let (_, g') ← g.intro1
+  replaceMainGoal [g']
+
+/-- One round of symbolic execution: `dx_run`, then `bsimp [hs]` on every goal,
+address and heap-ownership side conditions, and branch hypotheses simplified
+(a branch whose hypothesis simplifies to `False` closes). -/
+syntax "bc_run " term:max term:max " [" Lean.Parser.Tactic.simpLemma,* "]" (" at " num+)? : tactic
+
+macro_rules
+  | `(tactic| bc_run $hl $hs [$ts,*] $[at $stops*]?) =>
+    `(tactic| (dx_run $hl $[at $stops*]?
+               all_goals (try bsimp [$ts,*])
+               all_goals (try (first | (simp only [LdOK, StOK, StOKb]; omega) |
+                 exact acc_heap $hs (by omega) (by omega)))
+               all_goals (try (intro hc; exact absurd hc (by decide)))
+               all_goals (try bc_intro_true)))
 
 /-- Address side conditions (`LdOK`, `StOK`, `StOKb`) by `omega`. -/
 macro "bc_addr" : tactic => `(tactic| (simp only [LdOK, StOK, StOKb]; omega))

@@ -148,4 +148,172 @@ theorem format_spec {live : Nat → Prop} {S : Nat → Prop}
     off := hoff
     fr := hfr }
 
+/-! ## Arguments and frames of the callers -/
+
+/-- The strings of the `%s` arguments, in `.rodata`. -/
+def ArgStrs : List Piece → List FArg → Prop
+  | [], _ => True
+  | .lit _ :: ps, args => ArgStrs ps args
+  | .conv _ _ .pct :: ps, args => ArgStrs ps args
+  | .conv _ _ .s :: ps, a :: args => RoStr a.w.toNat a.s ∧ ArgStrs ps args
+  | .conv _ _ _ :: ps, _ :: args => ArgStrs ps args
+  | .conv _ _ _ :: _, [] => False
+
+/-- The argument words at `ap`, `ap + 8`, …. -/
+def ArgWords (S : Nat → Prop) (M : Mem) (ap : Nat) (args : List FArg) : Prop :=
+  ∀ i (h : i < args.length), ArgW S M (ap + 8 * i) args[i].w
+
+theorem ArgWords.tail {S : Nat → Prop} {M : Mem} {ap : Nat} {a : FArg} {args : List FArg}
+    (h : ArgWords S M ap (a :: args)) : ArgWords S M (ap + 8) args := fun i hi => by
+  rw [show ap + 8 + 8 * i = ap + 8 * (i + 1) by omega]
+  exact h (i + 1) (by simp only [List.length_cons]; omega)
+
+/-- The arguments as `format` takes them (`ArgsAt`): the words and strings,
+outside `format`'s area and the sink's bytes. -/
+theorem argsAt_of {S : Nat → Prop} {M : Mem} {sp k : Nat} {dst : SinkDst} :
+    ∀ (ps : List Piece) (ap : Nat) (args : List FArg), ArgWords S M ap args → ArgStrs ps args →
+      (∀ j, ap ≤ j → j < ap + 8 * args.length → (j < sp - 192 ∨ sp ≤ j) ∧ ¬ dst.Byte k j) →
+      ArgsAt S M sp k dst ap ps args := by
+  intro ps
+  induction ps with
+  | nil => intro _ _ _ _ _; trivial
+  | cons pc ps ih =>
+  intro ap args hw hs hr
+  have hone : ∀ a args', args = a :: args' → ∀ kk : Conv, (kk = .s → RoStr a.w.toNat a.s) →
+      ArgStrs ps args' →
+      (ArgOK S M ap kk a ∧ ∀ j, j < 8 → (ap + j < sp - 192 ∨ sp ≤ ap + j) ∧ ¬ dst.Byte k (ap + j)) ∧
+        ArgsAt S M sp k dst (ap + 8) ps args' := by
+    intro a args' e kk hstr hs'
+    subst e
+    refine ⟨⟨⟨by
+      have h0 := hw 0 (by simp)
+      simp only [Nat.mul_zero, Nat.add_zero, List.getElem_cons_zero] at h0; exact h0, hstr⟩, fun j hj => hr _ (by omega) ?_⟩,
+      ih (ap + 8) args' hw.tail hs' fun j h1 h2 => hr j (by omega) ?_⟩
+    · simp only [List.length_cons]; omega
+    · simp only [List.length_cons]; omega
+  cases pc with
+  | lit c => exact ih ap args hw hs hr
+  | conv alt lng kk =>
+    cases kk with
+    | pct => exact ih ap args hw hs hr
+    | s => cases args with
+      | nil => exact hs.elim
+      | cons a args' => exact hone a args' rfl .s (fun _ => hs.1) hs.2
+    | c => cases args with
+      | nil => exact hs.elim
+      | cons a args' => exact hone a args' rfl .c (fun e => nomatch e) hs
+    | d => cases args with
+      | nil => exact hs.elim
+      | cons a args' => exact hone a args' rfl .d (fun e => nomatch e) hs
+    | u => cases args with
+      | nil => exact hs.elim
+      | cons a args' => exact hone a args' rfl .u (fun e => nomatch e) hs
+    | o => cases args with
+      | nil => exact hs.elim
+      | cons a args' => exact hone a args' rfl .o (fun e => nomatch e) hs
+
+/-- Argument words survive a memory that agrees on them. -/
+theorem ArgWords.transport {S : Nat → Prop} {M M' : Mem} {ap : Nat} {args : List FArg}
+    (h : ArgWords S M ap args)
+    (hag : ∀ j, ap ≤ j → j < ap + 8 * args.length → imgM M' j = imgM M j) :
+    ArgWords S M' ap args := fun i hi =>
+  ⟨(h i hi).own, (h i hi).lo, (h i hi).hi,
+    (ldv_ld_congr fun j hj => hag _ (by omega) (by omega)).trans (h i hi).val⟩
+
+/-- A callee's frame inside the caller's. -/
+theorem StackFrame.sub {S : Nat → Prop} {sp n m : Nat} (h : StackFrame S sp (m + n))
+    (hm : m % 16 = 0) : StackFrame S (sp - m) n where
+  own a h1 h2 := h.own a (by omega) (by omega)
+  lo := by have := h.lo; omega
+  hi := by have := h.hi; omega
+  al := by have := h.al; omega
+
+/-- A stream survives a memory that agrees on its word. -/
+theorem FdAt.transport {S : Nat → Prop} {M M' : Mem} {f fd : Nat} (h : FdAt S M f fd)
+    (hag : ∀ j, j < 4 → imgM M' (f + j) = imgM M (f + j)) : FdAt S M' f fd :=
+  ⟨h.own, (ldv_congr .lw fun j hj => hag j hj).trans h.val, h.lo, h.hi, h.small⟩
+
+/-! ## `vfprintf` (`0x80000748`) -/
+
+/-- **`vfprintf(f, fmt, ap)`** at `0x80000748` to the stream `f` (descriptor
+`fd ≠ 1`, not `stdout`): prints nothing, returns the length of
+`fmt ps args` as an `int`; only the 240 bytes below `sp` change; clobbers
+`t0`, `a0`–`a7`. -/
+theorem vfprintf_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp f fd p ap : Nat} {ps : List Piece} {args : List FArg}
+    (hfr : StackFrame S sp 240) (hfd : FdAt S M f fd) (hne : fd ≠ 1)
+    (hfoff : f + 4 ≤ sp - 240 ∨ sp ≤ f) (hok : ∀ pc ∈ ps, pc.ok)
+    (hro : RoBytes p (fmtBytes ps ++ [0#8])) (hw : ArgWords S M ap args) (hstr : ArgStrs ps args)
+    (hap : ∀ j, ap ≤ j → j < ap + 8 * args.length → j < sp - 240 ∨ sp ≤ j)
+    (hsh : (fmt ps args).length + 1 < 2 ^ 62)
+    (R : Nat → BitVec 64) (hsp : (R 2).toNat = sp) (h10 : (R 10).toNat = f)
+    (h11 : (R 11).toNat = p) (h12 : (R 12).toNat = ap) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps euClob R' R → R' 10 = sx32 (BitVec.ofNat 64 (fmt ps args).length) →
+      (∀ a, (a < sp - 240 ∨ sp ≤ a) → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
+    DW live S Q 0x80000748#64 R M := by
+  have hlo := hfr.lo
+  have hhi := hfr.hi
+  have hal2 := hfr.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  dx_run hlive at 0x80000168
+  all_goals (try dc_frame hfr)
+  have e0 : (R 2 + 18446744073709551568#64).toNat = sp - 48 := by
+    rw [BitVec.toNat_add, hsp]; simp only [BitVec.toNat_ofNat]; omega
+  have e : ∀ o, o < 48 → (R 2 + 18446744073709551568#64 + BitVec.ofNat 64 o).toNat = sp - 48 + o :=
+    fun o ho => by rw [BitVec.toNat_add, e0]; simp only [BitVec.toNat_ofNat]; omega
+  simp only [e 40 (by omega), e 8 (by omega), e 16 (by omega), e 24 (by omega), e0]
+  have hfd' := hfd.transport (M' := writeLog (writeLog (writeLog (writeLog (writeLog M
+      [(sp - 48, 8, R 10)]) [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 8, 8, 0#64)])
+      [(sp - 48 + 16, 8, 0#64)]) [(sp - 48 + 24, 8, 0#64)]) fun j hj => by
+    simp (disch := omega) only [imgM_store_miss]
+  refine format_spec hlive (sp := sp - 48) (k := sp - 48) (ap := ap) (dst := .stream f fd)
+    (hfr.sub (m := 48) (n := 192) (by omega)) ?hs ?hoff hok hro ?hargs hsh _ ?hsp ?h10 ?h11 ?h12
+    (by gnorm) fun R' M' hkp h10' hs' hfr' => ?_
+  case hs =>
+    exact {
+      own := fun i hi => hfr.own _ (by omega) (by omega)
+      al := by omega
+      lo := by omega
+      hi := by omega
+      fw := by
+        simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss, SinkDst.fw]
+        rw [← h10]; apply BitVec.eq_of_toNat_eq
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (R 10).isLt]
+      len := by simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss, List.length_nil]
+      short := by simp
+      dstAt := .stream hfd' hne (by omega) }
+  case hoff =>
+    intro a ha
+    rcases ha with ha | ha <;> omega
+  case hargs =>
+    refine argsAt_of ps ap args (hw.transport fun j h1 h2 => ?_) hstr fun j h1 h2 => ?_
+    · have := hap j h1 h2
+      simp (disch := omega) only [imgM_store_miss]
+    · have := hap j h1 h2
+      exact ⟨by omega, fun hb => by have := hb.1; have := hb.2; omega⟩
+  case hsp => gnorm; exact e0
+  case h10 => gnorm; exact e0
+  case h11 => gnorm; exact h11
+  case h12 => gnorm; exact h12
+  gnorm
+  have hsp' : (R' 2).toNat = sp - 48 := by rw [hkp.get 2]; gnorm; exact e0
+  have hra : ldv .ld M' (sp - 48 + 40) = R 1 := by
+    rw [ldv_ld_congr (Mt' := M') (Mt := writeLog (writeLog (writeLog (writeLog (writeLog M
+      [(sp - 48, 8, R 10)]) [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 8, 8, 0#64)])
+      [(sp - 48 + 16, 8, 0#64)]) [(sp - 48 + 24, 8, 0#64)]) fun j hj =>
+        hfr' _ (.inr (by omega)) fun hb => by have := hb.2; omega]
+    simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss]
+  have e40 : (R' 2 + 40#64).toNat = sp - 48 + 40 := by rw [BitVec.toNat_add, hsp']; gnorm; omega
+  dx_run hlive
+  all_goals (try dc_frame hfr)
+  all_goals simp only [e40, hra]
+  · gnorm; exact hal
+  refine hk _ M' ?_ (by gnorm; exact h10') fun a ha => ?_
+  · refine Keeps.restore (by rw [hkp.get 2]; gnorm; exact add_lits_cancel _ _ _ (by decide)) ?_
+    refine Keeps.restore rfl ?_
+    exact (hkp.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _))
+  · rw [hfr' a (by omega) fun hb => by have := hb.1; have := hb.2; omega]
+    simp (disch := omega) only [imgM_store_miss]
+
 end Dc.Mach

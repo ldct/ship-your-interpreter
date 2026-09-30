@@ -15,3 +15,7 @@ import Dc.Mach.EmitSites
 import Dc.Mach.EmitUnsigned
 import Dc.Mach.Format
 import Dc.Mach.Printf
+import Dc.Mach.Bc.Rep
+import Dc.Mach.Bc.Base
+import Dc.Mach.Bc.Small
+import Dc.Mach.Bc.Scan

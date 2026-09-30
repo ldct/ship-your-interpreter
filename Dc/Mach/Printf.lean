@@ -7,18 +7,20 @@ The entry points of the formatter (`libc.c`), over the loop `fmt_loop`
 (`Format.lean`):
 
 - `format_spec` (`0x80000168`): `format(k, fmt, ap)` from an empty sink at
-  `k`; the sink receives `fmt ps args` (`Dc.Mach.fmt`) and `a0` is its length
-  (as the C `int`); only `format`'s 192-byte stack area (its frame and
+  `k`; the sink receives `fmt ps args` (`Dc.Mach.fmt`), the console shows
+  it when the sink is `stdout` (`SinkDst.shown`), and `a0` is its length (as
+  the C `int`); only `format`'s 192-byte stack area (its frame and
   `emit_unsigned`'s) and the sink's count word and buffer change.
-- `vfprintf_spec`, `fprintf_spec`: to a stream that is not `stdout` (every
-  call in dc passes `stderr`): the run returns with the length, printing
-  nothing, and only its stack area changes.
-- `snprintf_spec`: into an owned buffer of `n > 0` bytes: its first
-  `min (len, n - 1)` bytes are the output, then the NUL.
+- `vfprintf_spec`, `fprintf_spec`: to the stream `f` with descriptor `fd`:
+  the console gains `fdOut fd (bytesStr (fmt ps args))` (the output on
+  `stdout`, nothing on `stderr`), the run returns with the length, and only
+  its stack area changes.
+- `snprintf_spec`: into an owned buffer of `n` bytes: its first
+  `min (len, n - 1)` bytes are the output, then the NUL (for `n > 0`).
 
 `fprintf` and `snprintf` take their variable arguments in registers
 (`a2`–`a7` and `a3`–`a7`), which the callee spills below the caller's `sp`;
-dc passes at most five.
+dc's formats take at most three.
 -/
 
 namespace Dc.Mach
@@ -79,7 +81,7 @@ sink receives `fmt ps args`, `a0` is its length as an `int`; only the 192
 bytes below `sp` and the sink's count word and buffer change; clobbers `t0`,
 `a0`–`a7`. -/
 theorem format_spec {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k p ap : Nat} {dst : SinkDst} {ps : List Piece}
     {args : List FArg} (hfr : StackFrame S sp 192) (hs : SinkAt S M k dst [])
     (hoff : ∀ a, dst.Read k a → a < sp - 192 ∨ sp ≤ a) (hok : ∀ pc ∈ ps, pc.ok)
@@ -90,8 +92,8 @@ theorem format_spec {live : Nat → Prop} {S : Nat → Prop}
     (hk : ∀ R' M', Keeps euClob R' R → R' 10 = sx32 (BitVec.ofNat 64 (fmt ps args).length) →
       SinkAt S M' k dst (fmt ps args) →
       (∀ a, (a < sp - 192 ∨ sp ≤ a) → ¬ dst.Byte k a → imgM M' a = imgM M a) →
-      DW live S Q (R 1) R' M') :
-    DW live S Q 0x80000168#64 R M := by
+      DWO live S Q (t0 ++ dst.shown (fmt ps args)) (R 1) R' M') :
+    DWO live S Q t0 0x80000168#64 R M := by
   have hlo := hfr.lo
   have hhi := hfr.hi
   have hal2 := hfr.al
@@ -106,6 +108,9 @@ theorem format_spec {live : Nat → Prop} {S : Nat → Prop}
   · rw [ea]; intro x hx; rw [accAddrs_one, List.mem_singleton] at hx; subst hx
     rw [hb1]; exact hb2
   rw [ea, ldvf_lbu, hb1]
+  have e0 : t0 ++ dst.shown [] = t0 := by
+    cases dst <;> simp [SinkDst.shown, bytesStr, fdOut_empty]
+  rw [← e0]
   by_cases hne : ps = []
   · subst hne
     simp only [fbyte, fmt] at hk ⊢
@@ -241,14 +246,14 @@ theorem DW.memEq {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
 
 /-! ## `vfprintf` (`0x80000748`) -/
 
-/-- **`vfprintf(f, fmt, ap)`** at `0x80000748` to the stream `f` (descriptor
-`fd ≠ 1`, not `stdout`): prints nothing, returns the length of
-`fmt ps args` as an `int`; only the 240 bytes below `sp` change; clobbers
-`t0`, `a0`–`a7`. -/
+/-- **`vfprintf(f, fmt, ap)`** at `0x80000748` to the stream `f` with
+descriptor `fd`: prints `fmt ps args` when `fd = 1` (`fdOut`), returns its
+length as an `int`; only the 240 bytes below `sp` change; clobbers `t0`,
+`a0`–`a7`. -/
 theorem vfprintf_spec {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp f fd p ap : Nat} {ps : List Piece} {args : List FArg}
-    (hfr : StackFrame S sp 240) (hfd : FdAt S M f fd) (hne : fd ≠ 1)
+    (hfr : StackFrame S sp 240) (hfd : FdAt S M f fd)
     (hfoff : f + 4 ≤ sp - 240 ∨ sp ≤ f) (hok : ∀ pc ∈ ps, pc.ok)
     (hro : RoBytes p (fmtBytes ps ++ [0#8])) (hw : ArgWords S M ap args) (hstr : ArgStrs ps args)
     (hap : ∀ j, ap ≤ j → j < ap + 8 * args.length → j < sp - 240 ∨ sp ≤ j)
@@ -256,8 +261,9 @@ theorem vfprintf_spec {live : Nat → Prop} {S : Nat → Prop}
     (R : Nat → BitVec 64) (hsp : (R 2).toNat = sp) (h10 : (R 10).toNat = f)
     (h11 : (R 11).toNat = p) (h12 : (R 12).toNat = ap) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M', Keeps euClob R' R → R' 10 = sx32 (BitVec.ofNat 64 (fmt ps args).length) →
-      (∀ a, (a < sp - 240 ∨ sp ≤ a) → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
-    DW live S Q 0x80000748#64 R M := by
+      (∀ a, (a < sp - 240 ∨ sp ≤ a) → imgM M' a = imgM M a) →
+      DWO live S Q (t0 ++ fdOut fd (bytesStr (fmt ps args))) (R 1) R' M') :
+    DWO live S Q t0 0x80000748#64 R M := by
   have hlo := hfr.lo
   have hhi := hfr.hi
   have hal2 := hfr.al
@@ -288,7 +294,7 @@ theorem vfprintf_spec {live : Nat → Prop} {S : Nat → Prop}
         rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (R 10).isLt]
       len := by simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss, List.length_nil]
       short := by simp
-      dstAt := .stream hfd' hne (by omega) }
+      dstAt := .stream hfd' (by omega) }
   case hoff =>
     intro a ha
     rcases ha with ha | ha <;> omega
@@ -327,14 +333,14 @@ theorem vfprintf_spec {live : Nat → Prop} {S : Nat → Prop}
 /-- The registers `fprintf` may change: `emit_unsigned`'s, `t1` and `t3`. -/
 abbrev fprintfClob : List Nat := [5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 28]
 
-/-- **`fprintf(f, fmt, …)`** at `0x80000774` to the stream `f` (descriptor
-`fd ≠ 1`, not `stdout`), with at most six variable arguments, the words in
-`a2`–`a7`: prints nothing, returns the length of `fmt ps args` as an `int`;
-only the 304 bytes below `sp` change. -/
+/-- **`fprintf(f, fmt, …)`** at `0x80000774` to the stream `f` with
+descriptor `fd`, with at most six variable arguments, the words in `a2`–`a7`:
+prints `fmt ps args` when `fd = 1` (`fdOut`), returns its length as an
+`int`; only the 304 bytes below `sp` change. -/
 theorem fprintf_spec {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp f fd p : Nat} {ps : List Piece} {args : List FArg}
-    (hfr : StackFrame S sp 304) (hfd : FdAt S M f fd) (hne : fd ≠ 1)
+    (hfr : StackFrame S sp 304) (hfd : FdAt S M f fd)
     (hfoff : f + 4 ≤ sp - 304 ∨ sp ≤ f) (hok : ∀ pc ∈ ps, pc.ok)
     (hro : RoBytes p (fmtBytes ps ++ [0#8])) (hstr : ArgStrs ps args)
     (hsh : (fmt ps args).length + 1 < 2 ^ 62)
@@ -344,8 +350,9 @@ theorem fprintf_spec {live : Nat → Prop} {S : Nat → Prop}
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M', Keeps fprintfClob R' R →
       R' 10 = sx32 (BitVec.ofNat 64 (fmt ps args).length) →
-      (∀ a, (a < sp - 304 ∨ sp ≤ a) → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
-    DW live S Q 0x80000774#64 R M := by
+      (∀ a, (a < sp - 304 ∨ sp ≤ a) → imgM M' a = imgM M a) →
+      DWO live S Q (t0 ++ fdOut fd (bytesStr (fmt ps args))) (R 1) R' M') :
+    DWO live S Q t0 0x80000774#64 R M := by
   have hlo := hfr.lo
   have hhi := hfr.hi
   have hal2 := hfr.al
@@ -391,7 +398,7 @@ theorem fprintf_spec {live : Nat → Prop} {S : Nat → Prop}
       len := by
         rw [hMb]; simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss, List.length_nil]
       short := by simp
-      dstAt := .stream hfd' hne (by omega) }
+      dstAt := .stream hfd' (by omega) }
   case hoff =>
     intro a ha
     rcases ha with ha | ha <;> omega
@@ -561,7 +568,7 @@ theorem snprintf_ret {live : Nat → Prop} {S : Nat → Prop}
 first `min L (n - 1)` bytes are the output and the next is NUL (for
 `n > 0`); only the buffer and the 320 bytes below `sp` change. -/
 theorem snprintf_spec {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp buf n p : Nat} {ps : List Piece} {args : List FArg}
     (hfr : StackFrame S sp 320) (hb : OwnedBytes S buf n) (hbn : n < 2 ^ 62)
     (hboff : buf + n ≤ sp - 320 ∨ sp ≤ buf) (hok : ∀ pc ∈ ps, pc.ok)
@@ -576,8 +583,8 @@ theorem snprintf_spec {live : Nat → Prop} {S : Nat → Prop}
       (∀ j (h : j < (fmt ps args).length), j + 1 < n → imgM M' (buf + j) = (fmt ps args)[j]) →
       (0 < n → imgM M' (buf + min (fmt ps args).length (n - 1)) = 0#8) →
       (∀ a, (a < sp - 320 ∨ sp ≤ a) → ¬ (buf ≤ a ∧ a < buf + n) → imgM M' a = imgM M a) →
-      DW live S Q (R 1) R' M') :
-    DW live S Q 0x800007c8#64 R M := by
+      DWO live S Q t0 (R 1) R' M') :
+    DWO live S Q t0 0x800007c8#64 R M := by
   have hlo := hfr.lo
   have hhi := hfr.hi
   have hal2 := hfr.al
@@ -670,6 +677,8 @@ theorem snprintf_spec {live : Nat → Prop} {S : Nat → Prop}
     | buffer _ _ _ _ _ hc => exact hc
   have hlen' : ldv .ld M' (sp - 128 + 40) = BitVec.ofNat 64 (fmt ps args).length := by
     have := hs'.len; rwa [show sp - 128 + 16 + 24 = sp - 128 + 40 by omega] at this
+  have et : t0 ++ (SinkDst.buffer buf n).shown (fmt ps args) = t0 := by simp [SinkDst.shown]
+  rw [et]
   refine snprintf_ret hlive hfr hb hboff hbn hL (ks := snprintfClob) R R' hsp'
     (by rw [hkp.get 2]; gnorm; exact add_lits_cancel _ _ _ (by decide)) hra' hs0' hs1' hal hlen'
     ((hkp.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _))) (by decide)

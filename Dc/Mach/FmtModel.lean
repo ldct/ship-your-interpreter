@@ -15,10 +15,13 @@ import Dc.Mach.Realloc
   string it points to.
 - `fmt ps as`: the bytes `format` produces (`udigits b v`: `v` in base `b`,
   most significant digit first, as `emit_unsigned` writes it).
-- The sink (`SinkAt`): a stream that is not `stdout` (the run prints
-  nothing), or a buffer of `size` bytes whose first `size - 1` bytes receive
-  the output; `len` counts every byte produced. `SinkAt.bump`/`SinkAt.put`
-  are the two memory effects of one emitted byte.
+- The sink (`SinkAt`): a stream (on `stdout` the run prints the output, on
+  any other descriptor nothing), or a buffer of `size` bytes whose first
+  `size - 1` bytes receive the output; `len` counts every byte produced.
+  `SinkAt.bump`/`SinkAt.put` are the two memory effects of one emitted byte.
+- The console (`SinkDst.shown`, `DWS`): the formatter's runs are printing
+  runs (`DWO`) whose console is the text at entry followed by what the sink
+  has shown of the output so far.
 - Strings the formatter reads (the format and the `%s` arguments) are in
   `.rodata` (`RoStr`): dc passes only string literals.
 -/
@@ -192,7 +195,7 @@ structure RoStr (p : Nat) (s : List (BitVec 8)) : Prop where
 
 /-! ## The sink -/
 
-/-- Where a sink sends its bytes: a stream (never `stdout`), or a buffer. -/
+/-- Where a sink sends its bytes: a stream, or a buffer. -/
 inductive SinkDst
   | stream (f fd : Nat)
   | buffer (buf size : Nat)
@@ -209,7 +212,7 @@ def SinkDst.Byte (k : Nat) : SinkDst → Nat → Prop
 
 /-- The destination's facts after the output `out`. -/
 inductive DstAt (S : Nat → Prop) (Mt : Mem) (k : Nat) : SinkDst → List (BitVec 8) → Prop
-  | stream {f fd : Nat} {out : List (BitVec 8)} : FdAt S Mt f fd → fd ≠ 1 →
+  | stream {f fd : Nat} {out : List (BitVec 8)} : FdAt S Mt f fd →
       (f + 4 ≤ k ∨ k + 32 ≤ f) → DstAt S Mt k (.stream f fd) out
   | buffer {buf size : Nat} {out : List (BitVec 8)} : OwnedBytes S buf size →
       (buf + size ≤ k ∨ k + 32 ≤ buf) → size < 2 ^ 62 →
@@ -236,6 +239,42 @@ structure Emitted (S : Nat → Prop) (Mt Mt' : Mem) (k : Nat) (dst : SinkDst)
     (out : List (BitVec 8)) : Prop where
   sink : SinkAt S Mt' k dst out
   frame : ∀ a, ¬ dst.Byte k a → imgM Mt' a = imgM Mt a
+
+/-- The console text of the bytes `l`. -/
+def bytesStr : List (BitVec 8) → String
+  | [] => ""
+  | c :: l => putcStr c ++ bytesStr l
+
+theorem bytesStr_append : ∀ (l1 l2 : List (BitVec 8)), bytesStr (l1 ++ l2) = bytesStr l1 ++ bytesStr l2
+  | [], l2 => by simp [bytesStr]
+  | c :: l1, l2 => by simp only [List.cons_append, bytesStr, bytesStr_append l1 l2, String.append_assoc]
+
+/-- What the destination shows on the console of the output `out`: all of it
+on `stdout`, nothing elsewhere. -/
+def SinkDst.shown : SinkDst → List (BitVec 8) → String
+  | .stream _ fd, out => fdOut fd (bytesStr out)
+  | .buffer _ _, _ => ""
+
+/-- One more byte shown on `stdout`. -/
+theorem SinkDst.shown_print {f : Nat} (out : List (BitVec 8)) (c : BitVec 8) :
+    (SinkDst.stream f 1).shown (out ++ [c]) = (SinkDst.stream f 1).shown out ++ putcStr c := by
+  simp [SinkDst.shown, fdOut_one, bytesStr_append, bytesStr]
+
+/-- One more byte on another stream or a buffer shows nothing. -/
+theorem SinkDst.shown_silent {dst : SinkDst} (h : ∀ f, dst ≠ .stream f 1)
+    (out l : List (BitVec 8)) : dst.shown (out ++ l) = dst.shown out := by
+  cases dst with
+  | stream f fd =>
+    have hne : fd ≠ 1 := fun e => h f (by rw [e])
+    simp [SinkDst.shown, fdOut_ne hne]
+  | buffer => rfl
+
+/-- **A formatter run**: a printing run (`DWO`) whose console is `t0` followed
+by what the sink `dst` has shown of the output `out`. -/
+abbrev DWS (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (t0 : String) (dst : SinkDst) (out : List (BitVec 8)) :
+    BitVec 64 → (Nat → BitVec 64) → Mem → Prop :=
+  DWO live S Q (t0 ++ dst.shown out)
 
 /-- The bytes a sink reads: its four words, and the stream's descriptor word
 or the buffer. -/
@@ -264,8 +303,8 @@ theorem SinkAt.transport {S : Nat → Prop} {Mt Mt' : Mem} {k : Nat} {dst : Sink
   · have := hw 0 (by omega); rw [Nat.add_zero] at this; rw [this]; exact h.fw
   · rw [hw 24 (by omega)]; exact h.len
   · cases hd : h.dstAt with
-    | stream hfd hne hoff =>
-      refine .stream ⟨hfd.own, ?_, hfd.lo, hfd.hi, hfd.small⟩ hne hoff
+    | stream hfd hoff =>
+      refine .stream ⟨hfd.own, ?_, hfd.lo, hfd.hi, hfd.small⟩ hoff
       rw [ldv_congr .lw fun j hj => hag _ (.inr ⟨by omega, by have : j < 4 := hj; omega⟩)]
       exact hfd.val
     | buffer hb hoff hsz h8 h16 hc =>
@@ -303,8 +342,8 @@ theorem SinkAt.bump {S : Nat → Prop} {Mt : Mem} {k : Nat} {dst : SinkDst}
   · rw [ldv_ld_miss _ _ (by omega)]; exact h.fw
   · rw [ldv_store_hit, List.length_append, List.length_singleton]
   · cases h.dstAt with
-    | stream hfd hne hoff =>
-      refine .stream ⟨hfd.own, ?_, hfd.lo, hfd.hi, hfd.small⟩ hne hoff
+    | stream hfd hoff =>
+      refine .stream ⟨hfd.own, ?_, hfd.lo, hfd.hi, hfd.small⟩ hoff
       rw [ldv_lw_miss _ _ (by omega)]; exact hfd.val
     | @buffer buf size _ hb hoff hsz h8 h16 hc =>
       have hs := hfull buf size rfl

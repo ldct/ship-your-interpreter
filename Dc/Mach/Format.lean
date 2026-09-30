@@ -250,12 +250,13 @@ theorem fmt_next_800002f0 {live : Nat → Prop} {S : Nat → Prop}
 /-- What follows a piece whose last byte is at `q`: the byte `b` at `q + 1`
 starts the next piece (loop head) or is the NUL (exit), with the arguments at
 `ap` and the output `out`. -/
-def FmtK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) (M0 : Mem)
-    (sp k : Nat) (dst : SinkDst) (R0 : Nat → BitVec 64) (ap : Nat) (out : List (BitVec 8))
-    (q : Nat) (b : BitVec 8) : Prop :=
+def FmtK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (t0 : String) (M0 : Mem) (sp k : Nat) (dst : SinkDst) (R0 : Nat → BitVec 64) (ap : Nat)
+    (out : List (BitVec 8)) (q : Nat) (b : BitVec 8) : Prop :=
   (b ≠ 0#8 → ∀ R M, FmtState S M0 sp k dst R0 ap out R M → (R 8).toNat = q + 1 →
-    (R 15).toNat = b.toNat → DW live S Q 0x800001d0#64 R M) ∧
-  (b = 0#8 → ∀ R M, FmtState S M0 sp k dst R0 ap out R M → DW live S Q 0x80000298#64 R M)
+    (R 15).toNat = b.toNat → DWS live S Q t0 dst out 0x800001d0#64 R M) ∧
+  (b = 0#8 → ∀ R M, FmtState S M0 sp k dst R0 ap out R M →
+    DWS live S Q t0 dst out 0x80000298#64 R M)
 
 /-- The state after emits (`Emitted`) and register writes outside the
 constants. -/
@@ -287,13 +288,13 @@ theorem SinkAt.len_nat {S : Nat → Prop} {M : Mem} {k : Nat} {dst : SinkDst}
 /-- **A literal byte** `c` at the loop head (`0x800001d0`, `c ≠ %`): emitted
 (`emit_80000310`), then the next site `0x80000320`. -/
 theorem fmt_lit {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {c b : BitVec 8}
     (hc : R 15 = zero_extend (m := 64) c) (hc37 : c ≠ 37#8) (hro : RoBytes (q + 1) [b])
-    (hsh : out.length + 1 < 2 ^ 62) (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [c]) q b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hsh : out.length + 1 < 2 ^ 62) (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ [c]) q b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   have hs := hst.sink
   have hkal := hs.al
   have hklo := hs.lo
@@ -317,7 +318,7 @@ theorem fmt_lit {live : Nat → Prop} {S : Nat → Prop}
   case l1 =>
     gnorm; rw [BitVec.toNat_add, hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)]
     gnorm; omega
-  case c => gnorm; rw [hc, lo8_zext]
+  case c => gnorm; exact hc
   case one => gnorm; exact hst.one
   have hst' := hst.emitted (R' := R') (ap' := ap) hE'
     ((hk'.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _)))
@@ -393,14 +394,14 @@ The conversion character is at `q` (`s0`).
 
 /-- **`%c`** with the argument word `w` at `ap`. -/
 theorem fmt_c {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {w : BitVec 64}
     (harg : ArgW S M ap w) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : out.length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ [w.setWidth 8]) q b) :
-    DW live S Q 0x800002b0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ [w.setWidth 8]) q b) :
+    DWS live S Q t0 dst out 0x800002b0#64 R M := by
   have hs := hst.sink
   have hkal := hs.al
   have hklo := hs.lo
@@ -430,13 +431,13 @@ theorem fmt_c {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`%%`**. -/
 theorem fmt_pct {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q)
     {b : BitVec 8} (hro : RoBytes (q + 1) [b]) (hsh : out.length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) q b) :
-    DW live S Q 0x8000038c#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ [37#8]) q b) :
+    DWS live S Q t0 dst out 0x8000038c#64 R M := by
   have hs := hst.sink
   have hkal := hs.al
   have hklo := hs.lo
@@ -482,21 +483,22 @@ theorem RoBytes.get {p : Nat} : ∀ {l : List (BitVec 8)} (i : Nat) (hi : i < l.
 /-- The string loop of `%s` at `0x80000264`: `a5` at the byte `i` of the
 string `str` at `w` (in `a4`), `a3` the count, `a0 = 1`. -/
 theorem fmt_str {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {q w : Nat} {str : List (BitVec 8)} (hstr : RoStr w str)
     {b : BitVec 8} (hro : RoBytes (q + 1) [b]) (hsh : out.length + str.length < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ str) q b) :
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ str) q b) :
     ∀ m i (R : Nat → BitVec 64) (M : Mem), str.length - i = m → i < str.length →
       FmtState S M0 sp k dst R0 ap (out ++ str.take i) R M → (R 8).toNat = q →
       (R 15).toNat = w + i → R 14 = zero_extend (m := 64) (dcROImg (w + i)) →
-      (R 13).toNat = out.length + i → (R 10).toNat = 1 → DW live S Q 0x80000264#64 R M := by
+      (R 13).toNat = out.length + i → (R 10).toNat = 1 → R 16 = 72339069014638592#64 →
+      DWS live S Q t0 dst (out ++ str.take i) 0x80000264#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   intro m
   induction m with
   | zero => intro i R M hm hi; omega
   | succ m ih =>
-  intro i R M hm hi hst hq h15 h14 h13 h10
+  intro i R M hm hi hst hq h15 h14 h13 h10 h16
   have hs := hst.sink
   have hkal := hs.al
   have hklo := hs.lo
@@ -507,17 +509,18 @@ theorem fmt_str {live : Nat → Prop} {S : Nat → Prop}
   rw [List.getElem_append_left hi] at hbi
   dx_run hlive at 0x80000270
   all_goals (try own_by hs)
-  refine emit_80000270 hlive hs (str[i]) (by rw [hlen]; omega) _ ?kr ?fr ?lr ?l1 ?c ?one
+  refine emit_80000270 hlive hs (str[i]) (by rw [hlen]; omega) _ ?kr ?fr ?lr ?l1 ?c ?one ?pw
     fun R' M' hk' hr13 hE' => ?_
   case kr => gnorm; exact hk9
   case fr => gnorm; exact hs.fw_nat hk9
   case lr => gnorm; rw [h13, hlen]
   case l1 => gnorm; rw [BitVec.toNat_add, h13, hlen]; gnorm; omega
-  case c => gnorm; rw [h14, lo8_zext, hbi.1]
+  case c => gnorm; rw [h14, hbi.1]
   case one => gnorm; exact h10
+  case pw => gnorm; exact h16
   have htake : out ++ str.take i ++ [str[i]] = out ++ str.take (i + 1) := by
     rw [List.append_assoc, List.take_add_one, List.getElem?_eq_getElem hi]; rfl
-  rw [htake] at hE'
+  rw [htake] at hE' ⊢
   rw [hlen] at hr13
   have hst' := hst.emitted (R' := R') (ap' := ap) hE'
     ((hk'.mono (by decide)).trans (by keeps_tac (Keeps.refl _ _)))
@@ -539,12 +542,13 @@ theorem fmt_str {live : Nat → Prop} {S : Nat → Prop}
       have : i + 1 = str.length := by omega
       rw [hbj.1, List.getElem_append_right (by omega)]; simp [this]; rfl
     refine ih (i + 1) _ M' (by omega) hi1 (hst'.regs (by keeps_tac (Keeps.refl _ _))
-      (by gnorm; exact hst'.rap)) ?_ ?_ ?_ ?_ ?_
+      (by gnorm; exact hst'.rap)) ?_ ?_ ?_ ?_ ?_ ?_
     · gnorm; rw [hk'.get 8]; gnorm; exact hq
     · gnorm; exact e15
     · gnorm; rfl
     · gnorm; rw [hr13]; try omega
     · gnorm; rw [hk'.get 10]; gnorm; exact h10
+    · gnorm; rw [hk'.get 16]; gnorm; exact h16
   · -- the NUL
     intro hz
     simp only [ne_eq, Classical.not_not] at hz
@@ -557,21 +561,21 @@ theorem fmt_str {live : Nat → Prop} {S : Nat → Prop}
       rw [toNat_zext8, hbj.1, List.getElem_append_left hlt] at this
       exact BitVec.eq_of_toNat_eq this
     have htk : str.take (i + 1) = str := List.take_of_length_le (by omega)
-    rw [htk] at hst'
+    rw [htk] at hst' ⊢
     exact fmt_next_8000028c hlive (hst'.regs (by keeps_tac (Keeps.refl _ _)) (by gnorm; exact hst'.rap))
       (by gnorm; rw [hk'.get 8]; gnorm; exact hq) hro
       (fun hb R'' hs'' => hK.1 hb R'' M' hs'') (fun hb R'' hs'' => hK.2 hb R'' M' hs'')
 
 /-- **`%s`** with the argument word `wv` at `ap`, a `.rodata` string `str`. -/
 theorem fmt_s {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {wv : BitVec 64}
     (harg : ArgW S M ap wv) {str : List (BitVec 8)} (hstr : RoStr wv.toNat str)
     {b : BitVec 8} (hro : RoBytes (q + 1) [b]) (hsh : out.length + str.length < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ str) q b) :
-    DW live S Q 0x80000244#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ str) q b) :
+    DWS live S Q t0 dst out 0x80000244#64 R M := by
   have hs := hst.sink
   have hkal := hs.al
   have hklo := hs.lo
@@ -619,13 +623,15 @@ theorem fmt_s {live : Nat → Prop} {S : Nat → Prop}
       rw [hb0.1, List.getElem_append_right (by omega)]; simp [h0]; rfl
     dx_run hlive at 0x80000264
     all_goals (try own_by hs)
-    refine fmt_str hlive hstr hro hsh hK (str.length - 0) 0 _ M rfl hlen ?_ ?_ ?_ ?_ ?_ ?_
+    rw [show out = out ++ str.take 0 by simp]
+    refine fmt_str hlive hstr hro hsh hK (str.length - 0) 0 _ M rfl hlen ?_ ?_ ?_ ?_ ?_ ?_ ?_
     · simp only [List.take_zero, List.append_nil]
       exact hst8.regs (by keeps_to (Keeps.refl _ _)) (by gnorm; exact hst8.rap)
     · gnorm; exact hq
     · gnorm; rw [ew]; try rfl
     · gnorm; rw [Nat.add_zero]
     · gnorm; exact hs.len_nat (by rw [BitVec.toNat_add, hk9]; gnorm; omega)
+    · gnorm
     · gnorm
 
 /-! ## The calls of `emit_unsigned` (`0x8000040c`, `0x80000464`)
@@ -680,33 +686,34 @@ macro "eu_call_tac " b:num : tactic =>
       ((hk'.mono (by decide)).trans (by keeps_to (Keeps.refl _ _)))
       (by rw [hk'.get 25]; gnorm; exact hst.rap)
     gnorm
+    rw [hu]
     refine next_lem hlive hst' (by rw [hk'.get 8]; gnorm; exact hq) hro ?_ ?_
     · intro hb R'' hs''; gnorm_at hs''; rw [hu] at hs''; exact hK.1 hb R'' M' hs''
     · intro hb R'' hs''; gnorm_at hs''; rw [hu] at hs''; exact hK.2 hb R'' M' hs''))
 
 /-- **`emit_unsigned(k, u, 10)`** from `0x8000040c`, then the next site. -/
 theorem fmt_dec {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {u : Nat}
     (hu : (R 11).toNat = u) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : out.length + ndig 10 u < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ udigits 10 u) q b) :
-    DW live S Q 0x8000040c#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ udigits 10 u) q b) :
+    DWS live S Q t0 dst out 0x8000040c#64 R M := by
   have next_lem := @fmt_next_80000418
   eu_call_tac 10
 
 /-- **`emit_unsigned(k, u, 8)`** from `0x80000464`, then the next site. -/
 theorem fmt_oct {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {u : Nat}
     (hu : (R 11).toNat = u) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : out.length + ndig 8 u < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ udigits 8 u) q b) :
-    DW live S Q 0x80000464#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ udigits 8 u) q b) :
+    DWS live S Q t0 dst out 0x80000464#64 R M := by
   have next_lem := @fmt_next_80000470
   eu_call_tac 8
 
@@ -724,14 +731,14 @@ theorem fmt_oct {live : Nat → Prop} {S : Nat → Prop}
 
 /-- A negative `%d` value `v` in `a5` at `0x8000049c`: `-`, then its magnitude. -/
 theorem fmt_neg {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q)
     {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : out.length + 1 + ndig 10 (-(R 15)).toNat < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ 45#8 :: udigits 10 (-(R 15)).toNat) q b) :
-    DW live S Q 0x8000049c#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ 45#8 :: udigits 10 (-(R 15)).toNat) q b) :
+    DWS live S Q t0 dst out 0x8000049c#64 R M := by
   have hs := hst.sink
   have hkal := hs.al
   have hklo := hs.lo
@@ -760,19 +767,19 @@ theorem fmt_neg {live : Nat → Prop} {S : Nat → Prop}
 /-- A `%d` value `v` in `a5` and `a1` at `0x80000408` (after the load):
 negative to `fmt_neg`, else `emit_unsigned`. -/
 theorem fmt_dval {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {v : BitVec 64}
     (h15 : R 15 = v) (h11 : R 11 = v) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : out.length + 1 + ndig 10 (if v.msb then (-v).toNat else v.toNat) < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ (if v.msb then 45#8 :: udigits 10 (-v).toNat
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ (if v.msb then 45#8 :: udigits 10 (-v).toNat
       else udigits 10 v.toNat)) q b) (pc : BitVec 64)
     (hpc : pc = 0x80000408#64 ∨ pc = 0x80000498#64) :
-    DW live S Q pc R M := by
-  have hneg : v.msb = true → DW live S Q 0x8000049c#64 R M := fun hn =>
+    DWS live S Q t0 dst out pc R M := by
+  have hneg : v.msb = true → DWS live S Q t0 dst out 0x8000049c#64 R M := fun hn =>
     fmt_neg hlive hst hq hro (by rw [h15]; simpa [hn] using hsh) (by rw [h15]; simpa [hn] using hK)
-  have hpos : v.msb = false → DW live S Q 0x8000040c#64 R M := fun hn =>
+  have hpos : v.msb = false → DWS live S Q t0 dst out 0x8000040c#64 R M := fun hn =>
     fmt_dec hlive hst hq (u := v.toNat) (by rw [h11]) hro (by simp [hn] at hsh; omega)
       (by simpa [hn] using hK)
   rcases hpc with rfl | rfl
@@ -816,14 +823,14 @@ macro "num_load_tac " j:num : tactic =>
 
 /-- **`%d`** (no `l`) with the argument word at `ap`. -/
 theorem fmt_d0 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {alt : Bool}
     {a : FArg} (harg : ArgW S M ap a.w) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : (out ++ convOut alt false .d a).length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut alt false .d a) q b) :
-    DW live S Q 0x800003fc#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut alt false .d a) q b) :
+    DWS live S Q t0 dst out 0x800003fc#64 R M := by
   num_load_tac 0x80000408
   rw [convOut_d] at hsh hK
   refine fmt_dval hlive (hst.regs (by keeps_to (Keeps.refl _ _))
@@ -834,14 +841,14 @@ theorem fmt_d0 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`%ld`** with the argument word at `ap`. -/
 theorem fmt_d1 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {alt : Bool}
     {a : FArg} (harg : ArgW S M ap a.w) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : (out ++ convOut alt true .d a).length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut alt true .d a) q b) :
-    DW live S Q 0x8000048c#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut alt true .d a) q b) :
+    DWS live S Q t0 dst out 0x8000048c#64 R M := by
   num_load_tac 0x80000498
   rw [convOut_d] at hsh hK
   refine fmt_dval hlive (hst.regs (by keeps_to (Keeps.refl _ _))
@@ -852,14 +859,14 @@ theorem fmt_d1 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`%u`** (no `l`) with the argument word at `ap`. -/
 theorem fmt_u0 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {alt : Bool}
     {a : FArg} (harg : ArgW S M ap a.w) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : (out ++ convOut alt false .u a).length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut alt false .u a) q b) :
-    DW live S Q 0x80000428#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut alt false .u a) q b) :
+    DWS live S Q t0 dst out 0x80000428#64 R M := by
   num_load_tac 0x8000040c
   simp only [convOut, List.length_append, udigits_length] at hsh hK
   refine fmt_dec hlive (hst.regs (by keeps_to (Keeps.refl _ _))
@@ -869,14 +876,14 @@ theorem fmt_u0 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`%lu`** with the argument word at `ap`. -/
 theorem fmt_u1 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {alt : Bool}
     {a : FArg} (harg : ArgW S M ap a.w) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : (out ++ convOut alt true .u a).length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut alt true .u a) q b) :
-    DW live S Q 0x800004d8#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut alt true .u a) q b) :
+    DWS live S Q t0 dst out 0x800004d8#64 R M := by
   num_load_tac 0x8000040c
   simp only [convOut, List.length_append, udigits_length] at hsh hK
   refine fmt_dec hlive (hst.regs (by keeps_to (Keeps.refl _ _))
@@ -898,23 +905,23 @@ theorem fmt_u1 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The `%o` value `u` in `a1`, the `#` flag in `a4`, at `0x8000043c`. -/
 theorem fmt_oalt {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {u : Nat}
     (hu : (R 11).toNat = u) {alt : Bool} (h14 : R 14 = if alt then 1#64 else 0#64)
     {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : out.length + 1 + ndig 8 u < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap
       (out ++ ((if alt && u ≠ 0 then [48#8] else []) ++ udigits 8 u)) q b) :
-    DW live S Q 0x8000043c#64 R M := by
+    DWS live S Q t0 dst out 0x8000043c#64 R M := by
   have hs := hst.sink
   have hkal := hs.al
   have hklo := hs.lo
   have hkhi := hs.hi
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hk9 := hst.rk
-  have hplain : (alt && u ≠ 0) = false → DW live S Q 0x80000464#64 R M := fun h =>
+  have hplain : (alt && u ≠ 0) = false → DWS live S Q t0 dst out 0x80000464#64 R M := fun h =>
     fmt_oct hlive hst hq hu hro (by omega) (by rw [h] at hK; simpa using hK)
   dx_run hlive at 0x80000464 0x80000440
   · intro hz
@@ -949,15 +956,15 @@ theorem fmt_oalt {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`%o`**/**`%#o`** (no `l`) with the argument word at `ap`. -/
 theorem fmt_o0 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {alt : Bool}
     (h14 : R 14 = if alt then 1#64 else 0#64)
     {a : FArg} (harg : ArgW S M ap a.w) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : out.length + 1 + ndig 8 (uval false a.w) < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut alt false .o a) q b) :
-    DW live S Q 0x80000434#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut alt false .o a) q b) :
+    DWS live S Q t0 dst out 0x80000434#64 R M := by
   num_load_tac 0x8000043c
   refine fmt_oalt hlive (hst.regs (by keeps_to (Keeps.refl _ _))
       (by gnorm; rw [BitVec.toNat_add, h25]; gnorm; omega)) (by gnorm; exact hq)
@@ -966,15 +973,15 @@ theorem fmt_o0 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`%lo`**/**`%#lo`** with the argument word at `ap`. -/
 theorem fmt_o1 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {q : Nat} (hq : (R 8).toNat = q) {alt : Bool}
     (h14 : R 14 = if alt then 1#64 else 0#64)
     {a : FArg} (harg : ArgW S M ap a.w) {b : BitVec 8} (hro : RoBytes (q + 1) [b])
     (hsh : out.length + 1 + ndig 8 (uval true a.w) < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut alt true .o a) q b) :
-    DW live S Q 0x80000480#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut alt true .o a) q b) :
+    DWS live S Q t0 dst out 0x80000480#64 R M := by
   num_load_tac 0x8000043c
   refine fmt_oalt hlive (hst.regs (by keeps_to (Keeps.refl _ _))
       (by gnorm; rw [BitVec.toNat_add, h25]; gnorm; omega)) (by gnorm; exact hq)
@@ -1388,15 +1395,15 @@ theorem sh_o {out : List (BitVec 8)} {alt lng : Bool} {a : FArg}
 
 /-- A conversion `%k` (`k` not `%`) from the loop head. -/
 theorem fmt_conv_ff {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
     (h15 : (R 15).toNat = 37) (kk : Conv) (hkk : kk ≠ .pct) {b : BitVec 8}
     (hro : RoBytes (p + 1) ([kk.char] ++ [b])) {a : FArg} (harg : ArgOK S M ap kk a)
     (hsh : (out ++ convOut false false kk a).length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut false false kk a) (p + 1) b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut false false kk a) (p + 1) b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   rw [RoBytes.append] at hro
   obtain ⟨hro1, hro2⟩ := hro
   simp only [List.length_append, List.length_cons, List.length_nil] at hro2
@@ -1416,15 +1423,15 @@ theorem fmt_conv_ff {live : Nat → Prop} {S : Nat → Prop}
 
 /-- A conversion `%#k` (`k` not `%`) from the loop head. -/
 theorem fmt_conv_tf {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
     (h15 : (R 15).toNat = 37) (kk : Conv) (hkk : kk ≠ .pct) {b : BitVec 8}
     (hro : RoBytes (p + 1) ([35#8] ++ [kk.char] ++ [b])) {a : FArg} (harg : ArgOK S M ap kk a)
     (hsh : (out ++ convOut true false kk a).length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut true false kk a) (p + 2) b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut true false kk a) (p + 2) b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   rw [RoBytes.append] at hro
   obtain ⟨hro1, hro2⟩ := hro
   simp only [List.length_append, List.length_cons, List.length_nil] at hro2
@@ -1444,15 +1451,15 @@ theorem fmt_conv_tf {live : Nat → Prop} {S : Nat → Prop}
 
 /-- A conversion `%lk` (`k` not `%`) from the loop head. -/
 theorem fmt_conv_ft {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
     (h15 : (R 15).toNat = 37) (kk : Conv) (hkk : kk ≠ .pct) {b : BitVec 8}
     (hro : RoBytes (p + 1) ([108#8] ++ [kk.char] ++ [b])) {a : FArg} (harg : ArgOK S M ap kk a)
     (hsh : (out ++ convOut false true kk a).length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut false true kk a) (p + 2) b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut false true kk a) (p + 2) b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   rw [RoBytes.append] at hro
   obtain ⟨hro1, hro2⟩ := hro
   simp only [List.length_append, List.length_cons, List.length_nil] at hro2
@@ -1472,15 +1479,15 @@ theorem fmt_conv_ft {live : Nat → Prop} {S : Nat → Prop}
 
 /-- A conversion `%#lk` (`k` not `%`) from the loop head. -/
 theorem fmt_conv_tt {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
     (h15 : (R 15).toNat = 37) (kk : Conv) (hkk : kk ≠ .pct) {b : BitVec 8}
     (hro : RoBytes (p + 1) ([35#8, 108#8] ++ [kk.char] ++ [b])) {a : FArg} (harg : ArgOK S M ap kk a)
     (hsh : (out ++ convOut true true kk a).length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 (ap + 8) (out ++ convOut true true kk a) (p + 3) b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 (ap + 8) (out ++ convOut true true kk a) (p + 3) b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   rw [RoBytes.append] at hro
   obtain ⟨hro1, hro2⟩ := hro
   simp only [List.length_append, List.length_cons, List.length_nil] at hro2
@@ -1500,14 +1507,14 @@ theorem fmt_conv_tt {live : Nat → Prop} {S : Nat → Prop}
 
 /-- `%%` from the loop head. -/
 theorem fmt_pct_ff {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
     (h15 : (R 15).toNat = 37) {b : BitVec 8}
     (hro : RoBytes (p + 1) ([37#8] ++ [b])) (hsh : out.length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) (p + 1) b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ [37#8]) (p + 1) b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   rw [RoBytes.append] at hro
   obtain ⟨hro1, hro2⟩ := hro
   simp only [List.length_append, List.length_cons, List.length_nil] at hro2
@@ -1521,14 +1528,14 @@ theorem fmt_pct_ff {live : Nat → Prop} {S : Nat → Prop}
 
 /-- `%#%` from the loop head. -/
 theorem fmt_pct_tf {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
     (h15 : (R 15).toNat = 37) {b : BitVec 8}
     (hro : RoBytes (p + 1) ([35#8] ++ [37#8] ++ [b])) (hsh : out.length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) (p + 2) b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ [37#8]) (p + 2) b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   rw [RoBytes.append] at hro
   obtain ⟨hro1, hro2⟩ := hro
   simp only [List.length_append, List.length_cons, List.length_nil] at hro2
@@ -1542,14 +1549,14 @@ theorem fmt_pct_tf {live : Nat → Prop} {S : Nat → Prop}
 
 /-- `%l%` from the loop head. -/
 theorem fmt_pct_ft {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
     (h15 : (R 15).toNat = 37) {b : BitVec 8}
     (hro : RoBytes (p + 1) ([108#8] ++ [37#8] ++ [b])) (hsh : out.length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) (p + 2) b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ [37#8]) (p + 2) b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   rw [RoBytes.append] at hro
   obtain ⟨hro1, hro2⟩ := hro
   simp only [List.length_append, List.length_cons, List.length_nil] at hro2
@@ -1563,14 +1570,14 @@ theorem fmt_pct_ft {live : Nat → Prop} {S : Nat → Prop}
 
 /-- `%#l%` from the loop head. -/
 theorem fmt_pct_tt {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {ap : Nat} {out : List (BitVec 8)} {R : Nat → BitVec 64} {M : Mem}
     (hst : FmtState S M0 sp k dst R0 ap out R M) {p : Nat} (hp : (R 8).toNat = p)
     (h15 : (R 15).toNat = 37) {b : BitVec 8}
     (hro : RoBytes (p + 1) ([35#8, 108#8] ++ [37#8] ++ [b])) (hsh : out.length + 1 < 2 ^ 62)
-    (hK : FmtK live S Q M0 sp k dst R0 ap (out ++ [37#8]) (p + 3) b) :
-    DW live S Q 0x800001d0#64 R M := by
+    (hK : FmtK live S Q t0 M0 sp k dst R0 ap (out ++ [37#8]) (p + 3) b) :
+    DWS live S Q t0 dst out 0x800001d0#64 R M := by
   rw [RoBytes.append] at hro
   obtain ⟨hro1, hro2⟩ := hro
   simp only [List.length_append, List.length_cons, List.length_nil] at hro2
@@ -1633,15 +1640,16 @@ theorem fmtBytes_head (ps : List Piece) : ∃ l, fmtBytes ps ++ [0#8] = fbyte ps
 at `p` (then the NUL) with the arguments `args` at `ap` produce the rest of
 `outF`, then the exit at `0x80000298`. -/
 theorem fmt_loop {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M0 : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {R0 : Nat → BitVec 64}
     {outF : List (BitVec 8)} (hshF : outF.length + 1 < 2 ^ 62)
-    (hexit : ∀ ap R M, FmtState S M0 sp k dst R0 ap outF R M → DW live S Q 0x80000298#64 R M) :
+    (hexit : ∀ ap R M, FmtState S M0 sp k dst R0 ap outF R M →
+      DWS live S Q t0 dst outF 0x80000298#64 R M) :
     ∀ (ps : List Piece) (p ap : Nat) (args : List FArg) (out : List (BitVec 8))
       (R : Nat → BitVec 64) (M : Mem), ps ≠ [] → (∀ pc ∈ ps, pc.ok) →
       FmtState S M0 sp k dst R0 ap out R M → (R 8).toNat = p → (R 15).toNat = (fbyte ps).toNat →
       RoBytes p (fmtBytes ps ++ [0#8]) → ArgsAt S M0 sp k dst ap ps args →
-      out ++ fmt ps args = outF → DW live S Q 0x800001d0#64 R M := by
+      out ++ fmt ps args = outF → DWS live S Q t0 dst out 0x800001d0#64 R M := by
   intro ps
   induction ps with
   | nil => intro p ap args out R M hne; exact absurd rfl hne
@@ -1654,7 +1662,7 @@ theorem fmt_loop {live : Nat → Prop} {S : Nat → Prop}
   have hpos : 1 ≤ pc.bytes.length := by cases pc <;> simp [Piece.bytes]
   -- what follows the piece
   have hK : ∀ ap' args' out', out' ++ fmt ps args' = outF → ArgsAt S M0 sp k dst ap' ps args' →
-      FmtK live S Q M0 sp k dst R0 ap' out' (p + pc.bytes.length - 1) (fbyte ps) := by
+      FmtK live S Q t0 M0 sp k dst R0 ap' out' (p + pc.bytes.length - 1) (fbyte ps) := by
     intro ap' args' out' hout' hargs'
     constructor
     · intro hb R' M' hst' hq h15'

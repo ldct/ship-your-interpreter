@@ -17,7 +17,9 @@ the count plus one already in registers, and ends after the store of the new
 count (the join). `emit_<pc>` runs one copy for a `SinkAt` sink: the byte is
 counted (`SinkAt.bump`) or stored and counted (`SinkAt.put`), and only the
 sink's count word and buffer change (`Emitted`); the register that held the
-new count still holds it. The copies differ only in their
+new count still holds it. The run is a formatter run (`DWS`): on `stdout`
+the copy's `tohost` store prints the byte (`stP_<pc>`, the console gains
+`putcStr c`), on any other destination the console is unchanged. The copies differ only in their
 registers and PCs; the proofs share the tactics below.
 -/
 
@@ -82,9 +84,9 @@ theorem SinkAt.bufWords {S : Nat → Prop} {Mt : Mem} {k buf size : Nat}
 /-- The stream of a stream sink. -/
 theorem SinkAt.streamFd {S : Nat → Prop} {Mt : Mem} {k f fd : Nat}
     {out : List (BitVec 8)} (h : SinkAt S Mt k (.stream f fd) out) :
-    FdAt S Mt f fd ∧ fd ≠ 1 ∧ (f + 4 ≤ k ∨ k + 32 ≤ f) := by
+    FdAt S Mt f fd ∧ (f + 4 ≤ k ∨ k + 32 ≤ f) := by
   cases h.dstAt with
-  | stream hfd hne hoff => exact ⟨hfd, hne, hoff⟩
+  | stream hfd hoff => exact ⟨hfd, hoff⟩
 
 set_option hygiene false in
 /-- The new count in the stored register: the count plus one in a register,
@@ -98,7 +100,13 @@ macro "len1_tac" : tactic =>
 set_option hygiene false in
 /-- The byte stored: the register byte `hc`, or a literal. -/
 macro "byte_tac" : tactic =>
-  `(tactic| first | (rw [sbData_eq]; exact hc) | exact hc | decide | (gnorm; decide))
+  `(tactic| first
+    | (rw [sbData_eq]; exact hc)
+    | exact hc
+    | (rw [hc]; exact sbData_zext _)
+    | (gnorm; rw [hc]; exact sbData_zext _)
+    | decide
+    | (gnorm; decide))
 
 set_option hygiene false in
 /-- **One inlined `emit`**, from the `beqz` on the sink's first word to the
@@ -108,7 +116,7 @@ theorem names its hypotheses `hlive`, `hs` (the sink), `hsh`, `hfr` (the
 first word), `hl1` (the count plus one), `hc` (the byte, unless literal) and
 `hk` (the continuation); the register holding `1` for a `beq`, if any, is in
 the context. -/
-macro "emit_tac " j:num kr:num fr:num ch:term:max : tactic =>
+macro "emit_tac " j:num kr:num fr:num ch:term:max pr:ident : tactic =>
   `(tactic| (
     have hkal := hs.al
     have hklo := hs.lo
@@ -118,29 +126,67 @@ macro "emit_tac " j:num kr:num fr:num ch:term:max : tactic =>
       rw [show (R $kr + 24#64).toNat = k + 24 by sx_addr]; exact hs.len
     cases dst with
     | stream f fd =>
-      obtain ⟨hfd, hne, hoff⟩ := hs.streamFd
+      obtain ⟨hfd, hoff⟩ := hs.streamFd
       have hflo := hfd.lo
       have hfhi := hfd.hi
       have hfsm := hfd.small
       try simp only [SinkDst.fw] at hfr
       have hval : ldv .lw Mt (R $fr).toNat = BitVec.ofNat 64 fd := by rw [hfr]; exact hfd.val
-      dx_run hlive at $j
-      all_goals (try own_by hfd)
-      all_goals (try own_by hs)
-      all_goals (try (intro hc'; exfalso; gnorm_at hc'
-                      try simp only [ne_eq, Classical.not_not] at hc'
-                      rw [hval] at hc'
-                      have := congrArg BitVec.toNat hc'; gnorm_at this
-                      rw [ofNat_toNat_lt (by omega)] at this; omega))
-      intro _
-      dx_run hlive at $j
-      all_goals (try own_by hs)
-      refine hk _ _ ?kp ?kl (hs.bump_at $ch (fun _ _ h => nomatch h) hsh ?ka ?kv)
-      case kp => keeps_tac (Keeps.refl _ _)
-      case kl => len1_tac
-      case ka => sx_addr
-      case kv => len1_tac
+      by_cases hfd1 : fd = 1
+      · -- `stdout`: the byte is printed
+        subst hfd1
+        simp only [DWS, SinkDst.shown_print, ← String.append_assoc] at hk
+        dx_run hlive at $j
+        all_goals (try own_by hfd)
+        all_goals (try own_by hs)
+        all_goals (try (intro hc'; exfalso; gnorm_at hc'
+                        try simp only [ne_eq] at hc'
+                        rw [hval] at hc'
+                        apply hc'
+                        first
+                          | rfl
+                          | (apply BitVec.eq_of_toNat_eq; simp only [BitVec.toNat_ofNat]; omega)))
+        intro _
+        dx_run hlive at $j
+        all_goals (try own_by hs)
+        refine $pr hlive $ch ?pb ?pw ?_
+        case pb => gnorm
+        case pw =>
+          gnorm
+          first
+            | decide
+            | rfl
+            | (rw [hc, hpw]; exact putcWord_zext _)
+            | (rw [hc]; exact putcWord_zext _)
+            | (rw [← hc]; exact putcWord_and _)
+        dx_run hlive at $j
+        all_goals (try own_by hs)
+        refine hk _ _ ?kp ?kl (hs.bump_at $ch (fun _ _ h => nomatch h) hsh ?ka ?kv)
+        case kp => keeps_tac (Keeps.refl _ _)
+        case kl => len1_tac
+        case ka => sx_addr
+        case kv => len1_tac
+      · -- another stream: nothing is printed
+        simp only [DWS, SinkDst.shown_silent (dst := .stream f fd) (fun f' e => hfd1 (by cases e; rfl))]
+          at hk
+        dx_run hlive at $j
+        all_goals (try own_by hfd)
+        all_goals (try own_by hs)
+        all_goals (try (intro hc'; exfalso; gnorm_at hc'
+                        try simp only [ne_eq, Classical.not_not] at hc'
+                        rw [hval] at hc'
+                        have := congrArg BitVec.toNat hc'; gnorm_at this
+                        rw [ofNat_toNat_lt (by omega)] at this; omega))
+        intro _
+        dx_run hlive at $j
+        all_goals (try own_by hs)
+        refine hk _ _ ?kp ?kl (hs.bump_at $ch (fun _ _ h => nomatch h) hsh ?ka ?kv)
+        case kp => keeps_tac (Keeps.refl _ _)
+        case kl => len1_tac
+        case ka => sx_addr
+        case kv => len1_tac
     | buffer buf size =>
+      simp only [DWS, SinkDst.shown_silent (dst := .buffer buf size) (fun f' e => nomatch e)] at hk
       obtain ⟨hb, hoff, hsz, h8, h16⟩ := hs.bufWords
       have hblo := hb.lo
       have hbhi := hb.hi
@@ -193,16 +239,18 @@ macro "emit_tac " j:num kr:num fr:num ch:term:max : tactic =>
 -/
 
 theorem emit_800000f4 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     (hs : SinkAt S Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 20).toNat = k) (hfr : (R 13).toNat = dst.fw)
     (hlr : (R 14).toNat = out.length) (hl1 : (R 11).toNat = out.length + 1)
-    (hc : lo8 (R 12) = c) (h1 : (R 16).toNat = 1)
-    (hk : ∀ R' Mt', Keeps [13, 14] R' R → (R' 14).toNat = out.length + 1 →
-      Emitted S Mt Mt' k dst (out ++ [c]) → DW live S Q 0x80000108#64 R' Mt') :
-    DW live S Q 0x800000f4#64 R Mt := by
-  emit_tac 0x80000108 20 13 c
+    (hc : R 12 = zero_extend (m := 64) c) (h1 : (R 16).toNat = 1)
+    (hpw : R 17 = 72339069014638592#64)
+    (hk : ∀ R' Mt', Keeps [12, 13, 14] R' R → (R' 14).toNat = out.length + 1 →
+      Emitted S Mt Mt' k dst (out ++ [c]) →
+      DWS live S Q t0 dst (out ++ [c]) 0x80000108#64 R' Mt') :
+    DWS live S Q t0 dst out 0x800000f4#64 R Mt := by
+  emit_tac 0x80000108 20 13 c stP_80000140
 
 /-! ## A literal byte (`0x80000310`)
 
@@ -218,16 +266,17 @@ one, `a5` the byte, `s3 = 1`.
 -/
 
 theorem emit_80000310 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     (hs : SinkAt S Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 13).toNat = dst.fw)
     (hlr : (R 12).toNat = out.length) (hl1 : (R 14).toNat = out.length + 1)
-    (hc : lo8 (R 15) = c) (h1 : (R 19).toNat = 1)
-    (hk : ∀ R' Mt', Keeps [13, 14] R' R → (R' 14).toNat = out.length + 1 →
-      Emitted S Mt Mt' k dst (out ++ [c]) → DW live S Q 0x80000320#64 R' Mt') :
-    DW live S Q 0x80000310#64 R Mt := by
-  emit_tac 0x80000320 9 13 c
+    (hc : R 15 = zero_extend (m := 64) c) (h1 : (R 19).toNat = 1)
+    (hk : ∀ R' Mt', Keeps [13, 14, 15] R' R → (R' 14).toNat = out.length + 1 →
+      Emitted S Mt Mt' k dst (out ++ [c]) →
+      DWS live S Q t0 dst (out ++ [c]) 0x80000320#64 R' Mt') :
+    DWS live S Q t0 dst out 0x80000310#64 R Mt := by
+  emit_tac 0x80000320 9 13 c stP_800003f0
 
 /-! ## `%%` (`0x80000398`)
 
@@ -243,15 +292,16 @@ one; the byte `%`.
 -/
 
 theorem emit_80000398 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     (hs : SinkAt S Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 14).toNat = dst.fw)
     (hlr : (R 13).toNat = out.length) (hl1 : (R 15).toNat = out.length + 1)
     (hk : ∀ R' Mt', Keeps [13, 14, 15] R' R → (R' 15).toNat = out.length + 1 →
-      Emitted S Mt Mt' k dst (out ++ [37#8]) → DW live S Q 0x800003ac#64 R' Mt') :
-    DW live S Q 0x80000398#64 R Mt := by
-  emit_tac 0x800003ac 9 14 (37#8)
+      Emitted S Mt Mt' k dst (out ++ [37#8]) →
+      DWS live S Q t0 dst (out ++ [37#8]) 0x800003ac#64 R' Mt') :
+    DWS live S Q t0 dst out 0x80000398#64 R Mt := by
+  emit_tac 0x800003ac 9 14 (37#8) stP_8000053c
 
 /-! ## `%c` (`0x800002c4`)
 
@@ -267,16 +317,17 @@ one, `a3` the argument word.
 -/
 
 theorem emit_800002c4 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     (hs : SinkAt S Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 14).toNat = dst.fw)
     (hlr : (R 12).toNat = out.length) (hl1 : (R 15).toNat = out.length + 1)
     (hc : lo8 (R 13) = c)
-    (hk : ∀ R' Mt', Keeps [12, 14, 15] R' R → (R' 15).toNat = out.length + 1 →
-      Emitted S Mt Mt' k dst (out ++ [c]) → DW live S Q 0x800002f0#64 R' Mt') :
-    DW live S Q 0x800002c4#64 R Mt := by
-  emit_tac 0x800002f0 9 14 c
+    (hk : ∀ R' Mt', Keeps [12, 13, 14, 15] R' R → (R' 15).toNat = out.length + 1 →
+      Emitted S Mt Mt' k dst (out ++ [c]) →
+      DWS live S Q t0 dst (out ++ [c]) 0x800002f0#64 R' Mt') :
+    DWS live S Q t0 dst out 0x800002c4#64 R Mt := by
+  emit_tac 0x800002f0 9 14 c stP_800002e8
 
 /-! ## The `0` of `%#o` (`0x80000450`)
 
@@ -292,15 +343,16 @@ one; the byte `0`.
 -/
 
 theorem emit_80000450 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     (hs : SinkAt S Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 14).toNat = dst.fw)
     (hlr : (R 13).toNat = out.length) (hl1 : (R 15).toNat = out.length + 1)
     (hk : ∀ R' Mt', Keeps [13, 14, 15] R' R → (R' 15).toNat = out.length + 1 →
-      Emitted S Mt Mt' k dst (out ++ [48#8]) → DW live S Q 0x80000464#64 R' Mt') :
-    DW live S Q 0x80000450#64 R Mt := by
-  emit_tac 0x80000464 9 14 (48#8)
+      Emitted S Mt Mt' k dst (out ++ [48#8]) →
+      DWS live S Q t0 dst (out ++ [48#8]) 0x80000464#64 R' Mt') :
+    DWS live S Q t0 dst out 0x80000450#64 R Mt := by
+  emit_tac 0x80000464 9 14 (48#8) stP_80000588
 
 /-! ## The `-` of `%d` (`0x800004a8`)
 
@@ -316,15 +368,16 @@ one; the byte `-`.
 -/
 
 theorem emit_800004a8 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     (hs : SinkAt S Mt k dst out) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 13).toNat = dst.fw)
     (hlr : (R 12).toNat = out.length) (hl1 : (R 14).toNat = out.length + 1)
     (hk : ∀ R' Mt', Keeps [12, 13, 14] R' R → (R' 14).toNat = out.length + 1 →
-      Emitted S Mt Mt' k dst (out ++ [45#8]) → DW live S Q 0x800004d0#64 R' Mt') :
-    DW live S Q 0x800004a8#64 R Mt := by
-  emit_tac 0x800004d0 9 13 (45#8)
+      Emitted S Mt Mt' k dst (out ++ [45#8]) →
+      DWS live S Q t0 dst (out ++ [45#8]) 0x800004d0#64 R' Mt') :
+    DWS live S Q t0 dst out 0x800004a8#64 R Mt := by
+  emit_tac 0x800004d0 9 13 (45#8) stP_800004c8
 
 /-! ## A byte of `%s` (`0x80000270`)
 
@@ -340,15 +393,17 @@ one, `a4` the byte, `a0 = 1`.
 -/
 
 theorem emit_80000270 {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     (hs : SinkAt S Mt k dst out) (c : BitVec 8) (hsh : out.length + 1 < 2 ^ 62)
     (R : Nat → BitVec 64) (hkr : (R 9).toNat = k) (hfr : (R 11).toNat = dst.fw)
     (hlr : (R 13).toNat = out.length) (hl1 : (R 12).toNat = out.length + 1)
-    (hc : lo8 (R 14) = c) (h1 : (R 10).toNat = 1)
-    (hk : ∀ R' Mt', Keeps [11, 12, 13] R' R → (R' 13).toNat = out.length + 1 →
-      Emitted S Mt Mt' k dst (out ++ [c]) → DW live S Q 0x80000284#64 R' Mt') :
-    DW live S Q 0x80000270#64 R Mt := by
-  emit_tac 0x80000284 9 11 c
+    (hc : R 14 = zero_extend (m := 64) c) (h1 : (R 10).toNat = 1)
+    (hpw : R 16 = 72339069014638592#64)
+    (hk : ∀ R' Mt', Keeps [11, 12, 13, 14] R' R → (R' 13).toNat = out.length + 1 →
+      Emitted S Mt Mt' k dst (out ++ [c]) →
+      DWS live S Q t0 dst (out ++ [c]) 0x80000284#64 R' Mt') :
+    DWS live S Q t0 dst out 0x80000270#64 R Mt := by
+  emit_tac 0x80000284 9 11 c stP_800002a8
 
 end Dc.Mach

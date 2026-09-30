@@ -129,19 +129,20 @@ theorem lo8_zext (b : BitVec 8) : lo8 (zero_extend (m := 64) b) = b := by
 `a0` one below the first digit, `a4` the count, the digits `g (N-1), …,
 g (j+1)` already emitted. -/
 theorem eu_emit {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     {M0 : Mem} (hfr : StackFrame S sp 96) (hoff : ∀ a, dst.Read k a → a < sp - 96 ∨ sp ≤ a)
     (R0 : Nat → BitVec 64) (hal : (R0 1).toNat % 4 = 0) {N : Nat} (hN : N ≤ 24)
     (g : Nat → BitVec 8) (hsh : out.length + N < 2 ^ 62)
     (hk : ∀ R' M', Keeps euClob R' R0 → Emitted S M0 M' k dst (out ++ emitted N g 0) →
-      DW live S Q (R0 1) R' M') :
+      DWS live S Q t0 dst (out ++ emitted N g 0) (R0 1) R' M') :
     ∀ j (R : Nat → BitVec 64) (M : Mem), j < N → (R 15).toNat = sp - 88 + j →
       (R 10).toNat = sp - 89 → (R 14).toNat = out.length + (N - (j + 1)) → (R 16).toNat = 1 →
-      (R 20).toNat = k → (R 2).toNat = sp - 96 → R 2 + 96#64 = R0 2 →
+      R 17 = 72339069014638592#64 → (R 20).toNat = k → (R 2).toNat = sp - 96 → R 2 + 96#64 = R0 2 →
       Keeps [1, 2, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] R R0 →
       EUSaved M (sp - 96) R0 → (∀ i, i < N → imgM M (sp - 88 + i) = g i) →
-      Emitted S M0 M k dst (out ++ emitted N g (j + 1)) → DW live S Q 0x800000e8#64 R M := by
+      Emitted S M0 M k dst (out ++ emitted N g (j + 1)) →
+      DWS live S Q t0 dst (out ++ emitted N g (j + 1)) 0x800000e8#64 R M := by
   have hlo := hfr.lo
   have hhi := hfr.hi
   have hal2 := hfr.al
@@ -149,7 +150,7 @@ theorem eu_emit {live : Nat → Prop} {S : Nat → Prop}
   intro j
   induction j using Nat.strongRecOn with
   | _ j ih =>
-  intro R M hj h15 h10 h14 h16 h20 h2 h2' hkeep hsv hdig hE
+  intro R M hj h15 h10 h14 h16 h17 h20 h2 h2' hkeep hsv hdig hE
   have hs := hE.sink
   have hkal := hs.al
   have hklo := hs.lo
@@ -162,7 +163,7 @@ theorem eu_emit {live : Nat → Prop} {S : Nat → Prop}
   all_goals (try own_by hs)
   all_goals (try dc_frame hfr)
   refine emit_800000f4 hlive hs (g j) (by simp [emitted_length]; omega) _ ?kr ?fr ?lr ?l1 ?c ?one
-    fun R' M' hk' hr14 hE' => ?_
+    ?pw fun R' M' hk' hr14 hE' => ?_
   case kr => gnorm; exact h20
   case fr =>
     gnorm
@@ -172,9 +173,10 @@ theorem eu_emit {live : Nat → Prop} {S : Nat → Prop}
     gnorm; rw [BitVec.toNat_add, h14]; simp [emitted_length]; omega
   case c =>
     gnorm
-    rw [ldv_lbu, lo8_zext, h15]
-    exact hdig j hj
+    rw [ldv_lbu, h15, hdig j hj]
   case one => gnorm; exact h16
+  case pw => gnorm; exact h17
+  rw [List.append_assoc, ← emitted_step g hj]
   -- after the emit (`0x80000108`)
   have hfm : ∀ a, (sp - 96 ≤ a ∧ a < sp) → imgM M' a = imgM M a := fun a ha =>
     hE'.frame a fun hb => by have := hoff a (SinkDst.read_of_byte hb); omega
@@ -201,11 +203,12 @@ theorem eu_emit {live : Nat → Prop} {S : Nat → Prop}
       have := congrArg BitVec.toNat hc
       rw [BitVec.toNat_add, e15, e10] at this; gnorm_at this; omega
     intro _
-    refine ih j (by omega) _ M' (by omega) ?_ ?_ ?_ ?_ ?_ ?_ ?_ (by keeps_tac hkeep') hsv' hdig' hE2
+    refine ih j (by omega) _ M' (by omega) ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ (by keeps_tac hkeep') hsv' hdig' hE2
     · gnorm; rw [BitVec.toNat_add, e15]; gnorm; omega
     · gnorm; exact e10
     · gnorm; rw [hr14]; simp [emitted_length]; omega
     · gnorm; rw [hk'.get 16]; gnorm; exact h16
+    · gnorm; rw [hk'.get 17]; gnorm; exact h17
     · gnorm; rw [hk'.get 20]; gnorm; exact h20
     · gnorm; rw [e2]; exact h2
     · gnorm; rw [e2]; exact h2'
@@ -276,14 +279,14 @@ theorem ndig_le22 {b v : Nat} (hb : 8 ≤ b) (hv : v < 2 ^ 64) : ndig b v ≤ 22
 /-- The digit loop at `0x80000084`, iteration `n`: `s0 = v / b ^ n`, `s2`
 at the digit `n` (at `sp - 88 + n`), the digits `0 … n-1` stored. -/
 theorem eu_digits {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k b v : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     {Me : Mem} (hfr : StackFrame S sp 96) (hoff : ∀ a, dst.Read k a → a < sp - 96 ∨ sp ≤ a)
     (hb : 8 ≤ b ∧ b ≤ 10) (hv : v < 2 ^ 64) (R0 : Nat → BitVec 64) (hal : (R0 1).toNat % 4 = 0)
     (hsh : out.length + ndig b v < 2 ^ 62)
     (hk : ∀ R' M', Keeps euClob R' R0 → SinkAt S M' k dst (out ++ udigits b v) →
       (∀ a, (a < sp - 96 ∨ sp ≤ a) → ¬ dst.Byte k a → imgM M' a = imgM Me a) →
-      DW live S Q (R0 1) R' M') :
+      DWS live S Q t0 dst (out ++ udigits b v) (R0 1) R' M') :
     ∀ m n (R : Nat → BitVec 64) (M : Mem), ndig b v - n = m → n < ndig b v →
       (R 8).toNat = v / b ^ n →
       (R 18).toNat = sp - 88 + n → (R 9).toNat = sp - 88 → (R 19).toNat = b → (R 20).toNat = k →
@@ -291,7 +294,7 @@ theorem eu_digits {live : Nat → Prop} {S : Nat → Prop}
       Keeps [1, 2, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] R R0 →
       EUSaved M (sp - 96) R0 → (∀ j, j < n → imgM M (sp - 88 + j) = dg b v j) →
       SinkAt S M k dst out → (∀ a, (a < sp - 96 ∨ sp ≤ a) → imgM M a = imgM Me a) →
-      DW live S Q 0x80000084#64 R M := by
+      DWS live S Q t0 dst out 0x80000084#64 R M := by
   have hlo := hfr.lo
   have hhi := hfr.hi
   have hal2 := hfr.al
@@ -393,10 +396,14 @@ theorem eu_digits {live : Nat → Prop} {S : Nat → Prop}
         Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
       omega
     have hN24 : ndig b v ≤ 24 := by omega
+    have eN : out ++ emitted (ndig b v) (dg b v) (n + 1) = out := by
+      rw [hN1, emitted_all, List.append_nil]
+    rw [← eN]
     refine eu_emit (M0 := writeLog M [(sp - 88 + n, 1, zero_extend (m := 64) (digitChar (vn % b)))])
       hlive hfr hoff R0 hal hN24 (dg b v) hsh (fun R' M' hk' hE => ?_) n _ _ (by omega)
-      ?_ ?_ ?_ ?_ ?_ ?_ ?_ (by keeps_tac fkeep) hsv1 (by rw [hN1]; exact hdig1) ?_
-    · refine hk R' M' hk' ?_ fun a ha hb => (hE.frame a hb).trans (hfrm1 a ha)
+      ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ (by keeps_tac fkeep) hsv1 (by rw [hN1]; exact hdig1) ?_
+    · rw [emitted_zero, ← udigits]
+      refine hk R' M' hk' ?_ fun a ha hb => (hE.frame a hb).trans (hfrm1 a ha)
       rw [udigits, ← emitted_zero]; exact hE.sink
     · gnorm; rw [BitVec.toNat_add, f9, BitVec.toNat_ofNat]; omega
     · gnorm; rw [hsh32, BitVec.add_sub_cancel, BitVec.toNat_add, f9]; gnorm; omega
@@ -405,10 +412,11 @@ theorem eu_digits {live : Nat → Prop} {S : Nat → Prop}
         ofNat_toNat_lt (by omega)]
       omega
     · gnorm
+    · gnorm
     · gnorm; exact f20
     · gnorm; rw [f2]; exact h2
     · gnorm; rw [f2]; exact h2'
-    · rw [hN1, emitted_all, List.append_nil]; exact Emitted.refl hs1
+    · rw [eN]; exact Emitted.refl hs1
 
 /-! ## The entry (`0x80000040`)
 
@@ -427,7 +435,7 @@ theorem eu_digits {live : Nat → Prop} {S : Nat → Prop}
 `udigits b v`; only the frame and the sink's count word and buffer change;
 clobbers `t0`, `a0`–`a7`. -/
 theorem emit_unsigned_spec {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) {sp k b : Nat} {dst : SinkDst} {out : List (BitVec 8)}
     (hfr : StackFrame S sp 96) (hs : SinkAt S M k dst out)
     (hoff : ∀ a, dst.Read k a → a < sp - 96 ∨ sp ≤ a) (hb : 8 ≤ b ∧ b ≤ 10)
@@ -436,8 +444,8 @@ theorem emit_unsigned_spec {live : Nat → Prop} {S : Nat → Prop}
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M', Keeps euClob R' R → SinkAt S M' k dst (out ++ udigits b (R 11).toNat) →
       (∀ a, (a < sp - 96 ∨ sp ≤ a) → ¬ dst.Byte k a → imgM M' a = imgM M a) →
-      DW live S Q (R 1) R' M') :
-    DW live S Q 0x80000040#64 R M := by
+      DWS live S Q t0 dst (out ++ udigits b (R 11).toNat) (R 1) R' M') :
+    DWS live S Q t0 dst out 0x80000040#64 R M := by
   have hlo := hfr.lo
   have hhi := hfr.hi
   have hal2 := hfr.al

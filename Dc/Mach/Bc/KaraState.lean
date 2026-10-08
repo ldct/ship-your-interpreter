@@ -43,10 +43,27 @@ the caller's `A ++ z :: B` with `z` referenced by every `none` of `hs`. -/
 def KList (P : List NumObj) (hs : List Hd) (A B : List NumObj) (z : NumObj) : List NumObj :=
   P ++ temps hs ++ A ++ z.withRefs (z.rep.refs + zeroCount hs) :: B
 
+/-- A handle's pointer. -/
+def Hd.p (z : NumObj) : Hd → Nat
+  | some x => x.rep.p
+  | none => z.rep.p
+
+/-- Every temporary has one reference. -/
+def HdOK (hs : List Hd) : Prop := ∀ x, some x ∈ hs → x.rep.refs = 1
+
+theorem HdOK.head {h : Hd} {hs : List Hd} (hk : HdOK (h :: hs)) : ∀ x, h = some x → x.rep.refs = 1 :=
+  fun x e => hk x (by rw [← e]; exact List.mem_cons_self)
+
+theorem HdOK.tail {h : Hd} {hs : List Hd} (hk : HdOK (h :: hs)) : HdOK hs :=
+  fun x m => hk x (List.mem_cons_of_mem _ m)
+
 /-- The object a handle names. -/
 def Hd.obj (hs : List Hd) (z : NumObj) : Hd → NumObj
   | some x => x
   | none => z.withRefs (z.rep.refs + zeroCount (none :: hs))
+
+theorem Hd.obj_p (hs : List Hd) (z : NumObj) (h : Hd) : (Hd.obj hs z h).rep.p = Hd.p z h := by
+  cases h <;> rfl
 
 theorem KList_some (P : List NumObj) (x : NumObj) (hs : List Hd) (A B : List NumObj) (z : NumObj) :
     KList P (some x :: hs) A B z = P ++ x :: (temps hs ++ A ++
@@ -62,6 +79,10 @@ theorem KList_none (P : List NumObj) (hs : List Hd) (A B : List NumObj) (z : Num
 theorem KList_rest (P : List NumObj) (hs : List Hd) (A B : List NumObj) (z : NumObj) :
     KList P hs A B z = P ++ (temps hs ++ A ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
   simp only [KList, List.append_assoc]
+
+theorem KList_nil (P A B : List NumObj) (z : NumObj) : KList P [] A B z = P ++ (A ++ z :: B) := by
+  simp only [KList, temps, List.filterMap_nil, zeroCount_nil, Nat.add_zero, NumObj.withRefs_self,
+    List.append_nil, List.append_assoc]
 
 /-- Two owners of the heap have different digit buffers. -/
 theorem BcHeap.owner_db_ne {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk}

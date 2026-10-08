@@ -69,7 +69,7 @@ def KSite (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8
     (pc N : BitVec 64) (fr : Nat → Prop)
     (Loc : (Nat → BitVec 64) → Mem → NumObj → Prop) : Prop :=
   ∀ R M H F L1 L2 x, BcHeap S M H F (L1 ++ x :: L2) → 1 ≤ x.rep.refs →
-    (x.Owns → ∀ y ∈ L1, y.db ≠ x.db) → Loc R M x → KFreeK live S Q N R M fr H F L1 L2 x →
+    (x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db) → Loc R M x → KFreeK live S Q N R M fr H F L1 L2 x →
     DW live S Q pc R M
 
 end Dc.Mach

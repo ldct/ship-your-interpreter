@@ -184,12 +184,12 @@ theorem kfree_800051c4 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
     (hx : R 24 = BitVec.ofNat 64 x.rep.p) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hk : KFreeK live S Q 0x800051ec#64 R M fr H F L1 L2 x) :
     DW live S Q 0x800051c4#64 R M := by
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_800051c4 hlive h hr1 hnv hx h25 hk
+  · exact kfree_rel_800051c4 hlive h hr1 (hnv hr1) hx h25 hk
   · exact kfree_dec_800051c4 hlive h hr2 hx hk
 
 /-- The free site at `0x800051c4` as a `KSite`. -/
@@ -370,12 +370,12 @@ theorem kfree_800051ec {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
     (hx : R 19 = BitVec.ofNat 64 x.rep.p) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hk : KFreeK live S Q 0x80005214#64 R M fr H F L1 L2 x) :
     DW live S Q 0x800051ec#64 R M := by
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_800051ec hlive h hr1 hnv hx h25 hk
+  · exact kfree_rel_800051ec hlive h hr1 (hnv hr1) hx h25 hk
   · exact kfree_dec_800051ec hlive h hr2 hx hk
 
 /-- The free site at `0x800051ec` as a `KSite`. -/
@@ -556,12 +556,12 @@ theorem kfree_80005214 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
     (hx : R 27 = BitVec.ofNat 64 x.rep.p) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hk : KFreeK live S Q 0x8000523c#64 R M fr H F L1 L2 x) :
     DW live S Q 0x80005214#64 R M := by
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_80005214 hlive h hr1 hnv hx h25 hk
+  · exact kfree_rel_80005214 hlive h hr1 (hnv hr1) hx h25 hk
   · exact kfree_dec_80005214 hlive h hr2 hx hk
 
 /-- The free site at `0x80005214` as a `KSite`. -/
@@ -742,12 +742,12 @@ theorem kfree_80005274 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
     (hx : R 20 = BitVec.ofNat 64 x.rep.p) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hk : KFreeK live S Q 0x8000529c#64 R M fr H F L1 L2 x) :
     DW live S Q 0x80005274#64 R M := by
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_80005274 hlive h hr1 hnv hx h25 hk
+  · exact kfree_rel_80005274 hlive h hr1 (hnv hr1) hx h25 hk
   · exact kfree_dec_80005274 hlive h hr2 hx hk
 
 /-- The free site at `0x80005274` as a `KSite`. -/
@@ -928,12 +928,12 @@ theorem kfree_8000530c {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
     (hx : R 21 = BitVec.ofNat 64 x.rep.p) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hk : KFreeK live S Q 0x80005334#64 R M fr H F L1 L2 x) :
     DW live S Q 0x8000530c#64 R M := by
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_8000530c hlive h hr1 hnv hx h25 hk
+  · exact kfree_rel_8000530c hlive h hr1 (hnv hr1) hx h25 hk
   · exact kfree_dec_8000530c hlive h hr2 hx hk
 
 /-- The free site at `0x8000530c` as a `KSite`. -/
@@ -1114,12 +1114,12 @@ theorem kfree_80005334 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
     (hx : R 23 = BitVec.ofNat 64 x.rep.p) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hk : KFreeK live S Q 0x8000535c#64 R M fr H F L1 L2 x) :
     DW live S Q 0x80005334#64 R M := by
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_80005334 hlive h hr1 hnv hx h25 hk
+  · exact kfree_rel_80005334 hlive h hr1 (hnv hr1) hx h25 hk
   · exact kfree_dec_80005334 hlive h hr2 hx hk
 
 /-- The free site at `0x80005334` as a `KSite`. -/
@@ -1339,7 +1339,7 @@ theorem kfree_8000523c {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} {sp : Nat} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hR2 : R 2 = BitVec.ofNat 64 sp) (ks : KSlot S fr (sp + 40))
     (hslot : ldv .ld M (sp + 40) = BitVec.ofNat 64 x.rep.p)
     (hk : KFreeK live S Q 0x80005274#64 R M fr H F L1 L2 x) :
@@ -1357,7 +1357,7 @@ theorem kfree_8000523c {live : Nat → Prop} {S : Nat → Prop}
     exact absurd ((ofNat_eq_iff (x := x.rep.p) (y := 0) (by omega) (by omega)).mp hc) (by omega)
   intro _
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_80005244 hlive h hr1 hnv (by keeps_tac Keeps.refl _ _) (by bsimp [])
+  · exact kfree_rel_80005244 hlive h hr1 (hnv hr1) (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [h25]) (by bsimp [hR2]) ks hslot hk
   · exact kfree_dec_80005244 hlive h hr2 (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [hR2]) ks hk
@@ -1580,7 +1580,7 @@ theorem kfree_8000529c {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} {sp : Nat} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hR2 : R 2 = BitVec.ofNat 64 sp) (ks : KSlot S fr (sp + 48))
     (hslot : ldv .ld M (sp + 48) = BitVec.ofNat 64 x.rep.p)
     (hk : KFreeK live S Q 0x800052d4#64 R M fr H F L1 L2 x) :
@@ -1598,7 +1598,7 @@ theorem kfree_8000529c {live : Nat → Prop} {S : Nat → Prop}
     exact absurd ((ofNat_eq_iff (x := x.rep.p) (y := 0) (by omega) (by omega)).mp hc) (by omega)
   intro _
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_800052a4 hlive h hr1 hnv (by keeps_tac Keeps.refl _ _) (by bsimp [])
+  · exact kfree_rel_800052a4 hlive h hr1 (hnv hr1) (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [h25]) (by bsimp [hR2]) ks hslot hk
   · exact kfree_dec_800052a4 hlive h hr2 (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [hR2]) ks hk
@@ -1821,7 +1821,7 @@ theorem kfree_800052d4 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} {sp : Nat} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hR2 : R 2 = BitVec.ofNat 64 sp) (ks : KSlot S fr (sp + 56))
     (hslot : ldv .ld M (sp + 56) = BitVec.ofNat 64 x.rep.p)
     (hk : KFreeK live S Q 0x8000530c#64 R M fr H F L1 L2 x) :
@@ -1839,7 +1839,7 @@ theorem kfree_800052d4 {live : Nat → Prop} {S : Nat → Prop}
     exact absurd ((ofNat_eq_iff (x := x.rep.p) (y := 0) (by omega) (by omega)).mp hc) (by omega)
   intro _
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact kfree_rel_800052dc hlive h hr1 hnv (by keeps_tac Keeps.refl _ _) (by bsimp [])
+  · exact kfree_rel_800052dc hlive h hr1 (hnv hr1) (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [h25]) (by bsimp [hR2]) ks hslot hk
   · exact kfree_dec_800052dc hlive h hr2 (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [hR2]) ks hk

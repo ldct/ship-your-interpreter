@@ -48,4 +48,28 @@ structure KSlot (S fr : Nat → Prop) (sa : Nat) : Prop where
   lo : 0x8001ad10 ≤ sa
   hi : sa + 8 ≤ 0x100000000
 
+/-- Where a register site finds the freed number: in register `r`, with
+`_bc_Free_list`'s address in `s9`. -/
+structure RegLoc (r : Nat) (R : Nat → BitVec 64) (x : NumObj) : Prop where
+  ptr : R r = BitVec.ofNat 64 x.rep.p
+  fl : R 25 = BitVec.ofNat 64 bcFreeAddr
+
+/-- Where a slot site finds the freed number: in the slot `sp + o`, cleared
+afterwards. -/
+structure SlotLoc (S fr : Nat → Prop) (sp o : Nat) (R : Nat → BitVec 64) (M : Mem) (x : NumObj) :
+    Prop where
+  fl : R 25 = BitVec.ofNat 64 bcFreeAddr
+  r2 : R 2 = BitVec.ofNat 64 sp
+  ks : KSlot S fr (sp + o)
+  slot : ldv .ld M (sp + o) = BitVec.ofNat 64 x.rep.p
+
+/-- **An inlined free site** from `pc` to `N`: any number `x` of the heap
+with a reference, found at `Loc`, is freed. -/
+def KSite (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (pc N : BitVec 64) (fr : Nat → Prop)
+    (Loc : (Nat → BitVec 64) → Mem → NumObj → Prop) : Prop :=
+  ∀ R M H F L1 L2 x, BcHeap S M H F (L1 ++ x :: L2) → 1 ≤ x.rep.refs →
+    (x.Owns → ∀ y ∈ L1, y.db ≠ x.db) → Loc R M x → KFreeK live S Q N R M fr H F L1 L2 x →
+    DW live S Q pc R M
+
 end Dc.Mach

@@ -192,6 +192,13 @@ theorem kfree_800051c4 {live : Nat → Prop} {S : Nat → Prop}
   · exact kfree_rel_800051c4 hlive h hr1 hnv hx h25 hk
   · exact kfree_dec_800051c4 hlive h hr2 hx hk
 
+/-- The free site at `0x800051c4` as a `KSite`. -/
+theorem ksite_800051c4 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) :
+    KSite live S Q 0x800051c4#64 0x800051ec#64 fr (fun R _ x => RegLoc 24 R x) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk => kfree_800051c4 hlive h hr hnv hl.ptr hl.fl hk
+
 /-- The struct pushed on `_bc_Free_list` at `0x80005208` (after `free`, or
 directly for a view). -/
 theorem kpush_80005208 {live : Nat → Prop} {S : Nat → Prop}
@@ -370,6 +377,13 @@ theorem kfree_800051ec {live : Nat → Prop} {S : Nat → Prop}
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
   · exact kfree_rel_800051ec hlive h hr1 hnv hx h25 hk
   · exact kfree_dec_800051ec hlive h hr2 hx hk
+
+/-- The free site at `0x800051ec` as a `KSite`. -/
+theorem ksite_800051ec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) :
+    KSite live S Q 0x800051ec#64 0x80005214#64 fr (fun R _ x => RegLoc 19 R x) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk => kfree_800051ec hlive h hr hnv hl.ptr hl.fl hk
 
 /-- The struct pushed on `_bc_Free_list` at `0x80005230` (after `free`, or
 directly for a view). -/
@@ -550,6 +564,13 @@ theorem kfree_80005214 {live : Nat → Prop} {S : Nat → Prop}
   · exact kfree_rel_80005214 hlive h hr1 hnv hx h25 hk
   · exact kfree_dec_80005214 hlive h hr2 hx hk
 
+/-- The free site at `0x80005214` as a `KSite`. -/
+theorem ksite_80005214 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) :
+    KSite live S Q 0x80005214#64 0x8000523c#64 fr (fun R _ x => RegLoc 27 R x) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk => kfree_80005214 hlive h hr hnv hl.ptr hl.fl hk
+
 /-- The struct pushed on `_bc_Free_list` at `0x80005290` (after `free`, or
 directly for a view). -/
 theorem kpush_80005290 {live : Nat → Prop} {S : Nat → Prop}
@@ -728,6 +749,13 @@ theorem kfree_80005274 {live : Nat → Prop} {S : Nat → Prop}
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
   · exact kfree_rel_80005274 hlive h hr1 hnv hx h25 hk
   · exact kfree_dec_80005274 hlive h hr2 hx hk
+
+/-- The free site at `0x80005274` as a `KSite`. -/
+theorem ksite_80005274 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) :
+    KSite live S Q 0x80005274#64 0x8000529c#64 fr (fun R _ x => RegLoc 20 R x) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk => kfree_80005274 hlive h hr hnv hl.ptr hl.fl hk
 
 /-- The struct pushed on `_bc_Free_list` at `0x80005328` (after `free`, or
 directly for a view). -/
@@ -908,6 +936,13 @@ theorem kfree_8000530c {live : Nat → Prop} {S : Nat → Prop}
   · exact kfree_rel_8000530c hlive h hr1 hnv hx h25 hk
   · exact kfree_dec_8000530c hlive h hr2 hx hk
 
+/-- The free site at `0x8000530c` as a `KSite`. -/
+theorem ksite_8000530c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) :
+    KSite live S Q 0x8000530c#64 0x80005334#64 fr (fun R _ x => RegLoc 21 R x) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk => kfree_8000530c hlive h hr hnv hl.ptr hl.fl hk
+
 /-- The struct pushed on `_bc_Free_list` at `0x80005350` (after `free`, or
 directly for a view). -/
 theorem kpush_80005350 {live : Nat → Prop} {S : Nat → Prop}
@@ -1086,6 +1121,13 @@ theorem kfree_80005334 {live : Nat → Prop} {S : Nat → Prop}
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
   · exact kfree_rel_80005334 hlive h hr1 hnv hx h25 hk
   · exact kfree_dec_80005334 hlive h hr2 hx hk
+
+/-- The free site at `0x80005334` as a `KSite`. -/
+theorem ksite_80005334 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) :
+    KSite live S Q 0x80005334#64 0x8000535c#64 fr (fun R _ x => RegLoc 23 R x) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk => kfree_80005334 hlive h hr hnv hl.ptr hl.fl hk
 
 /-- The slot cleared at `0x80005270`. -/
 theorem kclear_80005270 {live : Nat → Prop} {S : Nat → Prop}
@@ -1320,6 +1362,14 @@ theorem kfree_8000523c {live : Nat → Prop} {S : Nat → Prop}
   · exact kfree_dec_80005244 hlive h hr2 (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [hR2]) ks hk
 
+/-- The free site at `0x8000523c` as a `KSite`. -/
+theorem ksite_8000523c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (sp : Nat) :
+    KSite live S Q 0x8000523c#64 0x80005274#64 fr (SlotLoc S fr sp 40) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk =>
+    kfree_8000523c hlive h hr hnv hl.fl hl.r2 hl.ks hl.slot hk
+
 /-- The slot cleared at `0x800052d0`. -/
 theorem kclear_800052d0 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
@@ -1553,6 +1603,14 @@ theorem kfree_8000529c {live : Nat → Prop} {S : Nat → Prop}
   · exact kfree_dec_800052a4 hlive h hr2 (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [hR2]) ks hk
 
+/-- The free site at `0x8000529c` as a `KSite`. -/
+theorem ksite_8000529c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (sp : Nat) :
+    KSite live S Q 0x8000529c#64 0x800052d4#64 fr (SlotLoc S fr sp 48) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk =>
+    kfree_8000529c hlive h hr hnv hl.fl hl.r2 hl.ks hl.slot hk
+
 /-- The slot cleared at `0x80005308`. -/
 theorem kclear_80005308 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
@@ -1785,5 +1843,13 @@ theorem kfree_800052d4 {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [h25]) (by bsimp [hR2]) ks hslot hk
   · exact kfree_dec_800052dc hlive h hr2 (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp [hR2]) ks hk
+
+/-- The free site at `0x800052d4` as a `KSite`. -/
+theorem ksite_800052d4 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (sp : Nat) :
+    KSite live S Q 0x800052d4#64 0x8000530c#64 fr (SlotLoc S fr sp 56) :=
+  fun _ _ _ _ _ _ _ h hr hnv hl hk =>
+    kfree_800052d4 hlive h hr hnv hl.fl hl.r2 hl.ks hl.slot hk
 
 end Dc.Mach

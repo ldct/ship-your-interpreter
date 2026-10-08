@@ -304,4 +304,80 @@ theorem NumAt.setSign {Mt : Mem} {o : NumRep} (h : NumAt Mt o) {v : BitVec 64} (
   · rw [ldv_store_miss .ld _ _ (by simp only [widthOfM]; omega)]; exact h.value
   · rw [← Nat.add_zero o.p, h.store_other v (by omega) hi]; exact h.digit i hi
 
+/-! ## Saved registers in a frame -/
+
+/-- The callee-saved words of a frame at `fr`: register `r` at `fr + o` for
+each `(r, o)` in `slots`. -/
+def SavedWords (M : Mem) (fr : Nat) (slots : List (Nat × Nat)) (R0 : Nat → BitVec 64) : Prop :=
+  ∀ p ∈ slots, ldv .ld M (fr + p.2) = R0 p.1
+
+theorem SavedWords.nil (M : Mem) (fr : Nat) (R0 : Nat → BitVec 64) : SavedWords M fr [] R0 :=
+  fun _ h => absurd h List.not_mem_nil
+
+/-- A prologue store of `r` at `fr + o`, apart from the slots already saved. -/
+theorem SavedWords.store {M : Mem} {fr : Nat} {slots : List (Nat × Nat)} {R0 : Nat → BitVec 64}
+    (h : SavedWords M fr slots R0) (r o : Nat)
+    (hd : ∀ p ∈ slots, p.2 + 8 ≤ o ∨ o + 8 ≤ p.2 := by decide) :
+    SavedWords (writeLog M [(fr + o, 8, R0 r)]) fr ((r, o) :: slots) R0 := by
+  intro p hp
+  rcases List.mem_cons.mp hp with rfl | hp
+  · exact ldv_store_hit _ _ _
+  · rw [ldv_ld_miss _ _ (by have := hd p hp; omega)]; exact h p hp
+
+/-- The saved word of `r` at `fr + o`. -/
+theorem SavedWords.get {M : Mem} {fr : Nat} {slots : List (Nat × Nat)} {R0 : Nat → BitVec 64}
+    (h : SavedWords M fr slots R0) (r o : Nat) (hm : (r, o) ∈ slots := by decide) :
+    ldv .ld M (fr + o) = R0 r := by
+  have e := h _ hm
+  dsimp only at e
+  exact e
+
+/-- The saved words survive writes off `[fr + lo, fr + top)`. -/
+theorem SavedWords.transport {M M' : Mem} {fr lo top : Nat} {slots : List (Nat × Nat)}
+    {R0 : Nat → BitVec 64} (h : SavedWords M fr slots R0)
+    (hlo : ∀ p ∈ slots, lo ≤ p.2 := by decide) (htop : ∀ p ∈ slots, p.2 + 8 ≤ top := by decide)
+    (hag : ∀ a, fr + lo ≤ a → a < fr + top → imgM M' a = imgM M a) : SavedWords M' fr slots R0 :=
+  fun p hp => by
+    rw [ldv_congr .ld fun j hj => hag _ (by have := hlo p hp; omega) (by
+      have := htop p hp; simp only [widthOfM] at hj; omega)]
+    exact h p hp
+
+/-! ## `jalr` targets -/
+
+/-- `x &&& (2^64 - 2) = x` for even `x < 2^64` (clearing an already-clear bit 0). -/
+theorem nat_and_clear_bit0 (x : Nat) (hlt : x < 2^64) (hev : x % 2 = 0) :
+    x &&& (2^64 - 2) = x := by
+  apply Nat.eq_of_testBit_eq
+  intro i
+  rw [Nat.testBit_and]
+  have hmaskeq : (2^64 - 2) = 2 * (2^63 - 1) := by decide
+  rw [hmaskeq]
+  match i with
+  | 0 =>
+    have hx0 : x.testBit 0 = false := by rw [Nat.testBit_zero, hev]; rfl
+    rw [hx0, Bool.false_and]
+  | j + 1 =>
+    rw [Nat.testBit_succ (2 * (2^63-1)) j]
+    have hdiv : (2 * (2^63 - 1)) / 2 = 2^63 - 1 := by omega
+    rw [hdiv]
+    by_cases hj : j < 63
+    · rw [Nat.testBit_two_pow_sub_one]; simp only [hj, decide_true, Bool.and_true]
+    · have hxf : x.testBit (j+1) = false :=
+        Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by decide) (by omega)))
+      rw [hxf, Bool.false_and]
+
+/-- A 4-aligned `jalr` target keeps its value when bit 0 is cleared. -/
+theorem jalr_tgt (r : BitVec 64) (halign : r.toNat % 4 = 0) : Sail.BitVec.update r 0 0#1 = r := by
+  show Sail.BitVec.updateSubrange' r 0 1 (0#1) = r
+  have hmask : (~~~(((BitVec.allOnes 1).zeroExtend 64) <<< 0) : BitVec 64) = 0xFFFFFFFFFFFFFFFE#64 := by
+    apply BitVec.eq_of_toNat_eq; decide
+  have hy : (((0#1 : BitVec 1).zeroExtend 64) <<< 0 : BitVec 64) = 0#64 := by
+    apply BitVec.eq_of_toNat_eq; decide
+  simp only [Sail.BitVec.updateSubrange', hmask, hy, BitVec.or_zero]
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_and]
+  have hmv : (0xFFFFFFFFFFFFFFFE#64 : BitVec 64).toNat = 2^64 - 2 := by decide
+  rw [hmv, Nat.and_comm]
+  exact nat_and_clear_bit0 r.toNat r.isLt (by omega)
+
 end Dc.Mach

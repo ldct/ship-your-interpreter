@@ -103,6 +103,8 @@ theorem kara_m2zero {live : Nat → Prop} {S : Nat → Prop}
     (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit3 : n + (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len)
+    (hu0p : 1 ≤ (Hd.o z hu0).rep.len) (hv0p : 1 ≤ (Hd.o z hv0).rep.len)
     (hz0 : hdVal (Hd.o z hd1) * hdVal (Hd.o z hd2) = 0)
     (hv : KFillVal (hdVal (Hd.o z hm1)) (hdVal (Hd.o z hd1) * hdVal (Hd.o z hd2))
       (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n)
@@ -157,7 +159,8 @@ theorem kara_m2zero {live : Nat → Prop} {S : Nat → Prop}
     (hown.cons fun x e => nomatch e) (hok.cons fun x e => nomatch e)
     (List.mem_cons_of_mem _ hu0m) (List.mem_cons_of_mem _ hv0m)
     (hga.zero (by simpa only [zeroCount_none] using kz)) (by bsimp [h12]) (hga.mulBase hmb)
-    hN hW hNla hn1 hm1z hfit1 (by show n + valCount z.rep ≤ _; omega) hfit3 ?_
+    hN hW hNla hn1 hm1z hfit1 (by show n + valCount z.rep ≤ _; omega) hfit3 hw1
+    (by show 1 ≤ z.rep.len; have := kz.len; omega) hu0p hv0p ?_
   show KFillVal _ (hdVal z) _ _ _ _ _
   rw [hzv, ← hz0]; exact hv
 
@@ -186,6 +189,8 @@ theorem kara_m2ret {live : Nat → Prop} {S : Nat → Prop}
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit2 : n + x1.rep.len + y1.rep.len ≤ la + lb + 1)
     (hfit3 : n + (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len)
+    (hu0p : 1 ≤ (Hd.o z hu0).rep.len) (hv0p : 1 ≤ (Hd.o z hv0).rep.len)
     (hv : KFillVal (hdVal (Hd.o z hm1)) (hdVal x1 * hdVal y1)
       (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n)
       (kUV u v la lb) (la + lb + 1) (x1.rep.neg != y1.rep.neg)) :
@@ -218,7 +223,7 @@ theorem kara_m2ret {live : Nat → Prop} {S : Nat → Prop}
     (hown.cons fun x e => by cases e; exact kr.owns) (hok.cons fun x e => by cases e; exact kr.refs)
     (List.mem_cons_of_mem _ hu0m) (List.mem_cons_of_mem _ hv0m)
     (by simpa only [zeroCount_some] using kz') (by bsimp []) (hga.mulBase hmb)
-    hN hW hNla hn1 hm1z hfit1 (by show n + valCount y.rep ≤ _; omega) hfit3 ?_
+    hN hW hNla hn1 hm1z hfit1 (by show n + valCount y.rep ≤ _; omega) hfit3 hw1 kr.pos hu0p hv0p ?_
   show KFillVal _ (hdVal y) _ _ _ _ (x1.rep.neg != y1.rep.neg)
   rw [kr.val]; exact hv
 
@@ -243,10 +248,13 @@ theorem kara_m2call {live : Nat → Prop} {S : Nat → Prop}
     (hN : (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ N)
     (hW : rmStack ((Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len) + 192 ≤ W)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (hx1p : 1 ≤ x1.rep.len) (hy1p : 1 ≤ y1.rep.len)
     (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit2 : n + x1.rep.len + y1.rep.len ≤ la + lb + 1)
     (hfit3 : n + (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len)
+    (hu0p : 1 ≤ (Hd.o z hu0).rep.len) (hv0p : 1 ≤ (Hd.o z hv0).rep.len)
     (hv : KFillVal (hdVal (Hd.o z hm1)) (hdVal x1 * hdVal y1)
       (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n)
       (kUV u v la lb) (la + lb + 1) (x1.rep.neg != y1.rep.neg)) :
@@ -276,14 +284,14 @@ theorem kara_m2call {live : Nat → Prop} {S : Nat → Prop}
   apply st_800050cc hlive
   refine kara_child ih cx hk (pk.st.rm.keeps (by keeps_tac Keeps.refl _ _) (by bsimp [h2])) 48
     (by omega) (by decide) hN1 hW1 (KZero.withRefs (kz.mono (by omega)))
-    ⟨hxm, hym, hx1.shape.lenPos, hy1.shape.lenPos, Nat.le_add_right _ _, Nat.le_add_right _ _,
+    ⟨hxm, hym, hx1p, hy1p, Nat.le_add_right _ _, Nat.le_add_right _ _,
       by omega, hmb⟩ hb' (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []) (by bsimp [h2]) ?_
   intro R' M' H' F' y kk post
   bsimp []
   exact kara_m2ret hlive ih cx hk pk hpm hown hok hu0m hv0m hx1 hy1
     ((kk.mono (fun r hr => List.mem_cons_of_mem _ hr)).trans (by keeps_tac Keeps.refl _ _))
-    post (kz.mono (by omega)) hmb hN hW hNla hn1 hm1z hfit1 hfit2 hfit3 hv
+    post (kz.mono (by omega)) hmb hN hW hNla hn1 hm1z hfit1 hfit2 hfit3 hw1 hu0p hv0p hv
 
 /-- **`m2 = d1 · d2`** from `0x80005050`: `d1` or `d2` zero, a copy of
 `_zero_`; else the recursive call; then `m3` (`kara_m3`). -/
@@ -307,10 +315,13 @@ theorem kara_m2stage {live : Nat → Prop} {S : Nat → Prop}
     (hN : (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ N)
     (hW : rmStack ((Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len) + 192 ≤ W)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (hd1p : 1 ≤ (Hd.o z hd1).rep.len) (hd2p : 1 ≤ (Hd.o z hd2).rep.len)
     (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit2 : n + (Hd.o z hd1).rep.len + (Hd.o z hd2).rep.len ≤ la + lb + 1)
     (hfit3 : n + (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len)
+    (hu0p : 1 ≤ (Hd.o z hu0).rep.len) (hv0p : 1 ≤ (Hd.o z hv0).rep.len)
     (hv : KFillVal (hdVal (Hd.o z hm1)) (hdVal (Hd.o z hd1) * hdVal (Hd.o z hd2))
       (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n)
       (kUV u v la lb) (la + lb + 1) ((Hd.o z hd1).rep.neg != (Hd.o z hd2).rep.neg)) :
@@ -330,19 +341,19 @@ theorem kara_m2stage {live : Nat → Prop} {S : Nat → Prop}
       hdVal (Hd.o z hd1) * hdVal (Hd.o z hd2) = 0 → DW live S Q 0x800054a8#64 R' M := by
     intro R' kk hc
     exact kara_m2zero hlive ih cx hk (pk.keeps kk) hb hpm hown hok hu0m hv0m
-      (kz.mono (by omega)) (by rw [kk.get 12]; exact h12) hmb hN hW hNla hn1 hm1z hfit1 hfit3 hc hv
+      (kz.mono (by omega)) (by rw [kk.get 12]; exact h12) hmb hN hW hNla hn1 hm1z hfit1 hfit3 hw1 hu0p hv0p hc hv
   refine kzero_80005050 hlive hS pk.tr.d1 h12 hzb (hx _ hd1m) ?_ ?_
   · intro R1 kk1 hz0
     exact zero R1 kk1 (by rw [hz0.val kz.ds kz.len, Nat.zero_mul])
-  intro x1 e0 R1 kk1
+  intro x1 e0 _ R1 kk1
   subst e0
   refine kzero_80005080 hlive hS ((kk1.get 23).trans pk.tr.d2) ((kk1.get 12).trans h12) hzb
     (hx _ hd2m) ?_ ?_
   · intro R2 kk2 hz1
     exact zero R2 (kk2.trans kk1) (by rw [hz1.val kz.ds kz.len, Nat.mul_zero])
-  intro y1 e1 R2 kk2
+  intro y1 e1 _ R2 kk2
   subst e1
   exact kara_m2call hlive ih cx hk (pk.keeps (kk2.trans kk1)) hb hpm hown hok hu0m hv0m hd1m hd2m
-    kz hmb hN1 hW1 hN hW hNla hn1 hm1z hfit1 hfit2 hfit3 hv
+    kz hmb hN1 hW1 hN hW hNla hn1 hd1p hd2p hm1z hfit1 hfit2 hfit3 hw1 hu0p hv0p hv
 
 end Dc.Mach

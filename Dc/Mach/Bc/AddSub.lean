@@ -51,6 +51,10 @@ structure BinArgs (L : List NumObj) (x1 x2 : NumObj) (smin : Nat) : Prop where
   n1 : x1.rep.Norm
   n2 : x2.rep.Norm
   size : max x1.rep.len x2.rep.len + 1 + max smin (max x1.rep.scale x2.rep.scale) < 2 ^ 31
+  /-- an operand without integer digits is compared against a nonzero one:
+  what `_bc_do_compare`'s length test needs to be correct -/
+  e1 : x1.rep.len = 0 → 0 < dval x2.rep.ds
+  e2 : x2.rep.len = 0 → 0 < dval x1.rep.ds
 
 /-- The result slot `q` holds the number `x` (`L = L1 ++ x :: L2`); no view
 before it reads an owner's buffer. -/
@@ -69,6 +73,7 @@ structure BinPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
   rest : FreedRest L1 L2 x L
   num : y.rep.num = n
   norm : y.rep.Norm
+  pos : 1 ≤ y.rep.len
   refs : y.rep.refs = 1
   owns : y.Owns
   slot : ldv .ld Mt q = BitVec.ofNat 64 y.sb.pay
@@ -135,7 +140,8 @@ theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Bl
     (hb : BcHeap S Mt' H F (y :: (L1 ++ x.decRef :: L2)))
     (hmo : MemOnly (fun a => refsBytes x.rep a ∨ slotBytes q a) Mt' M)
     (hxp : heapStart ≤ x.rep.p ∧ x.rep.p + 16 ≤ heapEnd)
-    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
+    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
+    (hyo : y.Owns)
     (hx2 : 2 ≤ x.rep.refs) :
     BinPost S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 x q sp n
       (L1 ++ x.decRef :: L2) y :=
@@ -144,6 +150,7 @@ theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Bl
     rest := .dec hx2
     num := hnum
     norm := hnorm
+    pos := hpos
     refs := hrefs
     owns := hyo
     slot := ldv_store_hit _ _ _
@@ -162,7 +169,8 @@ theorem binPost_rel {S : Nat → Prop} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List
     (hb0 : BcHeap S M H F (y :: (L1 ++ x :: L2)))
     (hrp : ReleasePost S M Mt' H H' F (y :: L1) L2 x q (sp - 48))
     (hsp : heapEnd + 176 ≤ sp)
-    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
+    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
+    (hyo : y.Owns)
     (hx1 : x.rep.refs = 1) :
     BinPost S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H' (x.sb :: F) L1 L2 x q sp n
       (L1 ++ L2) y :=
@@ -171,6 +179,7 @@ theorem binPost_rel {S : Nat → Prop} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List
     rest := .rel hx1
     num := hnum
     norm := hnorm
+    pos := hpos
     refs := hrefs
     owns := hyo
     slot := ldv_store_hit _ _ _

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate `_bc_rec_mul`'s two copies of the differences `d1`, `d2`.
+"""Generate `_bc_rec_mul`'s three copies of the differences `d1`, `d2`.
 
-Both paths of the step (`u1`, `v1` nonzero at `0x80004fd8`, or one zero at
-`0x800054bc`) run the same code: `_zero_` takes two references for the slots
+All three paths of the step (`u1`, `v1` nonzero at `0x80004fd8`, one zero at
+`0x800054bc`, or `v1` without digits at `0x80005530`) run the same code: `_zero_` takes two references for the slots
 of `d1`, `d2`; `d1 = u1 - u0` (`bc_sub` at `A + 0x24`); `d1` into `s5`, its
 digit count to `0(sp)`; `d2 = v0 - v1` (`bc_sub` at `A + 0x44`); `d2` into
 `s7`, its digit count into `a7`; continuing at `A + 0x50`.  Each copy gets
@@ -18,7 +18,10 @@ Output (do not hand-edit): `Dc/Mach/Bc/KaraSubsSites.lean`.
 import pathlib
 import sys
 
-SITES = [0x80004fd8, 0x800054bc]
+# (entry A, end E): the copy at `0x80005530` (reached from an empty `v1`, with
+# `s10 = 0`) ends with `bnez s10` and `j 0x8000550c`, joining the second copy's
+# end; it carries `R 26 = 0` through both calls.
+SITES = [(0x80004fd8, None), (0x800054bc, None), (0x80005530, 0x8000550c)]
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "Dc/Mach/Bc/KaraSubsSites.lean"
 
@@ -53,7 +56,7 @@ theorem ksubsC_@C@ {live : Nat → Prop} {S : Nat → Prop}
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 y2.sb.pay)
     (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
     (d2 : KDiff y2 (Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0))
-    (hga : GlobAgree M Ms)
+    (hga : GlobAgree M Ms)@H26P@
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
     DW live S Q 0x@C@#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -67,8 +70,8 @@ theorem ksubsC_@C@ {live : Nat → Prop} {S : Nat → Prop}
   have hab := cx.above; have hW := cx.big
   simp only [heapEnd] at hab
   have htx : tohostAddr = 0x8001ad00 := rfl
-  bc_run hlive hS [h2, h72, hlen, sxw_ofNat (show y2.rep.len < 2 ^ 31 by omega)] at 0x@E@
-  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | skip
+  bc_run hlive hS [h2, h72, hlen, sxw_ofNat (show y2.rep.len < 2 ^ 31 by omega)@H26L@] at 0x@E@
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | skip@JOIN@
   have mk : ∀ R'', Keeps [17, 23] R'' R →
       KM1 S M0 M R0 R'' sp q W n la lb z hu1 hu0 hv1 hv0 := fun _ k => pk.keeps k
   refine hnext _ M H F y1 y2 ⟨(mk _ (by keeps_tac Keeps.refl _ _)).st, ?_, ?_, ?_, hl1,
@@ -95,9 +98,15 @@ def gen():
     out = [HEAD]
     B_ = load("kara_subs_b.lean.in")
     A_ = load("kara_subs_a.lean.in")
-    for a in SITES:
+    for a, e in SITES:
+        z = e is not None
         sub = {"@A@": hx(a), "@J1@": hx(a + 0x24), "@B@": hx(a + 0x28), "@J@": hx(a + 0x44),
-               "@C@": hx(a + 0x48), "@E@": hx(a + 0x50)}
+               "@C@": hx(a + 0x48), "@E@": hx(e if z else a + 0x50),
+               "@H26P@": "\n    (h26 : R 26 = BitVec.ofNat 64 0)" if z else "",
+               "@H26A@": " (by rw [kk.get 26 (by decide)]; bsimp [h26])" if z else "",
+               "@H26L@": ", h26" if z else "",
+               # `bc_run` stops at the backward `j`; one more run reaches the join
+               "@JOIN@": f"\n  bc_run hlive hS [] at 0x{hx(e)}" if z else ""}
         for t in (C, B_, A_):
             for k, v in sub.items():
                 t = t.replace(k, v)

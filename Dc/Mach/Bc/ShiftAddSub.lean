@@ -55,6 +55,9 @@ def shiftDs (y w : NumRep) (shift : Nat) (sub : Bool) : List Nat :=
 assertion holds, and no carry (borrow) leaves the accumulator. -/
 structure ShiftArgs (L : List NumObj) (y w : NumObj) (shift : Nat) (sub : Bool) : Prop where
   mw : w ∈ L
+  /-- the operand has at least one integer digit: the routine reads its last
+  one before it knows the count, so a zero-length operand never reaches here -/
+  lw : 1 ≤ w.rep.len
   fit : shift + valCount w.rep ≤ y.rep.len + y.rep.scale
   noCarry : ripOut sub (accLE y.rep shift) (valLE w.rep) 0 = 0
 
@@ -945,6 +948,7 @@ theorem sh_head {live : Nat → Prop} {S : Nat → Prop}
   num_facts hnw
   have hfit := ha.fit
   have hcl := valCount_le w.rep
+  have hlw := ha.lw
   bc_run hlive hS [h10, h11, h12, h13, h14, h17, hn.len, hn.scale, addw_ofNat,
     toInt_ofNat_small] at 0x800040e0
   · intro hc; exfalso; (try simp (disch := omega) only [toInt_ofNat_small] at hc); omega
@@ -972,6 +976,7 @@ theorem bc_shift_addsub_spec {live : Nat → Prop} {S : Nat → Prop}
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hnw := hb.nums _ (List.mem_cons_of_mem _ ha.mw)
   num_facts hnw
+  have hlw := ha.lw
   have l0 := hnw.lbu (i := 0) (by omega)
   simp only [Nat.add_zero] at l0
   have st0 : ShSt y R M R M := ⟨Keeps.refl _ _, MemOnly.refl _ _⟩

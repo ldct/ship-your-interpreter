@@ -168,7 +168,7 @@ theorem kara_vhigh {live : Nat → Prop} {S : Nat → Prop}
       (memOnly_touch_of_alloc hb.heap hfr1)) ?_
   intro R1 M1 H1 F1 sb1 kk1 hvs1 hp1 hd1
   have hvL : vo ∈ KList [] hs A B z := mem_KList hvo
-  refine kview_800053d0 hlive hb hvs1 hvL hn hfit (by omega) hp1
+  refine kview_800053d0 hlive hb hvs1 hvL (Nat.le_of_lt hn) hfit (by omega) (by omega) hp1
     ((kk1.get 21).trans h21) ((kk1.get 8).trans h8) ((kk1.get 23).trans h23)
     ((kk1.get 18).trans h18) ?_
   intro R2 M2 kk2 hb2 h23' hfr2
@@ -180,7 +180,7 @@ theorem kara_vhigh {live : Nat → Prop} {S : Nat → Prop}
     (fun R3 M3 kk3 hfr3 => hoom _ _ ((kk3.mono (by decide)).trans kk21)
       ((memOnly_touch_of_alloc hb2.heap hfr3).trans t1)) ?_
   intro R3 M3 H2 F2 sb2 kk3 hvs2 hp2
-  refine kview_80005400 hlive hb2 hvs2 hvL2 hn hfit (by omega) hn1
+  refine kview_80005400 hlive hb2 hvs2 hvL2 (Nat.le_of_lt hn) hfit (by omega) hn1
     ((ldv_zero_touch (hvs2.touch hb2)).trans ((ldv_zero_touch t1).trans hz)) hzo hp2
     ((kk3.get 21).trans ((kk2.get 21).trans ((kk1.get 21).trans h21)))
     ((kk3.get 8).trans ((kk2.get 8).trans ((kk1.get 8).trans h8)))
@@ -268,15 +268,21 @@ theorem kara_vzero {live : Nat → Prop} {S : Nat → Prop}
     ((kk3.get 17).trans h17') ((hvs.touchOf hb1' hfr3).trans t1)
   rw [← KList_push]; exact hb3
 
-/-! ## A reachable zero-length half (obstruction)
+/-! ## A reachable zero-length half
 
 `kara_half` computes the split `n = (max la lb + 1) / 2`, and the dispatch at
 `0x80004df4` (`blt s4, s0`) takes the splitting route whenever `n ≤ la`. That
 route stores `n_len = la - n` (`subw` at `0x80004e04`, `sw` at `0x80004e10`),
-so `la = n` makes a `new_sub_num` of length `0`. `NumShape.lenPos` forbids
-such an object, and `kview_80004e08` accordingly demands `n < la`; the witness
-below shows the Karatsuba case's own entry conditions admit `la = n`, so the
-route is not covered. The same holds of `lb` at the second dispatch. -/
+so `la = n` makes a `new_sub_num` of length `0`, and the witnesses below show
+the Karatsuba case's own entry conditions admit it (the same holds of `lb` at
+the second dispatch).
+
+Such an object is representable: `NumShape` carries `emptyScale` instead of a
+positive length, `kview_80004e08` takes `n ≤ la`, and `BcHeap.pushView` takes
+any count. The empty half reaches `bc_sub` as the minuend-side argument of
+`m1 = u1 - u0` (the zero-scan route `0x8000561c` → `0x80004fa4` →
+`0x800054bc`), which is why `_bc_do_compare` takes the two nonzero premises
+and `_bc_do_sub` proves its `c = 0` route. -/
 
 /-- The Karatsuba case's entry conditions admit a zero-length half. -/
 theorem kara_emptyHalf_reachable :

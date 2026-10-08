@@ -139,6 +139,8 @@ structure KRet (S : Nat → Prop) (M' : Mem) (H' : Heap) (F' : List Blk) (hs : L
   slot : ldv .ld M' qs = BitVec.ofNat 64 (Hd.p z (some y))
   val : hdVal y = hdVal x0 * hdVal y0
   vc : valCount y.rep ≤ x0.rep.len + y0.rep.len
+  /-- a product has a digit: `RmPost.len` is `ulen + vlen + 1` -/
+  pos : 1 ≤ y.rep.len
 
 /-- `RmPost` of a recursive call on two handles of the step. -/
 theorem RmPost.kret {S : Nat → Prop} {M M' : Mem} {H' : Heap} {F' : List Blk} {hs : List Hd}
@@ -155,11 +157,12 @@ theorem RmPost.kret {S : Nat → Prop} {M M' : Mem} {H' : Heap} {F' : List Blk} 
     rw [List.take_of_length_le (by omega), post.val]
   have hlt := Nat.mul_lt_mul'' hx0.hdVal_lt hy0.hdVal_lt
   rw [← Nat.pow_add] at hlt
-  refine ⟨?_, post.owns, post.refs, post.slot.trans (by rw [← hyb.sPay]; rfl), hyv, ?_⟩
+  refine ⟨?_, post.owns, post.refs, post.slot.trans (by rw [← hyb.sPay]; rfl), hyv, ?_,
+    by rw [post.len]; omega⟩
   · have := post.heap
     simpa only [KList, temps, List.filterMap_cons, id, zeroCount_some, List.nil_append,
       List.append_assoc, List.cons_append] using this
-  · have := valCount_le_of_lt hyn.shape.dsLen hyn.shape.lenPos (by
+  · have := valCount_le_of_lt hyn.shape.dsLen (show 1 ≤ y.rep.len by rw [post.len]; omega) (by
       rw [post.len, post.scale, Nat.add_zero, Nat.add_sub_cancel]
       have : dvalBE y.rep.ds = hdVal y := by
         show _ = dvalBE (y.rep.ds.take y.rep.len); rw [List.take_of_length_le (by omega)]
@@ -186,6 +189,7 @@ theorem kara_m3ret {live : Nat → Prop} {S : Nat → Prop}
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit2 : n + valCount (Hd.o z hm2).rep ≤ la + lb + 1)
     (hfit3 : n + x0.rep.len + y0.rep.len ≤ la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len) (hw2 : 1 ≤ (Hd.o z hm2).rep.len)
     (hv : KFillVal (hdVal (Hd.o z hm1)) (hdVal (Hd.o z hm2)) (hdVal x0 * hdVal y0) (10 ^ n)
       (kUV u v la lb) (la + lb + 1) ((Hd.o z hd1).rep.neg != (Hd.o z hd2).rep.neg)) :
     DW live S Q 0x8000514c#64 R' M' := by
@@ -205,11 +209,14 @@ theorem kara_m3ret {live : Nat → Prop} {S : Nat → Prop}
     ((hown.cons fun x e => by cases e; exact kr.owns).perm (hpm (some y)))
   have hvc := kr.vc
   refine kara_new514c hlive cx hk (pk2.keeps kk) hb2 ((hok.cons fun x e => by
-      cases e; exact kr.refs).perm (hpm (some y))) hzr hNla ?_ ?_ ?_ ?_ ?_
+      cases e; exact kr.refs).perm (hpm (some y))) hzr hNla ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
   · simpa only [Hd.hdVal_objIn] using hm1z
   · simpa only [Hd.valCount_objIn] using hfit1
   · show n + valCount y.rep ≤ _; omega
   · simpa only [Hd.valCount_objIn] using hfit2
+  · simpa only [Hd.objIn_len] using hw1
+  · simpa only [Hd.objIn_len] using hw2
+  · exact kr.pos
   · show KFillVal _ _ (hdVal y) _ _ _ _
     rw [kr.val]; simpa only [Hd.hdVal_objIn, Hd.objIn_neg] using hv
 
@@ -244,10 +251,12 @@ theorem kara_m3call {live : Nat → Prop} {S : Nat → Prop}
     (h11 : R 11 = BitVec.ofNat 64 x0.rep.len) (h13 : R 13 = BitVec.ofNat 64 y0.rep.len)
     (hN : x0.rep.len + y0.rep.len ≤ N) (hW : rmStack (x0.rep.len + y0.rep.len) + 192 ≤ W)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (hx0p : 1 ≤ x0.rep.len) (hy0p : 1 ≤ y0.rep.len)
     (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit2 : n + valCount (Hd.o z hm2).rep ≤ la + lb + 1)
     (hfit3 : n + x0.rep.len + y0.rep.len ≤ la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len) (hw2 : 1 ≤ (Hd.o z hm2).rep.len)
     (hv : KFillVal (hdVal (Hd.o z hm1)) (hdVal (Hd.o z hm2)) (hdVal x0 * hdVal y0) (10 ^ n)
       (kUV u v la lb) (la + lb + 1) ((Hd.o z hd1).rep.neg != (Hd.o z hd2).rep.neg)) :
     DW live S Q 0x8000513c#64 R M := by
@@ -270,14 +279,14 @@ theorem kara_m3call {live : Nat → Prop} {S : Nat → Prop}
   apply st_80005148 hlive
   refine kara_child ih cx hk (pk.st.rm.keeps (by keeps_tac Keeps.refl _ _) (by bsimp [h2])) 56
     (by omega) (by decide) hN hW kz.withRefs
-    ⟨hxm, hym, hx0.shape.lenPos, hy0.shape.lenPos, Nat.le_add_right _ _, Nat.le_add_right _ _,
+    ⟨hxm, hym, hx0p, hy0p, Nat.le_add_right _ _, Nat.le_add_right _ _,
       by omega, hmb⟩ hb' (by bsimp []) (by bsimp []) (by bsimp [h11]) (by bsimp [])
     (by bsimp [h13]) (by bsimp [h2]) ?_
   intro R' M' H' F' y kk post
   bsimp []
   exact kara_m3ret hlive cx hk pk hpm hown hok kz.refs hx0 hy0
     ((kk.mono (fun r hr => List.mem_cons_of_mem _ hr)).trans (by keeps_tac Keeps.refl _ _))
-    post hNla hm1z hfit1 hfit2 hfit3 hv
+    post hNla hm1z hfit1 hfit2 hfit3 hw1 hw2 hv
 
 /-- **`m3 = u0 · v0`** from `0x800050d4`: `u0` or `v0` zero, a copy of
 `_zero_`; else the recursive call; then the product's `bc_new_num`. -/
@@ -301,6 +310,8 @@ theorem kara_m3 {live : Nat → Prop} {S : Nat → Prop}
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit2 : n + valCount (Hd.o z hm2).rep ≤ la + lb + 1)
     (hfit3 : n + (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len) (hw2 : 1 ≤ (Hd.o z hm2).rep.len)
+    (hu0p : 1 ≤ (Hd.o z hu0).rep.len) (hv0p : 1 ≤ (Hd.o z hv0).rep.len)
     (hv : KFillVal (hdVal (Hd.o z hm1)) (hdVal (Hd.o z hm2))
       (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n)
       (kUV u v la lb) (la + lb + 1) ((Hd.o z hd1).rep.neg != (Hd.o z hd2).rep.neg)) :
@@ -326,27 +337,30 @@ theorem kara_m3 {live : Nat → Prop} {S : Nat → Prop}
     refine kara_new5440 hlive cx hk (pk.keeps kk) hb (hpm none)
       ((hown.cons (h3 := none) fun x e => nomatch e).perm (hpm none))
       ((hok.cons (h3 := none) fun x e => nomatch e).perm (hpm none))
-      kz.refs (by omega) (by rw [kk.get 12]; exact h12) hNla ?_ ?_ ?_ ?_ ?_
+      kz.refs (by omega) (by rw [kk.get 12]; exact h12) hNla ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     · simpa only [Hd.hdVal_objIn] using hm1z
     · simpa only [Hd.valCount_objIn] using hfit1
     · rw [Hd.valCount_objIn]; show n + valCount z.rep ≤ _; omega
     · simpa only [Hd.valCount_objIn] using hfit2
+    · simpa only [Hd.objIn_len] using hw1
+    · simpa only [Hd.objIn_len] using hw2
+    · rw [Hd.objIn_len]; show 1 ≤ z.rep.len; have := kz.len; omega
     · rw [Hd.hdVal_objIn]; show KFillVal _ _ (hdVal z) _ _ _ _; rw [hzv]
       simpa only [Hd.hdVal_objIn, Hd.objIn_neg] using hv
   refine kzero_800050d4 hlive hS pk.tr.u0 h12 hzb (hx _ hu0m) ?_ ?_
   · intro R1 kk1 hz0
     exact zero R1 (kk1.mono (by decide)) (by rw [hz0.val kz.ds kz.len, Nat.zero_mul])
-  intro x0 e0 R1 kk1 h11
+  intro x0 e0 _ R1 kk1 h11
   subst e0
   refine kzero_80005104 hlive hS ((kk1.get 20).trans pk.tr.v0) ((kk1.get 12).trans h12) hzb
     (hx _ hv0m) ?_ ?_
   · intro R2 kk2 hz1
     exact zero R2 ((kk2.mono (by decide)).trans (kk1.mono (by decide)))
       (by rw [hz1.val kz.ds kz.len, Nat.mul_zero])
-  intro y0 e1 R2 kk2 h13
+  intro y0 e1 _ R2 kk2 h13
   subst e1
   exact kara_m3call hlive ih cx hk (pk.keeps ((kk2.mono (ks' := [10, 11, 13, 14, 15]) (by decide)).trans
       (kk1.mono (by decide)))) hb hpm hown hok hu0m hv0m kz hmb ((kk2.get 11).trans h11) h13 hN hW
-    hNla hn1 hm1z hfit1 hfit2 hfit3 hv
+    hNla hn1 hu0p hv0p hm1z hfit1 hfit2 hfit3 hw1 hw2 hv
 
 end Dc.Mach

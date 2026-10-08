@@ -148,10 +148,11 @@ theorem kara_m2 {live : Nat → Prop} {S : Nat → Prop}
       dvalBE y.rep.ds +
         hdVal (Hd.objIn [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] z hm2) * 10 ^ n =
           kUV u v la lb)
-    (hUV : kUV u v la lb < 10 ^ (la + lb + 1)) :
+    (hUV : kUV u v la lb < 10 ^ (la + lb + 1))
+    (hwp : 1 ≤ (Hd.objIn [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] z hm2).rep.len) :
     DW live S Q 0x8000519c#64 R M := by
-  generalize hhs : [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] = hs at hb hok hfit hsub hadd
-  generalize hw2 : Hd.objIn hs z hm2 = w2 at hfit hsub hadd
+  generalize hhs : [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] = hs at hb hok hfit hsub hadd hwp
+  generalize hw2 : Hd.objIn hs z hm2 = w2 at hfit hsub hadd hwp
   generalize ho1 : Hd.objIn hs z hd1 = o1 at hsub hadd
   generalize ho2 : Hd.objIn hs z hd2 = o2 at hsub hadd
   have hm : ∀ h, h ∈ [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] → Hd.objIn hs z h ∈ y :: KList [] hs A B z :=
@@ -190,12 +191,12 @@ theorem kara_m2 {live : Nat → Prop} {S : Nat → Prop}
   have hwl : w2.rep.len ≤ w2.rep.ds.length := by have := ws.dsLen; omega
   apply st_800051c0 hlive
   refine bc_shift_addsub_spec (w := w2) (shift := n) (sub := (o1.rep.neg != o2.rep.neg)) hlive hyo
-    (by bsimp []) ⟨hw2L, by rw [hyl, hys]; exact hfit, ?_⟩ hb (by bsimp [hyp])
+    (by bsimp []) ⟨hw2L, hwp, by rw [hyl, hys]; exact hfit, ?_⟩ hb (by bsimp [hyp])
     (by bsimp []) (by bsimp []) (by bsimp []) rfl ?_
   · cases hsb : (o1.rep.neg != o2.rep.neg)
-    · exact noCarry_add hyd ys.dig (by rw [hyl, hys]; exact hfit) hwl ws.lenPos ws.dig (by
+    · exact noCarry_add hyd ys.dig (by rw [hyl, hys]; exact hfit) hwl hwp ws.dig (by
         rw [hyl, hys, Nat.add_zero, hadd hsb]; exact hUV)
-    · exact noCarry_sub hyd ys.dig (by rw [hyl, hys]; exact hfit) hwl ws.lenPos ws.dig (by
+    · exact noCarry_sub hyd ys.dig (by rw [hyl, hys]; exact hfit) hwl hwp ws.dig (by
         rw [hsub hsb]; exact Nat.le_add_left _ _)
   intro R2 M2 hsh hb2
   subst hhs
@@ -204,12 +205,12 @@ theorem kara_m2 {live : Nat → Prop} {S : Nat → Prop}
     ((hsh.keeps.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
   have hfit' : n + valCount w2.rep ≤ y.rep.len + y.rep.scale := by rw [hyl, hys]; exact hfit
   cases hsb : (o1.rep.neg != o2.rep.neg)
-  · rw [shiftDs_add hyd ys.dig hfit' hwl ws.lenPos ws.dig (by
-      exact noCarry_add hyd ys.dig hfit' hwl ws.lenPos ws.dig (by
+  · rw [shiftDs_add hyd ys.dig hfit' hwl hwp ws.dig (by
+      exact noCarry_add hyd ys.dig hfit' hwl hwp ws.dig (by
         rw [hyl, hys, Nat.add_zero, hadd hsb]; exact hUV))]
     exact hadd hsb
-  · have := shiftDs_sub hyd ys.dig hfit' hwl ws.lenPos ws.dig (by
-      exact noCarry_sub hyd ys.dig hfit' hwl ws.lenPos ws.dig (by
+  · have := shiftDs_sub hyd ys.dig hfit' hwl hwp ws.dig (by
+      exact noCarry_sub hyd ys.dig hfit' hwl hwp ws.dig (by
         rw [hsub hsb]; exact Nat.le_add_left _ _))
     rw [hsub hsb] at this; simp only [hdVal] at this; omega
 

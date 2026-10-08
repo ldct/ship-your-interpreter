@@ -32,7 +32,9 @@ theorem kara_subCall {live : Nat → Prop} {S : Nat → Prop}
     (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L u v la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (o : Nat) (ho : o + 8 ≤ 88) (hoa : o % 8 = 0)
     (hW : 368 ≤ W)
-    (ha : BinArgs (L1 ++ xr :: L2) x1 x2 0) (hb : BcHeap S M H F (L1 ++ xr :: L2))
+    (ha : BinArgs (L1 ++ xr :: L2) x1 x2 0)
+    (hadd : x1.rep.neg ≠ x2.rep.neg → 1 ≤ x1.rep.len ∧ 1 ≤ x2.rep.len)
+    (hb : BcHeap S M H F (L1 ++ xr :: L2))
     (hr : ResSlot M L1 xr (sp - 192 + o)) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 192 + o)) (h13 : R 13 = BitVec.ofNat 64 0)
@@ -51,7 +53,7 @@ theorem kara_subCall {live : Nat → Prop} {S : Nat → Prop}
       by simp only [heapEnd]; omega,
       ⟨fun i hi => ks.own _ (mem_accAddrs (by omega)), by omega, by omega, by omega⟩,
       fun a ha => ks.out a ha.1 ha.2, .inr (by omega), st.r2, hal⟩
-    ha hb hr h10 h11 h12 h13
+    ha hadd hb hr h10 h11 h12 h13
     ⟨hret, fun R' M' sp' h1 h2 hr2 hout => hk.oom R' M' sp' (by omega) (by omega) hr2
       fun a ha hs hf => by
         rw [hout a ha (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
@@ -141,13 +143,27 @@ structure KSubArgs (z : NumObj) (x1 x2 : Hd) : Prop where
   n2 : (Hd.o z x2).rep.Norm
   size : max (Hd.o z x1).rep.len (Hd.o z x2).rep.len + 1 +
     max 0 (max (Hd.o z x1).rep.scale (Hd.o z x2).rep.scale) < 2 ^ 31
+  /-- both are halves or differences of magnitudes: non-negative -/
+  neg1 : (Hd.o z x1).rep.neg = false
+  neg2 : (Hd.o z x2).rep.neg = false
+  /-- an empty operand (a zero-length high half) meets a nonzero one -/
+  e1 : (Hd.o z x1).rep.len = 0 → 0 < dval (Hd.o z x2).rep.ds
+  e2 : (Hd.o z x2).rep.len = 0 → 0 < dval (Hd.o z x1).rep.ds
 
 theorem KSubArgs.binArgs {z : NumObj} {x1 x2 : Hd} (h : KSubArgs z x1 x2) {P A B : List NumObj}
     {hs : List Hd} (h1 : x1 ∈ hs) (h2 : x2 ∈ hs) :
     BinArgs (KList P hs A B z) (Hd.objIn hs z x1) (Hd.objIn hs z x2) 0 :=
   ⟨Hd.objIn_mem h1 P A B z, Hd.objIn_mem h2 P A B z, (Hd.objIn_norm hs z x1).mpr h.n1,
     (Hd.objIn_norm hs z x2).mpr h.n2, by
-      simp only [Hd.objIn_len', Hd.objIn_scale]; exact h.size⟩
+      simp only [Hd.objIn_len', Hd.objIn_scale]; exact h.size,
+    by rw [Hd.objIn_len', Hd.objIn_ds]; exact h.e1,
+    by rw [Hd.objIn_len', Hd.objIn_ds]; exact h.e2⟩
+
+/-- Two non-negative operands: `bc_sub` never adds magnitudes. -/
+theorem KSubArgs.noAdd {z : NumObj} {x1 x2 : Hd} (h : KSubArgs z x1 x2) (hs : List Hd) :
+    (Hd.objIn hs z x1).rep.neg ≠ (Hd.objIn hs z x2).rep.neg →
+      1 ≤ (Hd.objIn hs z x1).rep.len ∧ 1 ≤ (Hd.objIn hs z x2).rep.len := by
+  rw [Hd.objIn_neg, Hd.objIn_neg, h.neg1, h.neg2]; exact fun e => absurd rfl e
 
 /-- A difference `bc_sub` left: the new number heading the handles. -/
 structure KDiff (y : NumObj) (n : Num) : Prop where
@@ -155,6 +171,8 @@ structure KDiff (y : NumObj) (n : Num) : Prop where
   norm : y.rep.Norm
   refs : y.rep.refs = 1
   owns : y.Owns
+  /-- `bc_sub`'s result has a digit (`BinPost.pos`) -/
+  pos : 1 ≤ y.rep.len
 
 /-- The step after the differences `d1 = u1 - u0` and `d2 = v0 - v1`. -/
 structure KSubs (S : Nat → Prop) (M0 M : Mem) (R0 R : Nat → BitVec 64) (sp q W n la lb : Nat)
@@ -269,6 +287,9 @@ structure KM3Spec (z : NumObj) (hu0 hv0 : Hd) (n la lb N W : Nat) : Prop where
   fit : n + (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ la + lb + 1
   size : (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ N
   stack : rmStack ((Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len) + 192 ≤ W
+  /-- the low halves have digits: `new_sub_num (n, 0, …)` with `1 ≤ n` -/
+  pu0 : 1 ≤ (Hd.o z hu0).rep.len
+  pv0 : 1 ≤ (Hd.o z hv0).rep.len
 
 /-- The `m1` obligations: `2 n` digits for `u1 · v1`, and its size. -/
 structure KM1Spec (z : NumObj) (hu1 hv1 : Hd) (n la lb N W : Nat) : Prop where
@@ -311,7 +332,9 @@ theorem kara_m2enter {live : Nat → Prop} {S : Nat → Prop}
     (m3s : KM3Spec z hu0 hv0 n la lb N W)
     (hd1 : y1.rep.num = Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0)
     (hd2 : y2.rep.num = Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0)
-    (hm1v : hdVal (Hd.o z hm1) = hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1)) :
+    (hm1v : hdVal (Hd.o z hm1) = hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1))
+    (hd1p : 1 ≤ y1.rep.len) (hd2p : 1 ≤ y2.rep.len)
+    (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len) :
     DW live S Q 0x80005050#64 R M := by
   obtain ⟨hf1, hN1, hW1⟩ := ds.fit y1 y2 hd1 hd2
   have hu1m : hu1 ∈ kHs1 hm1 y1 y2 hs0 :=
@@ -329,7 +352,7 @@ theorem kara_m2enter {live : Nat → Prop} {S : Nat → Prop}
   refine kara_m2stage hlive ih cx hk pk hb (fun h2 h3 => kperm9_of hp0 hm1 h2 h3 _ _) hown hok
     hu0m hv0m (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self))
     (List.mem_cons_of_mem _ List.mem_cons_self) (kz.mono (by have h3 := m3s.fit; simp only [Hd.o] at h3 ⊢; omega)) h12 hmb hN1 hW1 m3s.size m3s.stack hNla hn1
-    hm1z hfit1 (by show n + y1.rep.len + y2.rep.len ≤ _; omega) m3s.fit ?_
+    hd1p hd2p hm1z hfit1 (by show n + y1.rep.len + y2.rep.len ≤ _; omega) m3s.fit hw1 m3s.pu0 m3s.pv0 ?_
   · show KFillVal _ (hdVal y1 * hdVal y2) _ _ _ _ _
     rw [hm1v]
     exact ds.fill y1 y2 hd1 hd2
@@ -420,7 +443,7 @@ theorem kara_m1zero {live : Nat → Prop} {S : Nat → Prop}
     (hga.mulBase hmb) hNla hn1 (fun _ => by rw [Hd.o, hzv])
     (by simp)
     ds m3s ps2.d1.num ps2.d2.num
-    (by rw [Hd.o, hzv, hz0])
+    (by rw [Hd.o, hzv, hz0]) ps2.d1.pos ps2.d2.pos (by simp)
   exact hm1
 
 /-- **`m1` returned** (`0x80005044`): the product in `m1`'s slot, `d2`'s digit
@@ -492,7 +515,7 @@ theorem kara_m1ret {live : Nat → Prop} {S : Nat → Prop}
     (hok.cons fun x e => by cases e; exact kr.refs)
     (kz'.mono (by simp only [zeroCount_some]; omega)) (by bsimp []) (hga.mulBase hmb) hNla hn1
     (by simp) (fun _ => by show 2 * n + valCount ym.rep ≤ _; omega) ds m3s ps.d1.num ps.d2.num
-    (by rw [Hd.o, Hd.o, Hd.o, kr.val])
+    (by rw [Hd.o, Hd.o, Hd.o, kr.val]) ps.d1.pos ps.d2.pos (fun _ => kr.pos)
 
 /-- **The recursive call for `m1`** at `0x80005028` (both halves nonzero):
 `d2`'s digit count spilled, then `_bc_rec_mul (u1, n_len (u1), v1,
@@ -512,6 +535,7 @@ theorem kara_m1call {live : Nat → Prop} {S : Nat → Prop}
     (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)))
     (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (hx1p : 1 ≤ x1.rep.len) (hx2p : 1 ≤ x2.rep.len)
     (ds : KDiffSpec z (some x1) hu0 (some x2) hv0 u v n la lb N W)
     (m3s : KM3Spec z hu0 hv0 n la lb N W)
     (m1s : KM1Spec z (some x1) (some x2) n la lb N W) :
@@ -570,7 +594,7 @@ theorem kara_m1call {live : Nat → Prop} {S : Nat → Prop}
     (by omega) (by decide) hm1s hm1w
     (KZero.withRefs (j := zeroCount (some y2 :: some y1 :: hs0))
       (kz1.mono (by have := hm1f; omega)))
-    ⟨hx1m, hx2m, hx1.shape.lenPos, hx2.shape.lenPos, Nat.le_add_right _ _, Nat.le_add_right _ _,
+    ⟨hx1m, hx2m, hx1p, hx2p, Nat.le_add_right _ _, Nat.le_add_right _ _,
       by omega, hmb1⟩ hb1 (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []) (by bsimp [h2]) ?_
   intro R' M' H' F' ym kk post

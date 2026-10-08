@@ -44,6 +44,8 @@ theorem kara_fill5164 {live : Nat → Prop} {S : Nat → Prop}
       la + lb + 1)
     (hfit2 : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep ≤
       la + lb + 1)
+    (hw2 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep.len)
+    (hw3 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hv : KFillVal (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3)) (10 ^ n) (kUV u v la lb)
@@ -52,15 +54,15 @@ theorem kara_fill5164 {live : Nat → Prop} {S : Nat → Prop}
         (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hd2).rep.neg)) :
     DW live S Q 0x80005164#64 R M := by
   have hb1 := hv.bound
-  refine kshift_80005164 hlive cx km hb hyo hy15 (by rw [hyl, hys]; omega)
+  refine kshift_80005164 hlive cx km hb hyo hy15 hw3 (by rw [hyl, hys]; omega)
     (by rw [hP, hyl, hys, Nat.add_zero]; omega) fun R2 M2 ds km2 hb2 hv2 => ?_
-  refine kshift_80005180 hlive cx km2 hb2 hyo (by simp only [withDs, hyl, hys]; omega)
+  refine kshift_80005180 hlive cx km2 hb2 hyo hw3 (by simp only [withDs, hyl, hys]; omega)
     (by simp only [withDs, hyl, hys, Nat.add_zero, Nat.pow_zero, Nat.mul_one]; rw [hv2, hP]; omega) fun R3 M3 ds3 km3 hb3 hv3 => ?_
   simp only [withDs] at hv3
   exact kara_m2 hlive cx hk km3.st hb3 hok hz hyo hyr hyn hyl hys km3.hq km3.tr km3.sl hfit2
     (fun hs => by rw [hv3, hv2, hP]; have := hv.subV hs; simp only [Nat.pow_zero, Nat.mul_one]; omega)
     (fun hs => by rw [hv3, hv2, hP]; have := hv.addV hs; simp only [Nat.pow_zero, Nat.mul_one]; omega)
-    hv.uv
+    hv.uv hw2
 
 /-- **From `0x80005468`** (`m1` not zero, the product all zeros): `m1·B²`,
 `m1·B`, then `0x80005164`. -/
@@ -82,6 +84,9 @@ theorem kara_fill5468 {live : Nat → Prop} {S : Nat → Prop}
       la + lb + 1)
     (hfit2 : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep ≤
       la + lb + 1)
+    (hw1 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep.len)
+    (hw2 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep.len)
+    (hw3 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hv : KFillVal (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3)) (10 ^ n) (kUV u v la lb)
@@ -91,10 +96,10 @@ theorem kara_fill5468 {live : Nat → Prop} {S : Nat → Prop}
     DW live S Q 0x80005468#64 R M := by
   have hb1 := hv.bound
   have hBB : 10 ^ (2 * n) = 10 ^ n * 10 ^ n := by rw [← Nat.pow_add]; congr 1; omega
-  refine kshift_80005468 hlive cx km hb hyo hy10 (by rw [hyl, hys]; omega)
+  refine kshift_80005468 hlive cx km hb hyo hy10 hw1 (by rw [hyl, hys]; omega)
     (by rw [hP, hyl, hys, Nat.add_zero, hBB, ← Nat.mul_assoc]; omega)
     fun R2 M2 ds km2 hb2 hv2 => ?_
-  refine kshift_80005480 hlive cx km2 hb2 hyo (by simp only [withDs, hyl, hys]; omega)
+  refine kshift_80005480 hlive cx km2 hb2 hyo hw1 (by simp only [withDs, hyl, hys]; omega)
     (by simp only [withDs, hyl, hys, Nat.add_zero]; rw [hv2, hP, hBB, ← Nat.mul_assoc]; omega)
     fun R3 M3 ds3 km3 hb3 hv3 => ?_
   simp only [withDs] at hv3
@@ -115,6 +120,6 @@ theorem kara_fill5468 {live : Nat → Prop} {S : Nat → Prop}
       fun r => ⟨⟨r, km3.st.saved2⟩, km3.tr.keeps (ks := [15]) (by keeps_tac Keeps.refl _ _),
         km3.sl, km3.hq⟩)
     hb3 hok hz hyo hyr hyn hyl hys h15
-    (by rw [hv3, hv2, hP, hBB, ← Nat.mul_assoc]; omega) hfit3 hfit2 hv
+    (by rw [hv3, hv2, hP, hBB, ← Nat.mul_assoc]; omega) hfit3 hfit2 hw2 hw3 hv
 
 end Dc.Mach

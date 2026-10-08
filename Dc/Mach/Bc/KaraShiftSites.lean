@@ -23,6 +23,7 @@ theorem kshift_80005164 {live : Nat → Prop} {S : Nat → Prop}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
     (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hyo : y.Owns) (hy15 : R 15 = BitVec.ofNat 64 y.rep.p)
+    (hwp : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hfit : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep ≤
       y.rep.len + y.rep.scale)
     (hlt : dvalBE y.rep.ds + hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3) *
@@ -33,8 +34,8 @@ theorem kshift_80005164 {live : Nat → Prop} {S : Nat → Prop}
         hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3) * 10 ^ n →
       DW live S Q 0x80005180#64 R2 M2) :
     DW live S Q 0x80005164#64 R M := by
-  generalize hhs : kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 = hs at hb hfit hlt hk
-  generalize hw : Hd.objIn hs z hm3 = w at hfit hlt hk
+  generalize hhs : kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 = hs at hb hwp hfit hlt hk
+  generalize hw : Hd.objIn hs z hm3 = w at hwp hfit hlt hk
   have hwL : w ∈ KList [] hs A B z := hw ▸ Hd.objIn_mem (hhs ▸ by simp) _ _ _ _
   have hn := hb.nums w (List.mem_cons_of_mem _ hwL)
   have hny := hb.nums y List.mem_cons_self
@@ -53,10 +54,10 @@ theorem kshift_80005164 {live : Nat → Prop} {S : Nat → Prop}
   simp only [heapStart, heapEnd] at yv1 yv2
   have ys := hny.shape; have ws := hn.shape
   have hwl : w.rep.len ≤ w.rep.ds.length := by have := ws.dsLen; omega
-  have hc := noCarry_add ys.dsLen ys.dig hfit hwl ws.lenPos ws.dig hlt
+  have hc := noCarry_add ys.dsLen ys.dig hfit hwl hwp ws.dig hlt
   apply st_8000517c hlive
   refine bc_shift_addsub_spec (w := w) (shift := n) (sub := false) hlive hyo
-    (by bsimp []) ⟨hwL, hfit, hc⟩ hb (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
+    (by bsimp []) ⟨hwL, hwp, hfit, hc⟩ hb (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []; rfl) ?_
   intro R2 M2 hsh hb2
   have hP : ∀ a, accBytes y.rep a → heapStart ≤ a ∧ a < heapEnd := fun a ha => by
@@ -64,7 +65,7 @@ theorem kshift_80005164 {live : Nat → Prop} {S : Nat → Prop}
   have kk : Keeps [1, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 28] R2 R :=
     (hsh.keeps.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
   exact hk R2 M2 _ (km.after cx hsh.mem hP kk _) hb2
-    (shiftDs_add ys.dsLen ys.dig hfit hwl ws.lenPos ws.dig hc)
+    (shiftDs_add ys.dsLen ys.dig hfit hwl hwp ws.dig hc)
 
 /-- `_bc_shift_addsub (*prod, m3, 0, 0)` at `0x80005180`. -/
 theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop}
@@ -75,6 +76,7 @@ theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
     (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hyo : y.Owns)
+    (hwp : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hfit : 0 + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep ≤
       y.rep.len + y.rep.scale)
     (hlt : dvalBE y.rep.ds + hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3) *
@@ -85,8 +87,8 @@ theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop}
         hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3) * 10 ^ 0 →
       DW live S Q 0x8000519c#64 R2 M2) :
     DW live S Q 0x80005180#64 R M := by
-  generalize hhs : kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 = hs at hb hfit hlt hk
-  generalize hw : Hd.objIn hs z hm3 = w at hfit hlt hk
+  generalize hhs : kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 = hs at hb hwp hfit hlt hk
+  generalize hw : Hd.objIn hs z hm3 = w at hwp hfit hlt hk
   have hwL : w ∈ KList [] hs A B z := hw ▸ Hd.objIn_mem (hhs ▸ by simp) _ _ _ _
   have hn := hb.nums w (List.mem_cons_of_mem _ hwL)
   have hny := hb.nums y List.mem_cons_self
@@ -108,10 +110,10 @@ theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop}
   simp only [heapStart, heapEnd] at yv1 yv2
   have ys := hny.shape; have ws := hn.shape
   have hwl : w.rep.len ≤ w.rep.ds.length := by have := ws.dsLen; omega
-  have hc := noCarry_add ys.dsLen ys.dig hfit hwl ws.lenPos ws.dig hlt
+  have hc := noCarry_add ys.dsLen ys.dig hfit hwl hwp ws.dig hlt
   apply st_80005198 hlive
   refine bc_shift_addsub_spec (w := w) (shift := 0) (sub := false) hlive hyo
-    (by bsimp []) ⟨hwL, hfit, hc⟩ hb (by bsimp [hyp]) (by bsimp []) (by bsimp []) (by bsimp [])
+    (by bsimp []) ⟨hwL, hwp, hfit, hc⟩ hb (by bsimp [hyp]) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []; rfl) ?_
   intro R2 M2 hsh hb2
   have hP : ∀ a, accBytes y.rep a → heapStart ≤ a ∧ a < heapEnd := fun a ha => by
@@ -119,7 +121,7 @@ theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop}
   have kk : Keeps [1, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 28] R2 R :=
     (hsh.keeps.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
   exact hk R2 M2 _ (km.after cx hsh.mem hP kk _) hb2
-    (shiftDs_add ys.dsLen ys.dig hfit hwl ws.lenPos ws.dig hc)
+    (shiftDs_add ys.dsLen ys.dig hfit hwl hwp ws.dig hc)
 
 /-- `_bc_shift_addsub (*prod, m1, 2*n, 0)` at `0x80005468` (`a0` holds the product). -/
 theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop}
@@ -130,6 +132,7 @@ theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
     (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hyo : y.Owns) (hy10 : R 10 = BitVec.ofNat 64 y.rep.p)
+    (hwp : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep.len)
     (hfit : (2 * n) + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep ≤
       y.rep.len + y.rep.scale)
     (hlt : dvalBE y.rep.ds + hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) *
@@ -140,8 +143,8 @@ theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop}
         hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) * 10 ^ (2 * n) →
       DW live S Q 0x80005480#64 R2 M2) :
     DW live S Q 0x80005468#64 R M := by
-  generalize hhs : kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 = hs at hb hfit hlt hk
-  generalize hw : Hd.objIn hs z hm1 = w at hfit hlt hk
+  generalize hhs : kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 = hs at hb hwp hfit hlt hk
+  generalize hw : Hd.objIn hs z hm1 = w at hwp hfit hlt hk
   have hwL : w ∈ KList [] hs A B z := hw ▸ Hd.objIn_mem (hhs ▸ by simp) _ _ _ _
   have hn := hb.nums w (List.mem_cons_of_mem _ hwL)
   have hny := hb.nums y List.mem_cons_self
@@ -160,10 +163,10 @@ theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop}
   simp only [heapStart, heapEnd] at yv1 yv2
   have ys := hny.shape; have ws := hn.shape
   have hwl : w.rep.len ≤ w.rep.ds.length := by have := ws.dsLen; omega
-  have hc := noCarry_add ys.dsLen ys.dig hfit hwl ws.lenPos ws.dig hlt
+  have hc := noCarry_add ys.dsLen ys.dig hfit hwl hwp ws.dig hlt
   apply st_8000547c hlive
   refine bc_shift_addsub_spec (w := w) (shift := (2 * n)) (sub := false) hlive hyo
-    (by bsimp []) ⟨hwL, hfit, hc⟩ hb (by bsimp [hy10]) (by bsimp []) (by bsimp []) (by bsimp [])
+    (by bsimp []) ⟨hwL, hwp, hfit, hc⟩ hb (by bsimp [hy10]) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []; rfl) ?_
   intro R2 M2 hsh hb2
   have hP : ∀ a, accBytes y.rep a → heapStart ≤ a ∧ a < heapEnd := fun a ha => by
@@ -171,7 +174,7 @@ theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop}
   have kk : Keeps [1, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 28] R2 R :=
     (hsh.keeps.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
   exact hk R2 M2 _ (km.after cx hsh.mem hP kk _) hb2
-    (shiftDs_add ys.dsLen ys.dig hfit hwl ws.lenPos ws.dig hc)
+    (shiftDs_add ys.dsLen ys.dig hfit hwl hwp ws.dig hc)
 
 /-- `_bc_shift_addsub (*prod, m1, n, 0)` at `0x80005480`. -/
 theorem kshift_80005480 {live : Nat → Prop} {S : Nat → Prop}
@@ -182,6 +185,7 @@ theorem kshift_80005480 {live : Nat → Prop} {S : Nat → Prop}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
     (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hyo : y.Owns)
+    (hwp : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep.len)
     (hfit : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep ≤
       y.rep.len + y.rep.scale)
     (hlt : dvalBE y.rep.ds + hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) *
@@ -192,8 +196,8 @@ theorem kshift_80005480 {live : Nat → Prop} {S : Nat → Prop}
         hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) * 10 ^ n →
       DW live S Q 0x8000549c#64 R2 M2) :
     DW live S Q 0x80005480#64 R M := by
-  generalize hhs : kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 = hs at hb hfit hlt hk
-  generalize hw : Hd.objIn hs z hm1 = w at hfit hlt hk
+  generalize hhs : kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 = hs at hb hwp hfit hlt hk
+  generalize hw : Hd.objIn hs z hm1 = w at hwp hfit hlt hk
   have hwL : w ∈ KList [] hs A B z := hw ▸ Hd.objIn_mem (hhs ▸ by simp) _ _ _ _
   have hn := hb.nums w (List.mem_cons_of_mem _ hwL)
   have hny := hb.nums y List.mem_cons_self
@@ -215,10 +219,10 @@ theorem kshift_80005480 {live : Nat → Prop} {S : Nat → Prop}
   simp only [heapStart, heapEnd] at yv1 yv2
   have ys := hny.shape; have ws := hn.shape
   have hwl : w.rep.len ≤ w.rep.ds.length := by have := ws.dsLen; omega
-  have hc := noCarry_add ys.dsLen ys.dig hfit hwl ws.lenPos ws.dig hlt
+  have hc := noCarry_add ys.dsLen ys.dig hfit hwl hwp ws.dig hlt
   apply st_80005498 hlive
   refine bc_shift_addsub_spec (w := w) (shift := n) (sub := false) hlive hyo
-    (by bsimp []) ⟨hwL, hfit, hc⟩ hb (by bsimp [hyp]) (by bsimp []) (by bsimp []) (by bsimp [])
+    (by bsimp []) ⟨hwL, hwp, hfit, hc⟩ hb (by bsimp [hyp]) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []; rfl) ?_
   intro R2 M2 hsh hb2
   have hP : ∀ a, accBytes y.rep a → heapStart ≤ a ∧ a < heapEnd := fun a ha => by
@@ -226,6 +230,6 @@ theorem kshift_80005480 {live : Nat → Prop} {S : Nat → Prop}
   have kk : Keeps [1, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 28] R2 R :=
     (hsh.keeps.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
   exact hk R2 M2 _ (km.after cx hsh.mem hP kk _) hb2
-    (shiftDs_add ys.dsLen ys.dig hfit hwl ws.lenPos ws.dig hc)
+    (shiftDs_add ys.dsLen ys.dig hfit hwl hwp ws.dig hc)
 
 end Dc.Mach

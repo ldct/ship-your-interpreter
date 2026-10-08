@@ -209,6 +209,9 @@ theorem kara_newRet {live : Nat → Prop} {S : Nat → Prop}
       la + lb + 1)
     (hfit2 : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep ≤
       la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep.len)
+    (hw2 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep.len)
+    (hw3 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hv : KFillVal (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3)) (10 ^ n) (kUV u v la lb)
@@ -232,9 +235,9 @@ theorem kara_newRet {live : Nat → Prop} {S : Nat → Prop}
       have km := pk.toMid (y := y) cx kk hm hq
       have hb2 := hb.out_frame hm fun a ha => cx.slotOut a ha
       refine ⟨fun hf => kara_fill5164 hlive cx hk km hb2 hok hz hyo hyr hyn hyl hys (r15.trans (by rw [hyp]))
-        (by rw [hP, hm1z hf]; simp) hfit3 hfit2 hv,
+        (by rw [hP, hm1z hf]; simp) hfit3 hfit2 hw2 hw3 hv,
         fun hf => kara_fill5468 hlive cx hk km hb2 hok hz hyo hyr hyn hyl hys (r10.trans (by rw [hyp]))
-          hP (hfit1 hf) hfit3 hfit2 hv⟩
+          hP (hfit1 hf) hfit3 hfit2 (hw1 hf) hw2 hw3 hv⟩
   have fin := fun (b : Bool) => go (upd R 15 (BitVec.ofNat 64 y.sb.pay))
     (writeLog M [(q, 8, BitVec.ofNat 64 y.sb.pay)]) (by keeps_tac Keeps.refl _ _) (by bsimp [])
     (by bsimp [h10]) (MemOnly.store _ _ _ _) (ldv_store_hit _ _ _)
@@ -263,6 +266,9 @@ theorem kara_newCall {live : Nat → Prop} {S : Nat → Prop}
       la + lb + 1)
     (hfit2 : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep ≤
       la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep.len)
+    (hw2 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep.len)
+    (hw3 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hv : KFillVal (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3)) (10 ^ n) (kUV u v la lb)
@@ -285,7 +291,7 @@ theorem kara_newCall {live : Nat → Prop} {S : Nat → Prop}
     exact kara_newRet hlive hra cx hk ((pk.out cx (k := 32) (by omega) hp1.out).keeps hk1)
       (NewNumPost.insert hb hp1) hok hz hp1.owns (by rw [hrep]; rfl) (by rw [hrep]; rfl)
       (by rw [hrep]; rfl) (by rw [hrep]; rfl)
-      (by rw [hrep]; simp only [zeroRep, dvalBE_replicate_zero]) hr1 hm1z hfit1 hfit3 hfit2 hv
+      (by rw [hrep]; simp only [zeroRep, dvalBE_replicate_zero]) hr1 hm1z hfit1 hfit3 hfit2 hw1 hw2 hw3 hv
   · refine hk.oom R' Mt' (sp - 192 - 32) (by omega) (by omega) hr2 fun a ha hs hf => ?_
     rw [hout a ha fun h => hf (by simp only [frameIn] at *; omega)]
     exact pk.st.rm.out a ha hs hf
@@ -309,6 +315,9 @@ theorem kara_new514c {live : Nat → Prop} {S : Nat → Prop}
       la + lb + 1)
     (hfit2 : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep ≤
       la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep.len)
+    (hw2 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2).rep.len)
+    (hw3 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hv : KFillVal (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm2))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3)) (10 ^ n) (kUV u v la lb)
@@ -321,7 +330,7 @@ theorem kara_new514c {live : Nat → Prop} {S : Nat → Prop}
   bc_run hlive hS [h22, sxw_ofNat] at 0x80005154
   apply st_80005154 hlive
   exact kara_newCall hlive (.inl (by bsimp [])) cx hk (pk.keeps (ks := [1, 10, 11]) (by keeps_tac Keeps.refl _ _)) hb hok hz
-    hN (by bsimp [sxw_ofNat (show la + lb + 1 < 2 ^ 31 by omega)]) (by bsimp []) hm1z hfit1 hfit3 hfit2 hv
+    hN (by bsimp [sxw_ofNat (show la + lb + 1 < 2 ^ 31 by omega)]) (by bsimp []) hm1z hfit1 hfit3 hfit2 hw1 hw2 hw3 hv
 
 /-- **`m3 = _zero_`** (`0x80005440`, a factor zero): the copy of `_zero_`
 into `m3`'s slot, then the product's `bc_new_num`. -/
@@ -345,6 +354,9 @@ theorem kara_new5440 {live : Nat → Prop} {S : Nat → Prop}
       la + lb + 1)
     (hfit2 : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2) z hm2).rep ≤
       la + lb + 1)
+    (hw1 : fl = false → 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2) z hm1).rep.len)
+    (hw2 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2) z hm2).rep.len)
+    (hw3 : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2) z none).rep.len)
     (hv : KFillVal (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2) z hm1))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2) z hm2))
       (hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2) z none)) (10 ^ n) (kUV u v la lb)
@@ -389,6 +401,6 @@ theorem kara_new5440 {live : Nat → Prop} {S : Nat → Prop}
     fun a ha => by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega).kperm hpm
     (fun _ h => by simp at h) hown
   exact kara_newCall hlive (.inr (by bsimp [])) cx hk (pk2.keeps (ks := [1, 10, 11, 15])
-    (by keeps_tac Keeps.refl _ _)) hb2 hok hz hN (by bsimp []) (by bsimp []) hm1z hfit1 hfit3 hfit2 hv
+    (by keeps_tac Keeps.refl _ _)) hb2 hok hz hN (by bsimp []) (by bsimp []) hm1z hfit1 hfit3 hfit2 hw1 hw2 hw3 hv
 
 end Dc.Mach

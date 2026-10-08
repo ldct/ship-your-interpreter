@@ -280,12 +280,13 @@ theorem NumAt.advance {Mt : Mem} {o : NumRep} (h : NumAt Mt o) (hl : 2 ≤ o.len
     { hs with
       dsLen := by simp only [NumRep.drop, List.length_drop, hs.dsLen]; omega
       dig := fun e he => hs.dig e (List.mem_of_mem_drop he)
-      lenPos := by simp only [NumRep.drop]; omega
       size := by simp only [NumRep.drop]; omega
       ptrLe := by simp only [NumRep.drop]; omega
       vLo := by have := hs.vLo; simp only [NumRep.drop]; omega
       vHi := by simp only [NumRep.drop]; omega
-      sep := by simp only [NumRep.drop]; omega }
+      sep := by simp only [NumRep.drop]; omega
+      emptyScale := fun h => absurd h (by simp only [NumRep.drop] at h ⊢; omega)
+      emptyIn := fun h => absurd h (by simp only [NumRep.drop] at h ⊢; omega) }
   refine ⟨hshape, ?_, ?_, ?_, ?_, ?_, ?_, fun i hi => ?_⟩
   · rw [ldv_store_miss .lw _ _ (by simp only [NumRep.drop, widthOfM]; omega),
       ldv_store_miss .lw _ _ (by simp only [NumRep.drop, widthOfM]; omega)]; exact h.sign
@@ -362,6 +363,8 @@ and the result's size in range. -/
 structure AddArgs (L : List NumObj) (x1 x2 : NumObj) (smin : Nat) : Prop where
   m1 : x1 ∈ L
   m2 : x2 ∈ L
+  l1 : 1 ≤ x1.rep.len
+  l2 : 1 ≤ x2.rep.len
   size : max x1.rep.len x2.rep.len + 1 + max smin (max x1.rep.scale x2.rep.scale) < 2 ^ 31
 
 /-- `_bc_do_add`'s result: the new number `y` (positive, normalized, one
@@ -373,6 +376,7 @@ structure AddPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L
   num : y.rep.num = ⟨false, dval (addDigits a.len a.scale a.ds b.len b.scale b.ds smin),
     resScale a.scale b.scale smin⟩
   norm : y.rep.Norm
+  pos : 1 ≤ y.rep.len
   refs : y.rep.refs = 1
   owns : y.Owns
   out : ∀ a, OutHeap a → ¬ frameIn sp 96 a → imgM Mt a = imgM Mt0 a
@@ -472,10 +476,10 @@ theorem add_done {live : Nat → Prop} {S : Nat → Prop}
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay) (hf : AddFinal o x1.rep x2.rep smin)
     (hj : lzCount (o.len - 1) o.ds = j) (hb : BcHeap S M H F ({ y with rep := o.drop j } :: L)) :
     DW live S Q 0x80004534#64 R M := by
-  obtain ⟨hnum, hnorm, -, -⟩ := NumRep.rmLeadingZeros_spec hf.dsLen hf.lenPos
+  obtain ⟨hnum, hnorm, -, hpos⟩ := NumRep.rmLeadingZeros_spec hf.dsLen hf.lenPos
   have e : o.rmLeadingZeros = o.drop j := by rw [NumRep.rmLeadingZeros, hj]
-  rw [e] at hnum hnorm
-  refine add_epi hlive cx hk (y := { y with rep := o.drop j }) st ⟨hb, ?_, hnorm, hf.refs, hf.ptr, st.out⟩
+  rw [e] at hnum hnorm hpos
+  refine add_epi hlive cx hk (y := { y with rep := o.drop j }) st ⟨hb, ?_, hnorm, hpos, hf.refs, hf.ptr, st.out⟩
   show (o.drop j).num = _
   rw [hnum, NumRep.num, hf.neg, hf.ds, hf.scale]
 
@@ -502,9 +506,10 @@ theorem add_rmlz_loop {live : Nat → Prop} {S : Nat → Prop}
     have hn0 := hb.nums _ List.mem_cons_self
     have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ o.len - j := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
-    simp only [NumRep.drop, heapEnd, heapStart] at v5 v7 v8 v9 v6
+    simp only [NumRep.drop, heapEnd, heapStart] at v5 v7 v9 v6
     bc_run hlive hS [h15, h14, h12, toInt_ofNat_small] at 0x80004534
     · intro hc; exfalso; (try simp (disch := omega) only [toInt_ofNat_small] at hc); omega
     · intro _
@@ -516,9 +521,10 @@ theorem add_rmlz_loop {live : Nat → Prop} {S : Nat → Prop}
     have hn0 := hb.nums _ List.mem_cons_self
     have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ o.len - j := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
-    simp only [NumRep.drop, heapEnd, heapStart] at v5 v7 v8 v9 v6
+    simp only [NumRep.drop, heapEnd, heapStart] at v5 v7 v9 v6
     have hr10 := st.r10
     bc_run hlive hS [h15, h14, h12, hr10, toInt_ofNat_small] at 0x80004534 0x80004524
     · intro hc
@@ -576,6 +582,7 @@ theorem add_rmlz {live : Nat → Prop} {S : Nat → Prop}
   num_facts hn
   have hv : ldv .ld M (y.sb.pay + 32) = BitVec.ofNat 64 o.val := by rw [← hp]; exact hn.value
   have hlen : ldv .lw M (y.sb.pay + 4) = BitVec.ofNat 64 o.len := by rw [← hp]; exact hn.len
+  have hlp : 1 ≤ ({ y with rep := o } : NumObj).rep.len := hf.lenPos
   have hl0 := hn.lbu (i := 0) (by omega)
   have hd := hn.getD_lt 0
   simp only [Nat.add_zero] at hl0 hd
@@ -950,7 +957,7 @@ theorem add_exit1 {live : Nat → Prop} {S : Nat → Prop}
   have hs2 := (e.heap.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
   have h12 := e.r12; have h16 := e.r16; have hb := e.heap
   subst hk0
-  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  have := hs1.size; have := hs2.size; have := ha.l1; have := ha.l2
   bc_run hlive hS [h13] at 0x80004498 0x800044f0
   · intro e2
     bv_nat at e2
@@ -986,7 +993,7 @@ theorem add_exit2 {live : Nat → Prop} {S : Nat → Prop}
   have hs2 := (e.heap.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
   have h12 := e.r12; have h16 := e.r16; have hb := e.heap
   subst hk0
-  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  have := hs1.size; have := hs2.size; have := ha.l1; have := ha.l2
   bc_run hlive hS [h14, h11] at 0x80004498 0x800045b0
   · intro e3; bv_nat at e3; omega
   · intro _
@@ -1251,7 +1258,7 @@ theorem add_join {live : Nat → Prop} {S : Nat → Prop}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
   have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
-  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  have := hs1.size; have := hs2.size; have := ha.l1; have := ha.l2
   have g1 := hg.k0; have g2 := hg.c1; have g3 := hg.c2
   have hc0 := addC_low hs1 hs2 hy.model (k := k0) (by omega)
   have e1 : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale)) +
@@ -1320,6 +1327,7 @@ theorem add_copy1_exit {live : Nat → Prop} {S : Nat → Prop}
   have h16 := cr.r16; have h11 := cr.r11; have h14 := cr.r14; have h17 := cr.r17
   num_facts hn1
   num_facts hn2
+  have hla1 := ha.l1; have hla2 := ha.l2
   bc_run hlive hS [h16, h11, h14, h17, h28, h18, h9, l1, l2, word_pred, sub_ofNat] at 0x80004430
   exact add_join hlive cx hk hy ha (k0 := x1.rep.scale - x2.rep.scale)
     (c1 := x1.rep.len + x2.rep.scale) (c2 := x2.rep.len + x2.rep.scale)
@@ -1467,6 +1475,7 @@ theorem add_copy2_exit {live : Nat → Prop} {S : Nat → Prop}
   simp only [heapStart, heapEnd] at a1 a4 v1
   num_facts hn1
   num_facts hn2
+  have hla1 := ha.l1; have hla2 := ha.l2
   have l1 := hn1.len; have l2 := hn2.len
   have h18 := st.r18; have h9 := st.r9
   have h15 := cr.r15; have h6 := cr.r6; have h17 := cr.r17; have h14 := cr.r14
@@ -1706,7 +1715,7 @@ theorem add_setup_addr {live : Nat → Prop} {S : Nat → Prop}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
   have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
-  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  have := hs1.size; have := hs2.size; have := ha.l1; have := ha.l2
   have w1 := hs1.vHi; have w2 := hs2.vHi
   have hn0 := hb.nums _ List.mem_cons_self
   have w3 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
@@ -1951,7 +1960,7 @@ theorem add_call {live : Nat → Prop} {S : Nat → Prop}
   have hout := pr.out; have hkp := pr.regs
   have hs1 := (hb.nums x1 ha.m1).shape
   have hs2 := (hb.nums x2 ha.m2).shape
-  have := hs1.lenPos
+  have := ha.l1; have := ha.l2
   have hoff : ∀ a, sp - 64 + 8 ≤ a → a < sp - 64 + 16 → OutHeap a := fun a h1 h2 => by
     simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
   have hb2 : BcHeap S (writeLog M [(sp - 64 + 8, 8, BitVec.ofNat 64 smin)]) H F L :=

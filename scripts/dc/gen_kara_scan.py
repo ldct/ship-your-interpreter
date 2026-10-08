@@ -21,14 +21,17 @@ import pathlib
 import sys
 
 # (entry E, second of a pair, obj reg, zero reg, count reg c, pointer reg p,
-#  byte reg t, length reg (first lw), lbu pc L, zero target Z)
+#  byte reg t, length reg (first lw), lbu pc L, zero target Z, empty target)
+# An object with no digits takes the `blez`; that route reaches `Z` (the
+# empty number is zero) unless an empty target `X` is named, where it arrives
+# with the count register `c` zero.
 SITES = [
-    (0x80004f70, False, 24, 17, 15, 14, 13, 14, 0x80004f98, 0x800054bc),
-    (0x80004fa0, True, 27, 17, 26, 15, 14, 15, 0x80004fd0, 0x800054bc),
-    (0x80005050, False, 21, 12, 15, 14, 13, 14, 0x80005078, 0x800054a8),
-    (0x80005080, True, 23, 12, 15, 14, 13, 14, 0x800050b0, 0x800054a8),
-    (0x800050d4, False, 19, 12, 15, 14, 13, 11, 0x800050fc, 0x80005440),
-    (0x80005104, True, 20, 12, 15, 14, 10, 13, 0x80005134, 0x80005440),
+    (0x80004f70, False, 24, 17, 15, 14, 13, 14, 0x80004f98, 0x800054bc, None),
+    (0x80004fa0, True, 27, 17, 26, 15, 14, 15, 0x80004fd0, 0x800054bc, 0x80005530),
+    (0x80005050, False, 21, 12, 15, 14, 13, 14, 0x80005078, 0x800054a8, None),
+    (0x80005080, True, 23, 12, 15, 14, 13, 14, 0x800050b0, 0x800054a8, None),
+    (0x800050d4, False, 19, 12, 15, 14, 13, 11, 0x800050fc, 0x80005440, None),
+    (0x80005104, True, 20, 12, 15, 14, 10, 13, 0x80005134, 0x80005440, None),
 ]
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "Dc/Mach/Bc/KaraScanSites.lean"
@@ -107,7 +110,8 @@ theorem kzero_@E@ {live : Nat → Prop} {S : Nat → Prop}
     (hob : R @obj@ = BitVec.ofNat 64 (Hd.p z h)) (hzr : R @zr@ = BitVec.ofNat 64 z.rep.p)
     (hzb : z.rep.p < 2 ^ 64) (hx : ∀ x, h = some x → NumAt M x.rep ∧ x.rep.p ≠ z.rep.p)
     (hz : ∀ R', Keeps @K@ R' R → HdZero h → DW live S Q 0x@Z@#64 R' M)
-    (hnz : ∀ x, h = some x → ∀ R', Keeps @K@ R' R@NZX@ → DW live S Q 0x@NZ@#64 R' M) :
+    (hnz : ∀ x, h = some x → 1 ≤ x.rep.len → ∀ R', Keeps @K@ R' R@NZX@ →
+      DW live S Q 0x@NZ@#64 R' M)@EMX@ :
     DW live S Q 0x@E@#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   cases h with
@@ -126,8 +130,18 @@ theorem kzero_@E@ {live : Nat → Prop} {S : Nat → Prop}
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x@L@
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
-    · intro hc; exact absurd hc (not_blez (by omega) (by omega))
-    intro _
+    · intro hc
+      have he : x.rep.scale + x.rep.len = 0 := by
+        rw [toInt_ofNat_small (by omega)] at hc; simp at hc; omega
+@EMPTY@
+    intro hnb
+    have hpos : 1 ≤ x.rep.scale + x.rep.len := by
+      rw [toInt_ofNat_small (by omega)] at hnb; simp at hnb; omega
+    -- an object with digits has integer digits (`NumShape.emptyScale`)
+    have hlen1 : 1 ≤ x.rep.len := by
+      rcases Nat.eq_zero_or_pos x.rep.len with h0 | h0
+      · have := hn.shape.emptyScale h0; omega
+      · exact h0
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x@L@
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
     refine kscan_@L@ hlive hS hn ?_ ?_ (x.rep.len + x.rep.scale - 1) 0 _ (by omega)
@@ -135,7 +149,7 @@ theorem kzero_@E@ {live : Nat → Prop} {S : Nat → Prop}
     · intro R' kk hd
       exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
     · intro R' kk
-      exact hnz x rfl R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))@NZP@
+      exact hnz x rfl hlen1 R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))@NZP@
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 
@@ -148,7 +162,7 @@ def hx(n):
 
 def gen():
     out = [HEAD]
-    for (e, pair, obj, zr, c, p, t, lr, L, Z) in SITES:
+    for (e, pair, obj, zr, c, p, t, lr, L, Z, X) in SITES:
         ks = sorted({c, p, t, lr} | ({15} if pair else set()))
         K = "[" + ", ".join(map(str, ks)) + "]"
         KS = "[" + ", ".join(map(str, sorted({c, p, t}))) + "]"
@@ -160,10 +174,21 @@ def gen():
                      ("@KS@", KS), ("@c@", str(c)), ("@p@", str(p))]:
             s = s.replace(k, v)
         out.append(s)
+        if X is None:
+            emx = ""
+            empty = (f"      bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat, he, sltiu1, decide_true, ze_bb, boolWord] at 0x{hx(Z)}\n"
+                     "      all_goals first | (intro _) | skip\n"
+                     f"      all_goals try bc_run hlive hS [] at 0x{hx(Z)}\n"
+                     "      all_goals exact hz _ (by keeps_tac Keeps.refl _ _) (fun y hy j hj => by\n"
+                     "        cases hy; omega)")
+        else:
+            emx = (f"\n    (hem : ∀ x, h = some x → x.rep.len + x.rep.scale = 0 → ∀ R', Keeps {K} R' R →\n"
+                   f"      R' {c} = BitVec.ofNat 64 0 → DW live S Q 0x{hx(X)}#64 R' M)")
+            empty = (f"      exact hem x rfl (by omega) _ (by keeps_tac Keeps.refl _ _) (by bsimp [he])")
         s = ENTRY
         for k, v in [("@E@", hx(e)), ("@L@", hx(L)), ("@NZ@", hx(L + 8)), ("@Z@", hx(Z)),
                      ("@K@", K), ("@obj@", str(obj)), ("@zr@", str(zr)), ("@NZX@", nzx),
-                     ("@NZP@", nzp)]:
+                     ("@NZP@", nzp), ("@EMX@", emx), ("@EMPTY@", empty)]:
             s = s.replace(k, v)
         out.append(s)
     out.append("end Dc.Mach\n")

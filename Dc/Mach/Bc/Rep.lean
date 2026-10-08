@@ -24,7 +24,7 @@ The `n_len + n_scale` digits `0..9` at `n_value`, most significant first.
   `NumRep.num` the `Dc.Num` it denotes.
 - `NumAt Mt o`: memory `Mt` holds `o`. `NumAt.frame`: it survives any memory
   agreeing on the footprint `NumRep.Foot` (the struct and the digits).
-- `NumRep.Norm`: no leading zero (`n_len = 1` or a nonzero first digit), the
+- `NumRep.Norm`: no leading zero (`n_len ≤ 1` or a nonzero first digit), the
   form every `bc_num` result has after `_bc_rm_leading_zeros`;
   `NumRep.rmLeadingZeros` is that function on representations.
 - Digit arithmetic: `dval` (the value of a digit list), `dval_append`,
@@ -282,7 +282,6 @@ abbrev signWord (neg : Bool) : BitVec 64 := BitVec.ofNat 64 (if neg then 1 else 
 structure NumShape (o : NumRep) : Prop where
   dsLen : o.ds.length = o.len + o.scale
   dig : Digits o.ds
-  lenPos : 1 ≤ o.len
   size : o.len + o.scale < 2 ^ 31
   refsLt : o.refs < 2 ^ 31
   pAl : o.p % 8 = 0
@@ -293,6 +292,12 @@ structure NumShape (o : NumRep) : Prop where
   vHi : o.val + o.len + o.scale ≤ heapEnd
   /-- the digits are apart from the struct -/
   sep : o.val + o.len + o.scale ≤ o.p ∨ o.p + 40 ≤ o.val
+  /-- an object without integer digits has no digits at all: `new_sub_num`
+  of a zero-length Karatsuba half is the only such object -/
+  emptyScale : o.len = 0 → o.scale = 0
+  /-- such an object still points into the heap: the view starts at a digit of
+  its owner, which `_bc_rec_mul`'s leading-zero trim reads before the count -/
+  emptyIn : o.len = 0 → o.val < heapEnd
 
 /-- **Memory `Mt` holds the object `o`.** -/
 structure NumAt (Mt : Mem) (o : NumRep) : Prop where
@@ -306,7 +311,7 @@ structure NumAt (Mt : Mem) (o : NumRep) : Prop where
   digit : ∀ i, i < o.len + o.scale → imgM Mt (o.val + i) = BitVec.ofNat 8 (o.ds.getD i 0)
 
 /-- No leading zero: `n_len = 1` or the first digit is nonzero. -/
-def NumRep.Norm (o : NumRep) : Prop := o.len = 1 ∨ o.ds.getD 0 0 ≠ 0
+def NumRep.Norm (o : NumRep) : Prop := o.len ≤ 1 ∨ o.ds.getD 0 0 ≠ 0
 
 /-- The bytes `NumAt` reads: the struct's fields and the digits. -/
 def NumRep.Foot (o : NumRep) (a : Nat) : Prop :=
@@ -363,6 +368,15 @@ theorem NumRep.mag_ge {o : NumRep} (hs : NumShape o) (hn : o.Norm) (h1 : 1 < o.l
       have : 10 ^ ds.length ≤ d * 10 ^ ds.length := Nat.le_mul_of_pos_left _ (by omega)
       have := dval_ge_head (d := d) (ds := ds)
       rw [show o.len - 1 + o.scale = ds.length by omega]; omega
+
+/-- An object with no integer digits has no digits, so its magnitude is `0`. -/
+theorem NumRep.mag_eq_zero {o : NumRep} (hs : NumShape o) (h : o.len = 0) : dval o.ds = 0 := by
+  have hl : o.ds.length = 0 := by rw [hs.dsLen, h, hs.emptyScale h]
+  have he : o.ds = [] := by
+    cases hds : o.ds with
+    | nil => rfl
+    | cons d t => rw [hds] at hl; simp at hl
+  rw [he]; rfl
 
 theorem NumRep.mag_lt {o : NumRep} (hs : NumShape o) : dval o.ds < 10 ^ (o.len + o.scale) := by
   have := dval_lt hs.dig; rwa [hs.dsLen] at this

@@ -4860,3 +4860,40 @@ consumers that need it, which are the digit loops, the comparison, the scan
 and the trims — all of which already know their operand is nonempty from
 their callers. A zero-length view is inert at the trims: `lbu 0(n_value)`
 reads a byte of the parent's buffer and either branch leaves `n_len = 0`.
+
+#### Amendment status and the empty-operand obligation
+
+Landed: `NumShape.lenPos` is gone, `NumRep.Norm o := o.len ≤ 1 ∨ o.ds.getD 0 0 ≠ 0`,
+and the positivity the machine proofs actually use is now an explicit field or
+premise:
+
+- `AddArgs.l1`/`.l2`, `SubArgs.l1`/`.l2` (`Dc/Mach/Bc/DoAdd.lean`,
+  `DoSub.lean`) — the operands of `_bc_do_add`/`_bc_do_sub`.
+- `cmpMag_of_len_lt` takes `1 ≤ a.len`, `cmpMag_of_len_gt` takes `1 ≤ b.len`;
+  without them the statements are false (`a.len = 0` against a normalised
+  `b.len = 1`, `b.ds = [0]`, both magnitudes `0`).
+- `do_compare_spec`, `bc_compare_spec` take `1 ≤ a.len` and `1 ≤ b.len`.
+- `bc_num2long_spec`, `bc_is_zero_spec`, `bc_is_near_zero_spec`
+  (`Dc/Mach/Bc/Scan.lean`) take `1 ≤ o.len`.
+- `sub_rmlz_loop`/`add_rmlz_loop` derive `1 ≤ o.len - j` from the loop index
+  instead of the shape.
+
+Empty-half routes (closed, all Kara modules through `OutLong` rebuilt):
+
+- `NumShape.emptyScale` and `NumShape.emptyIn` (`o.len = 0 → o.val < heapEnd`):
+  an empty view still points into its owner, which the leading-zero trims
+  (`ktrim_*`, `kara_trim.lean.in`) read before the count. `BcHeap.pushView`
+  takes `off < w.rep.len + w.rep.scale`; `kview_80004e08`/`kview_800053d0` take
+  `1 ≤ n` for it.
+- Results that have digits say so: `AddPost.pos`, `SubPost.pos`, `BinPost.pos`,
+  `KRet.pos`, `KDiff.pos`; `ShiftArgs.lw` is supplied from them.
+- The zero scans (`gen_kara_scan`) prove both branches for an empty operand;
+  at `0x80004fa0` the empty `v1` takes `0x80005530`, a third copy of the
+  subtract pair (`ksubs_80005530`), which joins the m1-zero route at
+  `0x8000550c` (`KaraM1Stage.zk`).
+- Karatsuba operands are non-negative, so `bc_sub` never takes its add route
+  (`KSubArgs.noAdd`); `kara_subCall` takes that as `hadd`.
+
+Remaining for M6: supply `KSubArgs` (`neg1`/`neg2`, `e1`/`e2`), `KM3Spec`
+(`pu0`/`pv0`), `KDiffSpec` and `KM1Spec` at the step, compose the u/v routes
+into `RmKara`, then the `rmDepth` induction for the full `_bc_rec_mul` spec.

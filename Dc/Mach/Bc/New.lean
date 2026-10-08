@@ -178,7 +178,6 @@ theorem new_num_digits {live : Nat → Prop} {S : Nat → Prop}
     have hshape : NumShape (zeroRep sb.pay db.pay len scale) :=
       { dsLen := by simp [zeroRep]
         dig := fun d hd => by simp only [zeroRep, List.mem_replicate] at hd; omega
-        lenPos := hl1
         size := hls
         refsLt := show 1 < 2 ^ 31 by decide
         pAl := by simp only [zeroRep]; omega
@@ -187,7 +186,9 @@ theorem new_num_digits {live : Nat → Prop} {S : Nat → Prop}
         ptrLe := Nat.le_refl _
         vLo := by simp only [zeroRep, heapStart]; omega
         vHi := by simp only [zeroRep, heapEnd]; omega
-        sep := by simp only [zeroRep]; omega }
+        sep := by simp only [zeroRep]; omega
+        emptyScale := fun h => absurd h (by simp only [zeroRep] at h ⊢; omega)
+        emptyIn := fun h => absurd h (by simp only [zeroRep] at h ⊢; omega) }
     have hnum : NumAt Mt3 (zeroRep sb.pay db.pay len scale) := by
       refine ⟨hshape, ?_, ?_, ?_, ?_, ?_, ?_, fun i hi' => ?_⟩
       · show ldv .lw Mt3 sb.pay = signWord false

@@ -11,7 +11,7 @@ theorem ksubs_@A@ {live : Nat → Prop} {S : Nat → Prop}
     (hb : BcHeap S M H F (KList [] hs A B z))
     (hu1m : hu1 ∈ hs) (hu0m : hu0 ∈ hs) (hv0m : hv0 ∈ hs) (hv1m : hv1 ∈ hs)
     (sa1 : KSubArgs z hu1 hu0) (sa2 : KSubArgs z hv0 hv1)
-    (hzr : 1 ≤ z.rep.refs) (hzk : z.rep.refs + zeroCount hs + 2 < 2 ^ 31)
+    (hzr : 1 ≤ z.rep.refs) (hzk : z.rep.refs + zeroCount hs + 2 < 2 ^ 31)@H26P@
     (hnext : KSubsK live S Q M0 M R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
     DW live S Q 0x@A@#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -53,6 +53,7 @@ theorem ksubs_@A@ {live : Nat → Prop} {S : Nat → Prop}
     (by omega) (by decide) hW
     (sa1.binArgs (P := []) (A := A) (B := B) (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hu1m))
       (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hu0m)))
+    (sa1.noAdd _)
     hb1 (KList.resSlot hzr (by rw [ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _))
     (by bsimp []) (by bsimp [Hd.objIn_p]) (by bsimp [Hd.objIn_p]) (by bsimp [h2]) (by bsimp []) ?_
   intro R' M' H' F' L' y1 kk post
@@ -77,4 +78,5 @@ theorem ksubs_@A@ {live : Nat → Prop} {S : Nat → Prop}
   have kk' : Keeps (1 :: binClob) R' R :=
     (kk.mono (fun r hr => List.mem_cons_of_mem _ hr)).trans (by keeps_tac Keeps.refl _ _)
   exact ksubsB_@B@ hlive cx hk hW ((pk.mem st2).keeps kk') hb2 post.slot h72 hv0m hv1m sa2 hzr
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns⟩ hga2 hnext
+    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+      post.pos⟩ hga2@H26A@ hnext

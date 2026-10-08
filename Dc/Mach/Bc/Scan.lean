@@ -113,7 +113,7 @@ number is zero. -/
 theorem bc_is_zero_spec {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {o : NumRep} (h : NumAt Mt o)
-    (hzg : ∀ b, 0x8001cdc8 ≤ b → b < 0x8001cdd0 → S b)
+    (hlp : 1 ≤ o.len) (hzg : ∀ b, 0x8001cdc8 ≤ b → b < 0x8001cdd0 → S b)
     (hz : ldv .ld Mt zeroAddr = BitVec.ofNat 64 o.p → o.num.isZero = true)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 o.p) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R', Keeps [10, 13, 14, 15] R' R → R' 10 = boolWord o.num.isZero →
@@ -261,7 +261,7 @@ theorem is_near_zero_loop {live : Nat → Prop} {S : Nat → Prop}
 theorem bc_is_near_zero_spec {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {o : NumRep} (h : NumAt Mt o)
-    {s : Nat} (hs : s < 2 ^ 31)
+    (hlp : 1 ≤ o.len) {s : Nat} (hs : s < 2 ^ 31)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 o.p) (h11 : R 11 = BitVec.ofNat 64 s)
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R', Keeps [10, 13, 14, 15] R' R → R' 10 = boolWord (o.num.isNearZero s) →
@@ -381,13 +381,13 @@ theorem num2long_loop {live : Nat → Prop} {S : Nat → Prop}
         simp only [show ¬ dval (o.ds.take (o.len - 1)) ≤ 214748364 by omega, ite_false]
 
 /-- `Num.toLong` of an object: `num2longVal` with the sign. -/
-theorem NumRep.toLong_eq {o : NumRep} (hs : NumShape o) :
+theorem NumRep.toLong_eq {o : NumRep} (hs : NumShape o) (hlp : 1 ≤ o.len) :
     o.num.toLong = if o.neg then -(num2longVal o : Int) else (num2longVal o : Int) := by
   have hip : o.num.intPart = dval (o.ds.take o.len) := by
     have := dval_div_take o.ds hs.dig o.len
     rw [hs.dsLen, Nat.add_sub_cancel_left] at this
     exact this
-  have hlen := hs.lenPos
+  have hlen := hlp
   have h10 : dval (o.ds.take o.len) / 10 = dval (o.ds.take (o.len - 1)) := by
     have e := dval_take_succ o.ds (m := o.len - 1) (by rw [hs.dsLen]; omega)
     rw [Nat.sub_add_cancel hlen] at e
@@ -403,6 +403,7 @@ theorem NumRep.toLong_eq {o : NumRep} (hs : NumShape o) :
 theorem bc_num2long_spec {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {o : NumRep} (h : NumAt Mt o)
+    (hlp : 1 ≤ o.len)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 o.p) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R', Keeps [10, 11, 12, 13, 14, 15, 16] R' R → R' 10 = BitVec.ofInt 64 o.num.toLong →
       DW live S Q (R 1) R' Mt) :
@@ -414,7 +415,7 @@ theorem bc_num2long_spec {live : Nat → Prop} {S : Nat → Prop}
     split
     · rename_i hc
       have e := dval_take_succ o.ds (m := o.len - 1) (by omega)
-      rw [Nat.sub_add_cancel h.shape.lenPos] at e
+      rw [Nat.sub_add_cancel hlp] at e
       have := getD_digit h.shape.dig (o.len - 1)
       omega
     · omega

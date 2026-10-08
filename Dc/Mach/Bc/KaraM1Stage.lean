@@ -57,29 +57,40 @@ theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop}
   have hv1m : hv1 ∈ hs0 := hp0.mem_iff.mpr (by simp)
   have hv0m : hv0 ∈ hs0 := hp0.mem_iff.mpr (by simp)
   have hzk : z.rep.refs + zeroCount hs0 + 2 < 2 ^ 31 := by have := kz.room; omega
-  have zero : ∀ R', Keeps [13, 14, 15, 26] R' R →
-      hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1) = 0 → DW live S Q 0x800054bc#64 R' M := by
-    intro R' kk hz0
-    refine ksubs_800054bc hlive cx hk hW (pk.keeps kk) (by rw [kk.get 17]; exact h17) hb
-      hu1m hu0m hv0m hv1m sa1 sa2 kz.refs (by omega) ?_
-    intro R'' M'' H'' F'' y1 y2 ps hb2 hga
+  have zk : hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1) = 0 →
+      KSubsK live S Q M0 M R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs0 A B 0x8000550c#64 := by
+    intro hz0 R'' M'' H'' F'' y1 y2 ps hb2 hga
     exact kara_m1zero hlive ih cx hk ps hb2 hp0
       (((hown.cons (h3 := some y1) fun x e => by cases e; exact ps.d1.owns).cons
         (h3 := some y2) fun x e => by cases e; exact ps.d2.owns))
       ((hok.cons (h3 := some y1) fun x e => by cases e; exact ps.d1.refs).cons
         (h3 := some y2) fun x e => by cases e; exact ps.d2.refs)
       (hga.zero kz) (hga.mulBase hmb) hNla hn1 ds m3s hz0
+  have zero : ∀ R', Keeps [13, 14, 15, 26] R' R →
+      hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1) = 0 → DW live S Q 0x800054bc#64 R' M :=
+    fun R' kk hz0 => ksubs_800054bc hlive cx hk hW (pk.keeps kk) (by rw [kk.get 17]; exact h17) hb
+      hu1m hu0m hv0m hv1m sa1 sa2 kz.refs (by omega) (zk hz0)
   refine kzero_80004f70 hlive hS pk.u1 h17 hzb (hx _ hu1m) ?_ ?_
   · intro R1 kk1 hz1
     exact zero R1 (kk1.mono (by decide)) (by rw [hz1.val kz.ds kz.len, Nat.zero_mul])
-  intro x1 e1 R1 kk1
+  intro x1 e1 hx1p R1 kk1
   subst e1
   refine kzero_80004fa0 hlive hS ((kk1.get 27).trans pk.v1) ((kk1.get 17).trans h17) hzb
-    (hx _ hv1m) ?_ ?_
+    (hx _ hv1m) ?_ ?_ ?_
   · intro R2 kk2 hz2
     exact zero R2 ((kk2.mono (by decide)).trans (kk1.mono (by decide)))
       (by rw [hz2.val kz.ds kz.len, Nat.mul_zero])
-  intro x2 e2 R2 kk2
+  rotate_left
+  · -- `v1` without digits: the third copy of the differences, then `m1 = _zero_`
+    intro x2 e2 hx0 R2 kk2 h26
+    subst e2
+    refine ksubs_80005530 hlive cx hk hW
+      (pk.keeps ((kk2.mono (ks' := [13, 14, 15, 26]) (by decide)).trans (kk1.mono (by decide))))
+      (by rw [kk2.get 17 (by decide), kk1.get 17 (by decide)]; exact h17) hb
+      hu1m hu0m hv0m hv1m sa1 sa2 kz.refs (by omega) h26 (zk ?_)
+    show _ * dvalBE (x2.rep.ds.take x2.rep.len) = 0
+    rw [show x2.rep.len = 0 by omega, List.take_zero]; exact Nat.mul_zero _
+  intro x2 e2 hx2p R2 kk2
   subst e2
   refine ksubs_80004fd8 hlive cx hk hW
     (pk.keeps ((kk2.mono (ks' := [13, 14, 15, 26]) (by decide)).trans (kk1.mono (by decide))))
@@ -91,6 +102,6 @@ theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop}
       (h3 := some y2) fun x e => by cases e; exact ps.d2.owns)
     ((hok.cons (h3 := some y1) fun x e => by cases e; exact ps.d1.refs).cons
       (h3 := some y2) fun x e => by cases e; exact ps.d2.refs)
-    (hga.zero kz) (hga.mulBase hmb) hNla hn1 ds m3s m1s
+    (hga.zero kz) (hga.mulBase hmb) hNla hn1 hx1p hx2p ds m3s m1s
 
 end Dc.Mach

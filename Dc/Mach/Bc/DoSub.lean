@@ -106,6 +106,14 @@ theorem addiw10_int {u : Int} (h1 : -10 ≤ u) (h2 : u < 0) :
     n = 9) with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   all_goals decide
 
+/-- `addi` of a decrement fused into one `ofNat` (the operand pointer of an
+empty subtrahend is one byte below its buffer). -/
+theorem ofNat_pred_assoc {a b : Nat} (h : 1 ≤ a + b) :
+    BitVec.ofNat 64 (a + (b + 18446744073709551615)) = BitVec.ofNat 64 (a + b - 1) := by
+  rw [show a + (b + 18446744073709551615) = a + b + 18446744073709551615 by omega,
+    ← ofNat_add_ofNat]
+  exact word_pred h
+
 /-! ## Storing one position of a result -/
 
 /-- Position `N - 1 - k` of a result `sumDs N k r Z` written with digit `k`
@@ -229,6 +237,7 @@ structure SubArgs (L : List NumObj) (x1 x2 : NumObj) (smin : Nat) : Prop where
   m2 : x2 ∈ L
   le : x2.rep.len ≤ x1.rep.len
   size : max x1.rep.len x2.rep.len + max smin (max x1.rep.scale x2.rep.scale) < 2 ^ 31
+  l1 : 1 ≤ x1.rep.len
 
 /-- `_bc_do_sub`'s result: the new number `y` (positive, normalized, one
 reference) holding `_bc_do_sub`'s digit array heads the heap; off the heap
@@ -239,6 +248,7 @@ structure SubPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L
   num : y.rep.num = ⟨false, dval (subDigits a.len a.scale a.ds b.len b.scale b.ds smin),
     resScale a.scale b.scale smin⟩
   norm : y.rep.Norm
+  pos : 1 ≤ y.rep.len
   refs : y.rep.refs = 1
   owns : y.Owns
   out : ∀ a, OutHeap a → ¬ frameIn sp 128 a → imgM Mt a = imgM Mt0 a
@@ -351,10 +361,10 @@ theorem sub_done {live : Nat → Prop} {S : Nat → Prop}
     (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay) (hf : SubFinal o x1.rep x2.rep smin)
     (hj : lzCount (o.len - 1) o.ds = j) (hb : BcHeap S M H F ({ y with rep := o.drop j } :: L)) :
     DW live S Q 0x8000480c#64 R M := by
-  obtain ⟨hnum, hnorm, -, -⟩ := NumRep.rmLeadingZeros_spec hf.dsLen hf.lenPos
+  obtain ⟨hnum, hnorm, -, hpos⟩ := NumRep.rmLeadingZeros_spec hf.dsLen hf.lenPos
   have e : o.rmLeadingZeros = o.drop j := by rw [NumRep.rmLeadingZeros, hj]
-  rw [e] at hnum hnorm
-  refine sub_epi hlive cx hk (y := { y with rep := o.drop j }) st ⟨hb, ?_, hnorm, hf.refs, hf.ptr, st.out⟩
+  rw [e] at hnum hnorm hpos
+  refine sub_epi hlive cx hk (y := { y with rep := o.drop j }) st ⟨hb, ?_, hnorm, hpos, hf.refs, hf.ptr, st.out⟩
   show (o.drop j).num = _
   rw [hnum, NumRep.num, hf.neg, hf.ds, hf.scale]
 
@@ -381,9 +391,10 @@ theorem sub_rmlz_loop {live : Nat → Prop} {S : Nat → Prop}
     have hn0 := hb.nums _ List.mem_cons_self
     have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ o.len - j := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
-    simp only [NumRep.drop, heapEnd, heapStart] at v5 v7 v8 v9 v6
+    simp only [NumRep.drop, heapEnd, heapStart] at v5 v7 v9 v6
     bc_run hlive hS [h15, h14, h12, toInt_ofNat_small] at 0x8000480c
     · intro hc; exfalso; (try simp (disch := omega) only [toInt_ofNat_small] at hc); omega
     · intro _
@@ -395,9 +406,10 @@ theorem sub_rmlz_loop {live : Nat → Prop} {S : Nat → Prop}
     have hn0 := hb.nums _ List.mem_cons_self
     have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ o.len - j := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
-    simp only [NumRep.drop, heapEnd, heapStart] at v5 v7 v8 v9 v6
+    simp only [NumRep.drop, heapEnd, heapStart] at v5 v7 v9 v6
     have hr10 := st.r10
     bc_run hlive hS [h15, h14, h12, hr10, toInt_ofNat_small] at 0x8000480c 0x800047f0
     · intro hc
@@ -454,6 +466,8 @@ theorem sub_rmlz {live : Nat → Prop} {S : Nat → Prop}
   num_facts hn
   have hv : ldv .ld M (y.sb.pay + 32) = BitVec.ofNat 64 o.val := by rw [← hp]; exact hn.value
   have hlen : ldv .lw M (y.sb.pay + 4) = BitVec.ofNat 64 o.len := by rw [← hp]; exact hn.len
+  have hlp : 1 ≤ ({ y with rep := o } : NumObj).rep.len := hf.lenPos
+  have hlp' : 1 ≤ o.len := hf.lenPos
   have hl0 := hn.lbu (i := 0) (by omega)
   have hd := hn.getD_lt 0
   simp only [Nat.add_zero] at hl0 hd
@@ -789,7 +803,7 @@ theorem sub_high_entry {live : Nat → Prop} {S : Nat → Prop}
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
   have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
-  have a3 := hs1.size; have b3 := hs2.lenPos
+  have a3 := hs1.size; have b3 := ha.l1
   have hls := hy.lenScale
   simp only [heapStart, heapEnd] at v1 v2
   simp only [addN, loopLen, addZ, List.length_replicate] at hls hNl
@@ -823,7 +837,7 @@ structure SubMain (a b : NumRep) (yv k0 c P1 P2 Y : Nat) : Prop where
   k0 : k0 = max a.scale b.scale - min a.scale b.scale
   c : c = b.len + min a.scale b.scale
   P1 : P1 = a.val + (a.len + min a.scale b.scale - 1)
-  P2 : P2 = b.val + (b.len + min a.scale b.scale - 1)
+  P2 : P2 = b.val + (b.len + min a.scale b.scale) - 1
   Y : Y = yv + (max a.len b.len + min a.scale b.scale - 1)
 
 /-- The registers of the subtract loop at `0x80004740` after `j`
@@ -966,7 +980,7 @@ theorem sub_main_exit {live : Nat → Prop} {S : Nat → Prop}
     {H : Heap} {F : List Blk} {k0 c P1 P2 Y : Nat}
     (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
-    (hg : SubMain x1.rep x2.rep y.rep.val k0 c P1 P2 Y)
+    (hg : SubMain x1.rep x2.rep y.rep.val k0 c P1 P2 Y) (hc1 : 1 ≤ c)
     (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
     (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin (k0 + c)) :: L))
     (sr : SubRegs R P1 P2 Y c c (subB x1.rep x2.rep (k0 + c)) x1.rep.len) :
@@ -978,7 +992,7 @@ theorem sub_main_exit {live : Nat → Prop} {S : Nat → Prop}
   have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
   have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
   have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a3 := hs1.size; have a4 := hs1.vHi
-  have b3 := hs2.lenPos
+  have b3 := ha.l1
   have hNl := hy.N_lt
   have hle := ha.le
   simp only [heapStart, heapEnd] at v1 a1 a4
@@ -1036,7 +1050,7 @@ theorem sub_main_loop {live : Nat → Prop} {S : Nat → Prop}
       (by omega) hr hbs (fun e R' M' => ih (j + 1) R' M' (by omega) e)
       (fun e R' M' st' hb' sr' => by
         rw [e] at hb' sr'
-        exact sub_main_exit hlive cx hk hy ha hg st' hb' sr')
+        exact sub_main_exit hlive cx hk hy ha hg (by omega) st' hb' sr')
 
 /-- The join at `0x8000472c`: `k0` positions done, `c = l2 + min s1 s2`
 into `s0`, then the subtract loop. -/
@@ -1057,18 +1071,29 @@ theorem sub_join {live : Nat → Prop} {S : Nat → Prop}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
   have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
-  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  have := hs1.size; have := hs2.size; have := ha.l1
   have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a4 := hs1.vHi
   simp only [heapStart, heapEnd] at a1 a4
-  have g2 := hg.c; have g3 := hg.P1
+  have g1 := hg.k0; have g2 := hg.c; have g3 := hg.P1; have g4 := hg.P2; have g5 := hg.Y
+  have hNl := hy.N_lt
+  simp only [addN, loopLen] at hNl
   have h20 := st.r20
   have e1 : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 x2.rep.len) +
       BitVec.extractLsb 31 0 (BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale))) =
       BitVec.ofNat 64 c := by
     rw [addw_ofNat (by omega)]; congr 1; omega
   bc_run hlive hS [h20, h8, e1] at 0x80004740 0x80004790
-  · intro hc; exact absurd hc (not_blez (by omega) (by omega))
-  · intro _
+  · -- `c = 0`: an empty subtrahend at the shorter scale, so the loop is
+    -- skipped and `n2`'s positions are already done
+    intro hc
+    simp (disch := omega) only [toInt_ofNat_small] at hc
+    have hc0 : c = 0 := by omega
+    exact sub_high_entry hlive cx hk hy ha (k := k0) (by omega)
+      (st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h16]; congr 1; omega)
+      (by bsimp [h14]) (by bsimp [h13]; congr 1; simp only [addN, loopLen]; omega)
+      (by bsimp [h9])
+  · intro hc
+    simp (disch := omega) only [toInt_ofNat_small] at hc
     bc_run hlive hS [h20, h8, e1, h16, h13, sub_ofNat] at 0x80004740
     rw [← Nat.add_zero k0] at hb h14
     exact sub_main_loop hlive cx hk hy ha hg _ 0 _ _ rfl (by omega)
@@ -1096,7 +1121,7 @@ structure FracARegs (R : Nat → BitVec 64) (A Y0 n P2 m D j : Nat) : Prop where
 `n2`'s at `B`, the result's last slot at `Y0`. -/
 structure FracGeom (a b : NumRep) (yv A B Y0 : Nat) : Prop where
   eA : A = a.val + (a.len + a.scale - 1)
-  eB : B = b.val + (b.len + b.scale - 1)
+  eB : B = b.val + (b.len + b.scale) - 1
   eY : Y0 = yv + (max a.len b.len + max a.scale b.scale - 1)
 
 /-- After the copy of `n1`'s extra fraction digits, from `0x80004718`. -/
@@ -1123,7 +1148,7 @@ theorem sub_fracA_exit {live : Nat → Prop} {S : Nat → Prop}
   simp only [addN, loopLen] at hNl
   simp only [heapStart, heapEnd] at a1 a4 v1
   have f1 := hf.eA; have f2 := hf.eB; have f3 := hf.eY
-  have l1p := hs1.lenPos; have l2p := hs2.lenPos
+  have l1p := ha.l1
   have h13 := fr.r13; have h16 := fr.r16; have h17 := fr.r17; have h11 := fr.r11
   have h8 := fr.r8; have h9 := fr.r9
   have hb0 : subB x1.rep x2.rep (x1.rep.scale - x2.rep.scale) = 0 :=
@@ -1422,7 +1447,12 @@ theorem sub_fracB_exit {live : Nat → Prop} {S : Nat → Prop}
   simp only [addN, loopLen] at hNl
   simp only [heapStart, heapEnd] at b1 b4 v1
   have f1 := hf.eA; have f2 := hf.eB; have f3 := hf.eY
-  have l1p := hs1.lenPos; have l2p := hs2.lenPos
+  have l1p := ha.l1
+  -- `n2` has the larger scale, so it is not the empty subtrahend
+  have l2p : 1 ≤ x2.rep.len := by
+    rcases Nat.eq_zero_or_pos x2.rep.len with h0 | h
+    · exact absurd (hs2.emptyScale h0) (by omega)
+    · exact h
   have h13 := fr.r13; have h16 := fr.r16; have h28 := fr.r28; have h11 := fr.r11
   have h8 := fr.r8; have h9 := fr.r9; have h14 := fr.r14
   have hg : SubMain x1.rep x2.rep y.rep.val (x2.rep.scale - x1.rep.scale)
@@ -1509,7 +1539,7 @@ theorem sub_fracB_entry {live : Nat → Prop} {S : Nat → Prop}
   simp only [addN, loopLen] at hNl
   simp only [heapStart, heapEnd] at b1 b4 v1
   have f1 := hf.eA; have f2 := hf.eB; have f3 := hf.eY
-  have l1p := hs1.lenPos; have l2p := hs2.lenPos; have a3 := hs1.size
+  have l1p := ha.l1; have a3 := hs1.size
   have hb0 : subB x1.rep x2.rep 0 = 0 := borrowAt_zero _ _ _
   bc_run hlive hS [h17, h8, subw_ofNat, toInt_ofNat_small] at 0x80004858 0x800048b8
   · intro hc
@@ -1553,7 +1583,9 @@ theorem sub_setup_addr {live : Nat → Prop} {S : Nat → Prop}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
   have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
-  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  have := hs1.size; have := hs2.size; have := ha.l1
+  have b1 := hs2.vLo
+  simp only [heapStart] at b1
   have w1 := hs1.vHi; have w2 := hs2.vHi
   have hn0 := hb.nums _ List.mem_cons_self
   have w3 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
@@ -1566,21 +1598,23 @@ theorem sub_setup_addr {live : Nat → Prop} {S : Nat → Prop}
     bv_nat at he
     exact sub_fracB_entry hlive cx hk hy ha (by omega)
       (A := x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
-      (B := x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
+      (B := x2.rep.val + (x2.rep.len + x2.rep.scale) - 1)
       (Y0 := y.rep.val + (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale - 1))
       ⟨rfl, rfl, rfl⟩ (st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h17])
       (by bsimp [h8]; try (congr 1; omega)) (by bsimp [h13, h6]; try (congr 1; omega))
-      (by bsimp [h16, h12, h15]; try (congr 1; omega)) (by bsimp [h11, h14, h17]; try (congr 1; omega))
+      (by bsimp [h16, h12, h15]; try (congr 1; omega))
+      (by bsimp [h11, h14, h17]; first | (congr 1; omega) | rw [ofNat_pred_assoc (by omega)])
       (by bsimp [h9])
   · intro hne
     bv_nat at hne
     exact sub_fracA_entry hlive cx hk hy ha (by omega)
       (A := x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
-      (B := x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
+      (B := x2.rep.val + (x2.rep.len + x2.rep.scale) - 1)
       (Y0 := y.rep.val + (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale - 1))
       ⟨rfl, rfl, rfl⟩ (st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h15])
       (by bsimp [h8]; try (congr 1; omega)) (by bsimp [h13, h6]; try (congr 1; omega))
-      (by bsimp [h16, h12, h15]; try (congr 1; omega)) (by bsimp [h11, h14, h17]; try (congr 1; omega))
+      (by bsimp [h16, h12, h15]; try (congr 1; omega))
+      (by bsimp [h11, h14, h17]; first | (congr 1; omega) | rw [ofNat_pred_assoc (by omega)])
       (by bsimp [h9])
 
 /-- After `bc_new_num` and the zero fill, from `0x800046a0`: the operands'
@@ -1825,7 +1859,7 @@ theorem sub_call {live : Nat → Prop} {S : Nat → Prop}
   have hout := pr.out; have hkp := pr.regs
   have hs1 := (hb.nums x1 ha.m1).shape
   have hs2 := (hb.nums x2 ha.m2).shape
-  have := hs1.lenPos
+  have := ha.l1
   have hoff : ∀ a, sp - 96 + 8 ≤ a → a < sp - 96 + 16 → OutHeap a := fun a h1 h2 => by
     simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
   have hb2 : BcHeap S (writeLog M [(sp - 96 + 8, 8, BitVec.ofNat 64 smin)]) H F L :=

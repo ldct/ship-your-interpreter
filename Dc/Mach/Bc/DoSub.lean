@@ -70,6 +70,28 @@ theorem subw_int_nat {u : Int} {b : Nat} (hu1 : -2 ^ 30 ≤ u) (hu2 : u < 2 ^ 30
   rw [← ofInt_natCast64 b]
   exact subw_int (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)
 
+/-- `negw` of a small natural. -/
+theorem negw_nat {a : Nat} (ha : a < 2 ^ 30) :
+    BitVec.signExtend 64 (0#32 - BitVec.extractLsb 31 0 (BitVec.ofNat 64 a)) =
+      BitVec.ofInt 64 (-(a : Int)) := by
+  apply BitVec.eq_of_toInt_eq
+  rw [BitVec.toInt_signExtend_of_le (by decide), toInt_ofInt64 (by omega) (by omega)]
+  have e : 0#32 - BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) = BitVec.ofInt 32 (-(a : Int)) := by
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_sub, BitVec.extractLsb_toNat, BitVec.toNat_ofInt, BitVec.toNat_ofNat]
+    omega
+  rw [e, BitVec.toInt_ofInt]; exact Int.bmod_eq_of_le (by omega) (by omega)
+
+/-- A small integer word is zero exactly when the integer is. -/
+theorem ofInt64_eq_zero {u : Int} (h1 : -2 ^ 63 ≤ u) (h2 : u < 2 ^ 63) :
+    (BitVec.ofInt 64 u = 0#64) ↔ u = 0 := by
+  constructor
+  · intro h
+    have := congrArg BitVec.toInt h
+    rw [toInt_ofInt64 h1 h2] at this
+    simpa using this
+  · intro h; subst h; rfl
+
 /-- A nonnegative integer word is a natural one. -/
 theorem ofInt_nonneg {u : Int} (h : 0 ≤ u) : BitVec.ofInt 64 u = BitVec.ofNat 64 u.toNat := by
   rw [← ofInt_natCast64, Int.toNat_of_nonneg h]
@@ -1238,5 +1260,132 @@ theorem sub_fracA_entry {live : Nat → Prop} {S : Nat → Prop}
     (st.keeps (by keeps_tac Keeps.refl _ _)) hb
     ⟨by bsimp [h16], by bsimp [h13], by bsimp []; congr 1; omega, by bsimp [],
       by bsimp [h13], by bsimp [h16], by bsimp [h11], by bsimp [h8], by bsimp [h9]⟩
+
+/-- The registers of the subtraction of `n2`'s extra fraction digits from
+zero at `0x80004878` after `j` digits: `a5` at `n2`'s digit, `a7` at the
+result's slot, `t4` where `a5` stops, `t3 = n - 1`, `a4` the borrow. -/
+structure FracBRegs (R : Nat → BitVec 64) (B Y0 n A m D j borrow : Nat) : Prop where
+  r15 : R 15 = BitVec.ofNat 64 (B - j)
+  r17 : R 17 = BitVec.ofNat 64 (Y0 - j)
+  r29 : R 29 = BitVec.ofNat 64 (B - n)
+  r28 : R 28 = BitVec.ofNat 64 (n - 1)
+  r14 : R 14 = BitVec.ofNat 64 borrow
+  r13 : R 13 = BitVec.ofNat 64 Y0
+  r16 : R 16 = BitVec.ofNat 64 A
+  r11 : R 11 = BitVec.ofNat 64 B
+  r8 : R 8 = BitVec.ofNat 64 m
+  r9 : R 9 = BitVec.ofNat 64 D
+
+/-- The store at `0x8000489c` of the subtraction of `n2`'s extra fraction
+digits from zero: the digit word `v` (in `t1`) into the slot `Y0 - j`. -/
+theorem sub_fracB_tail {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {B Y0 n A m D j : Nat} {v : BitVec 64}
+    (cx : SubCtx S R0 sp) (hy : SubSum y x1.rep x2.rep smin)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin j) :: L))
+    (hj : j < n) (hnB : n ≤ B) (hB : B < 2 ^ 63)
+    (h6 : R 6 = v) (hv : sbData v = BitVec.ofNat 8 ((subR x1.rep x2.rep).getD j 0))
+    (h14 : R 14 = BitVec.ofNat 64 (subB x1.rep x2.rep (j + 1)))
+    (h15 : R 15 = BitVec.ofNat 64 (B - j - 1)) (h17 : R 17 = BitVec.ofNat 64 (Y0 - j - 1))
+    (h29 : R 29 = BitVec.ofNat 64 (B - n)) (h28 : R 28 = BitVec.ofNat 64 (n - 1))
+    (h13 : R 13 = BitVec.ofNat 64 Y0) (h16 : R 16 = BitVec.ofNat 64 A)
+    (h11 : R 11 = BitVec.ofNat 64 B) (h8 : R 8 = BitVec.ofNat 64 m) (h9 : R 9 = BitVec.ofNat 64 D)
+    (hjN : j < addN x1.rep x2.rep) (hY : Y0 = y.rep.val + (addN x1.rep x2.rep - 1))
+    (hnext : j + 1 < n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      SubAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (subDs x1.rep x2.rep smin (j + 1)) :: L) →
+      FracBRegs R' B Y0 n A m D (j + 1) (subB x1.rep x2.rep (j + 1)) →
+      DW live S Q 0x80004878#64 R' M')
+    (hexit : j + 1 = n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      SubAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (subDs x1.rep x2.rep smin (j + 1)) :: L) →
+      FracBRegs R' B Y0 n A m D (j + 1) (subB x1.rep x2.rep (j + 1)) →
+      DW live S Q 0x800048a4#64 R' M') :
+    DW live S Q 0x8000489c#64 R M := by
+  have hm := hy.model
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hls := hy.lenScale
+  simp only [heapStart, heapEnd] at v1 v2
+  simp only [addN, loopLen, addZ, List.length_replicate] at hls hjN hY
+  have hjN' : j < addN x1.rep x2.rep := by simp only [addN, loopLen]; omega
+  have hb' : BcHeap S (writeLog M [(Y0 - j - 1 + 1, 1, v)]) H F
+      (withDs y (subDs x1.rep x2.rep smin (j + 1)) :: L) := by
+    rw [show Y0 - j - 1 + 1 = y.rep.val + (addN x1.rep x2.rep - 1 - j) by
+      simp only [addN, loopLen]; omega]
+    exact BcHeap.storeSum hy.lenScale hjN' (by rw [hm.rl]; exact hjN') (hm.getD_lt_r j) hb hv
+  have st' := st.heap cx (M' := writeLog M [(Y0 - j - 1 + 1, 1, v)]) fun a ha =>
+    imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; omega)
+  bc_run hlive hS [h6, h15, h17, h29] at 0x80004878 0x800048a4
+  · intro hne
+    bv_nat at hne
+    exact hnext (by omega) _ _ (st'.keeps (by keeps_tac Keeps.refl _ _)) hb'
+      ⟨by bsimp [h15, Nat.sub_sub], by bsimp [h17, Nat.sub_sub], by bsimp [h29], by bsimp [h28],
+        by bsimp [h14], by bsimp [h13], by bsimp [h16], by bsimp [h11], by bsimp [h8],
+        by bsimp [h9]⟩
+  · intro he
+    bv_nat at he
+    exact hexit (by omega) _ _ (st'.keeps (by keeps_tac Keeps.refl _ _)) hb'
+      ⟨by bsimp [h15, Nat.sub_sub], by bsimp [h17, Nat.sub_sub], by bsimp [h29], by bsimp [h28],
+        by bsimp [h14], by bsimp [h13], by bsimp [h16], by bsimp [h11], by bsimp [h8],
+        by bsimp [h9]⟩
+
+/-- One step of the subtraction of `n2`'s extra fraction digits from zero at
+`0x80004878`: `n2`'s digit `d` at `B - j`, the borrow `b` in. -/
+theorem sub_fracB_body {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {B Y0 n A m D j d b : Nat}
+    (cx : SubCtx S R0 sp) (hy : SubSum y x1.rep x2.rep smin)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin j) :: L))
+    (fr : FracBRegs R B Y0 n A m D j b) (hj : j < n) (hnB : n ≤ B) (hB : B < 2 ^ 63)
+    (hl : ldv .lbu M (B - j) = BitVec.ofNat 64 d) (hd : d < 10) (hbl : b ≤ 1)
+    (hr : (subR x1.rep x2.rep).getD j 0 = if 0 < d + b then 10 - d - b else 0)
+    (hbs : subB x1.rep x2.rep (j + 1) = if 0 < d + b then 1 else 0)
+    (a1 : 2147603920 ≤ B - j) (a2 : B - j < 2273312768) (hjN : j < addN x1.rep x2.rep)
+    (hY : Y0 = y.rep.val + (addN x1.rep x2.rep - 1)) (hYj : j < Y0)
+    (hnext : j + 1 < n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      SubAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (subDs x1.rep x2.rep smin (j + 1)) :: L) →
+      FracBRegs R' B Y0 n A m D (j + 1) (subB x1.rep x2.rep (j + 1)) →
+      DW live S Q 0x80004878#64 R' M')
+    (hexit : j + 1 = n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      SubAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (subDs x1.rep x2.rep smin (j + 1)) :: L) →
+      FracBRegs R' B Y0 n A m D (j + 1) (subB x1.rep x2.rep (j + 1)) →
+      DW live S Q 0x800048a4#64 R' M') :
+    DW live S Q 0x80004878#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have h15 := fr.r15; have h17 := fr.r17; have h29 := fr.r29; have h28 := fr.r28
+  have h14 := fr.r14; have h13 := fr.r13; have h16 := fr.r16; have h11 := fr.r11
+  have h8 := fr.r8; have h9 := fr.r9
+  by_cases hz : 0 < d + b
+  · rw [if_pos hz] at hr hbs
+    bc_run hlive hS [h15, h17, hl, h14, negw_nat, subw_int_nat, ofInt64_eq_zero] at 0x8000489c
+    · intro hc; omega
+    · intro _
+      bc_run hlive hS [h15, h17, addiw10_int] at 0x8000489c
+      exact sub_fracB_tail hlive cx hy (st.keeps (by keeps_tac Keeps.refl _ _)) hb hj hnB hB
+        (v := BitVec.ofNat 64 ((-(d : Int) - b + 10).toNat)) (by bsimp [])
+        (by rw [sbData_ofNat, hr]; congr 1; omega) (by bsimp [hbs]) (by bsimp [h15])
+        (by bsimp [h17]) (by bsimp [h29]) (by bsimp [h28]) (by bsimp [h13]) (by bsimp [h16])
+        (by bsimp [h11]) (by bsimp [h8]) (by bsimp [h9]) hjN hY hnext hexit
+  · rw [if_neg hz] at hr hbs
+    bc_run hlive hS [h15, h17, hl, h14, negw_nat, subw_int_nat, ofInt64_eq_zero] at 0x8000489c
+    · intro _
+      exact sub_fracB_tail hlive cx hy (st.keeps (by keeps_tac Keeps.refl _ _)) hb hj hnB hB
+        (v := BitVec.ofNat 64 0) (by bsimp []) (by rw [sbData_ofNat, hr])
+        (by bsimp [hbs]; exact (ofInt64_eq_zero (by omega) (by omega)).2 (by omega))
+        (by bsimp [h15]) (by bsimp [h17]) (by bsimp [h29]) (by bsimp [h28]) (by bsimp [h13])
+        (by bsimp [h16]) (by bsimp [h11]) (by bsimp [h8]) (by bsimp [h9]) hjN hY hnext hexit
+    · intro hc; omega
 
 end Dc.Mach

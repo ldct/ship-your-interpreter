@@ -545,4 +545,72 @@ theorem sm_cols {live : Nat → Prop} {S : Nat → Prop}
     rw [← heq] at hfin
     exact hfin hr2 hb' hmo'
 
+/-! ## The product's value -/
+
+theorem colSt_len (a : Nat → Nat) (la : Nat) (b : Nat → Nat) (lb : Nat) :
+    ∀ k, (colSt a la b lb k).1.length = k
+  | 0 => rfl
+  | k + 1 => by simp only [colSt, List.length_cons]; rw [colSt_len a la b lb k]
+
+/-- The digits stored and the carry after `k` columns hold the first `k`
+column sums. -/
+theorem colSt_val (a : Nat → Nat) (la : Nat) (b : Nat → Nat) (lb : Nat) :
+    ∀ k, dvalLE (colSt a la b lb k).1.reverse + 10 ^ k * (colSt a la b lb k).2 =
+      fval (colv a la b lb) k
+  | 0 => by simp [colSt, dvalLE, fval, sumR]
+  | k + 1 => by
+    have ih := colSt_val a la b lb k
+    simp only [colSt, List.reverse_cons]
+    rw [dvalLE_append, List.length_reverse, colSt_len]
+    simp only [fval, sumR] at ih ⊢
+    rw [← ih]
+    generalize (colSt a la b lb k).2 = c
+    generalize colv a la b lb k = x
+    generalize dvalLE (colSt a la b lb k).1.reverse = D
+    have e := Nat.mod_add_div (c + x) 10
+    simp only [dvalLE, Nat.mul_zero, Nat.add_zero, Nat.pow_succ]
+    generalize (c + x) % 10 = m at e
+    generalize (c + x) / 10 = q at e
+    rw [Nat.mul_assoc, Nat.mul_comm x]
+    have := congrArg (10 ^ k * ·) e
+    simp only [Nat.mul_add] at this
+    omega
+
+/-- A column as the inner loop sums it is the column sum `conv`. -/
+theorem colv_eq_conv (a : Nat → Nat) (la : Nat) (b : Nat → Nat) (lb k : Nat) (hlb : 1 ≤ lb)
+    (ha : ∀ i, la ≤ i → a i = 0) (hb : ∀ j, lb ≤ j → b j = 0) :
+    colv a la b lb k = conv a b k := by
+  unfold colv dotR
+  rw [if_neg (by omega), Nat.add_sub_cancel]
+  exact dotLoop_eq_conv a la b lb k hlb ha hb
+
+theorem digLE_out (ds : List Nat) {n i : Nat} (h : n ≤ i) : digLE ds n i = 0 := by
+  simp [digLE, show ¬ i < n by omega]
+
+theorem fval_digLE (ds : List Nat) {n : Nat} (h : n ≤ ds.length) :
+    fval (digLE ds n) n = dvalBE (ds.take n) := by
+  rw [← dvalLE_reverse, ← fval_dig, List.length_reverse, List.length_take, Nat.min_eq_left h]
+  unfold fval
+  refine sumR_congr fun i hi => ?_
+  simp only [digLE, if_pos hi, dig]
+  congr 1
+  simp only [List.getD_eq_getElem?_getD]
+  rw [List.getElem?_reverse (by simp; omega), List.length_take, Nat.min_eq_left h,
+    List.getElem?_take]
+  simp [show n - 1 - i < n by omega]
+
+/-- **The base case's value**: the carry and the `la + lb` stored digits
+are the product of the operands' first `la` and `lb` digits. -/
+theorem colSt_final (u v : List Nat) {la lb : Nat} (hla : la ≤ u.length) (hlb : lb ≤ v.length)
+    (hlb1 : 1 ≤ lb) :
+    dvalBE ((colSt (digLE u la) la (digLE v lb) lb (la + lb)).2 ::
+      (colSt (digLE u la) la (digLE v lb) lb (la + lb)).1) =
+      dvalBE (u.take la) * dvalBE (v.take lb) := by
+  rw [dvalBE_cons, ← dvalLE_reverse, colSt_len, Nat.mul_comm, Nat.add_comm, colSt_val,
+    ← fval_digLE u hla, ← fval_digLE v hlb,
+    ← fval_conv la _ _ lb (la + lb) (fun i h => digLE_out u h) (fun i h => digLE_out v h) (Nat.le_refl _)]
+  unfold fval
+  exact sumR_congr fun k _ => by
+    rw [colv_eq_conv _ _ _ _ _ hlb1 (fun i h => digLE_out u h) (fun i h => digLE_out v h)]
+
 end Dc.Mach

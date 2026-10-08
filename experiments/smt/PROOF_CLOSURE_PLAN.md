@@ -4539,6 +4539,24 @@ L` with digits `2`, `1`, `0`, the three struct pointers in `_two_`, `_one_`,
 `InitK.oom` at `out_of_memory`. `BcHeap.setDigit` (`NumStore.lean`) supplies
 the digit stores.
 
+### M4 `bc_int2num` (checked)
+
+`Dc/Mach/Bc/Int2Num.lean` proves `bc_int2num_spec` at `0x8000690c` for
+`-2^31 < val < 2^31` (`I2NCtx.vlo`/`.vhi`; `INT_MIN` is excluded because
+`negw` overflows) with the old object `x` in the slot (`FreeEntry` at
+`sp - 96`). `I2NK.ret` receives `I2NPost`: the slot holds a fresh object `y`
+heading the heap left by `bc_free_num` (`FreedRest.dec`/`.rel`), with
+`y.rep.num = Num.ofInt val`, normalized, one reference; off the heap only the
+slot and the 128-byte stack window change. `I2NK.oom` covers `out_of_memory`.
+Segments: prologue (`i2nPro_saved`), first digit (`i2n_head`), digit loop
+(`i2n_loop`), `bc_free_num`/`bc_new_num` calls (`i2n_free`, `i2n_new`), slot
+and sign stores (`i2n_tail`, `BcHeap.setSign`), copy loop (`i2n_copy`), and
+epilogue (`i2n_epi`).
+
+Scope premise: `I2NCtx.slotOut` places the slot off the number heap. Callers
+whose slot is a heap word (none among the M4 sites) need a `BcHeap` variant
+of the slot store; record that supplier when such a caller appears.
+
 ### M3 representation and heap closure (checked)
 
 `Dc/Mach/Bc/HeapClosure.lean`, imported by `Dc.lean`, completes:

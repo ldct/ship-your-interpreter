@@ -30,3 +30,4 @@ import Dc.Mach.Bc.HeapClosure
 import Dc.Mach.Bc.Free
 import Dc.Mach.Bc.NumStore
 import Dc.Mach.Bc.Init
+import Dc.Mach.Bc.Int2Num

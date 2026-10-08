@@ -346,7 +346,7 @@ theorem i2n_copy {live : Nat → Prop} {S : Nat → Prop}
 abbrev i2nClob : List Nat := [5, 10, 11, 12, 13, 14, 15]
 
 /-- The registers changed inside `bc_int2num` before its epilogue. -/
-abbrev i2nAll : List Nat := [1, 5, 8, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21]
+abbrev i2nAll : List Nat := [1, 2, 5, 8, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21]
 
 /-- The saved `ra`, `s0`–`s5` in the 96-byte frame below `sp`. -/
 structure I2NSaved (M : Mem) (sp : Nat) (R0 : Nat → BitVec 64) : Prop where
@@ -415,7 +415,7 @@ structure I2NK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → Bit
 /-- Leaving `bc_int2num`: `ra`, `sp` and `s0`–`s5` restored, the rest kept. -/
 theorem keeps_restore {R' R R0 : Nat → BitVec 64} (h1 : R' 1 = R0 1) (h2 : R' 2 = R0 2)
     (h8 : R' 8 = R0 8) (h9 : R' 9 = R0 9) (h18 : R' 18 = R0 18) (h19 : R' 19 = R0 19)
-    (h20 : R' 20 = R0 20) (h21 : R' 21 = R0 21) (hk : Keeps (2 :: i2nAll) R' R)
+    (h20 : R' 20 = R0 20) (h21 : R' 21 = R0 21) (hk : Keeps i2nAll R' R)
     (hkp : Keeps i2nAll R R0) : Keeps i2nClob R' R0 := fun z hz => by
   by_cases e1 : z = 1; · subst e1; exact h1
   by_cases e2 : z = 2; · subst e2; exact h2
@@ -427,7 +427,7 @@ theorem keeps_restore {R' R R0 : Nat → BitVec 64} (h1 : R' 1 = R0 1) (h2 : R' 
   by_cases e21 : z = 21; · subst e21; exact h21
   have hz' : z ∉ i2nAll := by
     simp only [i2nClob, i2nAll, List.mem_cons, List.not_mem_nil, or_false, not_or] at hz ⊢; omega
-  exact (hk z fun h => (List.mem_cons.mp h).elim e2 hz').trans (hkp z hz')
+  exact (hk z hz').trans (hkp z hz')
 
 /-- The epilogue at `0x800069e8`: the saved registers back, `sp` up. -/
 theorem i2n_epi {live : Nat → Prop} {S : Nat → Prop}
@@ -718,5 +718,242 @@ theorem i2n_free {live : Nat → Prop} {S : Nat → Prop}
     · exact hsl hc
     · exact hf hc
     · exact ha.2.2 hc
+
+/-! ## The entry and the first digit -/
+
+theorem i2nBuf_small {n : Nat} (h : n < 10) : i2nBuf n = [n % 10] := by
+  by_cases h0 : n = 0
+  · subst h0; rfl
+  · simp only [i2nBuf, h0, if_false]
+    rw [BcModel.digits_step 10 (by decide) n h0, Nat.div_eq_of_lt h]
+    rfl
+
+/-- `bc_free_num`'s entry facts through writes confined to `bc_int2num`'s
+stack window. -/
+theorem FreeEntry.window {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} {R0 : Nat → BitVec 64} {sp q : Nat} {v : Int}
+    (e : FreeEntry S Mt H F L1 L2 x q (sp - 96)) (cx : I2NCtx S R0 sp q v)
+    (hmo : MemOnly (frameIn sp 128) Mt' Mt) : FreeEntry S Mt' H F L1 L2 x q (sp - 96) := by
+  have hab := cx.above
+  have hap := cx.slotApart
+  simp only [heapEnd] at hab
+  exact
+    { e with
+      heap := e.heap.out_frame hmo fun a ha => by
+        simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at *; omega
+      word := by
+        rw [ldv_congr .ld fun j hj => hmo _ (by simp only [frameIn, widthOfM] at *; omega)]
+        exact e.word }
+
+/-- Inside `bc_int2num` after its prologue and sign test: `sp` lowered by
+96, the saved registers in the frame, `s4 = q`, `s5` the sign flag,
+`s0 = |v|`, and only the stack window changed. -/
+structure I2NHead (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp q : Nat) (v : Int) :
+    Prop where
+  r2 : R 2 = BitVec.ofNat 64 (sp - 96)
+  saved : I2NSaved M sp R0
+  rq : R 20 = BitVec.ofNat 64 q
+  rneg : R 21 = BitVec.ofNat 64 (if v < 0 then 1 else 0)
+  rabs : R 8 = BitVec.ofNat 64 v.natAbs
+  regs : Keeps i2nAll R R0
+  win : MemOnly (frameIn sp 128) M Mt0
+
+/-- The buffer filled: `I2NHead` becomes `I2NAt`. -/
+theorem I2NHead.toAt {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp q : Nat}
+    {v : Int} (hd : I2NHead S Mt0 M R0 R sp q v) (cx : I2NCtx S R0 sp q v)
+    (hmo : MemOnly (fun a => sp - 96 ≤ a ∧ a < sp - 86) M' M)
+    (hbuf : BufAt M' (sp - 96) (i2nBuf v.natAbs))
+    (h18 : R' 18 = BitVec.ofNat 64 (i2nBuf v.natAbs).length)
+    (h19 : R' 19 = BitVec.ofNat 64 ((i2nBuf v.natAbs).length - 1))
+    (h8 : R' 8 = BitVec.ofNat 64 (sp - 96 + (i2nBuf v.natAbs).length))
+    (hkp : Keeps i2nLoopClob R' R) : I2NAt S Mt0 M' R0 R' sp q v := by
+  have hsf := cx.frame
+  have hsl := hsf.lo
+  exact
+    { r2 := by rw [hkp.get 2]; exact hd.r2
+      saved := hd.saved.transport (by omega) fun a h1 _ => hmo a (by omega)
+      rq := by rw [hkp.get 20]; exact hd.rq
+      rneg := by rw [hkp.get 21]; exact hd.rneg
+      rlen := h18
+      rlast := h19
+      rcur := h8
+      buf := hbuf
+      regs := (hkp.mono (by decide)).trans hd.regs
+      out := fun a _ _ h2 => (hmo a (by simp only [frameIn] at h2; omega)).trans (hd.win a h2) }
+
+/-- From `0x80006944`: the first digit `|v| % 10`, then the digit loop or
+(for `|v| < 10`) straight to `bc_free_num`. -/
+theorem i2n_head {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
+    {x : NumObj} {H : Heap} {F : List Blk}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S Q R0 Mt0 L1 L2 x q sp v)
+    (hd : I2NHead S Mt0 M R0 R sp q v) (e : FreeEntry S Mt0 H F L1 L2 x q (sp - 96)) :
+    DW live S Q 0x80006944#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => e.heap.heap.own a h1 h2
+  have hn : v.natAbs < 2 ^ 31 := by have := cx.vlo; have := cx.vhi; omega
+  have h8 := hd.rabs; have h2 := hd.r2
+  bc_run hlive hS [h8, h2] at 0x8000694c
+  apply st_8000694c hlive
+  refine moddi3_spec hlive _ (by bsimp []) fun R1 hk1 hr1 => ?_
+  bsimp [] at hr1 ⊢
+  rw [srem10_small (by omega)] at hr1
+  have r8 : R1 8 = BitVec.ofNat 64 v.natAbs := by rw [hk1.get 8]; bsimp [h8]
+  have r2 : R1 2 = BitVec.ofNat 64 (sp - 96) := by rw [hk1.get 2]; bsimp [h2]
+  bc_run hlive hS [hr1, r8, r2] at 0x8000695c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  apply st_8000695c hlive
+  refine divdi3_spec hlive _ (by bsimp []) fun R2 hk2 hr2 => ?_
+  bsimp [] at hr2 ⊢
+  rw [sdiv10_small (by omega)] at hr2
+  have q2 : R2 2 = BitVec.ofNat 64 (sp - 96) := by rw [hk2.get 2]; bsimp [r2]
+  have hsx : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (v.natAbs / 10))) =
+      BitVec.ofNat 64 (v.natAbs / 10) := sxw_ofNat (by omega)
+  have hkk : Keeps i2nLoopClob R2 R :=
+    (hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
+  have hmo1 : MemOnly (fun a => sp - 96 ≤ a ∧ a < sp - 86)
+      (writeLog M [(sp - 96, 1, BitVec.ofNat 64 (v.natAbs % 10))]) M :=
+    (MemOnly.store M _ 1 _).mono fun a ha => by omega
+  have hwin : ∀ {M'}, MemOnly (fun a => sp - 96 ≤ a ∧ a < sp - 86) M' M →
+      MemOnly (frameIn sp 128) M' Mt0 := fun h =>
+    (h.mono fun a ha => by simp only [frameIn]; omega).trans hd.win
+  have hbuf1 : BufAt (writeLog M [(sp - 96, 1, BitVec.ofNat 64 (v.natAbs % 10))]) (sp - 96)
+      [v.natAbs % 10] := by
+    have h0 := BufAt.snoc (M := M) (base := sp - 96) (buf := []) (fun j hj => absurd hj (by simp))
+      (v.natAbs % 10)
+    simp only [List.length_nil, Nat.add_zero, List.nil_append] at h0
+    exact h0
+  bc_run hlive hS [hr2, q2, hsx] at 0x80006970 0x800069a4
+  · -- `|v| < 10`
+    intro hz
+    have hq : v.natAbs / 10 = 0 := (ofNat_eq_iff (x := v.natAbs / 10) (y := 0) (by omega) (by omega)).mp hz
+    have hb1 : i2nBuf v.natAbs = [v.natAbs % 10] := i2nBuf_small (by omega)
+    bc_run hlive hS [hr2, q2, hsx] at 0x800069a4
+    refine i2n_free hlive cx hk (hd.toAt cx hmo1 (by rw [hb1]; exact hbuf1) (by rw [hb1]; bsimp [List.length_cons, List.length_nil])
+      (by rw [hb1]; bsimp [List.length_cons, List.length_nil])
+      (by rw [hb1]; bsimp [q2, List.length_cons, List.length_nil]) (by keeps_tac hkk)) (e.window cx (hwin hmo1))
+  · -- the digit loop
+    intro hz
+    have hq : v.natAbs / 10 ≠ 0 := fun h => hz (by rw [h])
+    have hv0 : v.natAbs ≠ 0 := fun h => hq (by rw [h])
+    have hst := BcModel.digits_step 10 (by decide) v.natAbs hv0
+    have hlen := digits_len_le 10 v.natAbs (by omega)
+    rw [hst, List.length_append] at hlen
+    bc_run hlive hS [hr2, q2, hsx] at 0x80006970
+    refine i2n_loop hlive hS hsf (n0 := v.natAbs) (fun R' M' buf hd' hl1 hl10 h18 h19 h8 hbuf hmo hkp => ?_)
+      _ (v.natAbs / 10) [v.natAbs % 10] _ _ rfl hq (by rw [hst]; rfl) (by simp)
+      (by simp only [List.length_cons, List.length_nil] at hlen ⊢; omega) (by omega) (by bsimp [])
+      (by bsimp [List.length_cons, List.length_nil])
+      (by bsimp [q2, List.length_cons, List.length_nil]) (by bsimp [q2]) hbuf1 (MemOnly.refl _ _)
+      (Keeps.refl _ _)
+    have hbe : buf = i2nBuf v.natAbs := by
+      simp only [i2nBuf, hv0, if_false]; rw [hd', List.reverse_reverse]
+    subst hbe
+    exact i2n_free hlive cx hk (hd.toAt cx (hmo.trans hmo1) hbuf h18 h19 h8
+      (hkp.trans (by keeps_tac hkk))) (e.window cx (hwin (hmo.trans hmo1)))
+
+/-- The memory after `bc_int2num`'s prologue: seven saved registers. -/
+def i2nPro (Mt : Mem) (R : Nat → BitVec 64) (sp : Nat) : Mem :=
+  writeLog (writeLog (writeLog (writeLog (writeLog (writeLog (writeLog Mt
+    [(sp - 96 + 80, 8, R 8)]) [(sp - 96 + 48, 8, R 20)]) [(sp - 96 + 40, 8, R 21)])
+    [(sp - 96 + 88, 8, R 1)]) [(sp - 96 + 72, 8, R 9)]) [(sp - 96 + 64, 8, R 18)])
+    [(sp - 96 + 56, 8, R 19)]
+
+theorem i2nPro_saved (Mt : Mem) (R : Nat → BitVec 64) {sp : Nat} (hsp : 128 ≤ sp) :
+    I2NSaved (i2nPro Mt R sp) sp R := by
+  unfold i2nPro
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · rw [show sp - 8 = sp - 96 + 88 by omega]
+    repeat (first | rw [ldv_ld_miss _ _ (by omega)] | exact ldv_store_hit _ _ _)
+  · rw [show sp - 16 = sp - 96 + 80 by omega]
+    repeat (first | rw [ldv_ld_miss _ _ (by omega)] | exact ldv_store_hit _ _ _)
+  · rw [show sp - 24 = sp - 96 + 72 by omega]
+    repeat (first | rw [ldv_ld_miss _ _ (by omega)] | exact ldv_store_hit _ _ _)
+  · rw [show sp - 32 = sp - 96 + 64 by omega]
+    repeat (first | rw [ldv_ld_miss _ _ (by omega)] | exact ldv_store_hit _ _ _)
+  · rw [show sp - 40 = sp - 96 + 56 by omega]
+    repeat (first | rw [ldv_ld_miss _ _ (by omega)] | exact ldv_store_hit _ _ _)
+  · rw [show sp - 48 = sp - 96 + 48 by omega]
+    repeat (first | rw [ldv_ld_miss _ _ (by omega)] | exact ldv_store_hit _ _ _)
+  · rw [show sp - 56 = sp - 96 + 40 by omega]
+    repeat (first | rw [ldv_ld_miss _ _ (by omega)] | exact ldv_store_hit _ _ _)
+
+theorem i2nPro_win (Mt : Mem) (R : Nat → BitVec 64) {sp : Nat} (hsp : 128 ≤ sp) :
+    MemOnly (frameIn sp 128) (i2nPro Mt R sp) Mt := fun a ha => by
+  unfold i2nPro
+  simp only [frameIn] at ha
+  repeat rw [imgM_store_miss _ _ (by omega)]
+
+theorem toInt_neg_small {n : Nat} (h0 : 0 < n) (h : n < 2 ^ 63) :
+    (- BitVec.ofNat 64 n).toInt = - (n : Int) := by
+  rw [BitVec.toInt_eq_toNat_cond]
+  simp only [BitVec.toNat_neg, BitVec.toNat_ofNat]
+  split <;> omega
+
+/-- `negw` of a negated small word. -/
+theorem negw_neg {n : Nat} (h : n < 2 ^ 31) :
+    BitVec.signExtend 64 (0#32 - BitVec.extractLsb 31 0 (- BitVec.ofNat 64 n)) =
+      BitVec.ofNat 64 n := by
+  have e : 0#32 - BitVec.extractLsb 31 0 (- BitVec.ofNat 64 n) =
+      BitVec.extractLsb 31 0 (BitVec.ofNat 64 n) := by
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_sub, BitVec.extractLsb_toNat, BitVec.toNat_neg, BitVec.toNat_ofNat]
+    omega
+  rw [e]; exact sxw_ofNat (by omega)
+
+/-- **`bc_int2num(num, val)`** at `0x8000690c`, `-2^31 < val < 2^31`, with
+the object `x` in the slot `num` (`L = L1 ++ x :: L2`): frees `x`
+(`bc_free_num`), then stores in the slot a fresh normalized number for `val`
+with one reference (`I2NK.ret`, `I2NPost`), or reaches `out_of_memory`;
+clobbers `a0`–`a5`. -/
+theorem bc_int2num_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt : Mem} {R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
+    {x : NumObj} {H : Heap} {F : List Blk}
+    (cx : I2NCtx S R sp q v) (e : FreeEntry S Mt H F L1 L2 x q (sp - 96))
+    (h10 : R 10 = BitVec.ofNat 64 q) (h11 : R 11 = BitVec.ofInt 64 v)
+    (hk : I2NK live S Q R Mt L1 L2 x q sp v) :
+    DW live S Q 0x8000690c#64 R Mt := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => e.heap.heap.own a h1 h2
+  have h2 := cx.sp0
+  have hvl := cx.vlo; have hvh := cx.vhi
+  by_cases hv : v < 0
+  · have e11 : R 11 = - BitVec.ofNat 64 v.natAbs := by
+      rw [h11, show v = - (v.natAbs : Int) by omega, BitVec.ofInt_neg, BitVec.ofInt_natCast,
+        Int.natAbs_neg, Int.natAbs_natCast]
+    have hti := toInt_neg_small (n := v.natAbs) (by omega) (by omega)
+    have hng := negw_neg (n := v.natAbs) (by omega)
+    bc_run hlive hS [h10, e11, h2] at 0x80006944
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    · intro hc; rw [hti] at hc; simp only [BitVec.toInt_zero] at hc; omega
+    · intro _
+      bc_run hlive hS [h10, e11, h2, hng] at 0x80006944
+      refine i2n_head hlive cx hk (M := i2nPro Mt R sp)
+        ⟨?_, i2nPro_saved Mt R (by omega), ?_, ?_, ?_, ?_, i2nPro_win Mt R (by omega)⟩ e
+      · bsimp []
+      · bsimp []
+      · bsimp [if_pos hv]
+      · bsimp []
+      · keeps_tac Keeps.refl _ _
+  · have e11 : R 11 = BitVec.ofNat 64 v.natAbs := by
+      rw [h11, show v = (v.natAbs : Int) by omega, BitVec.ofInt_natCast, Int.natAbs_natCast]
+    have hti := toInt_ofNat_small (k := v.natAbs) (by omega)
+    bc_run hlive hS [h10, e11, h2] at 0x80006944
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    · intro _
+      refine i2n_head hlive cx hk (M := i2nPro Mt R sp)
+        ⟨?_, i2nPro_saved Mt R (by omega), ?_, ?_, ?_, ?_, i2nPro_win Mt R (by omega)⟩ e
+      · bsimp []
+      · bsimp []
+      · bsimp [if_neg hv]
+      · bsimp []
+      · keeps_tac Keeps.refl _ _
+    · intro hc; rw [hti] at hc; simp only [BitVec.toInt_zero] at hc; omega
 
 end Dc.Mach

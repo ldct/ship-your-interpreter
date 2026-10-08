@@ -430,4 +430,166 @@ theorem sub_rmlz {live : Nat → Prop} {S : Nat → Prop}
       (st.keeps (by keeps_tac Keeps.refl _ _)) hb0 (by bsimp []) (by bsimp []) (by bsimp [])
       fun i hi => by rw [show i = 0 by omega]; exact he
 
+/-! ## The difference object -/
+
+/-- The object `bc_new_num` returned for the difference, and the model of
+the operands `a`, `b`. -/
+structure SubSum (y : NumObj) (a b : NumRep) (smin : Nat) : Prop where
+  rep : y.rep = zeroRep y.sb.pay y.db.pay (max a.len b.len) (max smin (max a.scale b.scale))
+  model : SubModel a b
+  size : max a.len b.len + max smin (max a.scale b.scale) < 2 ^ 31
+  lenPos : 1 ≤ max a.len b.len
+
+theorem SubSum.N_lt {y : NumObj} {a b : NumRep} {smin : Nat} (h : SubSum y a b smin) :
+    addN a b < 2 ^ 31 := by
+  have := h.size; simp only [addN, loopLen]; omega
+
+theorem SubSum.p {y : NumObj} {a b : NumRep} {smin : Nat} (h : SubSum y a b smin) :
+    y.rep.p = y.sb.pay := by rw [h.rep]; rfl
+
+theorem SubSum.lenScale {y : NumObj} {a b : NumRep} {smin : Nat} (h : SubSum y a b smin) :
+    y.rep.len + y.rep.scale = addN a b + (addZ a b smin).length := by
+  rw [h.rep]; simp only [zeroRep, addN, loopLen, addZ, List.length_replicate]; omega
+
+/-- After every position, the object before `_bc_rm_leading_zeros`. -/
+theorem SubSum.final {y : NumObj} {a b : NumRep} {smin : Nat} (h : SubSum y a b smin) :
+    SubFinal { y.rep with ds := subDs a b smin (addN a b) } a b smin := by
+  have hm := h.model
+  have hl := subDs_length hm smin (Nat.le_refl _)
+  exact
+    { neg := by show y.rep.neg = false; rw [h.rep]; rfl
+      refs := by show y.rep.refs = 1; rw [h.rep]; rfl
+      ds := subDs_full hm smin
+      scale := by show y.rep.scale = _; rw [h.rep]; rfl
+      dsLen := by show (subDs a b smin (addN a b)).length = y.rep.len + y.rep.scale
+                  rw [hl, h.rep]; rfl
+      lenPos := by show 1 ≤ y.rep.len; rw [h.rep]; exact h.lenPos }
+
+/-- Above `n2`'s digits (from `S + l2` on) the subtrahend is zero and the
+minuend is `n1`'s digit. -/
+theorem sub_high {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hl : b.len ≤ a.len) {k : Nat}
+    (h1 : max a.scale b.scale + b.len ≤ k) (h2 : k < addN a b) :
+    (addXs a b).getD k 0 = a.ds.getD (a.len + max a.scale b.scale - 1 - k) 0 ∧
+      (addYs a b).getD k 0 = 0 :=
+  ⟨addXs_in ha (by omega) (by simp only [addN, loopLen] at h2; omega), addYs_out hb (.inr (by omega))⟩
+
+/-! ## Above `n2`: the borrow, then a copy of `n1` -/
+
+/-- One step of the copy of `n1`'s top digits at `0x8000483c`: the digit
+`r_k` in `a5` into the slot `a3`; then `n1`'s next digit at `a6 + 1`
+(`0x80004838`) or, after the last position, `_bc_rm_leading_zeros`. -/
+theorem sub_copy_body {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k : Nat}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (hk1 : max x1.rep.scale x2.rep.scale + x2.rep.len ≤ k) (hk2 : k < addN x1.rep x2.rep)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin k) :: L))
+    (h15 : R 15 = BitVec.ofNat 64 ((subR x1.rep x2.rep).getD k 0))
+    (h13 : R 13 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - 1 - k)))
+    (h16 : R 16 = BitVec.ofNat 64 (x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k) - 1))
+    (h12 : R 12 = BitVec.ofNat 64 (y.rep.val - 1))
+    (hnext : k + 1 < addN x1.rep x2.rep → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      SubAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (subDs x1.rep x2.rep smin (k + 1)) :: L) →
+      R' 13 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - 1 - (k + 1))) →
+      R' 16 = BitVec.ofNat 64
+        (x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k + 1)) - 1) →
+      R' 12 = BitVec.ofNat 64 (y.rep.val - 1) → DW live S Q 0x80004838#64 R' M') :
+    DW live S Q 0x8000483c#64 R M := by
+  have hm := hy.model
+  have hNl := hy.N_lt
+  have hle := ha.le
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+  have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a4 := hs1.vHi
+  have hls := hy.lenScale
+  simp only [heapStart, heapEnd] at v1 v2 a1 a4
+  simp only [addN, loopLen, addZ, List.length_replicate] at hls hNl hk2
+  have eN1 : addN x1.rep x2.rep ≤ max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale :=
+    Nat.le_refl _
+  have eN2 : max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale ≤ addN x1.rep x2.rep :=
+    Nat.le_refl _
+  have hb' : BcHeap S (writeLog M [(y.rep.val + (addN x1.rep x2.rep - 1 - k) - 1 + 1, 1,
+      BitVec.ofNat 64 ((subR x1.rep x2.rep).getD k 0))]) H F
+      (withDs y (subDs x1.rep x2.rep smin (k + 1)) :: L) := by
+    rw [show y.rep.val + (addN x1.rep x2.rep - 1 - k) - 1 + 1 =
+      y.rep.val + (addN x1.rep x2.rep - 1 - k) by simp only [addN, loopLen]; omega]
+    exact BcHeap.storeSum hy.lenScale (by simp only [addN, loopLen]; omega)
+      (by rw [hm.rl]; simp only [addN, loopLen]; omega) (hm.getD_lt_r k) hb (sbData_ofNat _)
+  have st' := st.heap cx (M' := writeLog M [(y.rep.val + (addN x1.rep x2.rep - 1 - k) - 1 + 1, 1,
+      BitVec.ofNat 64 ((subR x1.rep x2.rep).getD k 0))]) fun a ha =>
+    imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd, addN, loopLen] at ha ⊢; omega)
+  bc_run hlive hS [h15, h13, h16, h12] at 0x80004848
+  bc_run hlive hS [h12] at 0x80004838 0x800047d8
+  · intro hne
+    bv_nat at hne
+    exact hnext (by simp only [addN, loopLen] at hne ⊢; omega) _ _
+      (st'.keeps (by keeps_tac Keeps.refl _ _)) hb' (by bsimp []; congr 1; omega)
+      (by bsimp []; congr 1; omega) (by bsimp [h12])
+  · intro he
+    bv_nat at he
+    have eN : k + 1 = addN x1.rep x2.rep := by simp only [addN, loopLen] at he ⊢; omega
+    rw [eN] at hb'
+    bc_run hlive hS [] at 0x800047d8
+    exact sub_rmlz hlive cx hk hy.final hy.p (st'.keeps (by keeps_tac Keeps.refl _ _)) hb'
+
+/-- The copy of `n1`'s top digits from `0x8000483c`, position `k` on, the
+borrow used up. -/
+theorem sub_copy_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin) :
+    ∀ n k (R : Nat → BitVec 64) (M : Mem), addN x1.rep x2.rep - 1 - k = n →
+      max x1.rep.scale x2.rep.scale + x2.rep.len ≤ k → k < addN x1.rep x2.rep →
+      SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
+      BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin k) :: L) →
+      subB x1.rep x2.rep (k + 1) = 0 →
+      R 15 = BitVec.ofNat 64 ((subR x1.rep x2.rep).getD k 0) →
+      R 13 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - 1 - k)) →
+      R 16 = BitVec.ofNat 64
+        (x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k) - 1) →
+      R 12 = BitVec.ofNat 64 (y.rep.val - 1) →
+      DW live S Q 0x8000483c#64 R M := by
+  have hm := hy.model
+  have hle := ha.le
+  intro n
+  induction n with
+  | zero =>
+    intro k R M hn hk1 hk2 st hb _ h15 h13 h16 h12
+    exact sub_copy_body hlive cx hk hy ha hk1 hk2 st hb h15 h13 h16 h12 fun h => absurd h (by omega)
+  | succ n ih =>
+    intro k R M hn hk1 hk2 st hb hb0 h15 h13 h16 h12
+    refine sub_copy_body hlive cx hk hy ha hk1 hk2 st hb h15 h13 h16 h12
+      fun hk3 R' M' st' hb' r13 r16 r12 => ?_
+    have hS : HeapOwn S := fun a h1 h2 => hb'.heap.own a h1 h2
+    have hn1 := hb'.nums x1 (List.mem_cons_of_mem _ ha.m1)
+    have hs1 := hn1.shape
+    have hs2 := (hb'.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+    have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a4 := hs1.vHi; have a3 := hs1.size
+    simp only [heapStart, heapEnd] at a1 a4
+    have hNl := hy.N_lt
+    have htx : tohostAddr = 0x8001ad00 := rfl
+    have ⟨hx, hy0⟩ := sub_high hs1 hs2 hle (k := k + 1) (by omega) hk3
+    have ⟨hr, hbr⟩ := hm.step (k := k + 1) hk3
+    rw [hx, hy0, hb0] at hr hbr
+    simp only [Nat.add_zero, Nat.not_lt_zero, ite_false, if_false, Nat.sub_zero] at hr hbr
+    simp only [addN, loopLen] at hk3 hNl
+    have hl := hn1.lbu (i := x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k + 1)) (by omega)
+    rw [show x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k + 1)) =
+      x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k + 1)) - 1 + 1 by omega] at hl
+    bc_run hlive hS [r16, hl] at 0x8000483c
+    exact ih (k + 1) _ _ (by omega) (by omega) (by simp only [addN, loopLen]; omega)
+      (st'.keeps (by keeps_tac Keeps.refl _ _)) hb' hbr (by bsimp [hr]) (by bsimp [r13])
+      (by bsimp [r16]) (by bsimp [r12])
+
 end Dc.Mach

@@ -243,6 +243,7 @@ theorem kara_m2call {live : Nat → Prop} {S : Nat → Prop}
     (hN : (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ N)
     (hW : rmStack ((Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len) + 192 ≤ W)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (hx1p : 1 ≤ x1.rep.len) (hy1p : 1 ≤ y1.rep.len)
     (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit2 : n + x1.rep.len + y1.rep.len ≤ la + lb + 1)
@@ -276,7 +277,7 @@ theorem kara_m2call {live : Nat → Prop} {S : Nat → Prop}
   apply st_800050cc hlive
   refine kara_child ih cx hk (pk.st.rm.keeps (by keeps_tac Keeps.refl _ _) (by bsimp [h2])) 48
     (by omega) (by decide) hN1 hW1 (KZero.withRefs (kz.mono (by omega)))
-    ⟨hxm, hym, hx1.shape.lenPos, hy1.shape.lenPos, Nat.le_add_right _ _, Nat.le_add_right _ _,
+    ⟨hxm, hym, hx1p, hy1p, Nat.le_add_right _ _, Nat.le_add_right _ _,
       by omega, hmb⟩ hb' (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []) (by bsimp [h2]) ?_
   intro R' M' H' F' y kk post

@@ -77,7 +77,7 @@ theorem kview_80004e08 {live : Nat → Prop} {S : Nat → Prop}
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
     {w : NumObj} {sb : Blk} {sp n la W : Nat} (hsf : StackFrame S sp W) (hW : 224 ≤ W)
     (hab : heapEnd + W ≤ sp) (hb : BcHeap S Mt H F L)
-    (hvs : ViewStruct S Mt M H H' F F' sb L) (hw : w ∈ L) (hn : n < la)
+    (hvs : ViewStruct S Mt M H H' F F' sb L) (hw : w ∈ L) (hn : n ≤ la)
     (hfit : la ≤ w.rep.len + w.rep.scale) (hlb : la < 2 ^ 30)
     (hsp : ldv .ld M (sp - 192) = BitVec.ofNat 64 w.rep.p) (h2 : R 2 = BitVec.ofNat 64 (sp - 192))
     (h24 : R 24 = BitVec.ofNat 64 sb.pay) (h20 : R 20 = BitVec.ofNat 64 la)
@@ -103,7 +103,7 @@ theorem kview_80004e08 {live : Nat → Prop} {S : Nat → Prop}
   all_goals try (exact acc_heap hS (by omega) (by omega))
   all_goals try (exact frame_acc hsf (by omega) (by omega))
   all_goals try (simp only [LdOK, StOK, StOKb, tohostAddr] at *; omega)
-  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hw (by omega) (by omega) ?_) ?_ ?_
+  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hw (by omega) ?_) ?_ ?_
   · kv_src hvs, hsz
   · kv_ld5 hsz, (hvs.word_off hb hw (o := 32) (by decide)), hwv
   · kv_base hvs, hsz
@@ -114,7 +114,7 @@ theorem kview_80004e3c {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
     {w v : NumObj} {sb : Blk} {n la : Nat} (hb : BcHeap S Mt H F L)
-    (hvs : ViewStruct S Mt M H H' F F' sb L) (hw : w ∈ L) (hv : v ∈ L) (hn : n < la)
+    (hvs : ViewStruct S Mt M H H' F F' sb L) (hw : w ∈ L) (hv : v ∈ L) (hn : n ≤ la)
     (hfit : la ≤ w.rep.len + w.rep.scale) (hlb : la < 2 ^ 30) (hn1 : 1 ≤ n)
     (h19 : R 19 = BitVec.ofNat 64 sb.pay) (h20 : R 20 = BitVec.ofNat 64 la)
     (h8 : R 8 = BitVec.ofNat 64 n) (h23 : R 23 = BitVec.ofNat 64 w.rep.val)
@@ -139,7 +139,7 @@ theorem kview_80004e3c {live : Nat → Prop} {S : Nat → Prop}
     sub_ofNat] at 0x80004e64
   all_goals try (exact acc_heap hS (by omega) (by omega))
   all_goals try (simp only [LdOK, StOK, StOKb, tohostAddr] at *; omega)
-  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hw (by omega) (by omega) ?_)
+  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hw (by omega) ?_)
     (by bsimp []) ?_ ?_
   · kv_src hvs, hsz
   · kv_ld5 hsz, (hvs.word_off hb hv (o := 32) (by decide)), hvv
@@ -151,7 +151,7 @@ theorem kview_800053d0 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
     {v : NumObj} {sb : Blk} {n lb : Nat} (hb : BcHeap S Mt H F L)
-    (hvs : ViewStruct S Mt M H H' F F' sb L) (hv : v ∈ L) (hn : n < lb)
+    (hvs : ViewStruct S Mt M H H' F F' sb L) (hv : v ∈ L) (hn : n ≤ lb)
     (hfit : lb ≤ v.rep.len + v.rep.scale) (hlb : lb < 2 ^ 30)
     (h27 : R 27 = BitVec.ofNat 64 sb.pay) (h21 : R 21 = BitVec.ofNat 64 lb)
     (h8 : R 8 = BitVec.ofNat 64 n) (h23 : R 23 = BitVec.ofNat 64 v.rep.val)
@@ -174,7 +174,7 @@ theorem kview_800053d0 {live : Nat → Prop} {S : Nat → Prop}
     subw_nat, ofInt_sub_nat] at 0x800053f4
   all_goals try (exact acc_heap hS (by omega) (by omega))
   all_goals try (simp only [LdOK, StOK, StOKb, tohostAddr] at *; omega)
-  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hv (by omega) (by omega) ?_) ?_ ?_
+  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hv (by omega) ?_) ?_ ?_
   · kv_src hvs, hsz
   · kv_ld5 hsz, (hvs.word_off hb hv (o := 32) (by decide)), hvv
   · kv_base hvs, hsz
@@ -185,7 +185,7 @@ theorem kview_80005400 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
     {v z : NumObj} {sb : Blk} {n lb : Nat} (hb : BcHeap S Mt H F L)
-    (hvs : ViewStruct S Mt M H H' F F' sb L) (hv : v ∈ L) (hn : n < lb)
+    (hvs : ViewStruct S Mt M H H' F F' sb L) (hv : v ∈ L) (hn : n ≤ lb)
     (hfit : lb ≤ v.rep.len + v.rep.scale) (hlb : lb < 2 ^ 30) (hn1 : 1 ≤ n)
     (hz : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hzo : ∀ a, constBytes a → S a)
     (h20 : R 20 = BitVec.ofNat 64 sb.pay) (h21 : R 21 = BitVec.ofNat 64 lb)
@@ -212,7 +212,7 @@ theorem kview_80005400 {live : Nat → Prop} {S : Nat → Prop}
   all_goals try (exact acc_heap hS (by omega) (by omega))
   all_goals try (exact hcst)
   all_goals try (simp only [LdOK, StOK, StOKb, tohostAddr] at *; omega)
-  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hv (by omega) (by omega) ?_)
+  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hv (by omega) ?_)
     (by bsimp []) (by bsimp []) (by bsimp [zeroAddr]) (by bsimp []) ?_
   · kv_src hvs, hsz
   · kv_base hvs, hsz
@@ -246,7 +246,7 @@ theorem kview_8000539c {live : Nat → Prop} {S : Nat → Prop}
   bc_run hlive hS [h19, h20, h26, h18, ldv_ld_miss, ldv_lw_miss, hvv] at 0x800053bc
   all_goals try (exact acc_heap hS (by omega) (by omega))
   all_goals try (simp only [LdOK, StOK, StOKb, tohostAddr] at *; omega)
-  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hw (by omega) (by omega) ?_) ?_ ?_
+  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hw (by omega) ?_) ?_ ?_
   · kv_src hvs, hsz
   · kv_ld5 hsz, (hvs.word_off hb hv (o := 32) (by decide)), hvv
   · kv_base hvs, hsz
@@ -273,7 +273,7 @@ theorem kview_80004e94 {live : Nat → Prop} {S : Nat → Prop}
   bc_run hlive hS [h20, h21, h23] at 0x80004eb0
   all_goals try (exact acc_heap hS (by omega) (by omega))
   all_goals try (simp only [LdOK, StOK, StOKb, tohostAddr] at *; omega)
-  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hw hk1 (by omega) ?_) ?_
+  refine hnext _ _ (by keeps_tac Keeps.refl _ _) (hb.pushView hw (by omega) ?_) ?_
   · kv_src hvs, hsz
   · kv_base hvs, hsz
 

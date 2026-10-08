@@ -224,7 +224,7 @@ macro "bsimp" " [" ts:Lean.Parser.Tactic.simpLemma,* "]" loc:(Lean.Parser.Tactic
 macro "num_facts " h:term : tactic =>
   `(tactic| (have _n1 := ($h).shape.pLo; have _n2 := ($h).shape.pHi; have _n3 := ($h).shape.pAl
              have _n4 := ($h).shape.vLo; have _n5 := ($h).shape.vHi; have _n6 := ($h).shape.ptrLe
-             have _n7 := ($h).shape.size; have _n8 := ($h).shape.lenPos
+             have _n7 := ($h).shape.size
              have _n9 := ($h).shape.refsLt; have _n10 := ($h).shape.dsLen
              simp only [heapStart, heapEnd] at _n1 _n2 _n4 _n5
              have _htx : tohostAddr = 0x8001ad00 := rfl))

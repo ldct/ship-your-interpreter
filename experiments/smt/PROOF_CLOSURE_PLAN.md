@@ -4860,3 +4860,35 @@ consumers that need it, which are the digit loops, the comparison, the scan
 and the trims — all of which already know their operand is nonempty from
 their callers. A zero-length view is inert at the trims: `lbu 0(n_value)`
 reads a byte of the parent's buffer and either branch leaves `n_len = 0`.
+
+#### Amendment status and the empty-operand obligation
+
+Landed: `NumShape.lenPos` is gone, `NumRep.Norm o := o.len ≤ 1 ∨ o.ds.getD 0 0 ≠ 0`,
+and the positivity the machine proofs actually use is now an explicit field or
+premise:
+
+- `AddArgs.l1`/`.l2`, `SubArgs.l1`/`.l2` (`Dc/Mach/Bc/DoAdd.lean`,
+  `DoSub.lean`) — the operands of `_bc_do_add`/`_bc_do_sub`.
+- `cmpMag_of_len_lt` takes `1 ≤ a.len`, `cmpMag_of_len_gt` takes `1 ≤ b.len`;
+  without them the statements are false (`a.len = 0` against a normalised
+  `b.len = 1`, `b.ds = [0]`, both magnitudes `0`).
+- `do_compare_spec`, `bc_compare_spec` take `1 ≤ a.len` and `1 ≤ b.len`.
+- `bc_num2long_spec`, `bc_is_zero_spec`, `bc_is_near_zero_spec`
+  (`Dc/Mach/Bc/Scan.lean`) take `1 ≤ o.len`.
+- `sub_rmlz_loop`/`add_rmlz_loop` derive `1 ≤ o.len - j` from the loop index
+  instead of the shape.
+
+Remaining obligation for M6: the Karatsuba step calls `bc_sub` with the empty
+half as the *first* argument (`0x800054e0`, from the zero-scan route at
+`0x8000561c` → `0x80004fa4` → `0x800054bc`), paired with a half whose leading
+digit is nonzero. So M6 needs
+
+1. a compare route for `a.len = 0` concluding `.lt` from `1 ≤ b.len` and
+   `b.ds.getD 0 0 ≠ 0` (the machine compares `n_len` only, so this is the only
+   shape in which its answer is correct), and
+2. `_bc_do_sub` with an empty subtrahend (`SubArgs.l2` dropped), whose
+   `0x800046a0` pointer setup computes `n2->n_value + l2 + min s - 1` one byte
+   below the buffer and never dereferences it.
+
+Both are routes of the same machine code, so they are generalisations of the
+existing proofs rather than new files.

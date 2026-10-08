@@ -40,7 +40,8 @@ theorem ktrimLoop_80004ec4 {live : Nat → Prop} {S : Nat → Prop}
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
     have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
     have vl := hn0.shape.dsLen
     simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
@@ -54,7 +55,8 @@ theorem ktrimLoop_80004ec4 {live : Nat → Prop} {S : Nat → Prop}
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
     have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
     have vl := hn0.shape.dsLen
     simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
@@ -125,24 +127,34 @@ theorem ktrim_80004eb0 {live : Nat → Prop} {S : Nat → Prop}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   num_facts hn
   have hv := hn.value; have hlen := hn.len
-  have hl0 := hn.lbu (i := 0) (by omega)
-  have hd := hn.getD_lt 0
-  simp only [Nat.add_zero] at hl0 hd
   have hmo0 : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M M := fun a _ => rfl
   have vl := hn.shape.dsLen
-  bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004ec4 0x80004ee0
-  · intro hne
-    bv_nat at hne
-    rw [Nat.mod_eq_of_lt (by omega)] at hne
-    exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
-      (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
-  · intro he
-    bv_nat at he
-    rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
-    bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004ec4
-    exact ktrimLoop_80004ec4 hlive hS hr hnext _ 0 _ _ rfl (by omega)
-      (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
-      fun i hi => by rw [show i = 0 by omega]; exact he
+  rcases Nat.eq_zero_or_pos x.rep.len with hz0 | hp0
+  · -- an empty object (`new_sub_num` of length `0`): the first digit read is
+    -- off its own buffer, and either branch leaves `n_len` at `0`
+    have hj0 : lzCount (x.rep.len - 1) x.rep.ds = 0 := by rw [hz0]; rfl
+    bc_run hlive hS [hr, hv, hlen, hz0] at 0x80004ec4 0x80004ee0
+    · intro _
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0 hj0 hmo0
+    · intro _
+      bc_run hlive hS [hr, hv, hlen, hz0, toInt_ofNat_small] at 0x80004ee0
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0 hj0 hmo0
+  · have hl0 := hn.lbu (i := 0) (by omega)
+    have hd := hn.getD_lt 0
+    simp only [Nat.add_zero] at hl0 hd
+    bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004ec4 0x80004ee0
+    · intro hne
+      bv_nat at hne
+      rw [Nat.mod_eq_of_lt (by omega)] at hne
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
+        (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
+    · intro he
+      bv_nat at he
+      rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
+      bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004ec4
+      exact ktrimLoop_80004ec4 hlive hS hr hnext _ 0 _ _ rfl (by omega)
+        (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
+        fun i hi => by rw [show i = 0 by omega]; exact he
 
 /-- The trim loop at `0x80004ef4`: `j` leading zeros dropped from the object in
 `x19`, digit `j` zero too. -/
@@ -169,7 +181,8 @@ theorem ktrimLoop_80004ef4 {live : Nat → Prop} {S : Nat → Prop}
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
     have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
     have vl := hn0.shape.dsLen
     simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
@@ -183,7 +196,8 @@ theorem ktrimLoop_80004ef4 {live : Nat → Prop} {S : Nat → Prop}
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
     have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
     have vl := hn0.shape.dsLen
     simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
@@ -254,24 +268,34 @@ theorem ktrim_80004ee0 {live : Nat → Prop} {S : Nat → Prop}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   num_facts hn
   have hv := hn.value; have hlen := hn.len
-  have hl0 := hn.lbu (i := 0) (by omega)
-  have hd := hn.getD_lt 0
-  simp only [Nat.add_zero] at hl0 hd
   have hmo0 : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M M := fun a _ => rfl
   have vl := hn.shape.dsLen
-  bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004ef4 0x80004f10
-  · intro hne
-    bv_nat at hne
-    rw [Nat.mod_eq_of_lt (by omega)] at hne
-    exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
-      (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
-  · intro he
-    bv_nat at he
-    rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
-    bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004ef4
-    exact ktrimLoop_80004ef4 hlive hS hr hnext _ 0 _ _ rfl (by omega)
-      (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
-      fun i hi => by rw [show i = 0 by omega]; exact he
+  rcases Nat.eq_zero_or_pos x.rep.len with hz0 | hp0
+  · -- an empty object (`new_sub_num` of length `0`): the first digit read is
+    -- off its own buffer, and either branch leaves `n_len` at `0`
+    have hj0 : lzCount (x.rep.len - 1) x.rep.ds = 0 := by rw [hz0]; rfl
+    bc_run hlive hS [hr, hv, hlen, hz0] at 0x80004ef4 0x80004f10
+    · intro _
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0 hj0 hmo0
+    · intro _
+      bc_run hlive hS [hr, hv, hlen, hz0, toInt_ofNat_small] at 0x80004f10
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0 hj0 hmo0
+  · have hl0 := hn.lbu (i := 0) (by omega)
+    have hd := hn.getD_lt 0
+    simp only [Nat.add_zero] at hl0 hd
+    bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004ef4 0x80004f10
+    · intro hne
+      bv_nat at hne
+      rw [Nat.mod_eq_of_lt (by omega)] at hne
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
+        (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
+    · intro he
+      bv_nat at he
+      rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
+      bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004ef4
+      exact ktrimLoop_80004ef4 hlive hS hr hnext _ 0 _ _ rfl (by omega)
+        (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
+        fun i hi => by rw [show i = 0 by omega]; exact he
 
 /-- The trim loop at `0x80004f24`: `j` leading zeros dropped from the object in
 `x27`, digit `j` zero too. -/
@@ -298,7 +322,8 @@ theorem ktrimLoop_80004f24 {live : Nat → Prop} {S : Nat → Prop}
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
     have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
     have vl := hn0.shape.dsLen
     simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
@@ -312,7 +337,8 @@ theorem ktrimLoop_80004f24 {live : Nat → Prop} {S : Nat → Prop}
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
     have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
     have vl := hn0.shape.dsLen
     simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
@@ -383,24 +409,34 @@ theorem ktrim_80004f10 {live : Nat → Prop} {S : Nat → Prop}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   num_facts hn
   have hv := hn.value; have hlen := hn.len
-  have hl0 := hn.lbu (i := 0) (by omega)
-  have hd := hn.getD_lt 0
-  simp only [Nat.add_zero] at hl0 hd
   have hmo0 : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M M := fun a _ => rfl
   have vl := hn.shape.dsLen
-  bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004f24 0x80004f40
-  · intro hne
-    bv_nat at hne
-    rw [Nat.mod_eq_of_lt (by omega)] at hne
-    exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
-      (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
-  · intro he
-    bv_nat at he
-    rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
-    bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004f24
-    exact ktrimLoop_80004f24 hlive hS hr hnext _ 0 _ _ rfl (by omega)
-      (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
-      fun i hi => by rw [show i = 0 by omega]; exact he
+  rcases Nat.eq_zero_or_pos x.rep.len with hz0 | hp0
+  · -- an empty object (`new_sub_num` of length `0`): the first digit read is
+    -- off its own buffer, and either branch leaves `n_len` at `0`
+    have hj0 : lzCount (x.rep.len - 1) x.rep.ds = 0 := by rw [hz0]; rfl
+    bc_run hlive hS [hr, hv, hlen, hz0] at 0x80004f24 0x80004f40
+    · intro _
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0 hj0 hmo0
+    · intro _
+      bc_run hlive hS [hr, hv, hlen, hz0, toInt_ofNat_small] at 0x80004f40
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0 hj0 hmo0
+  · have hl0 := hn.lbu (i := 0) (by omega)
+    have hd := hn.getD_lt 0
+    simp only [Nat.add_zero] at hl0 hd
+    bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004f24 0x80004f40
+    · intro hne
+      bv_nat at hne
+      rw [Nat.mod_eq_of_lt (by omega)] at hne
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
+        (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
+    · intro he
+      bv_nat at he
+      rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
+      bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004f24
+      exact ktrimLoop_80004f24 hlive hS hr hnext _ 0 _ _ rfl (by omega)
+        (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
+        fun i hi => by rw [show i = 0 by omega]; exact he
 
 /-- The trim loop at `0x80004f54`: `j` leading zeros dropped from the object in
 `x20`, digit `j` zero too. -/
@@ -427,7 +463,8 @@ theorem ktrimLoop_80004f54 {live : Nat → Prop} {S : Nat → Prop}
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
     have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
     have vl := hn0.shape.dsLen
     simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
@@ -441,7 +478,8 @@ theorem ktrimLoop_80004f54 {live : Nat → Prop} {S : Nat → Prop}
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
     have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
     num_facts hn0
-    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size; have v8 := hn0.shape.lenPos
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
     have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
     have vl := hn0.shape.dsLen
     simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
@@ -512,23 +550,33 @@ theorem ktrim_80004f40 {live : Nat → Prop} {S : Nat → Prop}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   num_facts hn
   have hv := hn.value; have hlen := hn.len
-  have hl0 := hn.lbu (i := 0) (by omega)
-  have hd := hn.getD_lt 0
-  simp only [Nat.add_zero] at hl0 hd
   have hmo0 : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M M := fun a _ => rfl
   have vl := hn.shape.dsLen
-  bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004f54 0x80004f70
-  · intro hne
-    bv_nat at hne
-    rw [Nat.mod_eq_of_lt (by omega)] at hne
-    exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
-      (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
-  · intro he
-    bv_nat at he
-    rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
-    bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004f54
-    exact ktrimLoop_80004f54 hlive hS hr hnext _ 0 _ _ rfl (by omega)
-      (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
-      fun i hi => by rw [show i = 0 by omega]; exact he
+  rcases Nat.eq_zero_or_pos x.rep.len with hz0 | hp0
+  · -- an empty object (`new_sub_num` of length `0`): the first digit read is
+    -- off its own buffer, and either branch leaves `n_len` at `0`
+    have hj0 : lzCount (x.rep.len - 1) x.rep.ds = 0 := by rw [hz0]; rfl
+    bc_run hlive hS [hr, hv, hlen, hz0] at 0x80004f54 0x80004f70
+    · intro _
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0 hj0 hmo0
+    · intro _
+      bc_run hlive hS [hr, hv, hlen, hz0, toInt_ofNat_small] at 0x80004f70
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0 hj0 hmo0
+  · have hl0 := hn.lbu (i := 0) (by omega)
+    have hd := hn.getD_lt 0
+    simp only [Nat.add_zero] at hl0 hd
+    bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004f54 0x80004f70
+    · intro hne
+      bv_nat at hne
+      rw [Nat.mod_eq_of_lt (by omega)] at hne
+      exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
+        (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
+    · intro he
+      bv_nat at he
+      rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
+      bc_run hlive hS [hr, hv, hl0, hlen] at 0x80004f54
+      exact ktrimLoop_80004f54 hlive hS hr hnext _ 0 _ _ rfl (by omega)
+        (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
+        fun i hi => by rw [show i = 0 by omega]; exact he
 
 end Dc.Mach

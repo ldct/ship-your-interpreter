@@ -512,6 +512,7 @@ theorem kara_m1call {live : Nat → Prop} {S : Nat → Prop}
     (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)))
     (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (hx1p : 1 ≤ x1.rep.len) (hx2p : 1 ≤ x2.rep.len)
     (ds : KDiffSpec z (some x1) hu0 (some x2) hv0 u v n la lb N W)
     (m3s : KM3Spec z hu0 hv0 n la lb N W)
     (m1s : KM1Spec z (some x1) (some x2) n la lb N W) :
@@ -570,7 +571,7 @@ theorem kara_m1call {live : Nat → Prop} {S : Nat → Prop}
     (by omega) (by decide) hm1s hm1w
     (KZero.withRefs (j := zeroCount (some y2 :: some y1 :: hs0))
       (kz1.mono (by have := hm1f; omega)))
-    ⟨hx1m, hx2m, hx1.shape.lenPos, hx2.shape.lenPos, Nat.le_add_right _ _, Nat.le_add_right _ _,
+    ⟨hx1m, hx2m, hx1p, hx2p, Nat.le_add_right _ _, Nat.le_add_right _ _,
       by omega, hmb1⟩ hb1 (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []) (by bsimp [h2]) ?_
   intro R' M' H' F' ym kk post

@@ -78,7 +78,8 @@ structure ViewSrc (S : Nat → Prop) (Mt Mt' : Mem) (H H' : Heap) (F F' : List B
 `off`, in a struct from `ViewSrc`, head the heap. -/
 theorem BcHeap.pushView {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F F' : List Blk}
     {L : List NumObj} {w : NumObj} {sb : Blk} {off k : Nat} (h : BcHeap S Mt H F L)
-    (hw : w ∈ L) (hk : 1 ≤ k) (hfit : off + k ≤ w.rep.len + w.rep.scale)
+    (hw : w ∈ L) (hp1 : 1 ≤ w.rep.len + w.rep.scale)
+    (hfit : off + k ≤ w.rep.len + w.rep.scale)
     (hv : ViewSrc S Mt Mt' H H' F F' sb (w.rep.val + off) k) :
     BcHeap S Mt' H' F' (viewObj sb w off k :: L) := by
   have hi := h.heap
@@ -151,23 +152,26 @@ theorem BcHeap.pushView {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F F' : 
   have hvl := hws.vLo; have hvh := hws.vHi
   simp only [heapStart, heapEnd] at hvl hvh
   -- the new view's digits lie in `w`'s buffer, apart from `sb`
-  have hdig : ∀ i, i < k → ¬ sb.In (w.rep.val + off + i) := fun i hi hs =>
+  have hdig : ∀ d, d + 1 ≤ w.rep.len + w.rep.scale → ¬ sb.In (w.rep.val + d) := fun d hd hs =>
     live_apart hi' (hsub _ hwb.dLive) hsbL hwdb
       ⟨by omega, by simp only [Blk.fin, Blk.pay] at hdf ⊢; omega⟩ hs
+  -- the view's value pointer is apart from its struct: a byte of the parent's
+  -- buffer at or just below it would belong to both blocks (`k = 0` picks the
+  -- last digit of the parent)
   have hsep : w.rep.val + off + k ≤ sb.pay ∨ sb.pay + 40 ≤ w.rep.val + off := by
     refine Classical.byContradiction fun hc => ?_
     have hc' := not_or.mp hc
-    exact hdig (max (w.rep.val + off) sb.pay - (w.rep.val + off)) (by omega)
+    exact hdig (min (max (w.rep.val + off) sb.pay - w.rep.val) (w.rep.len + w.rep.scale - 1))
+      (by omega)
       ⟨by simp only [Blk.pay] at hc' ⊢; omega, by simp only [Blk.fin, Blk.pay] at hc' ⊢; omega⟩
-  have hget : ((w.rep.ds.drop off).take k).getD 0 0 = w.rep.ds.getD off 0 ∧
-      ∀ i, i < k → ((w.rep.ds.drop off).take k).getD i 0 = w.rep.ds.getD (off + i) 0 := by
-    refine ⟨?_, fun i hi => ?_⟩ <;>
+  have hget : ∀ i, i < k → ((w.rep.ds.drop off).take k).getD i 0 = w.rep.ds.getD (off + i) 0 :=
+    fun i hi => by
       simp [List.getD_eq_getElem?_getD, List.getElem?_take, List.getElem?_drop, *,
         show 0 < k by omega]
   have hnum : NumAt Mt' (viewRep sb.pay w.rep off k) := by
     have hsize := hws.size
     have hdsl := hws.dsLen
-    refine ⟨⟨?_, ?_, hk, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩,
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, fun _ => rfl⟩,
       hv.sign, hv.len, hv.scale, hv.refs, hv.ptr, hv.value, fun i hi => ?_⟩
     all_goals simp only [viewRep, heapStart, heapEnd, Blk.pay, Nat.add_zero] at hi ⊢
     any_goals omega
@@ -177,7 +181,7 @@ theorem BcHeap.pushView {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F F' : 
     · have hdi := hwn.digit (off + i) (by omega)
       rw [← Nat.add_assoc] at hdi
       rw [hkeep w.db (List.mem_append_right _ hdb) _
-          ⟨by omega, by simp only [Blk.fin, Blk.pay] at hdf ⊢; omega⟩, hdi, hget.2 i hi]
+          ⟨by omega, by simp only [Blk.fin, Blk.pay] at hdf ⊢; omega⟩, hdi, hget i hi]
   refine
     { heap := hi'
       dead := ?_

@@ -245,7 +245,8 @@ theorem badd_add {live : Nat → Prop} {S : Nat → Prop}
     {x1 x2 xr : NumObj} {H : Heap} {F : List Blk}
     (cx : BinCtx S R0 sp q)
     (hk : BinK live S Q R0 Mt0 L1 L2 xr q sp (Num.add x1.rep.num x2.rep.num smin))
-    (ha : BinArgs (L1 ++ xr :: L2) x1 x2 smin) (hs : x1.rep.neg = x2.rep.neg)
+    (ha : BinArgs (L1 ++ xr :: L2) x1 x2 smin)
+    (hl : 1 ≤ x1.rep.len ∧ 1 ≤ x2.rep.len) (hs : x1.rep.neg = x2.rep.neg)
     (st : BinAt S Mt0 M R0 R sp q) (hb : BcHeap S M H F (L1 ++ xr :: L2))
     (hr0 : ResSlot Mt0 L1 xr q)
     (h8 : R 8 = BitVec.ofNat 64 x1.rep.p) (h10 : R 10 = BitVec.ofNat 64 x1.rep.p)
@@ -263,7 +264,7 @@ theorem badd_add {live : Nat → Prop} {S : Nat → Prop}
   bc_run hlive hS [h13, h2] at 0x80004304
   refine bc_do_add_spec hlive (sp := sp - 48) ⟨⟨fun a h1 h2 => hsf.own a (by omega) (by omega),
       by omega, by omega, by omega⟩, by simp only [heapEnd]; omega, by bsimp [h2], by bsimp []; try decide⟩
-    ⟨ha.m1, ha.m2, ha.size⟩ hb (by bsimp [h10]) (by bsimp [h11]) (by bsimp [h13])
+    ⟨ha.m1, ha.m2, hl.1, hl.2, ha.size⟩ hb (by bsimp [h10]) (by bsimp [h11]) (by bsimp [h13])
     ⟨fun R1 Mt1 H1 F1 y hk1 h10' hp => ?_, fun R1 Mt1 hr2 hout => ?_⟩
   · bsimp []
     exact badd_add_ret hlive cx hk (st.call cx.above
@@ -278,12 +279,16 @@ theorem badd_add {live : Nat → Prop} {S : Nat → Prop}
 /-- `n2`'s magnitude below `n1`'s: `n2` is not longer. -/
 theorem len_le_of_gt {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hnb : b.Norm)
     (hc : Dc.Num.cmpMag a.num b.num = .gt) : b.len ≤ a.len :=
-  Nat.not_lt.mp fun hl => by rw [cmpMag_of_len_lt ha hb hnb hl] at hc; cases hc
+  Nat.not_lt.mp fun hl => by
+    have hp := len_pos_of_gt ha hc
+    rw [cmpMag_of_len_lt ha hb hnb (fun h0 => absurd h0 (by omega)) hl] at hc; cases hc
 
 /-- `n1`'s magnitude below `n2`'s: `n1` is not longer. -/
 theorem len_le_of_lt {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hna : a.Norm)
     (hc : Dc.Num.cmpMag a.num b.num = .lt) : a.len ≤ b.len :=
-  Nat.not_lt.mp fun hl => by rw [cmpMag_of_len_gt ha hb hna hl] at hc; cases hc
+  Nat.not_lt.mp fun hl => by
+    have hp := len_pos_of_lt hb hc
+    rw [cmpMag_of_len_gt ha hb hna (fun h0 => absurd h0 (by omega)) hl] at hc; cases hc
 
 /-- `|n1| > |n2|` with different signs, from `0x800056d4`: `_bc_do_sub(n1, n2)`. -/
 theorem badd_gt {live : Nat → Prop} {S : Nat → Prop}
@@ -312,7 +317,8 @@ theorem badd_gt {live : Nat → Prop} {S : Nat → Prop}
   bc_run hlive hS [h8, h18, h2] at 0x800045e8
   refine bc_do_sub_spec hlive (sp := sp - 48) (smin := smin) ⟨⟨fun a h1 h2 => hsf.own a (by omega) (by omega),
       by omega, by omega, by omega⟩, by simp only [heapEnd]; omega, by bsimp [h2], by bsimp []; try decide⟩
-    ⟨ha.m1, ha.m2, hle, by omega⟩ hb (by bsimp [h8]) (by bsimp [h18]) (by bsimp [h12])
+    ⟨ha.m1, ha.m2, hle, by omega, len_pos_of_gt hs1 hc⟩ hb (by bsimp [h8]) (by bsimp [h18])
+      (by bsimp [h12])
     ⟨fun R1 Mt1 H1 F1 y hk1 h10' hp => ?_, fun R1 Mt1 hr2 hout => ?_⟩
   · bsimp []
     have hm : ∀ a, OutHeap a → ¬ frameIn (sp - 48) 128 a → imgM Mt1 a = imgM M a := hp.out
@@ -354,7 +360,8 @@ theorem badd_lt {live : Nat → Prop} {S : Nat → Prop}
   bc_run hlive hS [h8, h18, h2] at 0x800045e8
   refine bc_do_sub_spec hlive (sp := sp - 48) (smin := smin) ⟨⟨fun a h1 h2 => hsf.own a (by omega) (by omega),
       by omega, by omega, by omega⟩, by simp only [heapEnd]; omega, by bsimp [h2], by bsimp []; try decide⟩
-    ⟨ha.m2, ha.m1, hle, by omega⟩ hb (by bsimp [h18]) (by bsimp [h8]) (by bsimp [h12])
+    ⟨ha.m2, ha.m1, hle, by omega, len_pos_of_lt hs2' hc⟩ hb (by bsimp [h18]) (by bsimp [h8])
+      (by bsimp [h12])
     ⟨fun R1 Mt1 H1 F1 y hk1 h10' hp => ?_, fun R1 Mt1 hr2 hout => ?_⟩
   · bsimp []
     have hm : ∀ a, OutHeap a → ¬ frameIn (sp - 48) 128 a → imgM Mt1 a = imgM M a := hp.out
@@ -424,7 +431,7 @@ theorem badd_zero_fill {live : Nat → Prop} {S : Nat → Prop}
       (by keeps_tac ((hk1.mono (by decide) : Keeps binTmp R1 _).trans
         (by keeps_tac Keeps.refl _ _ : Keeps binTmp _ R))) fun a ha _ => hm a ha)
     hb' hr0 (by bsimp [r8]) (by bsimp []) (by rw [hy, zeroRep_num, hn])
-    (by rw [hy]; exact Or.inl rfl) (by rw [hy]; rfl)
+    (by rw [hy]; exact Or.inl (Nat.le_refl 1)) (by rw [hy]; rfl)
     (by show y.rep.ptr ≠ 0; rw [hy]; show y.db.h + 16 ≠ 0; omega)
 
 /-- `bc_new_num(1, scale)` from `0x80005714` with the result scale in `s2`. -/
@@ -601,7 +608,7 @@ theorem badd_ne {live : Nat → Prop} {S : Nat → Prop}
   have hsm : ldv .ld (writeLog (writeLog M [(sp - 48 + 16, 8, R 18)]) [(sp - 48 + 8, 8, R 13)])
       (sp - 48 + 8) = BitVec.ofNat 64 smin := by
     rw [ldv_store_hit, h13]
-  refine do_compare_spec hlive hS hn1 hn2 ha.n1 ha.n2 (u := false) _ (by bsimp [h10])
+  refine do_compare_spec hlive hS hn1 hn2 ha.n1 ha.n2 ha.e1 ha.e2 (u := false) _ (by bsimp [h10])
     (by bsimp [h11]) (by bsimp []) (by bsimp []; try decide) fun R1 hk1 h10' => ?_
   bsimp []
   exact badd_cmp hlive cx hk ha hs
@@ -616,6 +623,7 @@ theorem badd_dispatch {live : Nat → Prop} {S : Nat → Prop}
     (cx : BinCtx S R0 sp q)
     (hk : BinK live S Q R0 Mt0 L1 L2 xr q sp (Num.add x1.rep.num x2.rep.num smin))
     (ha : BinArgs (L1 ++ xr :: L2) x1 x2 smin)
+    (hadd : x1.rep.neg = x2.rep.neg → 1 ≤ x1.rep.len ∧ 1 ≤ x2.rep.len)
     (st : BinAt S Mt0 M R0 R sp q) (hb : BcHeap S M H F (L1 ++ xr :: L2))
     (hr0 : ResSlot Mt0 L1 xr q)
     (h8 : R 8 = BitVec.ofNat 64 x1.rep.p) (h10 : R 10 = BitVec.ofNat 64 x1.rep.p)
@@ -627,7 +635,7 @@ theorem badd_dispatch {live : Nat → Prop} {S : Nat → Prop}
     simp only [signWord_false, signWord_true] at h14 h15
   all_goals bc_run hlive hS [h14, h15] at 0x800056a0 0x80005658
   all_goals first
-    | exact badd_add hlive cx hk ha (by rw [e1, e2]) (st.keeps (by keeps_tac Keeps.refl _ _)) hb hr0
+    | exact badd_add hlive cx hk ha (hadd (by rw [e1, e2])) (by rw [e1, e2]) (st.keeps (by keeps_tac Keeps.refl _ _)) hb hr0
         (by bsimp [h8]) (by bsimp [h10]) (by bsimp [h11]) (by bsimp [h13]) (by bsimp [h18])
     | exact badd_ne hlive cx hk ha (by rw [e1, e2]; decide) (st.keeps (by keeps_tac Keeps.refl _ _))
         hb hr0 (by bsimp [h8]) (by bsimp [h10]) (by bsimp [h11]) (by bsimp [h13]) (by bsimp [h18])
@@ -641,6 +649,7 @@ theorem bc_add_spec {live : Nat → Prop} {S : Nat → Prop}
     {M : Mem} {R : Nat → BitVec 64} {sp q smin : Nat} {L1 L2 : List NumObj} {x1 x2 xr : NumObj}
     {H : Heap} {F : List Blk}
     (cx : BinCtx S R sp q) (ha : BinArgs (L1 ++ xr :: L2) x1 x2 smin)
+    (hadd : x1.rep.neg = x2.rep.neg → 1 ≤ x1.rep.len ∧ 1 ≤ x2.rep.len)
     (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 q) (h13 : R 13 = BitVec.ofNat 64 smin)
@@ -673,7 +682,7 @@ theorem bc_add_spec {live : Nat → Prop} {S : Nat → Prop}
         out := fun a _ hf => hpro a fun h => hf (by simp only [frameIn] at *; omega) }
   bc_run hlive hS [h2, h10, h11, h12, sg1, sg2, word_sub48] at 0x80005654
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-  exact badd_dispatch hlive cx hk ha (st _ (by bsimp []) (by bsimp [h12])
+  exact badd_dispatch hlive cx hk ha hadd (st _ (by bsimp []) (by bsimp [h12])
     (by keeps_tac Keeps.refl _ _)) hb' hr (by bsimp [h10]) (by bsimp [h10]) (by bsimp [h11])
     (by bsimp [h13]) (by bsimp []) (by bsimp [sg1]) (by bsimp [sg2])
 

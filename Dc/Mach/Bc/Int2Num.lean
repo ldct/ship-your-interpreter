@@ -575,7 +575,7 @@ theorem i2n_fill {live : Nat → Prop} {S : Nat → Prop}
       norm := by
         have e1 : y.rep.len = (i2nBuf v.natAbs).length := by rw [hy]; rfl
         rcases bm.norm with h | h
-        · exact .inl (by simp only [withDs]; rw [e1, h])
+        · exact .inl (by simp only [withDs]; rw [e1, h]; try omega)
         · exact .inr h
       refs := by simp only [withDs]; rw [hy]; rfl
       slot := by

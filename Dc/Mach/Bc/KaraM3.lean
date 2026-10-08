@@ -159,7 +159,7 @@ theorem RmPost.kret {S : Nat → Prop} {M M' : Mem} {H' : Heap} {F' : List Blk} 
   · have := post.heap
     simpa only [KList, temps, List.filterMap_cons, id, zeroCount_some, List.nil_append,
       List.append_assoc, List.cons_append] using this
-  · have := valCount_le_of_lt hyn.shape.dsLen hyn.shape.lenPos (by
+  · have := valCount_le_of_lt hyn.shape.dsLen (show 1 ≤ y.rep.len by rw [post.len]; omega) (by
       rw [post.len, post.scale, Nat.add_zero, Nat.add_sub_cancel]
       have : dvalBE y.rep.ds = hdVal y := by
         show _ = dvalBE (y.rep.ds.take y.rep.len); rw [List.take_of_length_le (by omega)]
@@ -244,6 +244,7 @@ theorem kara_m3call {live : Nat → Prop} {S : Nat → Prop}
     (h11 : R 11 = BitVec.ofNat 64 x0.rep.len) (h13 : R 13 = BitVec.ofNat 64 y0.rep.len)
     (hN : x0.rep.len + y0.rep.len ≤ N) (hW : rmStack (x0.rep.len + y0.rep.len) + 192 ≤ W)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (hx0p : 1 ≤ x0.rep.len) (hy0p : 1 ≤ y0.rep.len)
     (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (hfit2 : n + valCount (Hd.o z hm2).rep ≤ la + lb + 1)
@@ -270,7 +271,7 @@ theorem kara_m3call {live : Nat → Prop} {S : Nat → Prop}
   apply st_80005148 hlive
   refine kara_child ih cx hk (pk.st.rm.keeps (by keeps_tac Keeps.refl _ _) (by bsimp [h2])) 56
     (by omega) (by decide) hN hW kz.withRefs
-    ⟨hxm, hym, hx0.shape.lenPos, hy0.shape.lenPos, Nat.le_add_right _ _, Nat.le_add_right _ _,
+    ⟨hxm, hym, hx0p, hy0p, Nat.le_add_right _ _, Nat.le_add_right _ _,
       by omega, hmb⟩ hb' (by bsimp []) (by bsimp []) (by bsimp [h11]) (by bsimp [])
     (by bsimp [h13]) (by bsimp [h2]) ?_
   intro R' M' H' F' y kk post

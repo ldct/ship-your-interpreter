@@ -51,6 +51,10 @@ structure BinArgs (L : List NumObj) (x1 x2 : NumObj) (smin : Nat) : Prop where
   n1 : x1.rep.Norm
   n2 : x2.rep.Norm
   size : max x1.rep.len x2.rep.len + 1 + max smin (max x1.rep.scale x2.rep.scale) < 2 ^ 31
+  /-- an operand without integer digits is compared against a nonzero one:
+  what `_bc_do_compare`'s length test needs to be correct -/
+  e1 : x1.rep.len = 0 → 0 < dval x2.rep.ds
+  e2 : x2.rep.len = 0 → 0 < dval x1.rep.ds
 
 /-- The result slot `q` holds the number `x` (`L = L1 ++ x :: L2`); no view
 before it reads an owner's buffer. -/

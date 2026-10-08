@@ -38,3 +38,4 @@ import Dc.Mach.Bc.DoSub
 import Dc.Mach.Bc.AddSub
 import Dc.Mach.Bc.BcAdd
 import Dc.Mach.Bc.BcSub
+import Dc.Mach.Bc.ShiftAddSub

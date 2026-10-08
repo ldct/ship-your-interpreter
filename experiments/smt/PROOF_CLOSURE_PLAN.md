@@ -4696,6 +4696,27 @@ stated after it. Splitting the four sign cases out of the entry lemma keeps
 each declaration inside its budget. The axioms of both specs are `propext`,
 `Classical.choice`, `Quot.sound`.
 
+### M6 `_bc_shift_addsub` (checked)
+
+`Dc/Mach/Bc/ShiftAddSub.lean` proves `bc_shift_addsub_spec` at `0x800040bc`.
+With the accumulator `y` heading the heap and `val` (`w`) a heap number,
+`ShiftArgs` supplies the assertion bound (`fit`) and the absent carry or
+borrow past the accumulator (`noCarry`, over `addRipC`/`subRipB`). The function
+returns through `ShRet` with `y`'s digits `shiftDs y w shift sub`, registers off
+`shClob`, and memory changed only on `y`'s digit bytes (`ShSt`).
+
+- Model: `valCount`/`valLE` (the integer digits `val` contributes, skipping a
+  leading zero), `accLE` (the accumulator from the shifted position),
+  `ripOp`/`ripOut` over `Dc.BcModel.addRip`/`subRip`.
+- Loops: `sub_body`/`add_body` (one position, `hnext`/`hexit` continuations),
+  `sub_loop`/`add_loop` (induction over `val`'s digits), `sub_rip`/`add_rip`
+  (the ripple entries) and `sub_rip_loop`/`add_rip_loop`. The ripples store a
+  non-digit byte and overwrite it; `BcHeap.congr` carries the heap across.
+- Entry: `sh_head`, `sh_mid` (zero count returns at once), `sh_dispatch`.
+
+`bc_shift_addsub_spec` uses only the three permitted axioms. Callers
+(`_bc_rec_mul`) supply `ShiftArgs.noCarry` from the Karatsuba bounds.
+
 ### M6 prerequisite: number views in the heap (checked)
 
 `new_sub_num` (used by `_bc_rec_mul`) builds a struct whose `n_ptr` is `NULL`

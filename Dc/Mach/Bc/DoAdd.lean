@@ -861,4 +861,268 @@ theorem add_carry_loop {live : Nat → Prop} {S : Nat → Prop}
         (by bsimp [ecc]) (by bsimp []) (by bsimp [h11]) (by bsimp [h13]) (by bsimp [h6])
         (by bsimp [h16]) (by bsimp [h28]) hnext
 
+/-- The carry loop's entry at `0x80004498`: `a4` the positions left, `a1`
+the operand's digit, `a6` the result's. -/
+theorem add_carry_entry {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y z : NumObj}
+    {H : Heap} {F : List Blk} {k0 c A Y : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (hz : z ∈ L) (ht : AddTail x1.rep x2.rep z.rep k0 c)
+    (hc : 1 ≤ c) (hA : A = z.rep.val + (z.rep.len + max x1.rep.scale x2.rep.scale - 1 - k0))
+    (hY : Y = y.rep.val + (addN x1.rep x2.rep - k0))
+    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin k0) :: L))
+    (h14 : R 14 = BitVec.ofNat 64 c) (h11 : R 11 = BitVec.ofNat 64 A)
+    (h16 : R 16 = BitVec.ofNat 64 Y) (h12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep k0)) :
+    DW live S Q 0x80004498#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hNl := hy.N_lt
+  have hstop := ht.stop
+  bc_run hlive hS [h14, h11, h16, h12] at 0x800044a8
+  exact add_carry_loop hlive cx hk hy hz ht hA hY _ 0 _ _ rfl (by omega)
+    (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+    ⟨by bsimp [h11], by bsimp [h11], by bsimp [h14], by bsimp [h16], by bsimp [h16],
+      by bsimp [h12], by bsimp []⟩
+
+/-- `n1` alone from position `S + l2` on (`l2 < l1`). -/
+theorem addTail_x1 {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hl : b.len < a.len) :
+    AddTail a b a (max a.scale b.scale + b.len) (a.len - b.len) where
+  stop := by simp only [addN, loopLen]; omega
+  digit k h1 h2 := by
+    simp only [addN, loopLen] at h2
+    rw [addXs_in ha (by omega) (by omega), addYs_out hb (.inr (by omega)), Nat.add_zero]
+  top := by simp only [addN, loopLen]; omega
+  low := by omega
+
+/-- `n2` alone from position `S + l1` on (`l1 < l2`). -/
+theorem addTail_x2 {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hl : a.len < b.len) :
+    AddTail a b b (max a.scale b.scale + a.len) (b.len - a.len) where
+  stop := by simp only [addN, loopLen]; omega
+  digit k h1 h2 := by
+    simp only [addN, loopLen] at h2
+    rw [addXs_out ha (.inr (by omega)), addYs_in hb (by omega) (by omega), Nat.zero_add]
+  top := by simp only [addN, loopLen]; omega
+  low := by omega
+
+/-! ## The add loop -/
+
+/-- The add loop's geometry: positions from `k0 = S - min s1 s2` on, `c1`
+and `c2` digits of each operand, their digits at `P1`, `P2` and the
+result's at `Y` going down. -/
+structure AddMain (a b : NumRep) (yv k0 c1 c2 P1 P2 Y : Nat) : Prop where
+  k0 : k0 = max a.scale b.scale - min a.scale b.scale
+  c1 : c1 = a.len + min a.scale b.scale
+  c2 : c2 = b.len + min a.scale b.scale
+  P1 : P1 = a.val + (a.len + min a.scale b.scale - 1)
+  P2 : P2 = b.val + (b.len + min a.scale b.scale - 1)
+  Y : Y = yv + (max a.len b.len + min a.scale b.scale)
+
+/-- The registers of the add loop at `0x80004450` after `j` positions. -/
+structure MainRegs (R : Nat → BitVec 64) (P1 P2 Y c1 c2 j carry : Nat) : Prop where
+  r11 : R 11 = BitVec.ofNat 64 (P1 - j)
+  r17 : R 17 = BitVec.ofNat 64 (P2 - j)
+  r16 : R 16 = BitVec.ofNat 64 (Y - j)
+  r14 : R 14 = BitVec.ofNat 64 (c1 - j)
+  r13 : R 13 = BitVec.ofNat 64 (c2 - j)
+  r12 : R 12 = BitVec.ofNat 64 carry
+  r28 : R 28 = BitVec.ofNat 64 9
+
+/-- The common hypotheses of the add loop's exits. -/
+structure MainExit (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp smin : Nat)
+    (L : List NumObj) (x1 x2 y : NumObj) (H : Heap) (F : List Blk) (k : Nat) : Prop where
+  st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay
+  heap : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin k) :: L)
+  r12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep k)
+  r16 : R 16 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - k))
+
+/-- `n1`'s digits used up at `0x800045b0` (`k = S + l1`, `a3` the digits of
+`n2` left): the final carry, or the carry loop over `n2`. -/
+theorem add_exit1 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hl : x1.rep.len ≤ x2.rep.len) {k : Nat} (hk0 : k = max x1.rep.scale x2.rep.scale + x1.rep.len)
+    (e : MainExit S Mt0 M R0 R sp smin L x1 x2 y H F k)
+    (h13 : R 13 = BitVec.ofNat 64 (x2.rep.len - x1.rep.len))
+    (h17 : x1.rep.len < x2.rep.len →
+      R 17 = BitVec.ofNat 64 (x2.rep.val + (x2.rep.len - x1.rep.len - 1))) :
+    DW live S Q 0x800045b0#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => e.heap.heap.own a h1 h2
+  have hs1 := (e.heap.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+  have hs2 := (e.heap.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+  have h12 := e.r12; have h16 := e.r16; have hb := e.heap
+  subst hk0
+  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  bc_run hlive hS [h13] at 0x80004498 0x800044f0
+  · intro e2
+    bv_nat at e2
+    have eN : max x1.rep.scale x2.rep.scale + x1.rep.len = addN x1.rep x2.rep := by
+      simp only [addN, loopLen]; omega
+    rw [eN] at hb h12 h16
+    exact add_final hlive cx hk hy (e.st.keeps (by keeps_tac Keeps.refl _ _)) hb
+      (by bsimp [h16, Nat.sub_self]) (by bsimp [h12])
+  · intro e2
+    bv_nat at e2
+    have h17 := h17 (by omega)
+    bc_run hlive hS [h13, h17] at 0x80004498 0x800044f0
+    exact add_carry_entry hlive cx hk hy ha.m2
+      (addTail_x2 hs1 hs2 (by omega)) (by omega) rfl rfl
+      (e.st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h13])
+      (by bsimp [h17]; congr 1; omega) (by bsimp [h16]) (by bsimp [h12])
+
+/-- `n2`'s digits used up first at `0x80004494` (`k = S + l2`, `a4` the
+digits of `n1` left): the carry loop over `n1`. -/
+theorem add_exit2 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hl : x2.rep.len < x1.rep.len) {k : Nat} (hk0 : k = max x1.rep.scale x2.rep.scale + x2.rep.len)
+    (e : MainExit S Mt0 M R0 R sp smin L x1 x2 y H F k)
+    (h14 : R 14 = BitVec.ofNat 64 (x1.rep.len - x2.rep.len))
+    (h11 : R 11 = BitVec.ofNat 64 (x1.rep.val + (x1.rep.len - x2.rep.len - 1))) :
+    DW live S Q 0x80004494#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => e.heap.heap.own a h1 h2
+  have hs1 := (e.heap.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+  have hs2 := (e.heap.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+  have h12 := e.r12; have h16 := e.r16; have hb := e.heap
+  subst hk0
+  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  bc_run hlive hS [h14, h11] at 0x80004498 0x800045b0
+  · intro e3; bv_nat at e3; omega
+  · intro _
+    exact add_carry_entry hlive cx hk hy ha.m1
+      (addTail_x1 hs1 hs2 hl) (by omega) rfl rfl
+      (e.st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h14])
+      (by bsimp [h11]; congr 1; omega) (by bsimp [h16]) (by bsimp [h12])
+
+/-- The add loop's hypotheses after the store of position `k0 + j`: the
+exit state at `k0 + j + 1`, the counts left, the operands' digits, and the
+next iteration. -/
+structure MainNext (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp smin : Nat) (L : List NumObj) (x1 x2 y : NumObj)
+    (H : Heap) (F : List Blk) (k0 c1 c2 P1 P2 Y j : Nat) : Prop where
+  ex : MainExit S Mt0 M R0 R sp smin L x1 x2 y H F (k0 + j + 1)
+  r11 : R 11 = BitVec.ofNat 64 (P1 - j - 1)
+  r17 : R 17 = BitVec.ofNat 64 (P2 - j - 1)
+  r14 : R 14 = BitVec.ofNat 64 (c1 - j - 1)
+  r13 : R 13 = BitVec.ofNat 64 (c2 - j - 1)
+  r28 : R 28 = BitVec.ofNat 64 9
+  next : j + 1 < c1 → j + 1 < c2 → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+    AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+    BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
+    MainRegs R' P1 P2 Y c1 c2 (j + 1) (addC x1.rep x2.rep (k0 + (j + 1))) →
+    DW live S Q 0x80004450#64 R' M'
+
+/-- The add loop's second test at `0x80004490` (`n1` has digits left). -/
+theorem add_main_br2 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y j : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) (hj1 : j + 1 < c1) (hj2 : j < c2)
+    (nx : MainNext live S Q Mt0 M R0 R sp smin L x1 x2 y H F k0 c1 c2 P1 P2 Y j) :
+    DW live S Q 0x80004490#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => nx.ex.heap.heap.own a h1 h2
+  have h11 := nx.r11; have h17 := nx.r17; have h14 := nx.r14; have h13 := nx.r13
+  have h28 := nx.r28; have h12 := nx.ex.r12; have h16 := nx.ex.r16
+  have hNl := hy.N_lt
+  have g1 := hg.k0; have g2 := hg.c1; have g3 := hg.c2; have g6 := hg.Y
+  have g4 := hg.P1; have g5 := hg.P2
+  simp only [addN, loopLen] at hNl h16
+  bc_run hlive hS [h13] at 0x80004450 0x80004494
+  · intro e2
+    bv_nat at e2
+    exact nx.next (by omega) (by omega) _ _ nx.ex.st nx.ex.heap
+      ⟨by bsimp [h11, Nat.sub_sub], by bsimp [h17, Nat.sub_sub],
+        by bsimp [h16]; congr 1; omega,
+        by bsimp [h14, Nat.sub_sub], by bsimp [h13, Nat.sub_sub], by bsimp [h12, Nat.add_assoc],
+        by bsimp [h28]⟩
+  · intro e2
+    bv_nat at e2
+    exact add_exit2 hlive cx hk hy ha (by omega) (k := k0 + j + 1) (by omega) nx.ex
+      (by bsimp [h14]; congr 1; omega) (by bsimp [h11]; congr 1; omega)
+
+/-- The add loop's first test at `0x8000448c` (`a4` the digits of `n1` left). -/
+theorem add_main_br1 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y j : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) (hj1 : j < c1) (hj2 : j < c2)
+    (nx : MainNext live S Q Mt0 M R0 R sp smin L x1 x2 y H F k0 c1 c2 P1 P2 Y j) :
+    DW live S Q 0x8000448c#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => nx.ex.heap.heap.own a h1 h2
+  have h14 := nx.r14; have h13 := nx.r13; have h17 := nx.r17
+  have hNl := hy.N_lt
+  have g1 := hg.k0; have g2 := hg.c1; have g3 := hg.c2; have g5 := hg.P2
+  simp only [addN, loopLen] at hNl
+  bc_run hlive hS [h14] at 0x80004490 0x800045b0
+  · intro e1
+    bv_nat at e1
+    exact add_exit1 hlive cx hk hy ha (by omega) (k := k0 + j + 1) (by omega) nx.ex
+      (by bsimp [h13]; congr 1; omega) (fun _ => by bsimp [h17]; congr 1; omega)
+  · intro e1
+    bv_nat at e1
+    exact add_main_br2 hlive cx hk hy ha hg (by omega) hj2 nx
+
+/-- The add loop's store at `0x80004484`. -/
+theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y j : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) (hj1 : j < c1) (hj2 : j < c2)
+    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L))
+    (h15 : R 15 = BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))
+    (h12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep (k0 + j + 1)))
+    (h11 : R 11 = BitVec.ofNat 64 (P1 - j - 1)) (h17 : R 17 = BitVec.ofNat 64 (P2 - j - 1))
+    (h16 : R 16 = BitVec.ofNat 64 (Y - j))
+    (h14 : R 14 = BitVec.ofNat 64 (c1 - j - 1)) (h13 : R 13 = BitVec.ofNat 64 (c2 - j - 1))
+    (h28 : R 28 = BitVec.ofNat 64 9)
+    (hnext : j + 1 < c1 → j + 1 < c2 → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
+      MainRegs R' P1 P2 Y c1 c2 (j + 1) (addC x1.rep x2.rep (k0 + (j + 1))) →
+      DW live S Q 0x80004450#64 R' M') :
+    DW live S Q 0x80004484#64 R M := by
+  have hm := hy.model
+  have hn0 := hb.nums _ List.mem_cons_self
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hls := hy.lenScale
+  have hNl := hy.N_lt
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have g1 := hg.k0; have g2 := hg.c1; have g3 := hg.c2; have g6 := hg.Y
+  simp only [heapStart, heapEnd] at v1 v2
+  simp only [addN, loopLen] at hls hNl
+  have eaddr : Y - j = y.rep.val + (addN x1.rep x2.rep - (k0 + j)) := by
+    simp only [addN, loopLen]; omega
+  have hb' : BcHeap S (writeLog M [(Y - j, 1,
+      BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))]) H F
+      (withDs y (addDs x1.rep x2.rep smin (k0 + j + 1)) :: L) := by
+    rw [eaddr]
+    exact add_store hm hy.lenScale hb (by simp only [addN, loopLen]; omega) (sbData_ofNat _)
+  have st' := st.heap cx (M' := writeLog M [(Y - j, 1,
+      BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))]) fun a ha =>
+    imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; omega)
+  have e16 : BitVec.ofNat 64 (Y - j - 1) =
+      BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - (k0 + j + 1))) := by
+    congr 1; simp only [addN, loopLen]; omega
+  bc_run hlive hS [h15, h16] at 0x8000448c
+  exact add_main_br1 hlive cx hk hy ha hg hj1 hj2
+    ⟨⟨st'.keeps (by keeps_tac Keeps.refl _ _), hb', by bsimp [h12], by bsimp [h16, e16]⟩,
+      by bsimp [h11], by bsimp [h17], by bsimp [h14], by bsimp [h13], by bsimp [h28],
+      fun a b R' M' st'' hb'' mr => hnext a b R' M' st'' hb'' mr⟩
+
 end Dc.Mach

@@ -213,4 +213,43 @@ theorem kara_m2 {live : Nat → Prop} {S : Nat → Prop}
         rw [hsub hsb]; exact Nat.le_add_left _ _))
     rw [hsub hsb] at this; simp only [hdVal] at this; omega
 
+/-- `slli a, b, 1` of a small word. -/
+theorem kshl1 (n : Nat) : BitVec.ofNat 64 n <<< 1 = BitVec.ofNat 64 (2 * n) := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_shiftLeft, BitVec.toNat_ofNat, Nat.shiftLeft_eq]
+  omega
+
+/-- The nine handles in the order of the frees. -/
+abbrev kHs (hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd) : List Hd :=
+  [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2]
+
+/-- From the recursive multiplications to the frees: the step's frame, the
+handles' registers and slots, the product in its slot. -/
+structure KMid (S : Nat → Prop) (M0 M : Mem) (R0 R : Nat → BitVec 64) (sp q W n : Nat)
+    (z : NumObj) (hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 : Hd) (y : NumObj) : Prop where
+  st : KAt S M0 M R0 R sp q W
+  tr : KTailRegs z hu1 hu0 hv1 hv0 hd1 hd2 q n R
+  sl : KSlots z hm1 hm2 hm3 sp M
+  hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay
+
+/-- `KMid` through a call that wrote only heap bytes and kept the saved
+registers. -/
+theorem KMid.after {S : Nat → Prop} {M0 M M2 : Mem} {R0 R R2 : Nat → BitVec 64}
+    {sp q W n : Nat} {z : NumObj} {hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 : Hd} {y : NumObj}
+    (cx : RmCtx S R0 sp q W) (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
+    {P : Nat → Prop} (hm : MemOnly P M2 M) (hP : ∀ a, P a → heapStart ≤ a ∧ a < heapEnd)
+    (kk : Keeps [1, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 28] R2 R) (ds : List Nat) :
+    KMid S M0 M2 R0 R2 sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 (withDs y ds) := by
+  have hW := cx.big
+  have hab := cx.above
+  have hqs := cx.slot
+  have q2 := hqs.hi; have q3 := hqs.lo
+  have hq0 := cx.slotOut q ⟨Nat.le_refl _, by omega⟩
+  have hq7 := cx.slotOut (q + 7) ⟨by omega, by omega⟩
+  simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at hq0 hq7
+  have st2 := km.st.heapOnly cx hm hP
+  exact ⟨⟨st2.rm.keeps (kk.mono (by decide)) (kk.get 2), st2.saved2⟩, km.tr.keeps kk,
+    km.sl.heapOnly hm hP (by simp only [heapEnd] at hab ⊢; omega),
+    (hm.ldv_off hP (by simp only [heapStart, heapEnd]; omega)).trans km.hq⟩
+
 end Dc.Mach

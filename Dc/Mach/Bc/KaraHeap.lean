@@ -215,4 +215,91 @@ theorem BcHeap.pushView {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F F' : 
     rw [hob]
     exact List.perm_middle.nodup_iff.mpr hbase
 
+
+/-- The struct pushed on `_bc_Free_list` (`sd x, _bc_Free_list` then
+`sd old_head, 16(x)`): the stores off the allocator's bytes of `H'`. -/
+theorem HeapInv.pushStruct {S : Nat → Prop} {Mt : Mem} {H' : Heap} (hi : HeapInv S Mt H')
+    {sb : Blk} (hsb : sb ∈ H'.live) (hsz : 40 ≤ sb.sz) (v w : BitVec 64) :
+    HeapInv S (writeLog (writeLog Mt [(bcFreeAddr, 8, v)]) [(sb.pay + 16, 8, w)]) H' := by
+  refine hi.transport fun a ha => ?_
+  have hn := live_not_alloc hi hsb (a := a)
+  rw [imgM_store_miss _ _ ?_, imgM_store_miss _ _ ?_]
+  · rcases AllocByte.glob_or_heap hi ha with h1 | h1 <;>
+      simp only [freeListAddr, heapStart, heapEnd, bcFreeAddr] at h1 ⊢ <;> omega
+  · refine Classical.byContradiction fun hc => hn ⟨by omega, ?_⟩ ha
+    simp only [Blk.fin, Blk.pay] at hc ⊢; omega
+
+/-- **The last reference to an owner dropped inline**: `n_refs` stored, the
+buffer freed (`FreePost`), the struct pushed on `_bc_Free_list`. -/
+theorem BcHeap.freeOwner {S : Nat → Prop} {Mt Mt3 : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) (ho : x.Owns)
+    (hnv : ∀ y ∈ L1, y.db ≠ x.db) {lpre lpost : List Blk} (hl : H.live = lpre ++ x.db :: lpost)
+    {v : BitVec 64}
+    (hfp : FreePost S (writeLog Mt [(x.rep.p + 12, 4, v)]) Mt3 H
+      ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩ x.db lpre lpost) :
+    BcHeap S (writeLog (writeLog Mt3 [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)])
+        [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))])
+      ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩ (x.sb :: F) (L1 ++ L2) := by
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hxb := h.blocks x hx
+  have hp := hxb.sPay
+  have hi := h.heap
+  have hsbH' : x.sb ∈ lpre ++ lpost := by
+    have : x.sb ∈ lpre ++ x.db :: lpost := hl ▸ hxb.sLive
+    rcases List.mem_append.mp this with h1 | h1
+    · exact List.mem_append_left _ h1
+    · rcases List.mem_cons.mp h1 with e | h1
+      · exact absurd e (h.sb_ne_db hx hx)
+      · exact List.mem_append_right _ h1
+  rw [hp]
+  refine h.release ho hnv hl (hfp.inv.pushStruct hsbH' hxb.sSz _ _) ?_ (ldv_store_hit _ _ _) ?_
+  · rw [ldv_ld_miss _ _ (by
+      have fb := hi.blk (List.mem_append_right _ hxb.sLive)
+      have := fb.lo; simp only [heapStart, bcFreeAddr, Blk.pay] at *; omega)]
+    exact ldv_store_hit _ _ _
+  · intro b hb a ha
+    obtain ⟨hbL, hbs, hbd⟩ := h.rest_live hb
+    have fb := hi.blk (List.mem_append_right _ hbL)
+    have fs := hi.blk (List.mem_append_right _ hxb.sLive)
+    have l1 := fb.lo; have l2 := fs.lo
+    have hnx : ¬ x.sb.In a := fun hs => live_apart hi hbL hxb.sLive hbs ha hs
+    have hxz := hxb.sSz
+    have e1 : x.sb.pay = x.sb.h + 16 := rfl
+    simp only [Blk.In, Blk.fin, Blk.pay, heapStart] at ha hnx l1 l2 ⊢
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by simp only [bcFreeAddr]; omega),
+      hfp.frame a (live_not_alloc hi hbL ha), imgM_store_miss _ _ (by omega)]
+
+/-- **The last reference to a view dropped inline**: `n_refs` stored, the
+struct pushed on `_bc_Free_list`. -/
+theorem BcHeap.freeView {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) (hv : ¬ x.Owns)
+    (v : BitVec 64) :
+    BcHeap S (writeLog (writeLog (writeLog Mt [(x.rep.p + 12, 4, v)])
+        [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)]) [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))])
+      H (x.sb :: F) (L1 ++ L2) := by
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hxb := h.blocks x hx
+  have hp := hxb.sPay
+  have hi := h.heap
+  have fs := hi.blk (List.mem_append_right _ hxb.sLive)
+  have := fs.lo
+  rw [hp]
+  have hi1 : HeapInv S (writeLog Mt [(x.sb.pay + 12, 4, v)]) H := hi.transport fun a ha => by
+    have hn := live_not_alloc hi hxb.sLive (a := a)
+    refine imgM_store_miss _ _ (Classical.byContradiction fun hc => hn ⟨by omega, ?_⟩ ha)
+    have := hxb.sSz
+    simp only [Blk.fin, Blk.pay] at hc ⊢; omega
+  refine h.releaseView hv (hi1.pushStruct hxb.sLive hxb.sSz _ _) ?_ (ldv_store_hit _ _ _) ?_
+  · rw [ldv_ld_miss _ _ (by simp only [heapStart, bcFreeAddr, Blk.pay] at *; omega)]
+    exact ldv_store_hit _ _ _
+  · intro b hb a ha
+    obtain ⟨hbL, hbs, _⟩ := h.rest_live hb
+    have fb := hi.blk (List.mem_append_right _ hbL)
+    have := fb.lo
+    have hnx : ¬ x.sb.In a := fun hs => live_apart hi hbL hxb.sLive hbs ha hs
+    have hxz := hxb.sSz
+    simp only [Blk.In, Blk.fin, Blk.pay, heapStart] at ha hnx this ⊢
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by simp only [bcFreeAddr]; omega),
+      imgM_store_miss _ _ (by omega)]
+
 end Dc.Mach

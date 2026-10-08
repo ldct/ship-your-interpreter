@@ -84,7 +84,7 @@ structure RmK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitV
 
 /-- The registers saved by the prologue (offsets from the lowered `sp`). -/
 abbrev rmSlots : List (Nat × Nat) :=
-  [(22, 128), (8, 176), (1, 184), (21, 136), (20, 144), (18, 160), (9, 168)]
+  [(8, 176), (1, 184), (22, 128), (21, 136), (20, 144), (18, 160), (9, 168)]
 
 /-- The registers saved further on (`s3`, `s7`–`s11`). -/
 abbrev rmSlots2 : List (Nat × Nat) :=
@@ -677,5 +677,133 @@ theorem rm_base {live : Nat → Prop} {S : Nat → Prop}
   · refine hk.oom R' Mt' (sp - 192 - 32) (by omega) (by omega) hr2 fun a ha hs hf => ?_
     rw [hout a ha fun h => hf (by simp only [frameIn] at *; omega)]
     exact st.out a ha hs hf
+
+/-- `addi sp, sp, -192`. -/
+theorem word_sub192 {x : Nat} (h : 192 ≤ x) :
+    BitVec.ofNat 64 x + 18446744073709551424#64 = BitVec.ofNat 64 (x - 192) := by
+  change BitVec.ofNat 64 x + -(192#64) = _
+  rw [BitVec.add_neg_eq_sub]
+  exact BitVec.ofNat_sub_ofNat_of_le x 192 (by decide) h
+
+theorem sra80_31 : shift_bits_right_arith (BitVec.extractLsb 31 0 80#64) 31#5 = 0#32 := by decide
+theorem quarter80 : BitVec.signExtend 64 (shift_bits_right_arith (BitVec.extractLsb 31 0
+    (BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.signExtend 64
+      (BitVec.extractLsb 31 0 0#64 >>> 30)) + BitVec.extractLsb 31 0 80#64))) 2#5) = 20#64 := by
+  decide
+
+/-- The Karatsuba case at `0x80004db0`, entered after the prologue with both
+operands of at least `20` digits and `80` digits together. -/
+def RmKara (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (R0 : Nat → BitVec 64) (M0 : Mem) (L : List NumObj) (uo vo : NumObj) (la lb q sp W : Nat) :
+    Prop :=
+  ∀ R M H F, RmAt S M0 M R0 R sp q W → RmKept R R0 → 80 ≤ la + lb → 20 ≤ la → 20 ≤ lb →
+    ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p →
+    R 22 = BitVec.ofNat 64 (la + lb) → R 20 = BitVec.ofNat 64 la → R 21 = BitVec.ofNat 64 lb →
+    R 18 = BitVec.ofNat 64 vo.rep.p → R 9 = BitVec.ofNat 64 q → BcHeap S M H F L →
+    DW live S Q 0x80004db0#64 R M
+
+/-- The threshold test at `0x80004c10`: the base case when
+`ulen + vlen < 80` or either length is below `20`, else the Karatsuba case. -/
+theorem rm_disp {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
+    {uo vo : NumObj} {H : Heap} {F : List Blk}
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (hkara : RmKara live S Q R0 M0 L uo vo la lb q sp W)
+    (st : RmAt S M0 M R0 R sp q W) (kp : RmKept R R0)
+    (huL : uo ∈ L) (hvL : vo ∈ L)
+    (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
+    (hla1 : 1 ≤ la) (hlb1 : 1 ≤ lb) (hN : la + lb < 2 ^ 30)
+    (h0 : ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p) (h16 : R 16 = 80#64)
+    (h11 : R 11 = BitVec.ofNat 64 la) (h13 : R 13 = BitVec.ofNat 64 lb)
+    (h22 : R 22 = BitVec.ofNat 64 (la + lb)) (h20 : R 20 = BitVec.ofNat 64 la)
+    (h21 : R 21 = BitVec.ofNat 64 lb) (h18 : R 18 = BitVec.ofNat 64 vo.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 q) (hb : BcHeap S M H F L) :
+    DW live S Q 0x80004c10#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have base : ∀ R', Keeps [14, 15] R' R → (la + lb < 80 ∨ la < 20 ∨ lb < 20) →
+      DW live S Q 0x80004c30#64 R' M := fun R' hk' hc =>
+    rm_base hlive cx hk (st.keeps (hk'.mono (by decide)) (hk'.get 2))
+      ⟨(hk'.get 19).trans kp.k19, (hk'.get 23).trans kp.k23, (hk'.get 24).trans kp.k24,
+        (hk'.get 25).trans kp.k25, (hk'.get 26).trans kp.k26, (hk'.get 27).trans kp.k27⟩
+      huL hvL hla hlb hla1 hlb1 hN (by omega) h0 ((hk'.get 22).trans h22)
+      ((hk'.get 20).trans h20) ((hk'.get 21).trans h21) ((hk'.get 18).trans h18)
+      ((hk'.get 9).trans h9) hb
+  have kara : ∀ R', Keeps [14, 15] R' R → 80 ≤ la + lb → 20 ≤ la → 20 ≤ lb →
+      DW live S Q 0x80004db0#64 R' M := fun R' hk' c1 c2 c3 =>
+    hkara R' M H F (st.keeps (hk'.mono (by decide)) (hk'.get 2))
+      ⟨(hk'.get 19).trans kp.k19, (hk'.get 23).trans kp.k23, (hk'.get 24).trans kp.k24,
+        (hk'.get 25).trans kp.k25, (hk'.get 26).trans kp.k26, (hk'.get 27).trans kp.k27⟩ c1 c2 c3 h0
+      ((hk'.get 22).trans h22) ((hk'.get 20).trans h20) ((hk'.get 21).trans h21)
+      ((hk'.get 18).trans h18) ((hk'.get 9).trans h9) hb
+  bc_run hlive hS [h16, h22, h11, h13, toInt_ofNat_small, sxw_ofNat] at 0x80004c30 0x80004c14
+  · intro hc
+    exact base R (Keeps.refl _ _) (Or.inl (by omega))
+  intro hc
+  bc_run hlive hS [h16, h22, h11, h13, toInt_ofNat_small, sxw_ofNat, sra80_31, quarter80] at
+    0x80004c30 0x80004db0 0x80004da8
+  · intro hc2
+    bc_run hlive hS [h13, toInt_ofNat_small, sxw_ofNat] at 0x80004c30 0x80004db0
+    · intro hc3
+      exact base _ (by keeps_tac Keeps.refl _ _) (Or.inr (Or.inr (by omega)))
+    · intro hc3
+      exact kara _ (by keeps_tac Keeps.refl _ _) (by omega) (by omega) (by omega)
+  intro hc2
+  bc_run hlive hS [h11, toInt_ofNat_small, sxw_ofNat, quarter80] at 0x80004c30 0x80004db0
+  · intro hc3
+    exact kara _ (by keeps_tac Keeps.refl _ _) (by omega) (by omega) (by omega)
+  · intro hc3
+    exact base _ (by keeps_tac Keeps.refl _ _) (Or.inr (Or.inl (by omega)))
+
+/-- **The entry** at `0x80004bd0`: the prologue, then the threshold test. -/
+theorem rm_entry {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R0 : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
+    {uo vo : NumObj} {H : Heap} {F : List Blk}
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M L uo.rep vo.rep la lb q sp W)
+    (hkara : RmKara live S Q R0 M L uo vo la lb q sp W)
+    (ha : RmArgs M L uo vo la lb) (hb : BcHeap S M H F L)
+    (h10 : R0 10 = BitVec.ofNat 64 uo.rep.p) (h11 : R0 11 = BitVec.ofNat 64 la)
+    (h12 : R0 12 = BitVec.ofNat 64 vo.rep.p) (h13 : R0 13 = BitVec.ofNat 64 lb)
+    (h14 : R0 14 = BitVec.ofNat 64 q) :
+    DW live S Q 0x80004bd0#64 R0 M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hW := cx.big
+  have hab := cx.above
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hmb := ha.mulBase
+  have h2 := cx.sp0
+  have hN := ha.size
+  bc_run hlive hS [] at 0x80004bd4
+  apply st_80004bd4 hlive
+  · bsimp []; bc_addr
+  · bsimp []; intro b hb; have := of_mem_accAddrs hb
+    exact cx.mulBase b (by simp only [mulBaseAddr]; omega) (by simp only [mulBaseAddr]; omega)
+  simp only [mulBaseAddr] at hmb
+  bsimp [hmb]
+  bc_run hlive hS [h2, h10, h11, h12, h13, h14, word_sub192] at 0x80004c10
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have sv := ((((((((SavedWords.nil M (sp - 192) R0).store 9 168).store 18 160).store 20 144).store
+    21 136).store 22 128).store 1 184).store 8 176).storeAway (a := sp - 192) (w := 8)
+    (BitVec.ofNat 64 uo.rep.p) fun p hp => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hp
+      rcases hp with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> omega
+  refine rm_disp hlive cx hk hkara
+    { r2 := by bsimp [], saved := sv, regs := by keeps_tac Keeps.refl _ _
+      out := fun a _ _ hf => by
+        simp only [frameIn] at hf
+        repeat rw [imgM_store_miss _ _ (by omega)] }
+    ⟨by bsimp [], by bsimp [], by bsimp [], by bsimp [], by bsimp [], by bsimp []⟩
+    ha.mu ha.mv ha.ul ha.vl ha.ul1 ha.vl1 hN (ldv_store_hit _ _ _) (by bsimp [])
+    (by bsimp [h11]) (by bsimp [h13]) (by bsimp [h11, h13, addw_ofNat (show la + lb < 2 ^ 31 by omega)])
+    (by bsimp [h11]) (by bsimp [h13]) (by bsimp [h12]) (by bsimp [h14])
+    (hb.out_frame (P := fun a => frameIn sp W a) (fun a ha => by
+      simp only [frameIn] at ha
+      repeat rw [imgM_store_miss _ _ (by omega)]) fun a ha => by
+        simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha ⊢; omega)
 
 end Dc.Mach

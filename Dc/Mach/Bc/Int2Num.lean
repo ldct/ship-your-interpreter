@@ -380,11 +380,6 @@ structure I2NCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp q : Nat) (v : I
   vlo : -2 ^ 31 < v
   vhi : v < 2 ^ 31
 
-/-- What freeing the old number left: `x` with one reference fewer, or gone. -/
-inductive FreedRest (L1 L2 : List NumObj) (x : NumObj) : List NumObj → Prop
-  | dec : FreedRest L1 L2 x (L1 ++ x.decRef :: L2)
-  | rel : FreedRest L1 L2 x (L1 ++ L2)
-
 /-- `bc_int2num`'s result: the new number `y` for `v` (normalized, one
 reference) heads the heap left by freeing `x`, its struct is in the slot, and
 off the heap only the slot and the stack window changed. -/

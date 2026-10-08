@@ -41,6 +41,11 @@ abbrev freeNumClob : List Nat := [10, 13, 14, 15]
 /-- The object with one reference fewer. -/
 def NumObj.decRef (x : NumObj) : NumObj := { x with rep := { x.rep with refs := x.rep.refs - 1 } }
 
+/-- What freeing the old number left: `x` with one reference fewer, or gone. -/
+inductive FreedRest (L1 L2 : List NumObj) (x : NumObj) : List NumObj → Prop
+  | dec : FreedRest L1 L2 x (L1 ++ x.decRef :: L2)
+  | rel : FreedRest L1 L2 x (L1 ++ L2)
+
 /-- The bytes of `_bc_Free_list`. -/
 abbrev bcFreeBytes (a : Nat) : Prop := bcFreeAddr ≤ a ∧ a < bcFreeAddr + 8
 

@@ -234,4 +234,349 @@ theorem hdVal_of_num {y : NumObj} {M : Mem} (hy : NumAt M y.rep) {b : Bool} {w :
   rw [List.take_of_length_le (by omega)]
   simpa [NumRep.num, dval_eq_dvalBE] using hv
 
+/-- `KSubs` through register changes off the step's registers. -/
+theorem KSubs.keeps {S : Nat → Prop} {M0 M : Mem} {R0 R R' : Nat → BitVec 64}
+    {sp q W n la lb : Nat} {z : NumObj} {hu1 hu0 hv1 hv0 : Hd} {y1 y2 : NumObj}
+    (ps : KSubs S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 y1 y2)
+    {ks : List Nat} (kk : Keeps ks R' R)
+    (hs : ∀ r ∈ [2, 8, 9, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27], r ∉ ks := by decide)
+    (hsub : ∀ r ∈ ks, r ∈ rmAll := by decide) :
+    KSubs S M0 M R0 R' sp q W n la lb z hu1 hu0 hv1 hv0 y1 y2 :=
+  ⟨⟨ps.st.rm.keeps (kk.mono hsub) (kk _ (hs 2 (by simp))), ps.st.saved2⟩,
+    ps.tr.keeps kk fun r hr => hs r (by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hr ⊢; omega),
+    (kk _ (hs 22 (by simp))).trans ps.s6, (kk _ (hs 18 (by simp))).trans ps.s2, ps.l1,
+    (kk _ (hs 17 (by simp))).trans ps.l2, ps.d1, ps.d2⟩
+
+/-- The obligations the differences carry into the `m2` stage: their sizes
+and the Karatsuba identity (the step's entry supplies them). -/
+structure KDiffSpec (z : NumObj) (hu1 hu0 hv1 hv0 : Hd) (u v : NumRep) (n la lb N W : Nat) :
+    Prop where
+  fit : ∀ y1 y2 : NumObj,
+    y1.rep.num = Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0 →
+    y2.rep.num = Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0 →
+    n + y1.rep.len + y2.rep.len ≤ la + lb + 1 ∧ y1.rep.len + y2.rep.len ≤ N ∧
+      rmStack (y1.rep.len + y2.rep.len) + 192 ≤ W
+  fill : ∀ y1 y2 : NumObj,
+    y1.rep.num = Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0 →
+    y2.rep.num = Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0 →
+    KFillVal (hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1)) (hdVal y1 * hdVal y2)
+      (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n) (kUV u v la lb) (la + lb + 1)
+      (y1.rep.neg != y2.rep.neg)
+
+/-- The `u0 · v0` obligations of the `m3` stage. -/
+structure KM3Spec (z : NumObj) (hu0 hv0 : Hd) (n la lb N W : Nat) : Prop where
+  fit : n + (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ la + lb + 1
+  size : (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ N
+  stack : rmStack ((Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len) + 192 ≤ W
+
+/-- The `m1` obligations: `2 n` digits for `u1 · v1`, and its size. -/
+structure KM1Spec (z : NumObj) (hu1 hv1 : Hd) (n la lb N W : Nat) : Prop where
+  fit : 2 * n + (Hd.o z hu1).rep.len + (Hd.o z hv1).rep.len ≤ la + lb + 1
+  size : (Hd.o z hu1).rep.len + (Hd.o z hv1).rep.len ≤ N
+  stack : rmStack ((Hd.o z hu1).rep.len + (Hd.o z hv1).rep.len) + 192 ≤ W
+
+/-- The handles the `m2` stage sees: `m1`, `d2`, `d1`, then the four halves. -/
+abbrev kHs1 (hm1 : Hd) (y1 y2 : NumObj) (hs0 : List Hd) : List Hd :=
+  hm1 :: some y2 :: some y1 :: hs0
+
+/-- The step's state entering the `m2` stage from the `m1` stage. -/
+theorem km2_of_subs {S : Nat → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64}
+    {sp q W n la lb : Nat} {z : NumObj} {hu1 hu0 hv1 hv0 hm1 : Hd} {y1 y2 : NumObj} {fl : Bool}
+    (ps : KSubs S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 y1 y2)
+    (hm : ldv .ld M (sp - 192 + 40) = BitVec.ofNat 64 (Hd.p z hm1))
+    (h26 : R 26 = BitVec.ofNat 64 (if fl then 1 else 0)) :
+    KM2 S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 (some y1) (some y2) hm1 fl :=
+  ⟨ps.st, ps.tr, hm, ps.s6, h26, ps.s2, ps.l1, ps.l2⟩
+
+/-- **Entering the `m2` stage** with `m1` in its slot: the handles reordered
+and the obligations of the three products projected. -/
+theorem kara_m2enter {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {N : Nat} (ih : RmIH live S Q N)
+    {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
+    {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk} {fl : Bool}
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    {hu1 hu0 hv1 hv0 hm1 : Hd} {hs0 : List Hd} {y1 y2 : NumObj}
+    (pk : KM2 S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 (some y1) (some y2) hm1 fl)
+    (hb : BcHeap S M H F (KList [] (kHs1 hm1 y1 y2 hs0) A B z))
+    (hp0 : hs0.Perm [hu1, hu0, hv1, hv0])
+    (hown : HdOwned A B z (kHs1 hm1 y1 y2 hs0)) (hok : HdOK (kHs1 hm1 y1 y2 hs0))
+    (kz : KZero M z (zeroCount (kHs1 hm1 y1 y2 hs0) + 1 + (16 * (la + lb + 1) + 8)))
+    (h12 : R 12 = BitVec.ofNat 64 z.rep.p) (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
+    (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
+    (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
+    (ds : KDiffSpec z hu1 hu0 hv1 hv0 u v n la lb N W)
+    (m3s : KM3Spec z hu0 hv0 n la lb N W)
+    (hd1 : y1.rep.num = Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0)
+    (hd2 : y2.rep.num = Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0)
+    (hm1v : hdVal (Hd.o z hm1) = hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1)) :
+    DW live S Q 0x80005050#64 R M := by
+  obtain ⟨hf1, hN1, hW1⟩ := ds.fit y1 y2 hd1 hd2
+  have hu1m : hu1 ∈ kHs1 hm1 y1 y2 hs0 :=
+    List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+      (hp0.mem_iff.mpr (by simp))))
+  have hu0m : hu0 ∈ kHs1 hm1 y1 y2 hs0 :=
+    List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+      (hp0.mem_iff.mpr (by simp))))
+  have hv1m : hv1 ∈ kHs1 hm1 y1 y2 hs0 :=
+    List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+      (hp0.mem_iff.mpr (by simp))))
+  have hv0m : hv0 ∈ kHs1 hm1 y1 y2 hs0 :=
+    List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+      (hp0.mem_iff.mpr (by simp))))
+  refine kara_m2stage hlive ih cx hk pk hb (fun h2 h3 => kperm9_of hp0 hm1 h2 h3 _ _) hown hok
+    hu0m hv0m (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self))
+    (List.mem_cons_of_mem _ List.mem_cons_self) (kz.mono (by have h3 := m3s.fit; simp only [Hd.o] at h3 ⊢; omega)) h12 hmb hN1 hW1 m3s.size m3s.stack hNla hn1
+    hm1z hfit1 (by show n + y1.rep.len + y2.rep.len ≤ _; omega) m3s.fit ?_
+  · show KFillVal _ (hdVal y1 * hdVal y2) _ _ _ _ _
+    rw [hm1v]
+    exact ds.fill y1 y2 hd1 hd2
+
+/-- **`m1` is a copy of `_zero_`** (`0x8000550c`, `u1` or `v1` zero): its
+pointer in `m1`'s slot, one more reference, the flag `s10`; then `m2`. -/
+theorem kara_m1zero {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {N : Nat} (ih : RmIH live S Q N)
+    {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
+    {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk}
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    {hu1 hu0 hv1 hv0 : Hd} {hs0 : List Hd} {y1 y2 : NumObj}
+    (ps : KSubs S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 y1 y2)
+    (hb : BcHeap S M H F (KList [] (some y2 :: some y1 :: hs0) A B z))
+    (hp0 : hs0.Perm [hu1, hu0, hv1, hv0])
+    (hown : HdOwned A B z (some y2 :: some y1 :: hs0))
+    (hok : HdOK (some y2 :: some y1 :: hs0))
+    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)))
+    (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
+    (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (ds : KDiffSpec z hu1 hu0 hv1 hv0 u v n la lb N W)
+    (m3s : KM3Spec z hu0 hv0 n la lb N W)
+    (hz0 : hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1) = 0) :
+    DW live S Q 0x8000550c#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hzm : z.withRefs (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0)) ∈
+      KList [] (some y2 :: some y1 :: hs0) A B z := List.mem_append_right _ List.mem_cons_self
+  have hn := hb.nums _ hzm
+  have hrf : ldv .lw M (z.rep.p + 12) =
+      BitVec.ofNat 64 (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0)) := hn.refs
+  have e1 : 2147603920 ≤ z.rep.p := hn.shape.pLo
+  have e2 : z.rep.p + 40 ≤ heapEnd := hn.shape.pHi
+  have e3 : z.rep.p % 8 = 0 := hn.shape.pAl
+  simp only [heapEnd] at e2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have h2 := ps.st.rm.r2
+  have h18 := ps.s2
+  have hgl := kz.glob
+  simp only [zeroAddr] at h18 hgl
+  have hab := cx.above; have hW' := cx.big
+  simp only [heapEnd] at hab
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hzk := kz.room
+  have hrf' : ldv .lw (writeLog M [(sp - 192 + 40, 8, BitVec.ofNat 64 z.rep.p)]) (z.rep.p + 12) =
+      BitVec.ofNat 64 (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0)) := by
+    rw [ldv_store_miss .lw M _ (by simp only [widthOfM]; omega)]; exact hrf
+  have hcst : ∀ b ∈ accAddrs 0x8001cdc8 8, S b := fun b hb' => cx.consts b (by
+    have := of_mem_accAddrs hb'; simp only [constBytes, twoAddr, zeroAddr] at this ⊢; omega)
+  bc_run hlive hS [h18, hgl, hrf, hrf', h2, sxw_ofNat] at 0x80005050
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hcst | exact acc_heap hS (by omega) (by omega) | (simp only [LdOK, StOK, tohostAddr] at *; omega) | skip
+  have hmo : MemOnly (fun a => z.rep.p + 12 ≤ a ∧ a < z.rep.p + 12 + 4)
+      (writeLog (writeLog M [(sp - 192 + 40, 8, BitVec.ofNat 64 z.rep.p)])
+        [(z.rep.p + 12, 4,
+          BitVec.ofNat 64 (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0) + 1))])
+      (writeLog M [(sp - 192 + 40, 8, BitVec.ofNat 64 z.rep.p)]) :=
+    MemOnly.store _ _ _ _
+  have hP1 : ∀ a, (z.rep.p + 12 ≤ a ∧ a < z.rep.p + 12 + 4) → heapStart ≤ a ∧ a < heapEnd :=
+    fun a h => by simp only [heapStart, heapEnd]; omega
+  have st1 := (ps.st.storeSlot cx 40 (BitVec.ofNat 64 z.rep.p) (by omega)).heapOnly cx hmo hP1
+  have hga : GlobAgree (writeLog (writeLog M [(sp - 192 + 40, 8, BitVec.ofNat 64 z.rep.p)])
+      [(z.rep.p + 12, 4,
+        BitVec.ofNat 64 (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0) + 1))]) M :=
+    (GlobAgree.store _ (by omega)).trans (GlobAgree.store _ (by omega))
+  have hb2 := (hb.out_frame (MemOnly.store _ (sp - 192 + 40) 8 (BitVec.ofNat 64 z.rep.p))
+    fun a ha => by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega).kzero
+    (toNat_ofNat_mod32 (by omega)) (by omega)
+  have hl1 : ldv .ld (writeLog (writeLog M [(sp - 192 + 40, 8, BitVec.ofNat 64 z.rep.p)])
+      [(z.rep.p + 12, 4,
+        BitVec.ofNat 64 (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0) + 1))])
+      (sp - 192) = BitVec.ofNat 64 y1.rep.len := by
+    rw [hmo.ldv_off hP1 (by simp only [heapStart, heapEnd]; omega), ldv_ld_miss _ _ (by omega)]
+    exact ps.l1
+  have hm1 : ldv .ld (writeLog (writeLog M [(sp - 192 + 40, 8, BitVec.ofNat 64 z.rep.p)])
+      [(z.rep.p + 12, 4,
+        BitVec.ofNat 64 (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0) + 1))])
+      (sp - 192 + 40) = BitVec.ofNat 64 (Hd.p z (none : Hd)) := by
+    rw [hmo.ldv_off hP1 (by simp only [heapStart, heapEnd]; omega)]
+    exact ldv_store_hit _ _ _
+  have ps2 : KSubs S M0 _ R0 R sp q W n la lb z hu1 hu0 hv1 hv0 y1 y2 :=
+    ⟨st1, ps.tr, ps.s6, ps.s2, hl1, ps.l2, ps.d1, ps.d2⟩
+  have hzv : hdVal z = 0 := by show dvalBE (z.rep.ds.take z.rep.len) = 0; rw [kz.ds, kz.len]; rfl
+  refine kara_m2enter hlive ih cx hk
+    (km2_of_subs (fl := true) (ps2.keeps (ks := [12, 15, 26]) (by keeps_tac Keeps.refl _ _)) ?_ (by bsimp []))
+    hb2 hp0 (hown.cons fun x e => nomatch e) (hok.cons fun x e => nomatch e)
+    (hga.zero (kz.mono (by simp only [zeroCount_none]; omega))) (by bsimp [])
+    (hga.mulBase hmb) hNla hn1 (fun _ => by rw [Hd.o, hzv])
+    (by simp)
+    ds m3s ps2.d1.num ps2.d2.num
+    (by rw [Hd.o, hzv, hz0])
+  exact hm1
+
+/-- **`m1` returned** (`0x80005044`): the product in `m1`'s slot, `d2`'s digit
+count reloaded, the flag `s10 = 0`; then `m2`. -/
+theorem kara_m1ret {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {N : Nat} (ih : RmIH live S Q N)
+    {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
+    {z : NumObj} {u v : NumRep} {H' : Heap} {F' : List Blk}
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    {hu0 hv0 : Hd} {hs0 : List Hd} {x1 x2 y1 y2 ym : NumObj}
+    (ps : KSubs S M0 M R0 R sp q W n la lb z (some x1) hu0 (some x2) hv0 y1 y2)
+    (hp0 : hs0.Perm [some x1, hu0, some x2, hv0])
+    (hown : HdOwned A B z (some y2 :: some y1 :: hs0))
+    (hok : HdOK (some y2 :: some y1 :: hs0))
+    (hx1 : NumAt M x1.rep) (hx2 : NumAt M x2.rep)
+    (kk : Keeps (1 :: binClob) R' R)
+    (hsv : ldv .ld M (sp - 192 + 8) = BitVec.ofNat 64 y2.rep.len)
+    (post : RmPost S M M' H' F' ((temps (some y2 :: some y1 :: hs0) ++ A) ++
+      z.withRefs (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0)) :: B)
+      x1.rep x2.rep x1.rep.len x2.rep.len (sp - 192 + 40) (sp - 192) (W - 192) ym)
+    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)))
+    (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
+    (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (ds : KDiffSpec z (some x1) hu0 (some x2) hv0 u v n la lb N W)
+    (m3s : KM3Spec z hu0 hv0 n la lb N W)
+    (m1s : KM1Spec z (some x1) (some x2) n la lb N W) :
+    DW live S Q 0x80005044#64 R' M' := by
+  have hab := cx.above; have hW' := cx.big
+  simp only [heapEnd] at hab
+  have kr := post.kret hx1 hx2
+  have hS : HeapOwn S := fun a h1 h2 => kr.heap.heap.own a h1 h2
+  have st := ps.st.call cx 40 (by omega) post.out
+  have hga : GlobAgree M' M := GlobAgree.call (by omega) (by omega) post.out
+  have hfr : ∀ a, sp - 192 ≤ a → a < sp - 192 + 40 → imgM M' a = imgM M a := fun a h1 h2 =>
+    post.out a (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+      (by simp only [slotBytes]; omega) (by simp only [frameIn]; omega)
+  have hl1 : ldv .ld M' (sp - 192) = BitVec.ofNat 64 y1.rep.len :=
+    (ldv_congr .ld fun j hj => hfr _ (by omega) (by simp only [widthOfM] at hj; omega)).trans ps.l1
+  have hsv' : ldv .ld M' (sp - 192 + 8) = BitVec.ofNat 64 y2.rep.len :=
+    (ldv_congr .ld fun j hj => hfr _ (by omega) (by simp only [widthOfM] at hj; omega)).trans hsv
+  have kz' := hga.zero kz
+  have h18 := (kk.get 18 (by decide)).trans ps.s2
+  have h2 := (kk.get 2 (by decide)).trans ps.st.rm.r2
+  have hgl := kz'.glob
+  simp only [zeroAddr] at h18 hgl
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hcst : ∀ b ∈ accAddrs 0x8001cdc8 8, S b := fun b hb' => cx.consts b (by
+    have := of_mem_accAddrs hb'; simp only [constBytes, twoAddr, zeroAddr] at this ⊢; omega)
+  bc_run hlive hS [h18, hgl, h2, hsv'] at 0x80005050
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hcst | skip
+  have hvc := kr.vc
+  have hm1f := m1s.fit
+  simp only [Hd.o] at hm1f
+  have mk : ∀ R'', Keeps [12, 17, 26] R'' R' → R'' 26 = BitVec.ofNat 64 0 →
+      R'' 17 = BitVec.ofNat 64 y2.rep.len →
+      KM2 S M0 M' R0 R'' sp q W n la lb z (some x1) hu0 (some x2) hv0 (some y1) (some y2)
+        (some ym) false := by
+    intro R'' k h26 h17
+    have kkT : Keeps (26 :: 1 :: binClob) R'' R := (k.mono (by decide)).trans (kk.mono (by decide))
+    exact ⟨⟨st.rm.keeps (kkT.mono (by decide)) (kkT 2 (by decide)), st.saved2⟩,
+      ps.tr.keeps kkT, kr.slot, (kkT 22 (by decide)).trans ps.s6, by rw [h26]; rfl,
+      (kkT 18 (by decide)).trans ps.s2, hl1, h17⟩
+  refine kara_m2enter hlive ih cx hk
+    (mk _ (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp [hsv']))
+    kr.heap hp0 (hown.cons fun x e => by cases e; exact kr.owns)
+    (hok.cons fun x e => by cases e; exact kr.refs)
+    (kz'.mono (by simp only [zeroCount_some]; omega)) (by bsimp []) (hga.mulBase hmb) hNla hn1
+    (by simp) (fun _ => by show 2 * n + valCount ym.rep ≤ _; omega) ds m3s ps.d1.num ps.d2.num
+    (by rw [Hd.o, Hd.o, Hd.o, kr.val])
+
+/-- **The recursive call for `m1`** at `0x80005028` (both halves nonzero):
+`d2`'s digit count spilled, then `_bc_rec_mul (u1, n_len (u1), v1,
+n_len (v1), &m1)`. -/
+theorem kara_m1call {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {N : Nat} (ih : RmIH live S Q N)
+    {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
+    {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk}
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    {hu0 hv0 : Hd} {hs0 : List Hd} {x1 x2 y1 y2 : NumObj}
+    (ps : KSubs S M0 M R0 R sp q W n la lb z (some x1) hu0 (some x2) hv0 y1 y2)
+    (hb : BcHeap S M H F (KList [] (some y2 :: some y1 :: hs0) A B z))
+    (hp0 : hs0.Perm [some x1, hu0, some x2, hv0])
+    (hown : HdOwned A B z (some y2 :: some y1 :: hs0))
+    (hok : HdOK (some y2 :: some y1 :: hs0))
+    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)))
+    (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
+    (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
+    (ds : KDiffSpec z (some x1) hu0 (some x2) hv0 u v n la lb N W)
+    (m3s : KM3Spec z hu0 hv0 n la lb N W)
+    (m1s : KM1Spec z (some x1) (some x2) n la lb N W) :
+    DW live S Q 0x80005028#64 R M := by
+  have hb' : BcHeap S M H F ((temps (some y2 :: some y1 :: hs0) ++ A) ++
+      z.withRefs (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0)) :: B) := by
+    simpa only [KList, List.nil_append, List.append_assoc] using hb
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hx1m : x1 ∈ (temps (some y2 :: some y1 :: hs0) ++ A) ++
+      z.withRefs (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0)) :: B :=
+    List.mem_append_left _ (List.mem_append_left _ (List.mem_filterMap.mpr
+      ⟨some x1, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (hp0.mem_iff.mpr (by simp))), rfl⟩))
+  have hx2m : x2 ∈ (temps (some y2 :: some y1 :: hs0) ++ A) ++
+      z.withRefs (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0)) :: B :=
+    List.mem_append_left _ (List.mem_append_left _ (List.mem_filterMap.mpr
+      ⟨some x2, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (hp0.mem_iff.mpr (by simp))), rfl⟩))
+  have hx1 := hb'.nums x1 hx1m
+  have hx2 := hb'.nums x2 hx2m
+  num_facts hx1
+  num_facts hx2
+  have hln1 := hx1.len; have hln2 := hx2.len
+  have h2 := ps.st.rm.r2
+  have h24 := ps.tr.u1; have h27 := ps.tr.v1
+  simp only [Hd.p] at h24 h27
+  have h17 := ps.l2
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW' := cx.big
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hm1f := m1s.fit
+  have hm1s := m1s.size; have hm1w := m1s.stack
+  simp only [Hd.o] at hm1f hm1s hm1w
+  bc_run hlive hS [h2, h24, h27, h17, hln1, hln2,
+    sxw_ofNat (show x1.rep.len < 2 ^ 31 by omega),
+    sxw_ofNat (show x2.rep.len < 2 ^ 31 by omega)] at 0x80005040
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | skip
+  apply st_80005040 hlive
+  have st1 := ps.st.storeSlot cx 8 (BitVec.ofNat 64 y2.rep.len) (by omega)
+  have hb1 := hb'.out_frame (MemOnly.store _ (sp - 192 + 8) 8 (BitVec.ofNat 64 y2.rep.len))
+    fun a ha => by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+  have hsv : ldv .ld (writeLog M [(sp - 192 + 8, 8, BitVec.ofNat 64 y2.rep.len)]) (sp - 192 + 8) =
+      BitVec.ofNat 64 y2.rep.len := ldv_store_hit _ _ _
+  have hmb1 : ldv .lw (writeLog M [(sp - 192 + 8, 8, BitVec.ofNat 64 y2.rep.len)]) mulBaseAddr =
+      BitVec.ofNat 64 80 :=
+    (GlobAgree.store (BitVec.ofNat 64 y2.rep.len) (by omega)).mulBase hmb
+  have kz1 : KZero (writeLog M [(sp - 192 + 8, 8, BitVec.ofNat 64 y2.rep.len)]) z
+      (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)) :=
+    (GlobAgree.store (BitVec.ofNat 64 y2.rep.len) (by omega)).zero kz
+  have hl1 : ldv .ld (writeLog M [(sp - 192 + 8, 8, BitVec.ofNat 64 y2.rep.len)]) (sp - 192) =
+      BitVec.ofNat 64 y1.rep.len := by rw [ldv_ld_miss _ _ (by omega)]; exact ps.l1
+  have ps1 : KSubs S M0 (writeLog M [(sp - 192 + 8, 8, BitVec.ofNat 64 y2.rep.len)]) R0 R sp q W
+      n la lb z (some x1) hu0 (some x2) hv0 y1 y2 :=
+    ⟨st1, ps.tr, ps.s6, ps.s2, hl1, ps.l2, ps.d1, ps.d2⟩
+  refine kara_child ih cx hk (st1.rm.keeps (by keeps_tac Keeps.refl _ _) (by bsimp [h2])) 40
+    (by omega) (by decide) hm1s hm1w
+    (KZero.withRefs (j := zeroCount (some y2 :: some y1 :: hs0))
+      (kz1.mono (by have := hm1f; omega)))
+    ⟨hx1m, hx2m, hx1.shape.lenPos, hx2.shape.lenPos, Nat.le_add_right _ _, Nat.le_add_right _ _,
+      by omega, hmb1⟩ hb1 (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
+    (by bsimp []) (by bsimp [h2]) ?_
+  intro R' M' H' F' ym kk post
+  bsimp []
+  exact kara_m1ret hlive ih cx hk ps1 hp0 hown hok (hb1.nums x1 hx1m) (hb1.nums x2 hx2m)
+    ((kk.mono (fun r hr => List.mem_cons_of_mem _ hr)).trans (by keeps_tac Keeps.refl _ _))
+    hsv post kz1 hmb1 hNla hn1 ds m3s m1s
+
 end Dc.Mach

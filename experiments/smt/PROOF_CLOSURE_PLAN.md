@@ -4795,7 +4795,7 @@ Build objects and audit logs are retained outside the checkout in the private
 build tree. These changes affect proof normalization and a definition name;
 no dc semantics or binary bytes changed.
 
-### M6 `_bc_rec_mul`'s Karatsuba step: machine spans checked, composition open
+### M6 `_bc_rec_mul`'s Karatsuba step: machine spans checked
 
 The step at `0x80004db0` is built from these checked spans (axioms of every one
 are `{propext, Classical.choice, Quot.sound}`):
@@ -4904,6 +4904,25 @@ Empty-half routes (closed, all Kara modules through `OutLong` rebuilt):
   `do_compare_spec`/`bc_sub_spec` are the `cmpRep_eq`/`subM_eq` corollaries.
   The Karatsuba differences are `subM` (`KDiff`, `KSubs`, `KDiffSpec`).
 
-Remaining for M6: supply `KSubArgs` (`neg1`/`neg2`, `ne`), `KM3Spec`
-(`pu0`/`pv0`), `KDiffSpec` and `KM1Spec` at the step, compose the u/v routes
-into `RmKara`, then the `rmDepth` induction for the full `_bc_rec_mul` spec.
+### M6 `_bc_rec_mul` (checked)
+
+`rm_spec : ∀ N, RmIH live S Q N` (`Dc/Mach/Bc/KaraCase.lean`) by strong
+induction on the digit count. `kara_case` proves `RmKara` from `RmIH` at
+`3 (la + lb) / 4 + 1`: `kara_halves` reaches the `m1` stage, `HalfV`/`DiffV`
+give the halves' and differences' values and digit counts (`NumRep.subM_val`,
+`NumRep.len_le_of_lt`, `Dc/Mach/Bc/KaraArith.lean`), and `kfill_val` gives
+the Karatsuba identity by the differences' signs with `kara_bound`.
+Interface changes this required:
+
+- `_zero_`'s reference room is budgeted per child (`4 · max … + 8` in the
+  `m2` stage, `4 (la + lb + 2 - n) + 8` in the `m1` stage): a child returns
+  the count unchanged, and a summed budget exceeds any linear `RmIH` room.
+- `RmCtx.slotGlob`: the result slot is not `_zero_` or `mul_base_digits`, so
+  the step reads the entry memory's globals (`RmAt.glob`).
+- `KM1Spec` is required only for nonzero high halves (with `la < n` the
+  empty `u1` makes `2n + |u1| + |v1| ≤ la + lb + 1` false); `KHalf.lenS`
+  bounds a non-`_zero_` half by its digits.
+- `KDiffSpec` takes the differences' `Norm` and `NumShape` (the length of a
+  difference is fixed by its value only when normalised).
+
+Remaining for M6: `bc_multiply` against `Num.mul`.

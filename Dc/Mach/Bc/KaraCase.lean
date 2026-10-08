@@ -33,8 +33,9 @@ theorem GlobAgree.of_touch {M M' : Mem} {R0 : Nat → BitVec 64} {fr : Nat}
     (hfr : 2147603920 ≤ fr) (h : MemOnly KTouch M' (kSpillMem M R0 fr)) : GlobAgree M' M :=
   fun a ha => by
     simp only [mulBaseAddr, zeroAddr] at ha
-    exact (h a (by simp only [KTouch, bcFreeBytes, bcFreeAddr, freeListAddr, heapStart, heapEnd];
-      omega)).trans (kSpillMem_off M R0 (by omega))
+    have ht : ¬ KTouch a := by
+      simp only [KTouch, bcFreeBytes, bcFreeAddr, freeListAddr, heapStart, heapEnd]; omega
+    exact (h a ht).trans (kSpillMem_off M R0 (by omega))
 
 theorem zeroCount_le : ∀ hs : List Hd, zeroCount hs ≤ hs.length
   | [] => Nat.le_refl 0
@@ -66,8 +67,8 @@ theorem dvalBE_split (ds : List Nat) {l n : Nat} (hl : l ≤ ds.length) :
   rw [e, dvalBE_append, List.drop_zero]
   rcases Nat.lt_or_ge l n with h | h
   · rw [show l - n = 0 by omega, List.take_zero, dvalBE_nil, Nat.zero_mul, Nat.zero_mul]
-  · congr 2
-    simp only [List.length_take, List.length_drop]; omega
+  · rw [show ((ds.drop (l - n)).take (l - (l - n))).length = n by
+      simp only [List.length_take, List.length_drop]; omega]
 
 /-- **A trimmed half's value**: `V`, the value of its `k` digits. -/
 structure HalfV (z : NumObj) (h : Hd) (k V : Nat) : Prop where
@@ -242,7 +243,7 @@ theorem kara_case {live : Nat → Prop} {S : Nat → Prop}
     · exact (kh.v1.trim_some x e.symm).1
     · exact (kh.u0.trim_some x e.symm).1
     · exact (kh.u1.trim_some x e.symm).1
-  exact kara_m1 hlive ih cx hk kh.pk kh.heap (List.reverse_perm _) hown hok kz' kh.r17
+  exact kara_m1 hlive ih cx hk kh.pk kh.heap (List.reverse_perm [hu1.trim hu1.lz, hu0.trim hu0.lz, hv1.trim hv1.lz, hv0.trim hv0.lz]) hown hok kz' kh.r17
     (hgm.mulBase ha.mulBase) hW368 hsz hn1 sa1 sa2 dsp m3s m1s
 
 /-- **`_bc_rec_mul`'s contract at every size**: by strong induction on the

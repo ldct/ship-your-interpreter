@@ -252,9 +252,6 @@ theorem BufAt.transport {M M' : Mem} {base : Nat} {buf : List Nat} (h : BufAt M 
     BufAt M' base buf := fun j hj => by
   rw [hfr _ fun h' => h' (hout j hj)]; exact h j hj
 
-/-- The object `y` with digit list `ds`. -/
-abbrev withDs (y : NumObj) (ds : List Nat) : NumObj := { y with rep := { y.rep with ds := ds } }
-
 /-- One copy step on the heap: digit `j` of `ds` stored. -/
 theorem copy_step_heap {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {ds : List Nat} {j : Nat} (hyl : y.rep.len + y.rep.scale = ds.length)

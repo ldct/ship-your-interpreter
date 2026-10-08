@@ -45,6 +45,9 @@ theorem BcHeap.out_frame {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List 
     (fun b hb a ha => hfr a fun hp => (hP a hp).1 (live_in_heap h.heap hb ha))
     (fun j hj => hfr _ fun hp => (hP _ hp).2.2 ⟨by omega, by omega⟩)
 
+/-- The object `y` with digit list `ds`. -/
+abbrev withDs (y : NumObj) (ds : List Nat) : NumObj := { y with rep := { y.rep with ds := ds } }
+
 /-- A digit byte rewritten. -/
 theorem NumAt.setDigit {Mt : Mem} {o : NumRep} (h : NumAt Mt o) {i d : Nat}
     (hi : i < o.len + o.scale) (hd : d < 10) {v : BitVec 64} (hv : sbData v = BitVec.ofNat 8 d) :

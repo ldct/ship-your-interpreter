@@ -592,4 +592,176 @@ theorem sub_copy_loop {live : Nat → Prop} {S : Nat → Prop}
       (st'.keeps (by keeps_tac Keeps.refl _ _)) hb' hbr (by bsimp [hr]) (by bsimp [r13])
       (by bsimp [r16]) (by bsimp [r12])
 
+/-- One step of the borrow propagation at `0x800047b8`: `n1`'s digit `x`
+at `a6`, the borrow `b` in `a4`. `x - b = -1` writes `9` and keeps the
+borrow; otherwise `x - b` goes to the copy (`0x8000483c`). -/
+theorem sub_borrow_body {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k : Nat}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (hk1 : max x1.rep.scale x2.rep.scale + x2.rep.len ≤ k) (hk2 : k < addN x1.rep x2.rep)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin k) :: L))
+    (h16 : R 16 = BitVec.ofNat 64 (x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k)))
+    (h14 : R 14 = BitVec.ofNat 64 (subB x1.rep x2.rep k))
+    (h13 : R 13 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - 1 - k)))
+    (h12 : R 12 = BitVec.ofNat 64 (y.rep.val - 1))
+    (h11 : R 11 = 18446744073709551615#64) (h17 : R 17 = BitVec.ofNat 64 9)
+    (hnext : k + 1 < addN x1.rep x2.rep → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      SubAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (subDs x1.rep x2.rep smin (k + 1)) :: L) →
+      R' 16 = BitVec.ofNat 64
+        (x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k + 1))) →
+      R' 14 = BitVec.ofNat 64 (subB x1.rep x2.rep (k + 1)) →
+      R' 13 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - 1 - (k + 1))) →
+      R' 12 = BitVec.ofNat 64 (y.rep.val - 1) → R' 11 = 18446744073709551615#64 →
+      R' 17 = BitVec.ofNat 64 9 → DW live S Q 0x800047b8#64 R' M') :
+    DW live S Q 0x800047b8#64 R M := by
+  have hm := hy.model
+  have hNl := hy.N_lt
+  have hle := ha.le
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn1 := hb.nums x1 (List.mem_cons_of_mem _ ha.m1)
+  have hs1 := hn1.shape
+  have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+  have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a4 := hs1.vHi; have a3 := hs1.size
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hls := hy.lenScale
+  simp only [heapStart, heapEnd] at a1 a4 v1 v2
+  simp only [addN, loopLen, addZ, List.length_replicate] at hls hNl
+  have eN1 : addN x1.rep x2.rep ≤ max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale :=
+    Nat.le_refl _
+  have eN2 : max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale ≤ addN x1.rep x2.rep :=
+    Nat.le_refl _
+  have ⟨hx, hy0⟩ := sub_high hs1 hs2 hle hk1 hk2
+  have ⟨hr, hbr⟩ := hm.step hk2
+  rw [hx, hy0, Nat.zero_add] at hr hbr
+  simp only [Nat.sub_zero] at hr
+  have hbl := hm.borrow_le k
+  have hd := hn1.getD_lt (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k)
+  have hl := hn1.lbu (i := x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k) (by omega)
+  by_cases hxb : x1.rep.ds.getD (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k) 0 <
+      subB x1.rep x2.rep k
+  · rw [if_pos hxb] at hr hbr
+    have hx0 : x1.rep.ds.getD (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k) 0 = 0 := by omega
+    have hb1 : subB x1.rep x2.rep k = 1 := by omega
+    rw [hx0] at hl hr
+    rw [hb1] at h14 hr
+    have hb' : BcHeap S (writeLog M [(y.rep.val + (addN x1.rep x2.rep - 1 - k) - 1 + 1, 1,
+        BitVec.ofNat 64 9)]) H F (withDs y (subDs x1.rep x2.rep smin (k + 1)) :: L) := by
+      rw [show y.rep.val + (addN x1.rep x2.rep - 1 - k) - 1 + 1 =
+        y.rep.val + (addN x1.rep x2.rep - 1 - k) by omega]
+      exact BcHeap.storeSum hy.lenScale hk2 (by rw [hm.rl]; exact hk2) (hm.getD_lt_r k) hb
+        (by rw [sbData_ofNat, hr])
+    have st' := st.heap cx (M' := writeLog M [(y.rep.val + (addN x1.rep x2.rep - 1 - k) - 1 + 1, 1,
+        BitVec.ofNat 64 9)]) fun a ha =>
+      imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha ⊢; omega)
+    bc_run hlive hS [h16, h14, h13, h12, h11, h17, hl] at 0x800047c4
+    bc_run hlive hS [h11, h13, h12, h17] at 0x800047b8 0x800047d8
+    bc_run hlive hS [h11, h13, h12, h17] at 0x800047b8 0x800047d8
+    · intro hne
+      bv_nat at hne
+      exact hnext (by omega) _ _ (st'.keeps (by keeps_tac Keeps.refl _ _)) hb'
+        (by bsimp [h16]; congr 1; omega) (by bsimp [hbr]) (by bsimp []; congr 1; omega)
+        (by bsimp [h12]) (by bsimp [h11]) (by bsimp [h17])
+    · intro he
+      bv_nat at he
+      have eN : k + 1 = addN x1.rep x2.rep := by omega
+      rw [eN] at hb'
+      exact sub_rmlz hlive cx hk hy.final hy.p (st'.keeps (by keeps_tac Keeps.refl _ _)) hb'
+  · rw [if_neg hxb] at hr hbr
+    bc_run hlive hS [h16, h14, h13, h12, h11, h17, hl, subw_ofNat] at 0x8000483c 0x800047c8
+    · intro hne
+      exact sub_copy_loop hlive cx hk hy ha _ k _ _ rfl hk1 hk2
+        (st.keeps (by keeps_tac Keeps.refl _ _)) hb hbr (by bsimp [hr]) (by bsimp [h13])
+        (by bsimp [h16]) (by bsimp [h12])
+    · intro he
+      bv_nat at he
+      omega
+
+/-- The borrow propagation from `0x800047b8`, position `k` on. -/
+theorem sub_borrow_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin) :
+    ∀ n k (R : Nat → BitVec 64) (M : Mem), addN x1.rep x2.rep - 1 - k = n →
+      max x1.rep.scale x2.rep.scale + x2.rep.len ≤ k → k < addN x1.rep x2.rep →
+      SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
+      BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin k) :: L) →
+      R 16 = BitVec.ofNat 64 (x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k)) →
+      R 14 = BitVec.ofNat 64 (subB x1.rep x2.rep k) →
+      R 13 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - 1 - k)) →
+      R 12 = BitVec.ofNat 64 (y.rep.val - 1) → R 11 = 18446744073709551615#64 →
+      R 17 = BitVec.ofNat 64 9 → DW live S Q 0x800047b8#64 R M := by
+  intro n
+  induction n with
+  | zero =>
+    intro k R M hn hk1 hk2 st hb h16 h14 h13 h12 h11 h17
+    exact sub_borrow_body hlive cx hk hy ha hk1 hk2 st hb h16 h14 h13 h12 h11 h17
+      fun h => absurd h (by omega)
+  | succ n ih =>
+    intro k R M hn hk1 hk2 st hb h16 h14 h13 h12 h11 h17
+    exact sub_borrow_body hlive cx hk hy ha hk1 hk2 st hb h16 h14 h13 h12 h11 h17
+      fun h R' M' st' hb' => ih (k + 1) R' M' (by omega) (by omega) h st' hb'
+
+/-- `n2`'s positions done at `0x80004790` (`k = S + l2`): with `l1 = l2`
+the result is complete; otherwise the borrow propagation over `n1`'s
+`l1 - l2` top digits. -/
+theorem sub_high_entry {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k : Nat}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (hk1 : k = max x1.rep.scale x2.rep.scale + x2.rep.len)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin k) :: L))
+    (h16 : R 16 = BitVec.ofNat 64 (x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - k)))
+    (h14 : R 14 = BitVec.ofNat 64 (subB x1.rep x2.rep k))
+    (h13 : R 13 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - 1 - k)))
+    (h9 : R 9 = BitVec.ofNat 64 x1.rep.len) :
+    DW live S Q 0x80004790#64 R M := by
+  have hNl := hy.N_lt
+  have hle := ha.le
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+  have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+  have a3 := hs1.size; have b3 := hs2.lenPos
+  have hls := hy.lenScale
+  simp only [heapStart, heapEnd] at v1 v2
+  simp only [addN, loopLen, addZ, List.length_replicate] at hls hNl
+  have eN1 : addN x1.rep x2.rep ≤ max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale :=
+    Nat.le_refl _
+  have eN2 : max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale ≤ addN x1.rep x2.rep :=
+    Nat.le_refl _
+  have h18 := st.r18; have h19 := st.r19; have h20 := st.r20
+  bc_run hlive hS [h18, h19] at 0x800047d8 0x80004794
+  · intro he
+    bv_nat at he
+    have eN : k = addN x1.rep x2.rep := by omega
+    rw [eN] at hb
+    exact sub_rmlz hlive cx hk hy.final hy.p (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+  · intro hne
+    bv_nat at hne
+    bc_run hlive hS [h9, h20, h13, h16, h14, subw_ofNat, not_blez, se12_fff, word_pred, sxw_ofNat,
+      shl_shr32, add_not_ofNat] at 0x800047b8
+    bc_run hlive hS [h13, h16, h14, se12_fff, word_pred, sxw_ofNat, shl_shr32, add_not_ofNat]
+      at 0x800047b8
+    exact sub_borrow_loop hlive cx hk hy ha _ k _ _ rfl (by omega) (by omega)
+      (st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h16]) (by bsimp [h14]) (by bsimp [h13])
+      (by bsimp []; congr 1; omega) (by bsimp []) (by bsimp [])
+
 end Dc.Mach

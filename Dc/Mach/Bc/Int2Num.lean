@@ -473,17 +473,18 @@ structure I2NAt (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp 
   regs : Keeps i2nAll R R0
   out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 128 a → imgM M a = imgM Mt0 a
 
-/-- `I2NAt` through memory writes confined to the heap and the slot. -/
+/-- `I2NAt` through memory writes confined to the heap, the slot and the
+callees' 32-byte frame below the buffer. -/
 theorem I2NAt.mem {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat}
     {v : Int} (st : I2NAt S Mt0 M R0 R sp q v) (cx : I2NCtx S R0 sp q v)
-    (hag : ∀ a, OutHeap a → ¬ slotBytes q a → imgM M' a = imgM M a) :
+    (hag : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn (sp - 96) 32 a → imgM M' a = imgM M a) :
     I2NAt S Mt0 M' R0 R sp q v := by
   have hab := cx.above
   have hap := cx.slotApart
   simp only [heapEnd] at hab
-  have hw : ∀ a, sp - 128 ≤ a → a < sp → imgM M' a = imgM M a := fun a h1 h2 =>
+  have hw : ∀ a, sp - 96 ≤ a → a < sp → imgM M' a = imgM M a := fun a h1 h2 =>
     hag a (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
-      (by simp only [slotBytes]; omega)
+      (by simp only [slotBytes]; omega) (by simp only [frameIn]; omega)
   have bm := bufModel (n := v.natAbs) (by have := cx.vlo; have := cx.vhi; omega)
   have hl10 := bm.le10
   exact
@@ -493,7 +494,24 @@ theorem I2NAt.mem {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R : Nat → BitVec 64}
       out := fun a ha h1 h2 => by
         by_cases hs : slotBytes q a
         · exact absurd hs h1
-        · rw [hag a ha hs]; exact st.out a ha h1 h2 }
+        · rw [hag a ha hs fun h => h2 (by simp only [frameIn] at *; omega)]
+          exact st.out a ha h1 h2 }
+
+/-- The registers a call from `bc_int2num` may change. -/
+abbrev i2nCallClob : List Nat := [1, 5, 10, 11, 12, 13, 14, 15]
+
+/-- `I2NAt` through a call: only `ra` and `a0`–`a5` changed. -/
+theorem I2NAt.calls {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp q : Nat}
+    {v : Int} (st : I2NAt S Mt0 M R0 R sp q v) (hk : Keeps i2nCallClob R' R) :
+    I2NAt S Mt0 M R0 R' sp q v :=
+  { st with
+    r2 := by rw [hk.get 2]; exact st.r2
+    rq := by rw [hk.get 20]; exact st.rq
+    rneg := by rw [hk.get 21]; exact st.rneg
+    rlen := by rw [hk.get 18]; exact st.rlen
+    rlast := by rw [hk.get 19]; exact st.rlast
+    rcur := by rw [hk.get 8]; exact st.rcur
+    regs := (hk.mono (by decide)).trans st.regs }
 
 /-- `I2NAt` through a change of `a5`. -/
 theorem I2NAt.a5 {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat}
@@ -579,5 +597,126 @@ theorem i2n_fill {live : Nat → Prop} {S : Nat → Prop}
         rw [ldv_congr .ld fun j hj => hout _ (hq _ (by simp only [widthOfM] at hj; omega))]
         exact hslot
       out := fun a ha h1 h2 => (hout a ha).trans (st.out a ha h1 h2) }
+
+/-- After `bc_new_num`, from `0x800069b8`: the result's struct stored in the
+slot and its sign set when `v < 0`, then the digits and the epilogue. -/
+theorem i2n_tail {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
+    {x : NumObj} {H : Heap} {F : List Blk} {L : List NumObj} {y : NumObj}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S Q R0 Mt0 L1 L2 x q sp v)
+    (st : I2NAt S Mt0 M R0 R sp q v) (hb : BcHeap S M H F (y :: L))
+    (hy : y.rep = zeroRep y.sb.pay y.db.pay (i2nBuf v.natAbs).length 0)
+    (hr10 : R 10 = BitVec.ofNat 64 y.sb.pay) (hrest : FreedRest L1 L2 x L) :
+    DW live S Q 0x800069b8#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hq := cx.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  have hn := hb.nums y List.mem_cons_self
+  have hs := hn.shape
+  have hp : y.rep.p = y.sb.pay := by rw [hy]; rfl
+  have h1 := hs.pLo; have h2 := hs.pHi; have h3 := hs.pAl
+  rw [hp] at h1 h2 h3
+  simp only [heapStart, heapEnd] at h1 h2 hab
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hr20 := st.rq; have hr21 := st.rneg
+  have hb1 := hb.out_frame (MemOnly.store M q 8 (BitVec.ofNat 64 y.sb.pay)) cx.slotOut
+  have st1 := st.mem cx (M' := writeLog M [(q, 8, BitVec.ofNat 64 y.sb.pay)])
+    fun a _ hs _ => imgM_store_miss _ _ (by simp only [slotBytes] at hs; omega)
+  by_cases hv : v < 0
+  · have e21 : R 21 = BitVec.ofNat 64 1 := by rw [hr21, if_pos hv]
+    bc_run hlive hS [hr10, hr20, e21] at 0x800069c8
+    all_goals first | exact hq.acc | skip
+    bc_run hlive hS [hr10, hr20, e21] at 0x800069c8
+    have hq0 := cx.slotOut q ⟨Nat.le_refl _, by omega⟩
+    have hq7 := cx.slotOut (q + 7) ⟨by omega, by omega⟩
+    simp only [OutHeap, heapStart, heapEnd] at hq0 hq7
+    have hb2 := BcHeap.setSign (L1 := []) hb1 true (v := 1#64) (by decide)
+    rw [hp] at hb2
+    refine i2n_fill hlive cx hk ((st1.mem cx fun a ha _ _ => imgM_store_miss _ _ ?_).a5 _) hb2
+      ?_ (by bsimp [hr10]) ?_ hrest
+    · simp only [OutHeap, heapStart, heapEnd] at ha; omega
+    · show { y.rep with neg := true } = _
+      rw [hy, decide_eq_true hv]
+    · rw [ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _
+  · have e21 : R 21 = BitVec.ofNat 64 0 := by rw [hr21, if_neg hv]
+    bc_run hlive hS [hr10, hr20, e21] at 0x800069c8
+    all_goals first | exact hq.acc | skip
+    refine i2n_fill hlive cx hk st1 hb1 ?_ hr10 (ldv_store_hit _ _ _) hrest
+    rw [hy, decide_eq_false hv]; rfl
+
+/-- The `bc_new_num(|buf|, 0)` call from `0x800069ac`, then the tail; out
+of memory reaches `I2NK.oom`. -/
+theorem i2n_new {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
+    {x : NumObj} {H : Heap} {F : List Blk} {L : List NumObj}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S Q R0 Mt0 L1 L2 x q sp v)
+    (st : I2NAt S Mt0 M R0 R sp q v) (hb : BcHeap S M H F L) (hrest : FreedRest L1 L2 x L) :
+    DW live S Q 0x800069ac#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have bm := bufModel (n := v.natAbs) (by have := cx.vlo; have := cx.vhi; omega)
+  have hl1 := bm.pos; have hl10 := bm.le10
+  have hr18 := st.rlen; have hr2 := st.r2
+  bc_run hlive hS [hr18, hr2] at 0x80004250
+  have hsf' : StackFrame S (sp - 96) 32 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  refine bc_new_num_spec hlive hb.newHeap hsf' (len := (i2nBuf v.natAbs).length) (scale := 0)
+    (by simp only [heapEnd]; omega) (by omega) hl1 _ (by bsimp [hr18]) (by bsimp []) (by bsimp [hr2]) (by bsimp [])
+    ⟨fun R1 Mt1 H1 F1 y hk1 hp1 hr1 => ?_, fun R' Mt' hr2' hout => ?_⟩
+  · bsimp []
+    exact i2n_tail hlive cx hk
+      ((st.calls ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))).mem cx
+        fun a ha _ hf => hp1.out a ha hf)
+      (NewNumPost.insert hb hp1) hp1.rep hr1 hrest
+  · refine hk.oom R' Mt' (by rw [hr2', show sp - 96 - 32 = sp - 128 by omega]) fun a ha h1 h2 => ?_
+    rw [hout a ha fun h => h2 (by simp only [frameIn] at *; omega)]
+    exact st.out a ha h1 h2
+
+/-- The `bc_free_num(num)` call from `0x800069a4`, then `bc_new_num`. -/
+theorem i2n_free {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
+    {x : NumObj} {H : Heap} {F : List Blk}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S Q R0 Mt0 L1 L2 x q sp v)
+    (st : I2NAt S Mt0 M R0 R sp q v) (e : FreeEntry S M H F L1 L2 x q (sp - 96)) :
+    DW live S Q 0x800069a4#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have h := e.heap
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.own a h1 h2
+  have hn := h.nums x e.mem
+  have hxb := h.blocks x e.mem
+  have hs := hn.shape
+  have hp1 := hs.pLo; have hp2 := hs.pHi
+  have hr20 := st.rq; have hr2 := st.r2
+  bc_run hlive hS [hr20, hr2] at 0x800048c0
+  refine bc_free_num_spec hlive e _ (by bsimp [hr20]) (by bsimp [hr2]) (by bsimp [])
+    ⟨fun _ R' Mt' hk1 hb' _ hmo => ?_, fun _ R' Mt' H' hk1 hrp => ?_⟩
+  · bsimp []
+    refine i2n_new hlive cx hk ((st.calls ((hk1.mono (by decide)).trans
+      (by keeps_tac Keeps.refl _ _))).mem cx fun a ha hsl _ => hmo a fun hc => ?_) hb' .dec
+    rcases hc with hc | hc
+    · simp only [refsBytes, OutHeap, heapStart, heapEnd] at hc ha hp1 hp2; omega
+    · exact hsl hc
+  · bsimp []
+    refine i2n_new hlive cx hk ((st.calls ((hk1.mono (by decide)).trans
+      (by keeps_tac Keeps.refl _ _))).mem cx fun a ha hsl hf => hrp.frame a fun hc => ?_)
+      hrp.heap .rel
+    rcases hc with hc | hc | hc | hc | hc
+    · exact OutHeap.not_alloc h.heap ha hc
+    · exact ha.1 (live_in_heap h.heap hxb.sLive hc)
+    · exact hsl hc
+    · exact hf hc
+    · exact ha.2.2 hc
 
 end Dc.Mach

@@ -5,8 +5,9 @@ import Dc.Mach.Bc.New
 # Stores into the number heap
 
 Facts every bc machine proof composes: `BcHeap.newHeap` (a number heap feeds
-`bc_new_num`), `BcHeap.out_frame` (stores outside the heap), and
-`BcHeap.setDigit` (one digit byte of a represented number rewritten).
+`bc_new_num`), `BcHeap.out_frame` (stores outside the heap),
+`BcHeap.setDigit` (one digit byte of a represented number rewritten), and
+`BcHeap.setSign` (its sign word).
 -/
 
 namespace Dc.Mach
@@ -108,5 +109,37 @@ theorem BcHeap.setDigit {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
       rcases hby with rfl | rfl
       · exact live_apart hi' hyb.sLive hxb.dLive n2 hba hda
       · exact live_apart hi' hyb.dLive hxb.dLive n4 hba hda
+
+/-- The sign word of the object `x` rewritten: the heap holds `x` with that
+sign. Only the four bytes of `n_sign` change; they lie in `x`'s struct. -/
+theorem BcHeap.setSign {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) {v : BitVec 64}
+    (b : Bool) (hv : v.toNat % 2 ^ 32 = b.toNat) :
+    BcHeap S (writeLog Mt [(x.rep.p, 4, v)]) H F
+      (L1 ++ { x with rep := { x.rep with neg := b } } :: L2) := by
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hx
+  have hxb := h.blocks x hx
+  have hi' := h.heap
+  have hsp := hxb.sPay; have hsz := hxb.sSz
+  have hfin : x.sb.fin = x.sb.pay + x.sb.sz := rfl
+  have hin : ∀ a, x.rep.p ≤ a ∧ a < x.rep.p + 4 → x.sb.In a := fun a ha => ⟨by omega, by omega⟩
+  refine BcHeap.update h rfl rfl ⟨hxb.sLive, hxb.dLive, hxb.sPay, hxb.sSz, hxb.dPay, hxb.dFit⟩
+    (hn.setSign b hv) (P := fun a => x.rep.p ≤ a ∧ a < x.rep.p + 4)
+    (fun a ha => imgM_store_miss _ _ (by omega)) fun a ha => ?_
+  have hsa := hin a ha
+  have hhp := live_in_heap hi' hxb.sLive hsa
+  refine ⟨live_not_alloc hi' hxb.sLive hsa, ?_, fun b hb hba => ?_⟩
+  · simp only [bcFreeBytes, bcFreeAddr, heapStart] at *; omega
+  · have sf := SplitFacts.of_nodup h.distinct
+    rcases List.mem_append.mp hb with hb | hb
+    · exact live_apart hi' (h.deadLive b hb).1 hxb.sLive (fun e' => sf.sF (e' ▸ hb)) hba hsa
+    · obtain ⟨y, hy, hby⟩ := List.mem_flatMap.mp hb
+      have ⟨n1, _, n3, _⟩ := sf.other hy
+      have hyb := h.blocks y (mem_split hy)
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hby
+      rcases hby with rfl | rfl
+      · exact live_apart hi' hyb.sLive hxb.sLive n1 hba hsa
+      · exact live_apart hi' hyb.dLive hxb.sLive n3 hba hsa
 
 end Dc.Mach

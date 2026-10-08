@@ -272,4 +272,57 @@ theorem guess_spec_one {w0 w1 w2 v1 : Nat} (hv1 : 0 < v1) (hw1 : w1 < 10)
   simp only [guess, guess0, hne, ite_false, hf]
   rfl
 
+/-! ## Long division -/
+
+/-- Schoolbook long division of the digits `xs` (big-endian) by `D` from the
+remainder `R`: the quotient digits and the final remainder. -/
+def longDiv (D : Nat) : Nat → List Nat → List Nat × Nat
+  | R, [] => ([], R)
+  | R, x :: xs =>
+    let r := longDiv D ((10 * R + x) % D) xs
+    ((10 * R + x) / D :: r.1, r.2)
+
+theorem longDiv_val (D : Nat) : ∀ (R : Nat) (xs : List Nat),
+    dvalBE (longDiv D R xs).1 * D + (longDiv D R xs).2 = R * 10 ^ xs.length + dvalBE xs
+  | R, [] => by simp [longDiv, dvalBE]
+  | R, x :: xs => by
+    simp only [longDiv, dvalBE_cons, List.length_cons]
+    have ih := longDiv_val D ((10 * R + x) % D) xs
+    have hlen : (longDiv D ((10 * R + x) % D) xs).1.length = xs.length := by
+      clear ih; induction xs generalizing R x with
+      | nil => rfl
+      | cons y ys ih' => simp only [longDiv, List.length_cons]; rw [ih']
+    rw [hlen, Nat.add_mul, Nat.mul_assoc, Nat.mul_comm (10 ^ xs.length) D, ← Nat.mul_assoc,
+      Nat.add_assoc, ih, ← Nat.add_assoc, ← Nat.add_mul, Nat.mul_comm ((10 * R + x) / D) D,
+      Nat.div_add_mod, Nat.pow_succ, Nat.add_mul, Nat.mul_comm 10, Nat.mul_assoc, Nat.add_assoc,
+      Nat.add_comm (x * _), ← Nat.add_assoc]
+    rw [Nat.mul_comm 10 (10 ^ xs.length)]; omega
+
+theorem longDiv_rem (D : Nat) (hD : 0 < D) : ∀ (R : Nat) (xs : List Nat), R < D →
+    (longDiv D R xs).2 < D
+  | R, [], h => h
+  | R, x :: xs, _ => longDiv_rem D hD _ xs (Nat.mod_lt _ hD)
+
+theorem longDiv_digits (D : Nat) (hD : 0 < D) : ∀ (R : Nat) (xs : List Nat), R < D → IsDigits xs →
+    IsDigits (longDiv D R xs).1
+  | R, [], _, _ => by intro d hd; simp [longDiv] at hd
+  | R, x :: xs, hR, hx => by
+    intro d hd
+    simp only [longDiv, List.mem_cons] at hd
+    rcases hd with rfl | hd
+    · have := hx x List.mem_cons_self
+      refine (Nat.div_lt_iff_lt_mul hD).mpr ?_
+      have : 10 * R + x < 10 * (R + 1) := by omega
+      have : 10 * (R + 1) ≤ 10 * D := Nat.mul_le_mul_left _ hR
+      rw [Nat.mul_comm]; omega
+    · exact longDiv_digits D hD _ xs (Nat.mod_lt _ hD) (fun e he => hx e (List.mem_cons_of_mem _ he)) d hd
+
+/-- From a zero remainder, the quotient of `xs` is its value divided by `D`. -/
+theorem longDiv_quot (D : Nat) (hD : 0 < D) (xs : List Nat) :
+    dvalBE (longDiv D 0 xs).1 = dvalBE xs / D := by
+  have hv := longDiv_val D 0 xs
+  have hr := longDiv_rem D hD 0 xs hD
+  rw [Nat.zero_mul, Nat.zero_add] at hv
+  rw [← hv, Nat.add_comm, Nat.add_mul_div_right _ _ hD, Nat.div_eq_of_lt hr, Nat.zero_add]
+
 end Dc.BcModel

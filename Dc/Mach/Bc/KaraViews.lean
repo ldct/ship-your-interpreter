@@ -67,6 +67,15 @@ theorem stOK_bcFree : StOK bcFreeAddr 8 := by
   refine ⟨by omega, by omega, by omega, ?_⟩
   decide
 
+theorem ldOK_zero : LdOK zeroAddr 8 := by
+  simp only [LdOK, zeroAddr, tohostAddr]; omega
+
+/-- An allocator byte is not one of `_zero_`'s pointer word's. -/
+theorem not_zeroAddr_of_alloc {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H)
+    {a : Nat} (h : AllocByte H a) : ¬ (zeroAddr ≤ a ∧ a < zeroAddr + 8) := by
+  rcases AllocByte.glob_or_heap hi h with h' | h' <;>
+    simp only [freeListAddr, heapStart, heapEnd, zeroAddr] at h' ⊢ <;> omega
+
 /-- An allocator byte is not one of `_bc_Free_list`'s. -/
 theorem not_bcFree_of_alloc {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H)
     {a : Nat} (h : AllocByte H a) : ¬ bcFreeBytes a := by

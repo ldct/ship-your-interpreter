@@ -1125,4 +1125,87 @@ theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop}
       by bsimp [h11], by bsimp [h17], by bsimp [h14], by bsimp [h13], by bsimp [h28],
       fun a b R' M' st'' hb'' mr => hnext a b R' M' st'' hb'' mr⟩
 
+/-- One iteration of the add loop at `0x80004450`: the operands' digits
+`d1`, `d2` at `P1 - j`, `P2 - j`, the carry `c` in. -/
+theorem add_main_body {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y j d1 d2 c : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) (hj1 : j < c1) (hj2 : j < c2)
+    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L))
+    (mr : MainRegs R P1 P2 Y c1 c2 j c)
+    (l1 : ldv .lbu M (P1 - j) = BitVec.ofNat 64 d1) (l2 : ldv .lbu M (P2 - j) = BitVec.ofNat 64 d2)
+    (hd1 : d1 < 10) (hd2 : d2 < 10) (hc : c ≤ 1)
+    (a1 : 2147603920 ≤ P1 - j) (a2 : P1 - j < 2273312768)
+    (b1 : 2147603920 ≤ P2 - j) (b2 : P2 - j < 2273312768)
+    (hr : (addR x1.rep x2.rep).getD (k0 + j) 0 = (d1 + d2 + c) % 10)
+    (hcs : addC x1.rep x2.rep (k0 + j + 1) = (d1 + d2 + c) / 10)
+    (hnext : j + 1 < c1 → j + 1 < c2 → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
+      MainRegs R' P1 P2 Y c1 c2 (j + 1) (addC x1.rep x2.rep (k0 + (j + 1))) →
+      DW live S Q 0x80004450#64 R' M') :
+    DW live S Q 0x80004450#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hNl := hy.N_lt
+  have g2 := hg.c1; have g3 := hg.c2
+  simp only [addN, loopLen] at hNl
+  have h11 := mr.r11; have h17 := mr.r17; have h16 := mr.r16; have h14 := mr.r14
+  have h13 := mr.r13; have h12 := mr.r12; have h28 := mr.r28
+  bc_run hlive hS [h11, h17, h16, h14, h13, h12, h28, l1, l2, addw_ofNat, and255_ofNat] at 0x80004484
+  · intro hle
+    exact add_main_tail hlive cx hk hy ha hg hj1 hj2 (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+      (by bsimp [hr]; congr 1; omega) (by bsimp [hcs]; congr 1; omega) (by bsimp [h11])
+      (by bsimp [h17]) (by bsimp [h16]) (by bsimp [h14]) (by bsimp [h13]) (by bsimp [h28]) hnext
+  · intro hgt
+    bc_run hlive hS [h11, h17, h16, h14, h13, h12, h28, l1, l2, addw_ofNat, and255_ofNat, se12_ff6,
+      word_sub10] at 0x80004484
+    exact add_main_tail hlive cx hk hy ha hg hj1 hj2 (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+      (by bsimp [hr]; congr 1; omega) (by bsimp [hcs]; congr 1; omega) (by bsimp [h11])
+      (by bsimp [h17]) (by bsimp [h16]) (by bsimp [h14]) (by bsimp [h13]) (by bsimp [h28]) hnext
+
+/-- The add loop at `0x80004450`: `j` positions after `k0` done. -/
+theorem add_main_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) :
+    ∀ n j (R : Nat → BitVec 64) (M : Mem), c1 - j = n → j < c1 → j < c2 →
+      AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
+      BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L) →
+      MainRegs R P1 P2 Y c1 c2 j (addC x1.rep x2.rep (k0 + j)) →
+      DW live S Q 0x80004450#64 R M := by
+  have hm := hy.model
+  have g1 := hg.k0; have g2 := hg.c1; have g3 := hg.c2; have g4 := hg.P1; have g5 := hg.P2
+  intro n
+  induction n with
+  | zero => intro j R M h1 h2; omega
+  | succ n ih =>
+    intro j R M hn hj1 hj2 st hb mr
+    have hn1 := hb.nums x1 (List.mem_cons_of_mem _ ha.m1)
+    have hn2 := hb.nums x2 (List.mem_cons_of_mem _ ha.m2)
+    have hs1 := hn1.shape; have hs2 := hn2.shape
+    have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a3 := hs1.size; have a4 := hs1.vHi
+    have b1 := hs2.vLo; have b2 := hs2.ptrLe; have b3 := hs2.size; have b4 := hs2.vHi
+    simp only [heapStart, heapEnd] at a1 a4 b1 b4
+    have hx := addXs_in hs1 (b := x2.rep) (k := k0 + j) (by omega) (by omega)
+    have hyy := addYs_in hs2 (a := x1.rep) (k := k0 + j) (by omega) (by omega)
+    have l1 := hn1.lbu (i := x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k0 + j)) (by omega)
+    have l2 := hn2.lbu (i := x2.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k0 + j)) (by omega)
+    rw [show x1.rep.val + (x1.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k0 + j)) = P1 - j by
+      omega] at l1
+    rw [show x2.rep.val + (x2.rep.len + max x1.rep.scale x2.rep.scale - 1 - (k0 + j)) = P2 - j by
+      omega] at l2
+    obtain ⟨hr, hcs⟩ := hm.step (k := k0 + j) (by simp only [addN, loopLen]; omega)
+    rw [hx, hyy] at hr hcs
+    exact add_main_body hlive cx hk hy ha hg hj1 hj2 st hb mr l1 l2 (hn1.getD_lt _) (hn2.getD_lt _)
+      (hm.carry_le _) (by omega) (by omega) (by omega) (by omega) hr hcs
+      fun e1 e2 R' M' => ih (j + 1) R' M' (by omega) e1 e2
+
 end Dc.Mach

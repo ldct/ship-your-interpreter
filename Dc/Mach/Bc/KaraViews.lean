@@ -69,10 +69,12 @@ list head is already updated: where the block came from (`ViewFrom`), the
 allocator's invariant and the head word at the reached memory `M`, and `M`'s
 agreement with the site's entry memory `Mt` off the block and the list word. -/
 structure ViewStruct (S : Nat → Prop) (Mt M : Mem) (H H' : Heap) (F F' : List Blk)
-    (sb : Blk) : Prop where
+    (sb : Blk) (L : List NumObj) : Prop where
   src : ViewFrom H H' F F' sb
   inv : HeapInv S M H'
   live : sb ∈ H'.live
+  mono : ∀ c ∈ H.live, c ∈ H'.live
+  notObj : sb ∉ objBlocks L
   sSz : 40 ≤ sb.sz
   head : ldv .ld M bcFreeAddr = BitVec.ofNat 64 (deadHead F')
   base : ∀ a, ¬ AllocByte H a → ¬ sb.In a → ¬ bcFreeBytes a → imgM M a = imgM Mt a
@@ -83,8 +85,13 @@ theorem ViewStruct.pop {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F F' : List B
     {L : List NumObj} {sb : Blk} (hb : BcHeap S Mt H F L) (hF : F = sb :: F')
     (hhead : ldv .ld M bcFreeAddr = BitVec.ofNat 64 (deadHead F'))
     (hfr : ∀ a, ¬ bcFreeBytes a → imgM M a = imgM Mt a) :
-    ViewStruct S Mt M H H F F' sb :=
+    ViewStruct S Mt M H H F F' sb L :=
   { src := .pop hF rfl
+    mono := fun _ hc => hc
+    notObj := fun hm => by
+      have hd := hb.distinct
+      rw [hF] at hd
+      exact (List.nodup_cons.mp hd).1 (List.mem_append_right _ hm)
     inv := hb.heap.transport fun a ha => hfr a (not_bcFree_of_alloc hb.heap ha)
     live := (hb.deadLive sb (by rw [hF]; exact List.mem_cons_self)).1
     sSz := (hb.deadLive sb (by rw [hF]; exact List.mem_cons_self)).2
@@ -102,7 +109,7 @@ theorem BcHeap.popNext {S : Nat → Prop} {Mt : Mem} {H : Heap} {F F' : List Blk
 /-- **The view's struct written**: the five fields of one site's stores turn
 the struct into the `ViewSrc` that `BcHeap.pushView` consumes. -/
 theorem ViewStruct.toSrc {S : Nat → Prop} {Mt M Mt' : Mem} {H H' : Heap} {F F' : List Blk}
-    {sb : Blk} {val k : Nat} (hv : ViewStruct S Mt M H H' F F' sb)
+    {sb : Blk} {L : List NumObj} {val k : Nat} (hv : ViewStruct S Mt M H H' F F' sb L)
     (hsign : ldv .lw Mt' sb.pay = 0#64) (hlen : ldv .lw Mt' (sb.pay + 4) = BitVec.ofNat 64 k)
     (hscale : ldv .lw Mt' (sb.pay + 8) = 0#64) (hrefs : ldv .lw Mt' (sb.pay + 12) = 1#64)
     (hptr : ldv .ld Mt' (sb.pay + 24) = 0#64)
@@ -121,5 +128,72 @@ theorem ViewStruct.toSrc {S : Nat → Prop} {Mt M Mt' : Mem} {H H' : Heap} {F F'
   rw [ldv_congr .ld fun j hj => hfr _ (by
     simp only [Blk.In, Blk.pay, Blk.fin, bcFreeAddr, widthOfM] at hj hpay ⊢; omega)]
   exact hv.head
+
+
+/-- **A byte of an object's struct is off the view's struct**: the blocks are
+distinct live blocks. -/
+theorem ViewStruct.sb_off {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} (hv : ViewStruct S Mt M H H' F F' sb L)
+    (hb : BcHeap S Mt H F L) {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.sb.In a) : ¬ sb.In a :=
+  fun hin => live_apart hv.inv (hv.mono _ (hb.blocks x hx).sLive) hv.live
+    (fun he => hv.notObj (he ▸ mem_objBlocks hx)) ha hin
+
+/-- A byte of an object's digit buffer is off the view's struct. -/
+theorem ViewStruct.db_off {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} (hv : ViewStruct S Mt M H H' F F' sb L)
+    (hb : BcHeap S Mt H F L) {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.db.In a) : ¬ sb.In a := by
+  obtain ⟨y, hy, ho, he⟩ := hb.views.owner hx
+  refine fun hin => live_apart hv.inv (hv.mono _ (hb.blocks x hx).dLive) hv.live
+    (fun hne => hv.notObj ?_) ha hin
+  rw [← hne, ← he]
+  exact mem_objBlocks_db hy ho
+
+
+/-- The struct block's bounds and alignment. -/
+structure BlkBounds (sb : Blk) : Prop where
+  lo : 2147603936 ≤ sb.pay
+  hi : sb.pay + 40 ≤ 2273312768
+  al : sb.pay % 8 = 0
+  sz : 40 ≤ sb.sz
+
+theorem ViewStruct.bounds {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} (hv : ViewStruct S Mt M H H' F F' sb L) : BlkBounds sb := by
+  have hbf := hv.inv.blk (List.mem_append_right _ hv.live)
+  have hlo := hbf.lo; have hfin := hbf.fin; have htop := hbf.top; have hal := hbf.al
+  have hsz := hv.sSz
+  simp only [heapStart] at hlo
+  simp only [heapEnd] at htop
+  have h1 : sb.pay = sb.h + 16 := rfl
+  have h2 : sb.fin = sb.h + 16 + sb.sz := rfl
+  exact ⟨by omega, by omega, by omega, hsz⟩
+
+/-- A word of an object's struct is off the view's struct. -/
+theorem ViewStruct.word_off {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} {x : NumObj} (hv : ViewStruct S Mt M H H' F F' sb L)
+    (hb : BcHeap S Mt H F L) (hx : x ∈ L) {o : Nat} (ho : o < 40) : ¬ sb.In (x.rep.p + o) := by
+  have hxb := hb.blocks x hx
+  have hxp := hxb.sPay; have hxsz := hxb.sSz
+  exact hv.sb_off hb hx (by simp only [Blk.In, Blk.pay, Blk.fin] at hxp hxsz ⊢; omega)
+
+
+/-- **A word of an object's struct is unchanged** at the point where the site
+has its struct: the pop touched only `_bc_Free_list`, a `malloc` only the
+allocator's bytes. -/
+theorem ViewStruct.word_agree {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} {x : NumObj} (hv : ViewStruct S Mt M H H' F F' sb L)
+    (hb : BcHeap S Mt H F L) (hx : x ∈ L) {o : Nat} (ho : o + 8 ≤ 40) :
+    ldv .ld M (x.rep.p + o) = ldv .ld Mt (x.rep.p + o) := by
+  have hxb := hb.blocks x hx
+  have hxp := hxb.sPay; have hxsz := hxb.sSz
+  have hbf := hb.heap.blk (List.mem_append_right _ hxb.sLive)
+  have hlo := hbf.lo; have hfin := hbf.fin; have htop := hbf.top
+  simp only [heapStart] at hlo
+  simp only [heapEnd] at htop
+  refine ldv_congr .ld fun j hj => hv.base _ ?_ ?_ ?_
+  · exact live_not_alloc hb.heap hxb.sLive
+      (by simp only [Blk.In, Blk.pay, Blk.fin, widthOfM] at hxp hxsz hj ⊢; omega)
+  · rw [Nat.add_assoc]
+    exact hv.word_off hb hx (o := o + j) (by simp only [widthOfM] at hj; omega)
+  · simp only [Blk.pay, Blk.fin, bcFreeBytes, bcFreeAddr, widthOfM] at hxp hj ⊢; omega
 
 end Dc.Mach

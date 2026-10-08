@@ -1522,4 +1522,233 @@ theorem sub_fracB_entry {live : Nat → Prop} {S : Nat → Prop}
       ⟨by bsimp [h11], by bsimp [h13], by bsimp []; congr 1; omega, by bsimp [],
         by bsimp [hb0], by bsimp [h13], by bsimp [h16], by bsimp [h11], by bsimp [h8], by bsimp [h9]⟩
 
+/-- The setup's arithmetic at `0x800046bc`: the operands' and the result's
+last digit addresses, then the dispatch on `n1`'s scale against the
+smaller scale `s0`. -/
+theorem sub_setup_addr {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin 0) :: L))
+    (h8 : R 8 = BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale))
+    (h9 : R 9 = BitVec.ofNat 64 x1.rep.len)
+    (h6 : R 6 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale))
+    (h15 : R 15 = BitVec.ofNat 64 x1.rep.scale) (h17 : R 17 = BitVec.ofNat 64 x2.rep.scale)
+    (h12 : R 12 = BitVec.ofNat 64 x1.rep.len) (h14 : R 14 = BitVec.ofNat 64 x2.rep.len)
+    (h13 : R 13 = BitVec.ofNat 64 y.rep.val) (h16 : R 16 = BitVec.ofNat 64 x1.rep.val)
+    (h11 : R 11 = BitVec.ofNat 64 x2.rep.val) :
+    DW live S Q 0x800046bc#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+  have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  have w1 := hs1.vHi; have w2 := hs2.vHi
+  have hn0 := hb.nums _ List.mem_cons_self
+  have w3 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have hls := hy.lenScale
+  have hle := ha.le
+  simp only [heapEnd] at w1 w2 w3
+  bc_run hlive hS [h6, h15, h17, h12, h14, h13, h16, h11, h8, add2_pred, pred_add_ofNat, word_pred,
+    toInt_ofNat_small] at 0x80004850 0x800046e0
+  · intro he
+    bv_nat at he
+    exact sub_fracB_entry hlive cx hk hy ha (by omega)
+      (A := x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
+      (B := x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
+      (Y0 := y.rep.val + (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale - 1))
+      ⟨rfl, rfl, rfl⟩ (st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h17])
+      (by bsimp [h8]; try (congr 1; omega)) (by bsimp [h13, h6]; try (congr 1; omega))
+      (by bsimp [h16, h12, h15]; try (congr 1; omega)) (by bsimp [h11, h14, h17]; try (congr 1; omega))
+      (by bsimp [h9])
+  · intro hne
+    bv_nat at hne
+    exact sub_fracA_entry hlive cx hk hy ha (by omega)
+      (A := x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
+      (B := x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
+      (Y0 := y.rep.val + (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale - 1))
+      ⟨rfl, rfl, rfl⟩ (st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h15])
+      (by bsimp [h8]; try (congr 1; omega)) (by bsimp [h13, h6]; try (congr 1; omega))
+      (by bsimp [h16, h12, h15]; try (congr 1; omega)) (by bsimp [h11, h14, h17]; try (congr 1; omega))
+      (by bsimp [h9])
+
+/-- After `bc_new_num` and the zero fill, from `0x800046a0`: the operands'
+scales, lengths and `n_value`s, the result's `n_value`. -/
+theorem sub_setup {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin 0) :: L))
+    (h8 : R 8 = BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale))
+    (h9 : R 9 = BitVec.ofNat 64 x1.rep.len)
+    (h6 : R 6 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale)) :
+    DW live S Q 0x800046a0#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn1 := hb.nums x1 (List.mem_cons_of_mem _ ha.m1)
+  have hn2 := hb.nums x2 (List.mem_cons_of_mem _ ha.m2)
+  have hn0 := hb.nums _ List.mem_cons_self
+  num_facts hn1
+  num_facts hn2
+  have yp1 : heapStart ≤ y.rep.p := hn0.shape.pLo
+  have yp2 : y.rep.p + 40 ≤ heapEnd := hn0.shape.pHi
+  have yp3 : y.rep.p % 8 = 0 := hn0.shape.pAl
+  simp only [heapStart, heapEnd] at yp1 yp2
+  have hp := hy.p
+  have hv0 : ldv .ld M (y.sb.pay + 32) = BitVec.ofNat 64 y.rep.val := by rw [← hp]; exact hn0.value
+  have l1 := hn1.len; have l2 := hn2.len; have c1 := hn1.scale; have c2 := hn2.scale
+  have u1 := hn1.value; have u2 := hn2.value
+  have h22 := st.r22; have h23 := st.r23; have h10 := st.r10
+  bc_run hlive hS [h22, h23, h10, l1, l2, c1, c2, u1, u2, hv0] at 0x800046bc
+  exact sub_setup_addr hlive cx hk hy ha (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+    (by bsimp [h8]) (by bsimp [h9]) (by bsimp [h6]) (by bsimp [c1]) (by bsimp [c2]) (by bsimp [l1])
+    (by bsimp [l2]) (by bsimp [hv0]) (by bsimp [u1]) (by bsimp [u2])
+
+/-! ## The `scale_min` zero fill -/
+
+/-- A zero written into the result before any position changes nothing. -/
+theorem BcHeap.subZeroFill {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {y : NumObj} {a b : NumRep} {smin i : Nat}
+    (hyl : y.rep.len + y.rep.scale = max a.len b.len + max smin (max a.scale b.scale))
+    (hb : BcHeap S M H F (withDs y (subDs a b smin 0) :: L))
+    (hi : i < max a.len b.len + max smin (max a.scale b.scale)) {v : BitVec 64}
+    (hv : sbData v = BitVec.ofNat 8 0) :
+    BcHeap S (writeLog M [(y.rep.val + i, 1, v)]) H F (withDs y (subDs a b smin 0) :: L) := by
+  have hst := BcHeap.setDigit (L1 := []) hb (i := i) (d := 0) (by simp only [withDs]; omega)
+    (by decide) hv
+  simp only [withDs, List.nil_append] at hst ⊢
+  rw [← subDs_zero, List.set_replicate_self] at hst
+  rw [← subDs_zero]
+  exact hst
+
+/-- One zero of the `scale_min` tail at `0x80004694`: `a5` at the `i`-th
+digit past `D + S`, `a4` past the last. -/
+theorem sub_zfill_body {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {Z n i : Nat}
+    (cx : SubCtx S R0 sp) (hy : SubSum y x1.rep x2.rep smin)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin 0) :: L))
+    (hZ : Z = y.rep.val + (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale))
+    (hn : max x1.rep.scale x2.rep.scale + n = smin) (hi : i < n)
+    (h15 : R 15 = BitVec.ofNat 64 (Z + i)) (h14 : R 14 = BitVec.ofNat 64 (Z + n))
+    (hnext : i + 1 < n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      SubAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (subDs x1.rep x2.rep smin 0) :: L) →
+      R' 15 = BitVec.ofNat 64 (Z + (i + 1)) → R' 14 = BitVec.ofNat 64 (Z + n) →
+      R' 8 = R 8 → R' 9 = R 9 → R' 6 = R 6 → DW live S Q 0x80004694#64 R' M')
+    (hexit : i + 1 = n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      SubAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (subDs x1.rep x2.rep smin 0) :: L) →
+      R' 8 = R 8 → R' 9 = R 9 → R' 6 = R 6 → DW live S Q 0x800046a0#64 R' M') :
+    DW live S Q 0x80004694#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hls : y.rep.len + y.rep.scale =
+      max x1.rep.len x2.rep.len + max smin (max x1.rep.scale x2.rep.scale) := by rw [hy.rep]; rfl
+  simp only [heapStart, heapEnd] at v1 v2
+  have hb' := BcHeap.subZeroFill (i := max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale + i)
+    (v := 0#64) hls hb (by omega) (sbData_ofNat 0)
+  rw [show y.rep.val + (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale + i) = Z + i by
+    omega] at hb'
+  have st' := st.heap cx (M' := writeLog M [(Z + i, 1, 0#64)]) fun a ha =>
+    imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; omega)
+  have ea : (upd R 15 (R 15 + 1#64) 15 + sign_extend (m := 64) (4095#12)).toNat = Z + i := by
+    simp only [upd_apply, ite_true, h15, se12_fff, inc_dec, BitVec.toNat_ofNat]; omega
+  dx_run hlive at 0x8000469c
+  case hS => bsimp [ea]; exact acc_heap hS (by omega) (by omega)
+  all_goals (try bsimp [ea, h15, h14, se12_fff, inc_dec])
+  bc_run hlive hS [h15, h14] at 0x80004694 0x800046a0
+  · intro hne
+    bv_nat at hne
+    exact hnext (by omega) _ _ (st'.keeps (by keeps_tac Keeps.refl _ _)) hb'
+      (by bsimp [Nat.add_assoc]) (by bsimp [h14]) (by bsimp []) (by bsimp []) (by bsimp [])
+  · intro he
+    bv_nat at he
+    exact hexit (by omega) _ _ (st'.keeps (by keeps_tac Keeps.refl _ _)) hb' (by bsimp [])
+      (by bsimp []) (by bsimp [])
+
+/-- The `scale_min` zero fill at `0x80004694` (`S < scale_min`): `i` zeros
+written, then the setup. -/
+theorem sub_zfill {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {Z n : Nat}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (hZ : Z = y.rep.val + (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale))
+    (hn : max x1.rep.scale x2.rep.scale + n = smin) :
+    ∀ m i (R : Nat → BitVec 64) (M : Mem), n - i = m → i < n →
+      SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
+      BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin 0) :: L) →
+      R 15 = BitVec.ofNat 64 (Z + i) → R 14 = BitVec.ofNat 64 (Z + n) →
+      R 8 = BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale) →
+      R 9 = BitVec.ofNat 64 x1.rep.len →
+      R 6 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale) →
+      DW live S Q 0x80004694#64 R M := by
+  intro m
+  induction m with
+  | zero => intro i R M h1 h2; omega
+  | succ m ih =>
+    intro i R M hm hi st hb h15 h14 h8 h9 h6
+    exact sub_zfill_body hlive cx hy st hb hZ hn hi h15 h14
+      (fun hi' R' M' st' hb' e15 e14 e8 e9 e6 =>
+        ih (i + 1) R' M' (by omega) hi' st' hb' e15 e14 (e8.trans h8) (e9.trans h9) (e6.trans h6))
+      (fun _ R' M' st' hb' e8 e9 e6 =>
+        sub_setup hlive cx hk hy ha st' hb' (e8.trans h8) (e9.trans h9) (e6.trans h6))
+
+/-- After `bc_new_num` at `0x80004670`: `scale_min` back from the frame,
+`t1 = D + S`; below `scale_min` the zero fill, otherwise the setup. -/
+theorem sub_after_new {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin 0) :: L))
+    (h8 : R 8 = BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale))
+    (h9 : R 9 = BitVec.ofNat 64 x1.rep.len)
+    (hsm : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 smin) :
+    DW live S Q 0x80004670#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn0 := hb.nums _ List.mem_cons_self
+  have yp1 : heapStart ≤ y.rep.p := hn0.shape.pLo
+  have yp2 : y.rep.p + 40 ≤ heapEnd := hn0.shape.pHi
+  have yp3 : y.rep.p % 8 = 0 := hn0.shape.pAl
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have hls := hy.lenScale
+  have hsz := ha.size
+  have hle := ha.le
+  simp only [heapStart, heapEnd] at yp1 yp2 v2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hp := hy.p
+  have hv0 : ldv .ld M (y.sb.pay + 32) = BitVec.ofNat 64 y.rep.val := by rw [← hp]; exact hn0.value
+  have h2 := st.r2; have h10 := st.r10; have h21 := st.r21
+  bc_run hlive hS [h2, h9, h21, hsm, toInt_ofNat_small] at 0x800046a0 0x8000467c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  · intro _
+    exact sub_setup hlive cx hk hy ha (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+      (by bsimp [h8]) (by bsimp [h9]) (by bsimp [h9, h21]; try (congr 1; omega))
+  · intro hlt
+    have hlt' : max x1.rep.scale x2.rep.scale < smin := by
+      (try simp (disch := omega) only [toInt_ofNat_small] at hlt); omega
+    bc_run hlive hS [h2, h9, h21, hsm, h10, hv0, subw_ofNat, shl_shr32] at 0x80004694
+    exact sub_zfill hlive cx hk hy ha (n := smin - max x1.rep.scale x2.rep.scale) rfl (by omega)
+      _ 0 _ _ rfl (by omega) (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+      (by bsimp [hv0, h9, h21]; try (congr 1; omega))
+      (by bsimp [hv0, h9, h21]; try (congr 1; omega)) (by bsimp [h8]) (by bsimp [h9])
+      (by bsimp [h9, h21]; try (congr 1; omega))
+
 end Dc.Mach

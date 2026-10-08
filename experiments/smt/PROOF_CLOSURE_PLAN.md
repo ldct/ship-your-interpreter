@@ -4616,6 +4616,45 @@ hand. An unknown name inside a `bc_run`/`bsimp` lemma list is silently
 ignored (the list sits under `try`). The axioms of `bc_do_add_spec` are
 `propext`, `Classical.choice`, `Quot.sound`.
 
+### M5 `_bc_do_sub` (checked)
+
+`Dc/Mach/Bc/DoSub.lean` proves `bc_do_sub_spec` at `0x800045e8` for two
+numbers `x1`, `x2` of the heap (possibly the same object) with
+`x2.len ≤ x1.len` (`SubArgs.le`; `bc_sub` orders the operands by magnitude
+before the call) and `scale_min`. `SubK.ret` receives `SubPost`: a new
+object `y` heads the heap with `y.rep.num = ⟨false, dval (subDigits …),
+resScale s1 s2 scale_min⟩`, normalized, one reference; off the heap only
+the 128-byte window below the entry `sp` changes. `SubK.oom` covers
+`out_of_memory` from `bc_new_num`.
+
+Model: after `k` positions the result's digits are `subDs a b smin k =
+sumDs N k (subLE xs ys 0) Z`; the borrow register holds `borrowAt xs ys 0 k`
+(`borrowAt`, `subLE_getD`, `borrowAt_succ`, `digit_sub` in
+`Dc/BcModel/Steps.lean`). `BcHeap.storeSum` writes one position for either
+loop; `SubModel.step` gives its digit and borrow.
+
+Segments: register saves (`bc_do_sub_spec`, `sub_saves`), length, scale
+and `scale_min` selection (`sub_pre1`, `sub_pre3`, `sub_pre3a`, `sub_pre3b`,
+`sub_pre4`), the `bc_new_num` call (`sub_call`, over `SubPre`), the zero
+fill (`sub_after_new`, `sub_zfill*`), setup and dispatch (`sub_setup`,
+`sub_setup_addr`), the copy of `n1`'s extra fraction digits (`sub_fracA*`),
+the subtraction of `n2`'s extra fraction digits from zero (`sub_fracB*`),
+the join and subtract loop (`sub_join`, `sub_main_*`), borrow propagation
+and the copy of `n1`'s high digits (`sub_high_entry`, `sub_borrow_*`,
+`sub_copy_*`), the inlined `_bc_rm_leading_zeros` (`sub_rmlz*`) and the
+epilogue (`sub_epi`).
+
+Proof-engineering facts: digit differences are handled as `Int` words.
+`subw_nat`, `subw_int_nat` and `negw_nat` turn `subw`/`negw` results into
+`BitVec.ofInt`; `toInt_ofInt64`, `ofInt64_eq_zero` and `addiw10_int` turn
+the branch conditions into `Int` facts for `omega`. Keep digit values
+symbolic: substituting literal zeros makes `bc_run` time out. `bc_run`
+can reduce an `rfl`-provable equation hypothesis to `True`; state such a
+fact as two `≤` facts. A run of nine stores exceeds one declaration's
+budget, so the register saves are split after the first two
+(`SavedWords.storeV` takes the stored value up to its entry register). The
+axioms of `bc_do_sub_spec` are `propext`, `Classical.choice`, `Quot.sound`.
+
 ### M3 representation and heap closure (checked)
 
 `Dc/Mach/Bc/HeapClosure.lean`, imported by `Dc.lean`, completes:

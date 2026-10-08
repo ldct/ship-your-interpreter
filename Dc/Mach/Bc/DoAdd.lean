@@ -1208,4 +1208,221 @@ theorem add_main_loop {live : Nat → Prop} {S : Nat → Prop}
       (hm.carry_le _) (by omega) (by omega) (by omega) (by omega) hr hcs
       fun e1 e2 R' M' => ih (j + 1) R' M' (by omega) e1 e2
 
+/-- The carry into a position below `S - min s1 s2` is zero: below it one
+operand is zero at every position. -/
+theorem addC_low {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hm : AddModel a b) {k : Nat}
+    (hk : k ≤ max a.scale b.scale - min a.scale b.scale) : addC a b k = 0 :=
+  carryAt_eq_zero (by rw [hm.xl, hm.yl]) hm.xd hm.yd _
+    (by rw [hm.xl]; simp only [addN, loopLen]; omega) fun j hj => by
+      rcases Nat.le_total a.scale b.scale with h | h
+      · exact .inl (addXs_out ha (.inl (by omega)))
+      · exact .inr (addYs_out hb (.inl (by omega)))
+
+/-- Below `s1 - s2` (`s2 < s1`) the sum's digit is `n1`'s. -/
+theorem addR_low1 {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hm : AddModel a b)
+    (hs : b.scale < a.scale) {k : Nat} (hk : k < a.scale - b.scale) :
+    (addR a b).getD k 0 = a.ds.getD (a.len + a.scale - 1 - k) 0 := by
+  obtain ⟨hr, -⟩ := hm.step (k := k) (by simp only [addN, loopLen]; omega)
+  rw [hr, addC_low ha hb hm (by omega), addXs_in ha (by omega) (by omega),
+    addYs_out hb (.inl (by omega)), Nat.add_zero,
+    Nat.mod_eq_of_lt (getD_digit ha.dig _), show max a.scale b.scale = a.scale by omega]
+
+/-- Below `s2 - s1` (`s1 < s2`) the sum's digit is `n2`'s. -/
+theorem addR_low2 {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hm : AddModel a b)
+    (hs : a.scale < b.scale) {k : Nat} (hk : k < b.scale - a.scale) :
+    (addR a b).getD k 0 = b.ds.getD (b.len + b.scale - 1 - k) 0 := by
+  obtain ⟨hr, -⟩ := hm.step (k := k) (by simp only [addN, loopLen]; omega)
+  rw [hr, addC_low ha hb hm (by omega), addYs_in hb (by omega) (by omega),
+    addXs_out ha (.inl (by omega)), Nat.zero_add, Nat.add_zero,
+    Nat.mod_eq_of_lt (getD_digit hb.dig _), show max a.scale b.scale = b.scale by omega]
+
+/-- The join at `0x80004430`: `a4 = a3 = min s1 s2`, `t3 = l1`, `t1 = l2`;
+the counts, the zero carry, and the add loop. -/
+theorem add_join {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y)
+    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin k0) :: L))
+    (h14 : R 14 = BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale))
+    (h13 : R 13 = BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale))
+    (h28 : R 28 = BitVec.ofNat 64 x1.rep.len) (h6 : R 6 = BitVec.ofNat 64 x2.rep.len)
+    (h11 : R 11 = BitVec.ofNat 64 P1) (h17 : R 17 = BitVec.ofNat 64 P2)
+    (h16 : R 16 = BitVec.ofNat 64 Y) :
+    DW live S Q 0x80004430#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+  have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+  have := hs1.size; have := hs2.size; have := hs1.lenPos; have := hs2.lenPos
+  have g1 := hg.k0; have g2 := hg.c1; have g3 := hg.c2
+  have hc0 := addC_low hs1 hs2 hy.model (k := k0) (by omega)
+  have e1 : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale)) +
+      BitVec.extractLsb 31 0 (BitVec.ofNat 64 x1.rep.len)) = BitVec.ofNat 64 c1 := by
+    rw [addw_ofNat (by omega)]; congr 1; omega
+  have e2 : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale)) +
+      BitVec.extractLsb 31 0 (BitVec.ofNat 64 x2.rep.len)) = BitVec.ofNat 64 c2 := by
+    rw [addw_ofNat (by omega)]; congr 1; omega
+  bc_run hlive hS [h14, h13, h28, h6, e1, e2] at 0x80004450 0x800045c0
+  · intro hc; exact absurd hc (not_blez (by omega) (by omega))
+  · intro _
+    bc_run hlive hS [h14, h13, h28, h6, e1, e2] at 0x80004450 0x800045c0
+    · intro hc; exact absurd hc (not_blez (by omega) (by omega))
+    · intro _
+      bc_run hlive hS [h14, h13, h28, h6, e1, e2] at 0x80004450
+      rw [← Nat.add_zero k0] at hb
+      exact add_main_loop hlive cx hk hy ha hg _ 0 _ _ rfl (by omega) (by omega)
+        (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+        ⟨by bsimp [h11], by bsimp [h17], by bsimp [h16], by bsimp [e1], by bsimp [e2],
+          by rw [Nat.add_zero, hc0]; bsimp [], by bsimp []⟩
+
+/-! ## The fraction copies -/
+
+/-- The registers of the first fraction copy at `0x80004400` after `j`
+digits: `a5` at `n1`'s digit, `a3` below the result's, `t1` where `a5`
+stops, `t3 = n - 1`. -/
+structure Copy1Regs (R : Nat → BitVec 64) (A Y n s P2 j : Nat) : Prop where
+  r15 : R 15 = BitVec.ofNat 64 (A - j)
+  r13 : R 13 = BitVec.ofNat 64 (Y - j)
+  r6 : R 6 = BitVec.ofNat 64 (A - n)
+  r28 : R 28 = BitVec.ofNat 64 (n - 1)
+  r16 : R 16 = BitVec.ofNat 64 Y
+  r11 : R 11 = BitVec.ofNat 64 A
+  r14 : R 14 = BitVec.ofNat 64 s
+  r17 : R 17 = BitVec.ofNat 64 P2
+
+/-- After the first fraction copy, from `0x80004414`: `a1`, `a6` past the
+copied digits, `t1 = l2`, `t3 = l1`, `a3 = s2`, then the join. -/
+theorem add_copy1_exit {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {A Y P2 : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hs : x2.rep.scale < x1.rep.scale) (hA : A = x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
+    (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + x1.rep.scale))
+    (hP2 : P2 = x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
+    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (x1.rep.scale - x2.rep.scale)) :: L))
+    (cr : Copy1Regs R A Y (x1.rep.scale - x2.rep.scale) x2.rep.scale P2
+      (x1.rep.scale - x2.rep.scale)) :
+    DW live S Q 0x80004414#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn1 := hb.nums x1 (List.mem_cons_of_mem _ ha.m1)
+  have hn2 := hb.nums x2 (List.mem_cons_of_mem _ ha.m2)
+  have hs1 := hn1.shape; have hs2 := hn2.shape
+  have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a3 := hs1.size; have a4 := hs1.vHi
+  have p1 := hs1.pLo; have p2 := hs1.pHi; have p3 := hs2.pLo; have p4 := hs2.pHi
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  simp only [heapStart, heapEnd] at a1 a4 v1 p1 p2 p3 p4
+  have l1 := hn1.len; have l2 := hn2.len
+  have h18 := st.r18; have h9 := st.r9
+  have h15 := cr.r15; have h13 := cr.r13; have h6 := cr.r6; have h28 := cr.r28
+  have h16 := cr.r16; have h11 := cr.r11; have h14 := cr.r14; have h17 := cr.r17
+  num_facts hn1
+  num_facts hn2
+  bc_run hlive hS [h16, h11, h14, h17, h28, h18, h9, l1, l2, word_pred, sub_ofNat] at 0x80004430
+  exact add_join hlive cx hk hy ha (k0 := x1.rep.scale - x2.rep.scale)
+    (c1 := x1.rep.len + x2.rep.scale) (c2 := x2.rep.len + x2.rep.scale)
+    (P1 := A - (x1.rep.scale - x2.rep.scale)) (P2 := P2) (Y := Y - (x1.rep.scale - x2.rep.scale))
+    ⟨by omega, by omega, by omega, by omega, by omega, by omega⟩
+    (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+    (by bsimp [h14]; congr 1; omega) (by bsimp [h14]; congr 1; omega) (by bsimp [h18, l1])
+    (by bsimp [h9, l2]) (by bsimp [h11]; congr 1; omega) (by bsimp [h17])
+    (by bsimp [h16]; congr 1; omega)
+
+/-- One step of the first fraction copy at `0x80004400`: the digit `d` of
+`n1` at `A - j` into the result at `Y - j`. -/
+theorem add_copy1_body {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {A Y n s P2 j d : Nat}
+    (cx : AddCtx S R0 sp) (hy : AddSum y x1.rep x2.rep smin)
+    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin j) :: L))
+    (cr : Copy1Regs R A Y n s P2 j) (hj : j < n) (hnA : n ≤ A) (hA : A < 2 ^ 63)
+    (hl : ldv .lbu M (A - j) = BitVec.ofNat 64 d) (hr : (addR x1.rep x2.rep).getD j 0 = d)
+    (a1 : 2147603920 ≤ A - j) (a2 : A - j < 2273312768) (hjN : j < addN x1.rep x2.rep) (hYa : Y = y.rep.val + addN x1.rep x2.rep)
+    (hnext : j + 1 < n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
+      Copy1Regs R' A Y n s P2 (j + 1) → DW live S Q 0x80004400#64 R' M')
+    (hexit : j + 1 = n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
+      AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
+      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
+      Copy1Regs R' A Y n s P2 (j + 1) → DW live S Q 0x80004414#64 R' M') :
+    DW live S Q 0x80004400#64 R M := by
+  have hm := hy.model
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hls := hy.lenScale
+  simp only [heapStart, heapEnd] at v1 v2
+  simp only [addN, loopLen] at hls hjN hYa
+  have hb' : BcHeap S (writeLog M [(Y - j - 1 + 1, 1, BitVec.ofNat 64 d)]) H F
+      (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) := by
+    rw [show Y - j - 1 + 1 = y.rep.val + (addN x1.rep x2.rep - j) by simp only [addN, loopLen]; omega]
+    exact add_store hm hy.lenScale hb (by simp only [addN, loopLen]; omega) (by rw [sbData_ofNat, hr])
+  have st' := st.heap cx (M' := writeLog M [(Y - j - 1 + 1, 1, BitVec.ofNat 64 d)]) fun a ha =>
+    imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; omega)
+  have h15 := cr.r15; have h13 := cr.r13; have h6 := cr.r6; have h28 := cr.r28
+  have h16 := cr.r16; have h11 := cr.r11; have h14 := cr.r14; have h17 := cr.r17
+  bc_run hlive hS [h15, h13, hl] at 0x80004410
+  bc_run hlive hS [h15, h13, hl, h6] at 0x80004400 0x80004414
+  · intro hne
+    bv_nat at hne
+    exact hnext (by omega) _ _ (st'.keeps (by keeps_tac Keeps.refl _ _)) hb'
+      ⟨by bsimp [Nat.sub_sub], by bsimp [Nat.sub_sub], by bsimp [h6], by bsimp [h28], by bsimp [h16],
+        by bsimp [h11], by bsimp [h14], by bsimp [h17]⟩
+  · intro he
+    bv_nat at he
+    exact hexit (by omega) _ _ (st'.keeps (by keeps_tac Keeps.refl _ _)) hb'
+      ⟨by bsimp [Nat.sub_sub], by bsimp [Nat.sub_sub], by bsimp [h6], by bsimp [h28], by bsimp [h16],
+        by bsimp [h11], by bsimp [h14], by bsimp [h17]⟩
+
+/-- The first fraction copy at `0x80004400` (`s2 < s1`): `n1`'s last
+`s1 - s2` digits into the result, then the join. -/
+theorem add_copy1 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {A Y P2 : Nat}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (hs : x2.rep.scale < x1.rep.scale) (hA : A = x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
+    (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + x1.rep.scale))
+    (hP2 : P2 = x2.rep.val + (x2.rep.len + x2.rep.scale - 1)) :
+    ∀ m j (R : Nat → BitVec 64) (M : Mem), x1.rep.scale - x2.rep.scale - j = m →
+      j < x1.rep.scale - x2.rep.scale →
+      AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
+      BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin j) :: L) →
+      Copy1Regs R A Y (x1.rep.scale - x2.rep.scale) x2.rep.scale P2 j →
+      DW live S Q 0x80004400#64 R M := by
+  have hm := hy.model
+  intro m
+  induction m with
+  | zero => intro j R M h1 h2; omega
+  | succ m ih =>
+    intro j R M hm' hj st hb cr
+    have hn1 := hb.nums x1 (List.mem_cons_of_mem _ ha.m1)
+    have hs1 := hn1.shape
+    have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+    have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a3 := hs1.size; have a4 := hs1.vHi
+    simp only [heapStart, heapEnd] at a1 a4
+    have hl := hn1.lbu (i := x1.rep.len + x1.rep.scale - 1 - j) (by omega)
+    rw [show x1.rep.val + (x1.rep.len + x1.rep.scale - 1 - j) = A - j by omega] at hl
+    exact add_copy1_body hlive cx hy st hb cr hj (by omega) (by omega) hl
+      (addR_low1 hs1 hs2 hm hs (k := j) (by omega)) (by omega) (by omega)
+      (by simp only [addN, loopLen]; omega) (by simp only [addN, loopLen]; omega)
+      (fun e R' M' => ih (j + 1) R' M' (by omega) e)
+      (fun e R' M' st' hb' cr' => by
+        rw [e] at hb' cr'
+        exact add_copy1_exit hlive cx hk hy ha hs hA hY hP2 st' hb' cr')
+
 end Dc.Mach

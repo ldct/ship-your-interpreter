@@ -4539,6 +4539,23 @@ L` with digits `2`, `1`, `0`, the three struct pointers in `_two_`, `_one_`,
 `InitK.oom` at `out_of_memory`. `BcHeap.setDigit` (`NumStore.lean`) supplies
 the digit stores.
 
+### M4 `bc_out_long` (checked)
+
+`Dc/Mach/Bc/OutLong.lean` proves `bc_out_long_spec` at `0x800064ec` for
+`0 ≤ val < 2^63`, `0 ≤ size < 2^31`: the characters sent through the
+`out_char` argument are `Num.outLong val size space`. The callback is a named
+premise, `CharCb f d I`: a call with a byte in `a0` extends the invariant
+`I cs t M` by that byte, keeps `sp`, `s0`–`s11` and every byte at or above
+its `sp`, and uses `d` stack bytes. `OLStable I sp` (the invariant survives
+writes in `bc_out_long`'s 416-byte window) is the caller's premise. The
+supplier of `CharCb` for dc's `out_char` (`0x800020d8`, line wrapping and
+`putchar`) is an M8 obligation, proved with `bc_out_num`.
+
+Segments: prologue (`SavedWords.store`), space callback, `snprintf("%ld")`
+into the 40-byte buffer (`fmt_ld`, `ld_ro`, `udigits_text`), `strlen`
+(`OwnedCStr` from the formatter's bytes), padding loop (`ol_pad`), output
+loop (`ol_out`), epilogue (`ol_epi`).
+
 ### M4 `bc_int2num` (checked)
 
 `Dc/Mach/Bc/Int2Num.lean` proves `bc_int2num_spec` at `0x8000690c` for

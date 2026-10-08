@@ -313,4 +313,253 @@ theorem ol_out {live : Nat → Prop} {S : Nat → Prop}
       rw [hL, List.take_of_length_le (Nat.le_refl _)] at hI2
       exact ol_epi hlive cx hk st' hI2
 
+/-! ## Before the output loop (`0x80006558`) -/
+
+/-- `slli 32; srli 32` of a word below `2^32`. -/
+theorem shl_shr32 {n : Nat} (h : n < 2 ^ 32) :
+    BitVec.ofNat 64 n <<< 32 >>> 32 = BitVec.ofNat 64 n := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft, BitVec.toNat_ofNat,
+    Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+  omega
+
+theorem ol_start {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d : Nat}
+    {pre text : List Nat} {t : String} (cb : CharCb live S Q (R0 13) d I) (cx : OLCtx S R0 sp d)
+    (hk : OLK live S Q I R0 M0 sp (pre ++ text)) (hl1 : 1 ≤ text.length) (hl40 : text.length < 40)
+    (hch : ∀ c ∈ text, c < 256) (st : OLAt M0 R0 R sp M) (hbuf : BufAt M (sp - 88) text)
+    (hI : I pre t M) (h18 : R 18 = BitVec.ofNat 64 text.length)
+    (h19 : R 19 = BitVec.ofNat 64 text.length) :
+    DWO live S Q t 0x80006558#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hr2 := st.r2
+  have hnb := not_blez (k := text.length) hl1 (by omega)
+  bc_run hlive hsf [h18, h19, hr2, hnb]
+  have hsh32 := shl_shr32 (n := text.length - 1) (by omega)
+  bc_run hlive hsf [h18, h19, hr2, hnb, hsh32] at 0x80006574
+  refine ol_out hlive cb cx hk hl40 hch _ 0 _ _ _ rfl (by omega)
+    ((((((st.set (z := 19) _).set (z := 19) _).set (z := 19) _).set (z := 18) _).set (z := 8) _).set
+      (z := 18) _) hbuf (by rw [List.take_zero, List.append_nil]; exact hI) (by bsimp []; congr 1; omega) ?_
+  bsimp []
+  congr 1; omega
+
+/-! ## The padding loop (`0x80006548`) -/
+
+/-- The padding loop: `s0 = k` counts down to the text length `s2`, one `'0'`
+per step. -/
+theorem ol_pad {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {M0 : Mem} {R0 : Nat → BitVec 64} {sp d size : Nat}
+    {pre text : List Nat} (cb : CharCb live S Q (R0 13) d I) (cx : OLCtx S R0 sp d)
+    (hk : OLK live S Q I R0 M0 sp (pre ++ List.replicate (size - text.length) 48 ++ text))
+    (hl1 : 1 ≤ text.length) (hl40 : text.length < 40) (hch : ∀ c ∈ text, c < 256)
+    (hsz : size < 2 ^ 31) :
+    ∀ n k (R : Nat → BitVec 64) (M : Mem) (t : String), k - text.length = n →
+      text.length < k → k ≤ size →
+      OLAt M0 R0 R sp M → BufAt M (sp - 88) text →
+      I (pre ++ List.replicate (size - k) 48) t M →
+      R 8 = BitVec.ofNat 64 k → R 18 = BitVec.ofNat 64 text.length →
+      R 19 = BitVec.ofNat 64 text.length →
+      DWO live S Q t 0x80006548#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  intro n
+  induction n with
+  | zero => intro k R M t hn hlt; omega
+  | succ n ih =>
+    intro k R M t hn hlt hks st hbuf hI h8 h18 h19
+    have hr9 := st.rf; have hr2 := st.r2
+    bc_run hlive hsf [h8, h18, h19, hr9, hr2]
+    · rw [jalr_tgt _ cx.fal]; exact cx.fal
+    rw [jalr_tgt _ cx.fal]
+    refine cb.call _ 48 t (sp - 96) _ M hI (ol_cbFrame cx) (ol_cbAbove cx) (by bsimp [hr2])
+      (by bsimp []) (by decide) (by bsimp []) fun R' M' t' hk1 hI' hm => ?_
+    bsimp []
+    have st' := (((st.set (z := 10) _).set (z := 8) _).set (z := 1) _).keep (by omega) hk1
+      fun a ha => hm a (by omega)
+    have hbuf' : BufAt M' (sp - 88) text := fun j hj => by rw [hm _ (by omega)]; exact hbuf j hj
+    have r8 : R' 8 = BitVec.ofNat 64 (k - 1) := by rw [hk1.get 8]; bsimp []
+    have r18 : R' 18 = BitVec.ofNat 64 text.length := by rw [hk1.get 18]; bsimp [h18]
+    have r19 : R' 19 = BitVec.ofNat 64 text.length := by rw [hk1.get 19]; bsimp [h19]
+    have hI2 : I (pre ++ List.replicate (size - (k - 1)) 48) t' M' := by
+      rw [show size - (k - 1) = size - k + 1 by omega, List.replicate_succ', ← List.append_assoc]
+      exact hI'
+    bc_run hlive hsf [r8, r18] at 0x80006548 0x80006558
+    · intro hne
+      have hlt' : text.length < k - 1 := by
+        rcases Nat.lt_or_ge text.length (k - 1) with h | h
+        · exact h
+        · exact absurd (by rw [show text.length = k - 1 by omega]) hne
+      exact ih (k - 1) R' M' t' (by omega) hlt' (by omega) st' hbuf' hI2 r8 r18 r19
+    · intro heq
+      have hL : text.length = k - 1 := by
+        have := (ofNat_eq_iff (x := text.length) (y := k - 1) (by omega) (by omega)).mp
+          (Classical.not_not.mp heq)
+        omega
+      rw [← hL] at hI2
+      exact ol_start hlive cb cx hk hl1 hl40 hch st' hbuf' hI2
+        r18 r19
+
+/-! ## `snprintf`, `strlen` and the padding test (`0x8000651c`) -/
+
+theorem StrlenKeep.keeps {R' R : Nat → BitVec 64} (h : StrlenKeep R' R) : Keeps [10, 14, 15] R' R :=
+  fun z hz => h z (fun e => hz (by simp [e])) (fun e => hz (by simp [e])) (fun e => hz (by simp [e]))
+
+theorem udigits_getD {v j : Nat} (hj : j < (udigits 10 v).length) :
+    (udigits 10 v)[j] = BitVec.ofNat 8 ((Num.decText v).getD j 0) := by
+  rw [← udigits_text, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hj]
+  simp
+
+/-- What `bc_out_long` may write below its frame: `snprintf`'s and its own. -/
+def OLStable (I : List Nat → String → Mem → Prop) (sp : Nat) : Prop :=
+  ∀ cs t M M', I cs t M → MemOnly (frameIn sp 416) M' M → I cs t M'
+
+theorem ol_mid {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d v size : Nat}
+    {pre : List Nat} {t : String} (cb : CharCb live S Q (R0 13) d I) (cx : OLCtx S R0 sp d)
+    (hv : v < 2 ^ 63) (hsz : size < 2 ^ 31) (hstab : OLStable I sp)
+    (hk : OLK live S Q I R0 M0 sp
+      (pre ++ List.replicate (size - (Num.decText v).length) 48 ++ Num.decText v))
+    (st : OLAt M0 R0 R sp M) (hI : I pre t M) (h18 : R 18 = BitVec.ofNat 64 v)
+    (h8 : R 8 = BitVec.ofNat 64 size) :
+    DWO live S Q t 0x8000651c#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hr2 := st.r2
+  have hdl := decText_len hv
+  have hud : (udigits 10 v).length = (Num.decText v).length := by
+    rw [← udigits_text, List.length_map]
+  have hfr : StackFrame S (sp - 96) 320 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  have hob : OwnedBytes S (sp - 88) 40 :=
+    ⟨fun i hi => hsf.own _ (by omega) (by omega), by omega, by omega⟩
+  bc_run hlive hsf [h18, h8, hr2] at 0x800007c8
+  refine snprintf_spec hlive (sp := sp - 96) (buf := sp - 88) (n := 40) (p := 0x80007ea0)
+    (ps := [ldPiece]) (args := [⟨BitVec.ofNat 64 v, []⟩]) hfr hob (by decide) (.inr (by omega))
+    (by intro pc hpc; simp only [List.mem_singleton] at hpc; subst hpc; trivial) ld_ro
+    (by simp only [ArgStrs]) (by rw [fmt_ld hv, hud]; omega) _
+    (by simp only [List.length_cons, List.length_nil]; decide)
+    (by intro i hi; match i, hi with | 0, _ => (bsimp []; try rfl))
+    (by bsimp [hr2])
+    (by bsimp []; first | omega | (simp only [BitVec.toNat_ofNat]; omega)) (by bsimp []) (by bsimp [])
+    (by bsimp []) fun R1 M1 hk1 h10' hbytes hnul hfr' => ?_
+  bsimp []
+  have hfmt := fmt_ld hv
+  have hbuf : BufAt M1 (sp - 88) (Num.decText v) := by
+    intro j hj
+    have hj' : j < (fmt [ldPiece] [⟨BitVec.ofNat 64 v, []⟩]).length := by rw [hfmt, hud]; exact hj
+    rw [hbytes j hj' (by omega)]
+    have e : ∀ (l : List (BitVec 8)) (h : j < l.length), l = udigits 10 v →
+        l[j] = BitVec.ofNat 8 ((Num.decText v).getD j 0) := by
+      intro l h hl; subst hl; exact udigits_getD h
+    exact e _ hj' hfmt
+  have hn0 := hnul (by decide)
+  rw [hfmt, hud, Nat.min_eq_left (by omega)] at hn0
+  have hI1 := hstab pre t M M1 hI fun a ha => hfr' a
+    (by simp only [frameIn] at ha; omega) (by simp only [frameIn] at ha; omega)
+  have st1 := ((((((st.set (z := 13) _).set (z := 12) _).set (z := 12) _).set (z := 11) _).set
+    (z := 10) _).set (z := 1) _).keep (by omega) (hk1.mono (by decide))
+    fun a ha => hfr' a (.inr (by omega)) (by omega)
+  have hr12 := st1.r2
+  have hcs : OwnedCStr S M1 (sp - 88) (Num.decText v).length :=
+    { own := fun i hi => hsf.own _ (by omega) (by omega)
+      nz := fun i hi h0 => by
+        rw [hbuf i hi] at h0
+        have hc := decText_char (v := v) ((Num.decText v).getD i 0) (by
+          rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hi]; exact List.getElem_mem hi)
+        have e : (BitVec.ofNat 8 ((Num.decText v).getD i 0)).toNat = 0 := by rw [h0]; rfl
+        simp only [BitVec.toNat_ofNat] at e
+        omega
+      nul := hn0
+      lo := by omega
+      hi := by omega }
+  bc_run hlive hsf [hr12] at 0x80000904
+  refine strlen_spec hlive hcs _ (by bsimp []; congr 1; omega) (by bsimp [])
+    fun R2 h10s hkeep => ?_
+  bsimp []
+  have st2 := ((st1.set (z := 10) _).set (z := 1) _).keep (by omega) (hkeep.keeps.mono (by decide))
+    fun _ _ => rfl
+  have r8 : R2 8 = BitVec.ofNat 64 size := by
+    rw [hkeep 8 (by decide) (by decide) (by decide)]; bsimp [hk1.get 8, h8]
+  have hti1 := toInt_ofNat_small (k := (Num.decText v).length) (by omega)
+  have hti2 := toInt_ofNat_small (k := size) (by omega)
+  have hch : ∀ c ∈ Num.decText v, c < 256 := fun c hc => by have := decText_char c hc; omega
+  bc_run hlive hsf [h10s, r8, hti1, hti2] at 0x80006548 0x80006558
+  · intro hle
+    rw [Nat.sub_eq_zero_of_le (by omega), List.replicate_zero, List.append_nil] at hk
+    exact ol_start hlive cb cx hk hdl.1 (by omega) hch ((st2.set (z := 18) _).set (z := 19) _)
+      hbuf hI1 (by bsimp []) (by bsimp [])
+  · intro hlt
+    exact ol_pad hlive cb cx hk hdl.1 (by omega) hch hsz _ size _ M1 t rfl (by omega) (Nat.le_refl _)
+      ((st2.set (z := 18) _).set (z := 19) _) hbuf
+      (by rw [Nat.sub_self, List.replicate_zero, List.append_nil]; exact hI1)
+      (by bsimp [r8]) (by bsimp []) (by bsimp [])
+
+/-! ## The entry -/
+
+/-- **`bc_out_long(val, size, space, out_char)`** at `0x800064ec`, for
+`0 ≤ val < 2^63` and `0 ≤ size < 2^31`, with `out_char` a `CharCb` whose
+invariant `I` survives `bc_out_long`'s own stack writes (`OLStable`): sends
+`Num.outLong val size space` (an optional space, then `val` zero-padded to
+`size` digits) through `out_char`. -/
+theorem bc_out_long_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {M : Mem} {R : Nat → BitVec 64} {sp d v size : Nat}
+    {space : Bool} {cs : List Nat} {t : String}
+    (cb : CharCb live S Q (R 13) d I) (cx : OLCtx S R sp d) (hstab : OLStable I sp)
+    (h10 : R 10 = BitVec.ofNat 64 v) (hv : v < 2 ^ 63) (h11 : R 11 = BitVec.ofNat 64 size)
+    (hsz : size < 2 ^ 31) (h12 : R 12 = boolWord space) (hI : I cs t M)
+    (hk : OLK live S Q I R M sp (cs ++ Num.outLong v size space)) :
+    DWO live S Q t 0x800064ec#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have h2 := cx.sp0
+  have hsv := (((((SavedWords.nil M (sp - 96) R).store 8 80).store 9 72).store 18 64).store 1 88).store
+    19 56
+  have st : ∀ R', R' 2 = BitVec.ofNat 64 (sp - 96) → R' 9 = R 13 → Keeps olAll R' R →
+      OLAt M R R' sp (writeLog (writeLog (writeLog (writeLog (writeLog M
+        [(sp - 96 + 80, 8, R 8)]) [(sp - 96 + 72, 8, R 9)]) [(sp - 96 + 64, 8, R 18)])
+        [(sp - 96 + 88, 8, R 1)]) [(sp - 96 + 56, 8, R 19)]) := fun R' r2 r9 hkp =>
+    { r2 := r2, saved := hsv, rf := r9, regs := hkp
+      hi := fun a ha => by repeat rw [imgM_store_miss _ _ (by omega)] }
+  have hstM := fun {M'} (h : MemOnly (frameIn sp 416) M' M) => hstab cs t M M' hI h
+  have hpro : MemOnly (frameIn sp 416) (writeLog (writeLog (writeLog (writeLog (writeLog M
+      [(sp - 96 + 80, 8, R 8)]) [(sp - 96 + 72, 8, R 9)]) [(sp - 96 + 64, 8, R 18)])
+      [(sp - 96 + 88, 8, R 1)]) [(sp - 96 + 56, 8, R 19)]) M := fun a ha => by
+    simp only [frameIn] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
+  simp only [Num.outLong] at hk
+  cases space
+  · bc_run hlive hsf [h2, h12] at 0x8000651c
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    simp only [Bool.false_eq_true, if_false, List.nil_append, ← List.append_assoc] at hk
+    exact ol_mid hlive cb cx hv hsz hstab hk (st _ (by bsimp []) (by bsimp []) (by keeps_tac Keeps.refl _ _))
+      (hstM hpro) (by bsimp [h10]) (by bsimp [h11])
+  · bc_run hlive hsf [h2, h12] at 0x8000651c
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    bc_run hlive hsf [h2, h12] at 0x8000651c
+    · rw [jalr_tgt _ cx.fal]; exact cx.fal
+    rw [jalr_tgt _ cx.fal]
+    have st0 := st (upd (upd (upd (upd R 2 (BitVec.ofNat 64 (sp - 96))) 8 (R 11)) 9 (R 13)) 18 (R 10))
+      (by bsimp []) (by bsimp []) (by keeps_tac Keeps.refl _ _)
+    refine cb.call _ 32 t (sp - 96) _ _ (hstM hpro) (ol_cbFrame cx) (ol_cbAbove cx) (by bsimp [])
+      (by bsimp []) (by decide) (by bsimp []) fun R' M' t' hk1 hI' hm => ?_
+    bsimp []
+    have st' := ((st0.set (z := 10) _).set (z := 1) _).keep (by omega) hk1 fun a ha => hm a (by omega)
+    simp only [if_true, List.cons_append, List.nil_append] at hk
+    rw [show cs ++ 32 :: (List.replicate (size - (Num.decText v).length) 48 ++ Num.decText v) =
+      cs ++ [32] ++ List.replicate (size - (Num.decText v).length) 48 ++ Num.decText v by simp] at hk
+    exact ol_mid hlive cb cx hv hsz hstab hk st' hI'
+      (by rw [hk1.get 18]; bsimp [h10]) (by rw [hk1.get 8]; bsimp [h11])
+
 end Dc.Mach

@@ -58,6 +58,15 @@ theorem ldv_lw_hit8hi (Mt : Mem) {a b : Nat} {v : BitVec 64} {k : Nat} (h : a = 
     ldv .lw (writeLog Mt [(b, 8, v)]) a = BitVec.ofNat 64 k := by
   rw [h, ldv_lw_img, imgLE_store8_hi, hv]; exact sext32_small hk
 
+/-- The chain word is in writable RAM, aligned, off the HTIF words. -/
+theorem ldOK_bcFree : LdOK bcFreeAddr 8 := by
+  simp only [LdOK, bcFreeAddr, tohostAddr]; omega
+
+theorem stOK_bcFree : StOK bcFreeAddr 8 := by
+  simp only [StOK, bcFreeAddr, tohostAddr]
+  refine ⟨by omega, by omega, by omega, ?_⟩
+  decide
+
 /-- An allocator byte is not one of `_bc_Free_list`'s. -/
 theorem not_bcFree_of_alloc {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H)
     {a : Nat} (h : AllocByte H a) : ¬ bcFreeBytes a := by
@@ -98,6 +107,43 @@ theorem ViewStruct.pop {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F F' : List B
     head := hhead
     base := fun a _ _ hg => hfr a hg }
 
+/-- Every block of the heap's objects is a live block. -/
+theorem BcHeap.objBlocks_live {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (hb : BcHeap S Mt H F L) {b : Blk} (h : b ∈ objBlocks L) :
+    b ∈ H.live := by
+  obtain ⟨x, hx, hbx⟩ := List.mem_flatMap.mp h
+  have hxb := hb.blocks x hx
+  unfold NumObj.blocks at hbx
+  split at hbx
+  · rcases List.mem_singleton.mp hbx with rfl; exact hxb.sLive
+  · rcases List.mem_cons.mp hbx with rfl | hbx
+    · exact hxb.sLive
+    · rcases List.mem_singleton.mp hbx with rfl; exact hxb.dLive
+
+/-- **The struct freshly allocated**, `_bc_Free_list` empty: `malloc`'s block
+is a block of neither the chain nor the objects, since its bytes were the
+allocator's. -/
+theorem ViewStruct.fresh {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F : List Blk}
+    {L : List NumObj} {sb : Blk} (hb : BcHeap S Mt H F L) (hF : F = [])
+    (hinv : HeapInv S M H') (hfr : ∀ a, ¬ AllocByte H a → imgM M a = imgM Mt a)
+    (hl : H'.live = sb :: H.live) (hsz : 40 ≤ sb.sz)
+    (hal : ∀ a, sb.h ≤ a → a < sb.fin → AllocByte H a) :
+    ViewStruct S Mt M H H' F [] sb L := by
+  have hpay : sb.h ≤ sb.pay := by simp only [Blk.pay]; omega
+  have hfin : sb.pay < sb.fin := by simp only [Blk.pay, Blk.fin]; omega
+  have hlive : sb ∈ H'.live := by rw [hl]; exact List.mem_cons_self
+  have hmono : ∀ c ∈ H.live, c ∈ H'.live := fun c hc => by
+    rw [hl]; exact List.mem_cons_of_mem _ hc
+  have hno : sb ∉ objBlocks L := fun hm => live_not_alloc hb.heap (hb.objBlocks_live hm)
+    (show sb.In sb.pay from ⟨Nat.le_refl _, hfin⟩) (hal sb.pay hpay hfin)
+  have hd := hb.dead
+  rw [hF] at hd
+  have hhead : ldv .ld M bcFreeAddr = BitVec.ofNat 64 (deadHead ([] : List Blk)) := by
+    rw [← hd.head]
+    exact ldv_congr .ld fun j hj => hfr _ fun ha => not_bcFree_of_alloc hb.heap ha
+      (by simp only [bcFreeBytes, bcFreeAddr, widthOfM] at hj ⊢; omega)
+  exact ⟨.fresh hF rfl hl, hinv, hlive, hmono, hno, hsz, hhead, fun a h1 _ _ => hfr a h1⟩
+
 /-- The tail of the chain, read out of the popped struct's link word. -/
 theorem BcHeap.popNext {S : Nat → Prop} {Mt : Mem} {H : Heap} {F F' : List Blk}
     {L : List NumObj} {sb : Blk} (hb : BcHeap S Mt H F L) (hF : F = sb :: F') :
@@ -105,6 +151,42 @@ theorem BcHeap.popNext {S : Nat → Prop} {Mt : Mem} {H : Heap} {F F' : List Blk
   rw [hF] at hb
   cases hb.dead with
   | cons _ ht => exact ht.head
+
+/-- A chain's head is a heap address, so it fits a word. -/
+theorem BcHeap.deadHead_lt {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (hb : BcHeap S Mt H F L) : deadHead F < 2 ^ 64 := by
+  cases F with
+  | nil => simp only [deadHead]; omega
+  | cons b t =>
+    have fb := hb.heap.blk (List.mem_append_right _ (hb.deadLive b List.mem_cons_self).1)
+    have h1 := fb.fin; have h2 := fb.top
+    simp only [heapEnd] at h2
+    have h3 : b.pay = b.h + 16 := rfl
+    have h4 : b.fin = b.h + 16 + b.sz := rfl
+    simp only [deadHead]; omega
+
+/-- **The head word is `NULL` exactly when the chain is empty**: the test that
+sends an inlined `new_sub_num` to `malloc`. -/
+theorem BcHeap.deadHead_eq_zero_iff {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (hb : BcHeap S Mt H F L) : deadHead F = 0 ↔ F = [] := by
+  cases F with
+  | nil => exact ⟨fun _ => rfl, fun _ => rfl⟩
+  | cons b t =>
+    have fb := hb.heap.blk (List.mem_append_right _ (hb.deadLive b List.mem_cons_self).1)
+    have h1 := fb.lo
+    simp only [heapStart] at h1
+    have h3 : b.pay = b.h + 16 := rfl
+    exact ⟨fun h => by simp only [deadHead] at h; omega, fun h => by cases h⟩
+
+/-- **The struct taken off the chain**: the link word read out of the head
+struct and stored back into `_bc_Free_list`. -/
+theorem ViewStruct.popAt {S : Nat → Prop} {Mt : Mem} {H : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} (hb : BcHeap S Mt H F L) (hF : F = sb :: F') (v : BitVec 64)
+    (hv : v = BitVec.ofNat 64 (deadHead F')) :
+    ViewStruct S Mt (writeLog Mt [(bcFreeAddr, 8, v)]) H H F F' sb L := by
+  subst hv
+  refine .pop hb hF (ldv_store_hit _ _ _) fun a hg => imgM_store_miss _ _ ?_
+  simp only [bcFreeBytes] at hg; omega
 
 /-- **The view's struct written**: the five fields of one site's stores turn
 the struct into the `ViewSrc` that `BcHeap.pushView` consumes. -/

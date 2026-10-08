@@ -23,3 +23,4 @@ import Dc.Mach.Bc.Compare
 import Dc.Mach.Bc.Heap
 import Dc.Mach.Bc.New
 import Dc.Mach.Bc.HeapClosure
+import Dc.Mach.Bc.Free

@@ -4507,6 +4507,28 @@ separation from allocator bytes, the released digit block, the retained struct,
 the cached dead-chain links, the global head, and the callee frame. Callers must
 supply these from ownership of their distinct live node blocks.
 
+### M4 `bc_free_num` (checked)
+
+`Dc/Mach/Bc/Free.lean`, imported by `Dc.lean`, proves `bc_free_num_spec` at
+`0x800048c0` from `FreeEntry` (the slot's object `x` in `L1 ++ x :: L2`, the
+slot separation `SlotOff`, the 32-byte callee frame) into `FreeNumK`:
+
+- `dec` (`n_refs ≥ 2`): `free_num_dec_heap` rebuilds `BcHeap` with
+  `x.decRef`; `free_num_dec_frame` limits writes to the count and the slot.
+- `rel` (`n_refs = 1`): `free_num_release` runs to the `free` call,
+  `free_spec` releases the digit block, `free_num_ret` runs the epilogue, and
+  `release_post` supplies `ReleasePost` (struct pushed on the dead chain,
+  digit block free, slot `NULL`, frame limited to allocator bytes, struct,
+  slot, callee frame, and `_bc_Free_list`).
+- `bc_free_num_null`: a `NULL` slot returns at once.
+
+The digit-pointer `NULL` arm (`0x80004924`) is unreachable under `NumAt`: its `vLo` field puts
+`n_ptr` at or above the heap start.
+Decrements reloaded by `lw` need `word_pred` and `sxw_ofNat` passed to
+`bc_run` as instantiated facts: the generic second `bsimp` pass otherwise
+produces a sub-of-sum literal whose kernel check recurses too deeply.
+All public theorems use only the three permitted axioms.
+
 ### M3 representation and heap closure (checked)
 
 `Dc/Mach/Bc/HeapClosure.lean`, imported by `Dc.lean`, completes:
@@ -4529,7 +4551,7 @@ The number representation deliberately admits unnormalized temporary digit
 arrays; `NumRep.Norm` is a separate producer obligation. Reference counts are
 stored faithfully, but correspondence with all dc-state references remains M9.
 The zero-reference ownership transfer through the actual `bc_free_num`
-execution remains M4. No release proof is imported or counted as verified.
+execution is checked in M4 (above).
 This completes the M3 representation/heap foundation, not those dependent
 machine/state obligations or the final theorem.
 

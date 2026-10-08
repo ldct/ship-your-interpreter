@@ -625,4 +625,57 @@ theorem rm_setup {live : Nat → Prop} {S : Nat → Prop}
   all_goals simp (disch := omega) only [ldv_ld_miss, ldv_ld_hit_eq]
   exact h0
 
+/-- **The base case** at `0x80004c30` (`_bc_simp_mul`, inlined):
+`bc_new_num(ulen + vlen + 1, 0)`, the column loop, the final carry. -/
+theorem rm_base {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
+    {uo vo : NumObj} {H : Heap} {F : List Blk}
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (st : RmAt S M0 M R0 R sp q W) (kp : RmKept R R0)
+    (huL : uo ∈ L) (hvL : vo ∈ L)
+    (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
+    (hla1 : 1 ≤ la) (hlb1 : 1 ≤ lb) (hN : la + lb < 2 ^ 30) (hm : 90 * min la lb < 2 ^ 30)
+    (h0 : ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p)
+    (h22 : R 22 = BitVec.ofNat 64 (la + lb)) (h20 : R 20 = BitVec.ofNat 64 la)
+    (h21 : R 21 = BitVec.ofNat 64 lb) (h18 : R 18 = BitVec.ofNat 64 vo.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 q) (hb : BcHeap S M H F L) :
+    DW live S Q 0x80004c30#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hW := cx.big
+  have hab := cx.above
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  bc_run hlive hS [h22, sxw_ofNat] at 0x80004c3c
+  apply st_80004c3c hlive
+  have hsf' : StackFrame S (sp - 192) 32 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  refine bc_new_num_spec (len := la + lb + 1) (scale := 0) hlive hb.newHeap hsf' (by simp only [heapEnd]; omega) (by omega)
+    (Nat.le_add_left _ _) _ (by bsimp []) (by bsimp []) (by bsimp [st.r2]) (by bsimp [])
+    ⟨fun R1 Mt1 H1 F1 x hk1 hp1 hr1 => ?_, fun R' Mt' hr2 hout => ?_⟩
+  · have hag : ∀ a, OutHeap a → ¬ frameIn (sp - 192) 32 a → imgM Mt1 a = imgM M a := hp1.out
+    refine rm_setup hlive cx hk
+      ((st.mem (st.saved.transport (lo := 128) (top := 192) (hag := fun a h1 h2 => hag a (by
+          simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+          (by simp only [frameIn]; omega)))
+        fun a ha _ hf => hag a ha (by simp only [frameIn] at hf ⊢; omega)).keeps
+        (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
+        (by rw [hk1.get 2]; bsimp []))
+      ⟨by rw [hk1.get 19]; bsimp [kp.k19], by rw [hk1.get 23]; bsimp [kp.k23],
+        by rw [hk1.get 24]; bsimp [kp.k24], by rw [hk1.get 25]; bsimp [kp.k25],
+        by rw [hk1.get 26]; bsimp [kp.k26], by rw [hk1.get 27]; bsimp [kp.k27]⟩
+      huL hvL hla hlb hla1 hlb1 hN hm ?_ hr1 (by rw [hk1.get 8]; bsimp [])
+      (by rw [hk1.get 22]; bsimp [h22]) (by rw [hk1.get 20]; bsimp [h20])
+      (by rw [hk1.get 21]; bsimp [h21]) (by rw [hk1.get 18]; bsimp [h18])
+      (by rw [hk1.get 9]; bsimp [h9]) hp1.rep (NewNumPost.insert hb hp1)
+    rw [ldv_congr .ld fun j hj => hag _ (by
+      simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, widthOfM] at hj ⊢; omega)
+      (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+    exact h0
+  · refine hk.oom R' Mt' (sp - 192 - 32) (by omega) (by omega) hr2 fun a ha hs hf => ?_
+    rw [hout a ha fun h => hf (by simp only [frameIn] at *; omega)]
+    exact st.out a ha hs hf
+
 end Dc.Mach

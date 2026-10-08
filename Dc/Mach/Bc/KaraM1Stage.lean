@@ -31,7 +31,7 @@ theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop}
     (hb : BcHeap S M H F (KList [] hs0 A B z))
     (hp0 : hs0.Perm [hu1, hu0, hv1, hv0])
     (hown : HdOwned A B z hs0) (hok : HdOK hs0)
-    (kz : KZero M z (zeroCount hs0 + 2 + (16 * (la + lb + 1) + 8)))
+    (kz : KZero M z (zeroCount hs0 + 2 + (4 * (la + lb + 2 - n) + 8)))
     (h17 : R 17 = BitVec.ofNat 64 z.rep.p)
     (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hW : 368 ≤ W) (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)

@@ -326,7 +326,7 @@ theorem kara_m2enter {live : Nat → Prop} {S : Nat → Prop}
     (hb : BcHeap S M H F (KList [] (kHs1 hm1 y1 y2 hs0) A B z))
     (hp0 : hs0.Perm [hu1, hu0, hv1, hv0])
     (hown : HdOwned A B z (kHs1 hm1 y1 y2 hs0)) (hok : HdOK (kHs1 hm1 y1 y2 hs0))
-    (kz : KZero M z (zeroCount (kHs1 hm1 y1 y2 hs0) + 1 + (16 * (la + lb + 1) + 8)))
+    (kz : KZero M z (zeroCount (kHs1 hm1 y1 y2 hs0) + 1 + (4 * (la + lb + 2 - n) + 8)))
     (h12 : R 12 = BitVec.ofNat 64 z.rep.p) (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
     (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
@@ -374,7 +374,7 @@ theorem kara_m1zero {live : Nat → Prop} {S : Nat → Prop}
     (hp0 : hs0.Perm [hu1, hu0, hv1, hv0])
     (hown : HdOwned A B z (some y2 :: some y1 :: hs0))
     (hok : HdOK (some y2 :: some y1 :: hs0))
-    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)))
+    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (4 * (la + lb + 2 - n) + 8)))
     (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
     (ds : KDiffSpec z hu1 hu0 hv1 hv0 u v n la lb N W)
@@ -468,7 +468,7 @@ theorem kara_m1ret {live : Nat → Prop} {S : Nat → Prop}
     (post : RmPost S M M' H' F' ((temps (some y2 :: some y1 :: hs0) ++ A) ++
       z.withRefs (z.rep.refs + zeroCount (some y2 :: some y1 :: hs0)) :: B)
       x1.rep x2.rep x1.rep.len x2.rep.len (sp - 192 + 40) (sp - 192) (W - 192) ym)
-    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)))
+    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (4 * (la + lb + 2 - n) + 8)))
     (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
     (ds : KDiffSpec z (some x1) hu0 (some x2) hv0 u v n la lb N W)
@@ -535,7 +535,7 @@ theorem kara_m1call {live : Nat → Prop} {S : Nat → Prop}
     (hp0 : hs0.Perm [some x1, hu0, some x2, hv0])
     (hown : HdOwned A B z (some y2 :: some y1 :: hs0))
     (hok : HdOK (some y2 :: some y1 :: hs0))
-    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)))
+    (kz : KZero M z (zeroCount (some y2 :: some y1 :: hs0) + 2 + (4 * (la + lb + 2 - n) + 8)))
     (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hNla : la + lb < 2 ^ 30) (hn1 : 1 ≤ n)
     (hx1p : 1 ≤ x1.rep.len) (hx2p : 1 ≤ x2.rep.len)
@@ -586,7 +586,7 @@ theorem kara_m1call {live : Nat → Prop} {S : Nat → Prop}
       BitVec.ofNat 64 80 :=
     (GlobAgree.store (BitVec.ofNat 64 y2.rep.len) (by omega)).mulBase hmb
   have kz1 : KZero (writeLog M [(sp - 192 + 8, 8, BitVec.ofNat 64 y2.rep.len)]) z
-      (zeroCount (some y2 :: some y1 :: hs0) + 2 + (16 * (la + lb + 1) + 8)) :=
+      (zeroCount (some y2 :: some y1 :: hs0) + 2 + (4 * (la + lb + 2 - n) + 8)) :=
     (GlobAgree.store (BitVec.ofNat 64 y2.rep.len) (by omega)).zero kz
   have hl1 : ldv .ld (writeLog M [(sp - 192 + 8, 8, BitVec.ofNat 64 y2.rep.len)]) (sp - 192) =
       BitVec.ofNat 64 y1.rep.len := by rw [ldv_ld_miss _ _ (by omega)]; exact ps.l1

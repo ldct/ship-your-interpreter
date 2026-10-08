@@ -242,7 +242,7 @@ theorem kara_m2call {live : Nat → Prop} {S : Nat → Prop}
     (hown : HdOwned A B z hs) (hok : HdOK hs) (hu0m : hu0 ∈ hs) (hv0m : hv0 ∈ hs)
     (hx1m : some x1 ∈ hs) (hy1m : some y1 ∈ hs)
     (kz : KZero M z (zeroCount hs + 1 +
-      (4 * (x1.rep.len + y1.rep.len + (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len) + 8)))
+      (4 * max (x1.rep.len + y1.rep.len) ((Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len + 1) + 8)))
     (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hN1 : x1.rep.len + y1.rep.len ≤ N) (hW1 : rmStack (x1.rep.len + y1.rep.len) + 192 ≤ W)
     (hN : (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len ≤ N)
@@ -307,8 +307,8 @@ theorem kara_m2stage {live : Nat → Prop} {S : Nat → Prop}
     (hpm : ∀ h2 h3 : Hd, (h3 :: h2 :: hs).Perm (kHs hu1 hu0 hv1 hm1 hv0 h2 h3 hd1 hd2))
     (hown : HdOwned A B z hs) (hok : HdOK hs) (hu0m : hu0 ∈ hs) (hv0m : hv0 ∈ hs)
     (hd1m : hd1 ∈ hs) (hd2m : hd2 ∈ hs)
-    (kz : KZero M z (zeroCount hs + 1 + (4 * ((Hd.o z hd1).rep.len + (Hd.o z hd2).rep.len +
-      (Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len) + 8)))
+    (kz : KZero M z (zeroCount hs + 1 + (4 * max ((Hd.o z hd1).rep.len + (Hd.o z hd2).rep.len)
+      ((Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len + 1) + 8)))
     (h12 : R 12 = BitVec.ofNat 64 z.rep.p) (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
     (hN1 : (Hd.o z hd1).rep.len + (Hd.o z hd2).rep.len ≤ N)
     (hW1 : rmStack ((Hd.o z hd1).rep.len + (Hd.o z hd2).rep.len) + 192 ≤ W)

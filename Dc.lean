@@ -60,6 +60,7 @@ import Dc.Mach.Bc.KaraM1Stage
 import Dc.Mach.Bc.KaraSubsSites
 import Dc.Mach.Bc.KaraTrim
 import Dc.Mach.Bc.KaraTrimSites
+import Dc.Mach.Bc.KaraTrimChain
 import Dc.Mach.Bc.KaraViews
 import Dc.Mach.Bc.KaraSplit
 import Dc.Mach.Bc.KaraPopSites

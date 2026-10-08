@@ -4655,6 +4655,44 @@ budget, so the register saves are split after the first two
 (`SavedWords.storeV` takes the stored value up to its entry register). The
 axioms of `bc_do_sub_spec` are `propext`, `Classical.choice`, `Quot.sound`.
 
+### M5 `bc_add` and `bc_sub` (checked)
+
+`Dc/Mach/Bc/BcAdd.lean` proves `bc_add_spec` at `0x80005634` and
+`Dc/Mach/Bc/BcSub.lean` proves `bc_sub_spec` at `0x80004ac4`, against
+`Num.add` and `Num.sub`, for two normalized numbers of the heap (possibly
+the same object, possibly the result slot's number) and a result slot `q`
+holding `xr` of the heap. `BinK.ret` receives `BinPost`: the new number
+heads the heap, `*q` points at it, `xr` lost one reference (`FreedRest.dec`)
+or was released (`.rel`), and off the heap only the 176-byte window below
+the entry `sp` and `q` changed. `BinK.oom` covers `out_of_memory` from any
+of the callees.
+
+The shared layer is `Dc/Mach/Bc/AddSub.lean`: `BinCtx` (frame, slot,
+alignment), `BinArgs` (membership, normal form, the `2^31` size bound
+that `_bc_do_add`/`_bc_do_sub` need), `ResSlot`, `BinAt` (saved words,
+`sp`, `s1 = q`, registers and out-of-heap memory at any point of the body;
+transports `.keeps`, `.call` across a callee's 128-byte window, `.low`
+across stores into the frame's own slots), `FreeEntry.of_slot`,
+`binPost_dec`/`binPost_rel` (the two `bc_free_num` arms into `BinPost`),
+`BcHeap.zeroAgain` (the zero of the equal-magnitude path).
+
+Segments per function: entry and saves, the sign dispatch, the comparison
+call, the three magnitude orders (`*_gt`, `*_lt`, `*_zero` with
+`*_zero_mid`/`*_zero_new`/`*_zero_fill`), the return points that set the
+sign (`*_signed`), the `bc_free_num` tail and the epilogue. `bc_sub` keeps
+`n2` and `scale_min` in its frame across the comparison and the zero's
+scale across `bc_new_num` (`ldv_lw_hitN` reloads it); the `lt` sign is
+`seqz` of `n2`'s sign word, proved by cases on the sign.
+
+Proof-engineering facts: `bc_run` stops after every branch, including
+concretely decided ones; iterate it (`iterate 3 (all_goals (try …))`). A
+leftover frame-access side goal must be closed (`frame_acc` with
+`tohostAddr` unfolded) before the continuation's `exact`. `bc_run`
+simplifies hypotheses, so load facts about memory written in the run are
+stated after it. Splitting the four sign cases out of the entry lemma keeps
+each declaration inside its budget. The axioms of both specs are `propext`,
+`Classical.choice`, `Quot.sound`.
+
 ### M3 representation and heap closure (checked)
 
 `Dc/Mach/Bc/HeapClosure.lean`, imported by `Dc.lean`, completes:

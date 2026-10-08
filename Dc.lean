@@ -35,3 +35,6 @@ import Dc.Mach.Bc.Int2Num
 import Dc.Mach.Bc.OutLong
 import Dc.Mach.Bc.DoAdd
 import Dc.Mach.Bc.DoSub
+import Dc.Mach.Bc.AddSub
+import Dc.Mach.Bc.BcAdd
+import Dc.Mach.Bc.BcSub

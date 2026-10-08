@@ -3,6 +3,7 @@ import Dc.BcModel.Add
 import Dc.BcModel.Karatsuba
 import Dc.BcModel.Raise
 import Dc.BcModel.Out
+import Dc.BcModel.Steps
 import Dc.Mach.DecodeTable
 import Dc.Mach.Tac
 import Dc.Mach.Strlen
@@ -32,3 +33,4 @@ import Dc.Mach.Bc.NumStore
 import Dc.Mach.Bc.Init
 import Dc.Mach.Bc.Int2Num
 import Dc.Mach.Bc.OutLong
+import Dc.Mach.Bc.DoAdd

@@ -4576,6 +4576,46 @@ range is a caller obligation; the site at `0x800072b8` passes the
 `sext.w` of a `bc_num2long` result, so its caller must supply `vlo`/`vhi`
 from its own range check.
 
+### M5 `_bc_do_add` (checked)
+
+`Dc/Mach/Bc/DoAdd.lean` proves `bc_do_add_spec` at `0x80004304` for two
+numbers `x1`, `x2` of the heap (possibly the same object) and `scale_min`.
+`AddK.ret` receives `AddPost`: a new object `y` heads the heap with
+`y.rep.num = ⟨false, dval (addDigits …), resScale s1 s2 scale_min⟩`,
+normalized, one reference; off the heap only the 96-byte window below the
+entry `sp` changes. `AddK.oom` covers `out_of_memory` from `bc_new_num`.
+
+Model: after `k` positions the result's digits are `addDs a b smin k =
+sumDs (N + 1) k (addLE xs ys 0) Z` (`Dc/BcModel/Steps.lean`); the carry
+register holds `carryAt xs ys 0 k`. `add_store` writes one position,
+`AddModel.step` gives its digit and carry, `addC_low`/`addR_low1`/`addR_low2`
+discharge the fraction copies (carry zero below `S - min s1 s2`), and
+`BcHeap.zeroFill` the `scale_min` tail.
+
+Segments: prologue and scale branch (`bc_do_add_spec`), length and
+`scale_min` branches (`add_pre2`, `add_pre3`), the `bc_new_num` call
+(`add_call`, over `AddPre`), the zero fill (`add_after_new`, `add_zfill`),
+setup and dispatch (`add_setup`, `add_setup_addr`, `add_dispatch`), the two
+fraction copies (`add_copy1*`, `add_copy2*`), the join and add loop
+(`add_join`, `add_main_*`), the carry loop (`add_carry_*`), the final carry
+(`add_final`), the inlined `_bc_rm_leading_zeros` (`add_rmlz*`) and the
+epilogue (`add_epi`).
+
+Scope premises: `AddArgs.size` bounds the result's digit count below `2^31`
+(the 32-bit `n_len + n_scale` arithmetic); `AddCtx` places the 96-byte
+window above the heap. `bc_add`'s call sites supply both.
+
+Proof-engineering facts: elaboration budgets are per declaration, so each
+loop is a body lemma with `hnext`/`hexit` continuations plus an induction
+lemma. Negative immediates are rewritten before generic word addition
+(`word_sub64`, `add2_pred`, `pred_add_ofNat`, `inc_dec`, `se12_fff`);
+otherwise `bsimp` produces terms like `x + 16 - 16` whose kernel check
+recurses too deeply. In `add_zfill_body` the closing `decide` attempts of
+`bc_run` overflow the kernel, so that step runs `dx_run` and `bsimp` by
+hand. An unknown name inside a `bc_run`/`bsimp` lemma list is silently
+ignored (the list sits under `try`). The axioms of `bc_do_add_spec` are
+`propext`, `Classical.choice`, `Quot.sound`.
+
 ### M3 representation and heap closure (checked)
 
 `Dc/Mach/Bc/HeapClosure.lean`, imported by `Dc.lean`, completes:

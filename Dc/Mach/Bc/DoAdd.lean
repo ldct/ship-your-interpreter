@@ -1859,4 +1859,127 @@ theorem add_zfill {live : Nat → Prop} {S : Nat → Prop}
       (fun _ R' M' st' hb' e8 e19 =>
         add_setup hlive cx hk hy ha st' hb' (e8.trans h8) (e19.trans h19))
 
+/-- After `bc_new_num` at `0x80004368`: `scale_min` back from the frame;
+below it the zero fill, otherwise the setup. -/
+theorem add_after_new {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
+    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
+    (h8 : R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale))
+    (h19 : R 19 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + 1))
+    (hsm : ldv .ld M (sp - 64 + 8) = BitVec.ofNat 64 smin) :
+    DW live S Q 0x80004368#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn0 := hb.nums _ List.mem_cons_self
+  have yp1 : heapStart ≤ y.rep.p := hn0.shape.pLo
+  have yp2 : y.rep.p + 40 ≤ heapEnd := hn0.shape.pHi
+  have yp3 : y.rep.p % 8 = 0 := hn0.shape.pAl
+  have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
+  have hls := hy.lenScale
+  have hsz := ha.size
+  simp only [heapStart, heapEnd] at yp1 yp2 v2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hp := hy.p
+  have hv0 : ldv .ld M (y.sb.pay + 32) = BitVec.ofNat 64 y.rep.val := by rw [← hp]; exact hn0.value
+  have h2 := st.r2; have h10 := st.r10
+  bc_run hlive hS [h2, h8, h19, hsm, toInt_ofNat_small] at 0x80004398 0x80004370
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  · intro _
+    exact add_setup hlive cx hk hy ha (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+      (by bsimp [h8]) (by bsimp [h19])
+  · intro hlt
+    have hlt' : max x1.rep.scale x2.rep.scale < smin := by
+      (try simp (disch := omega) only [toInt_ofNat_small] at hlt); omega
+    bc_run hlive hS [h2, h8, h19, hsm, h10, hv0, subw_ofNat, shl_shr32] at 0x8000438c
+    exact add_zfill hlive cx hk hy ha (n := smin - max x1.rep.scale x2.rep.scale) rfl (by omega)
+      _ 0 _ _ rfl (by omega) (st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [hv0])
+      (by bsimp [hv0]) (by bsimp [h8]) (by bsimp [h19])
+
+/-! ## The call of `bc_new_num` -/
+
+/-- The new object is the sum before any position. -/
+theorem AddSum.withDs_zero {y : NumObj} {a b : NumRep} {smin : Nat} (h : AddSum y a b smin) :
+    withDs y (addDs a b smin 0) = y := by
+  obtain ⟨p, rep, sb, db⟩ := y
+  have hr := h.rep
+  simp only at hr
+  subst hr
+  simp only [withDs, ← addDs_zero, zeroRep]
+
+/-- The `bc_new_num(D, max S scale_min)` call from `0x8000435c` (`scale_min`
+saved at `sp + 8`); out of memory reaches `AddK.oom`. -/
+theorem add_call {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 : NumObj}
+    {H : Heap} {F : List Blk}
+    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (ha : AddArgs L x1 x2 smin) (hb : BcHeap S M H F L) (sv : SavedWords M (sp - 64) addSlots R0)
+    (hout : ∀ a, OutHeap a → ¬ frameIn sp 96 a → imgM M a = imgM Mt0 a)
+    (hkp : Keeps addAll R R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 64))
+    (h18 : R 18 = BitVec.ofNat 64 x1.rep.p) (h9 : R 9 = BitVec.ofNat 64 x2.rep.p)
+    (h8 : R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale))
+    (h19 : R 19 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + 1))
+    (h11 : R 11 = BitVec.ofNat 64 (max (max x1.rep.scale x2.rep.scale) smin))
+    (h12 : R 12 = BitVec.ofNat 64 smin) :
+    DW live S Q 0x8000435c#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hsz := ha.size
+  have hs1 := (hb.nums x1 ha.m1).shape
+  have hs2 := (hb.nums x2 ha.m2).shape
+  have := hs1.lenPos
+  have hoff : ∀ a, sp - 64 + 8 ≤ a → a < sp - 64 + 16 → OutHeap a := fun a h1 h2 => by
+    simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+  have hb2 : BcHeap S (writeLog M [(sp - 64 + 8, 8, BitVec.ofNat 64 smin)]) H F L :=
+    hb.out_frame (P := fun a => sp - 64 + 8 ≤ a ∧ a < sp - 64 + 16)
+      (fun a ha => imgM_store_miss _ _ (by omega)) fun a ha => hoff a ha.1 ha.2
+  bc_run hlive hS [h2, h19, h12] at 0x80004250
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hsf' : StackFrame S (sp - 64) 32 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  refine bc_new_num_spec hlive hb2.newHeap hsf' (len := max x1.rep.len x2.rep.len + 1)
+    (scale := max (max x1.rep.scale x2.rep.scale) smin) (by simp only [heapEnd]; omega) (by omega)
+    (by omega) _ (by bsimp [h19]) (by bsimp [h11]) (by bsimp [h2]) (by bsimp [])
+    ⟨fun R1 Mt1 H1 F1 y hk1 hp1 hr1 => ?_, fun R' Mt' hr2' hout' => ?_⟩
+  · bsimp []
+    have hy : AddSum y x1.rep x2.rep smin :=
+      ⟨by rw [hp1.rep, Nat.max_comm (max x1.rep.scale x2.rep.scale)], addModel hs1 hs2, hsz⟩
+    have hmem : ∀ a, OutHeap a → ¬ frameIn (sp - 64) 32 a →
+        imgM Mt1 a = imgM (writeLog M [(sp - 64 + 8, 8, BitVec.ofNat 64 smin)]) a :=
+      fun a ha hf => hp1.out a ha hf
+    have st : AddAt S Mt0 Mt1 R0 R1 sp x1 x2 y.sb.pay :=
+      { r2 := by rw [hk1.get 2]; bsimp [h2]
+        saved := sv.transport (lo := 24) (top := 64) (hag := fun a h1 h2' => by
+          rw [hmem a (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+            (by simp only [frameIn]; omega), imgM_store_miss _ _ (by omega)])
+        r18 := by rw [hk1.get 18]; bsimp [h18]
+        r9 := by rw [hk1.get 9]; bsimp [h9]
+        r10 := hr1
+        regs := (hk1.mono (by decide)).trans ((by keeps_tac Keeps.refl _ _ : Keeps addAll _ R).trans hkp)
+        out := fun a ha hf => by
+          rw [hmem a ha (fun h => hf (by simp only [frameIn] at *; omega)),
+            imgM_store_miss _ _ (by simp only [frameIn] at hf; omega)]
+          exact hout a ha hf }
+    have hb' := NewNumPost.insert hb2 hp1
+    rw [← hy.withDs_zero] at hb'
+    refine add_after_new hlive cx hk hy ha st hb' (by rw [hk1.get 8]; bsimp [h8])
+      (by rw [hk1.get 19]; bsimp [h19]) ?_
+    rw [ldv_congr .ld fun j hj => hmem _ (hoff _ (by omega) (by simp only [widthOfM] at hj; omega))
+      (by simp only [frameIn]; omega)]
+    exact ldv_store_hit _ _ _
+  · refine hk.oom R' Mt' (by rw [hr2']; congr 1) fun a ha hf => ?_
+    rw [hout' a ha (fun h => hf (by simp only [frameIn] at *; omega)),
+      imgM_store_miss _ _ (by simp only [frameIn] at hf; omega)]
+    exact hout a ha hf
+
 end Dc.Mach

@@ -4794,3 +4794,39 @@ all 21 baseline/M3 headlines together through `import Dc`.
 Build objects and audit logs are retained outside the checkout in the private
 build tree. These changes affect proof normalization and a definition name;
 no dc semantics or binary bytes changed.
+
+### M6 `_bc_rec_mul`'s Karatsuba step: machine spans checked, composition open
+
+The step at `0x80004db0` is built from these checked spans (axioms of every one
+are `{propext, Classical.choice, Quot.sound}`):
+
+- `kara_entry` (`Dc/Mach/Bc/KaraEntry.lean`): the six spills of `s3` and
+  `s7`–`s11`, completing `KAt`. `kSpillMem` names the memory they leave, with
+  `kSpillMem_saved`/`kSpillMem_saved2` the two slot sets and `kSpillMem_off`
+  the frame.
+- `kara_half` (same file): `n = (max la lb + 1) / 2` from `addiw`, `srliw`,
+  `addw`, `sraiw` (`half_word` over `srliw31_small`, `sraiw1_small`,
+  `exw_ofNat`), `s9` pointed at `_bc_Free_list` with its head read, `u`'s
+  digits in `s10`, and the test of `la` against `n`. `KEntry` is the state at
+  either route.
+- `kzeroref_80005378`, `kzeroref_80004e68` (`KaraZeroRef.lean`): `_zero_`'s
+  struct loaded and its count raised for a half with no digits.
+- `ksplit_80004df8`, `ksplit_80004e30`, `ksplit_8000538c`, `ksplit_800053c0`
+  (generated, `scripts/dc/gen_kara_pop.py` → `KaraPopSites.lean`) and
+  `ksplit_800053f4`, `ksplit_80004e80` (`KaraPopLast.lean`): the six struct
+  sources, each the chain pop or `malloc(40)` with `out_of_memory` on failure.
+  `ViewStruct` (`KaraViews.lean`) is what both routes hand the store site:
+  `.popAt` for the pop, `.fresh` for the fresh block, and
+  `BcHeap.deadHead_eq_zero_iff` is the test that chooses.
+- `kview_80004e08`, `kview_80004e3c`, `kview_800053d0`, `kview_80005400`,
+  `kview_8000539c`, `kview_80004e94` (`KaraSplit.lean`): the six inlined
+  `new_sub_num` store sites, through `ViewStruct.toSrc` and `BcHeap.pushView`.
+- `ktrim_80004eb0`, `ktrim_80004ee0`, `ktrim_80004f10`, `ktrim_80004f40`
+  (generated, `scripts/dc/gen_kara_trim.py` → `KaraTrimSites.lean`): the four
+  leading-zero trims, over `BcHeap.advanceAt'`.
+
+Open: the two length dispatches at `0x80004e64` and `0x800053bc`, the
+composition of the four routes from `0x80004db0` to the trims and on to
+`kara_m1` at `0x80004f70` (the `KM1` state with `hs0` a permutation of the four
+handles), the Karatsuba arithmetic identity feeding `KDiffSpec`, `KM3Spec` and
+`KM1Spec`, and the `rmDepth` induction that closes `RmIH` and `bc_multiply`.

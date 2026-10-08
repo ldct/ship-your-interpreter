@@ -68,7 +68,7 @@ python3 -B scripts/gen_resp.py --check \
   || fail "stage a3: Vsa/Densify/Gen*.lean is stale (gen_resp.py from experiments/densify/closure.tsv)"
 python3 -B scripts/dc/gen_dc_steps.py --check \
   || fail "stage a3: Dc/Mach/{Code,Tohost,Steps}*.lean is stale (scripts/dc/gen_dc_steps.py)"
-for g in gen_kara_free gen_kara_shift gen_kara_scan; do
+for g in gen_kara_free gen_kara_shift gen_kara_scan gen_kara_subs gen_kara_trim; do
   python3 -B "scripts/dc/$g.py" --check \
     || fail "stage a3: a generated Dc/Mach/Bc/Kara*Sites.lean is stale (scripts/dc/$g.py)"
 done

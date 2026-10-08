@@ -12,10 +12,14 @@ digits freed; `bc_new_num` reuses it.
   pointer word at `a` through `n_next`.
 - `NumObj`: a number object with its two blocks; `NumObj.Blocks H x`: both
   are live blocks of the allocator heap `H`, the struct fits its block and
-  the digits lie in the buffer's block.
+  the digits lie in the buffer's block. An object owns its digit block
+  (`Owns`: `n_ptr` its payload) or is a view (`new_sub_num`: `n_ptr = NULL`,
+  the digits inside another object's block).
 - `BcHeap S Mt H F L`: the allocator invariant, the dead chain `F`, and the
-  live number objects `L` (each `NumAt`), with every block of `F` and `L`
-  distinct. Reference counts are the objects' `n_refs`; that they count the
+  live number objects `L` (each `NumAt`), with every struct block and owned
+  digit block of `F` and `L` distinct (`objBlocks`), and every view's digit
+  block owned by a later object of `L` (`ViewsOwned`). Reference counts
+  are the objects' `n_refs`; that they count the
   references held by dc's state is part of dc's state representation (M9).
 - Footprints: `NumObj.foot_blocks` (a number's bytes lie in its blocks),
   `BcHeap.foot_disjoint` (distinct objects have disjoint footprints),
@@ -62,11 +66,16 @@ theorem DeadChain.frame {Mt Mt' : Mem} :
     .cons (ha.trans h) (hl.frame (ldv_congr .ld fun j hj => hb _ List.mem_cons_self j hj)
       fun c hc => hb c (List.mem_cons_of_mem _ hc))
 
-/-- A number object with its struct block `sb` and digit block `db`. -/
+/-- A number object with its struct block `sb` and digit block `db`. A view
+(`new_sub_num`, `n_ptr = NULL`) reads its digits inside `db`, the buffer of
+the object it was cut from. -/
 structure NumObj where
   rep : NumRep
   sb : Blk
   db : Blk
+
+/-- `x` owns its digit buffer (`n_ptr ≠ NULL`); otherwise it is a view. -/
+abbrev NumObj.Owns (x : NumObj) : Prop := x.rep.ptr ≠ 0
 
 /-- The two blocks of `x`, live in `H`, hold its struct and digits. -/
 structure NumObj.Blocks (H : Heap) (x : NumObj) : Prop where
@@ -74,16 +83,88 @@ structure NumObj.Blocks (H : Heap) (x : NumObj) : Prop where
   dLive : x.db ∈ H.live
   sPay : x.rep.p = x.sb.pay
   sSz : 40 ≤ x.sb.sz
-  dPay : x.rep.ptr = x.db.pay
+  /-- an owned buffer is `n_ptr` -/
+  dPay : x.Owns → x.rep.ptr = x.db.pay
+  dLo : x.db.pay ≤ x.rep.val
   dFit : x.rep.val + x.rep.len + x.rep.scale ≤ x.db.fin
 
-/-- The blocks of a list of objects. -/
-def objBlocks (L : List NumObj) : List Blk := L.flatMap fun x => [x.sb, x.db]
+/-- The blocks an object owns: its struct, and its digit buffer unless it is
+a view. -/
+def NumObj.blocks (x : NumObj) : List Blk := if x.rep.ptr = 0 then [x.sb] else [x.sb, x.db]
 
-theorem mem_objBlocks {L : List NumObj} {x : NumObj} (hx : x ∈ L) :
-    x.sb ∈ objBlocks L ∧ x.db ∈ objBlocks L := by
-  simp only [objBlocks, List.mem_flatMap, List.mem_cons, List.not_mem_nil, or_false]
-  exact ⟨⟨x, hx, .inl rfl⟩, ⟨x, hx, .inr rfl⟩⟩
+/-- The blocks of a list of objects. -/
+def objBlocks (L : List NumObj) : List Blk := L.flatMap NumObj.blocks
+
+theorem NumObj.blocks_own {x : NumObj} (h : x.Owns) : x.blocks = [x.sb, x.db] := by
+  simp only [NumObj.blocks, h, ite_false]
+
+theorem NumObj.blocks_view {x : NumObj} (h : x.rep.ptr = 0) : x.blocks = [x.sb] := by
+  simp only [NumObj.blocks, h, ite_true]
+
+theorem NumObj.sb_mem_blocks (x : NumObj) : x.sb ∈ x.blocks := by
+  unfold NumObj.blocks; split <;> simp
+
+theorem mem_objBlocks {L : List NumObj} {x : NumObj} (hx : x ∈ L) : x.sb ∈ objBlocks L :=
+  List.mem_flatMap.mpr ⟨x, hx, x.sb_mem_blocks⟩
+
+theorem mem_objBlocks_db {L : List NumObj} {x : NumObj} (hx : x ∈ L) (ho : x.Owns) :
+    x.db ∈ objBlocks L :=
+  List.mem_flatMap.mpr ⟨x, hx, by rw [NumObj.blocks_own ho]; simp⟩
+
+theorem objBlocks_cons (x : NumObj) (L : List NumObj) :
+    objBlocks (x :: L) = x.blocks ++ objBlocks L := by
+  simp only [objBlocks, List.flatMap_cons]
+
+theorem objBlocks_append (L1 L2 : List NumObj) :
+    objBlocks (L1 ++ L2) = objBlocks L1 ++ objBlocks L2 := by
+  simp only [objBlocks, List.flatMap_append]
+
+/-- Every view's digit buffer is owned by an object after it in the list
+(views are cut from objects already present). -/
+inductive ViewsOwned : List NumObj → Prop
+  | nil : ViewsOwned []
+  | cons {x : NumObj} {L : List NumObj} :
+      (x.Owns ∨ ∃ w ∈ L, w.Owns ∧ w.db = x.db) → ViewsOwned L → ViewsOwned (x :: L)
+
+theorem ViewsOwned.owner : ∀ {L : List NumObj}, ViewsOwned L → ∀ {x : NumObj}, x ∈ L →
+    ∃ w ∈ L, w.Owns ∧ w.db = x.db
+  | _, .cons hx hL, _, hm => by
+    rcases List.mem_cons.mp hm with rfl | hm
+    · rcases hx with ho | ⟨w, hw, ho, he⟩
+      · exact ⟨_, List.mem_cons_self, ho, rfl⟩
+      · exact ⟨w, List.mem_cons_of_mem _ hw, ho, he⟩
+    · obtain ⟨w, hw, ho, he⟩ := hL.owner hm
+      exact ⟨w, List.mem_cons_of_mem _ hw, ho, he⟩
+
+/-- An object replaced by one with the same buffer and ownership. -/
+theorem ViewsOwned.replace {x x' : NumObj} (hp : x'.rep.ptr = x.rep.ptr) (hd : x'.db = x.db) :
+    ∀ {L1 L2 : List NumObj}, ViewsOwned (L1 ++ x :: L2) → ViewsOwned (L1 ++ x' :: L2)
+  | [], _, .cons hx hL => .cons (by simpa only [NumObj.Owns, hp, hd] using hx) hL
+  | y :: L1, L2, .cons hy hL => by
+    refine .cons ?_ (ViewsOwned.replace hp hd hL)
+    rcases hy with ho | ⟨w, hw, ho, he⟩
+    · exact .inl ho
+    · rcases List.mem_append.mp hw with hw | hw
+      · exact .inr ⟨w, List.mem_append_left _ hw, ho, he⟩
+      · rcases List.mem_cons.mp hw with rfl | hw
+        · exact .inr ⟨x', List.mem_append_right _ List.mem_cons_self,
+            by simpa only [NumObj.Owns, hp] using ho, hd.trans he⟩
+        · exact .inr ⟨w, List.mem_append_right _ (List.mem_cons_of_mem _ hw), ho, he⟩
+
+/-- An object removed: no view before it reads its buffer. -/
+theorem ViewsOwned.remove {x : NumObj} :
+    ∀ {L1 L2 : List NumObj}, ViewsOwned (L1 ++ x :: L2) →
+      (x.Owns → ∀ y ∈ L1, y.db ≠ x.db) → ViewsOwned (L1 ++ L2)
+  | [], _, .cons _ hL, _ => hL
+  | y :: L1, L2, .cons hy hL, hnv => by
+    refine .cons ?_ (ViewsOwned.remove hL fun ho z hz => hnv ho z (List.mem_cons_of_mem _ hz))
+    rcases hy with ho | ⟨w, hw, ho, he⟩
+    · exact .inl ho
+    · rcases List.mem_append.mp hw with hw | hw
+      · exact .inr ⟨w, List.mem_append_left _ hw, ho, he⟩
+      · rcases List.mem_cons.mp hw with rfl | hw
+        · exact absurd he.symm (hnv ho y List.mem_cons_self)
+        · exact .inr ⟨w, List.mem_append_right _ hw, ho, he⟩
 
 /-- A byte of a block's payload. -/
 abbrev Blk.In (b : Blk) (a : Nat) : Prop := b.pay ≤ a ∧ a < b.fin
@@ -97,14 +178,93 @@ structure BcHeap (S : Nat → Prop) (Mt : Mem) (H : Heap) (F : List Blk) (L : Li
   nums : ∀ x ∈ L, NumAt Mt x.rep
   blocks : ∀ x ∈ L, x.Blocks H
   distinct : (F ++ objBlocks L).Nodup
+  views : ViewsOwned L
   globOwn : ∀ a, bcFreeAddr ≤ a → a < bcFreeAddr + 8 → S a
+
+/-- Every object's digit block is a block of the heap's objects. -/
+theorem BcHeap.db_mem {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (h : BcHeap S Mt H F L) {x : NumObj} (hx : x ∈ L) : x.db ∈ objBlocks L := by
+  obtain ⟨w, hw, ho, he⟩ := h.views.owner hx
+  rw [← he]; exact mem_objBlocks_db hw ho
+
+/-- Blocks of two different objects of a list of distinct blocks differ. -/
+theorem objBlocks_separate {L : List NumObj} (hd : (objBlocks L).Nodup)
+    {x y : NumObj} (hx : x ∈ L) (hy : y ∈ L) (hne : x ≠ y)
+    {b c : Blk} (hb : b ∈ x.blocks) (hc : c ∈ y.blocks) : b ≠ c := by
+  induction L with
+  | nil => cases hx
+  | cons z L ih =>
+    have hd' : (z.blocks ++ objBlocks L).Nodup := hd
+    obtain ⟨_, ht, hcross⟩ := List.nodup_append.mp hd'
+    rcases List.mem_cons.mp hx with rfl | hxt
+    · rcases List.mem_cons.mp hy with rfl | hy
+      · exact False.elim (hne rfl)
+      · exact hcross b hb c (List.mem_flatMap.mpr ⟨y, hy, hc⟩)
+    · rcases List.mem_cons.mp hy with rfl | hyt
+      · exact fun he => hcross c hc b (List.mem_flatMap.mpr ⟨x, hxt, hb⟩) he.symm
+      · exact ih ht hxt hyt
+
+/-- One object's blocks are distinct. -/
+theorem objBlocks_blocks_nodup {L : List NumObj} (hd : (objBlocks L).Nodup) {x : NumObj}
+    (hx : x ∈ L) : x.blocks.Nodup := by
+  induction L with
+  | nil => cases hx
+  | cons z L ih =>
+    have hd' : (z.blocks ++ objBlocks L).Nodup := hd
+    obtain ⟨hz, ht, _⟩ := List.nodup_append.mp hd'
+    rcases List.mem_cons.mp hx with rfl | hxt
+    · exact hz
+    · exact ih ht hxt
+
+/-- A struct block is no owned digit buffer. -/
+theorem objBlocks_sb_ne_db {L : List NumObj} (hd : (objBlocks L).Nodup) {x w : NumObj}
+    (hx : x ∈ L) (hw : w ∈ L) (ho : w.Owns) : x.sb ≠ w.db := by
+  by_cases hxw : x = w
+  · subst hxw
+    have hn := objBlocks_blocks_nodup hd hx
+    rw [NumObj.blocks_own ho] at hn
+    simpa using hn
+  · exact objBlocks_separate hd hx hw hxw x.sb_mem_blocks (by rw [NumObj.blocks_own ho]; simp)
+
+/-- Two objects' structs differ. -/
+theorem objBlocks_sb_ne_sb {L : List NumObj} (hd : (objBlocks L).Nodup) {x y : NumObj}
+    (hx : x ∈ L) (hy : y ∈ L) (hne : x ≠ y) : x.sb ≠ y.sb :=
+  objBlocks_separate hd hx hy hne x.sb_mem_blocks y.sb_mem_blocks
+
+/-- Two owners' digit buffers differ. -/
+theorem objBlocks_db_ne_db {L : List NumObj} (hd : (objBlocks L).Nodup) {x y : NumObj}
+    (hx : x ∈ L) (hy : y ∈ L) (hne : x ≠ y) (hox : x.Owns) (hoy : y.Owns) : x.db ≠ y.db :=
+  objBlocks_separate hd hx hy hne (by rw [NumObj.blocks_own hox]; simp)
+    (by rw [NumObj.blocks_own hoy]; simp)
+
+/-- A struct block is no digit buffer of the heap. -/
+theorem BcHeap.sb_ne_db {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (h : BcHeap S Mt H F L) {x y : NumObj} (hx : x ∈ L) (hy : y ∈ L) : x.sb ≠ y.db := by
+  obtain ⟨w, hw, ho, he⟩ := h.views.owner hy
+  rw [← he]
+  exact objBlocks_sb_ne_db (List.nodup_append.mp h.distinct).2.1 hx hw ho
+
+/-- The owner at the head of the heap lends its buffer to no other object. -/
+theorem BcHeap.head_noView {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {x : NumObj} {L : List NumObj} (h : BcHeap S Mt H F (x :: L)) (ho : x.Owns) :
+    ∀ y ∈ L, y.db ≠ x.db := by
+  intro y hy e
+  have hL : ViewsOwned L := by cases h.views with | cons _ hL => exact hL
+  obtain ⟨w, hw, hwo, he⟩ := hL.owner hy
+  have hd := (List.nodup_append.mp h.distinct).2.1
+  have hne : x ≠ w := fun hxw => by
+    subst hxw
+    have hn : (x.blocks ++ objBlocks L).Nodup := hd
+    exact (List.nodup_append.mp hn).2.2 x.sb x.sb_mem_blocks x.sb (mem_objBlocks hw) rfl
+  exact objBlocks_db_ne_db hd List.mem_cons_self (List.mem_cons_of_mem _ hw) hne ho hwo
+    (he.trans e).symm
 
 /-! ## Footprints -/
 
 /-- A number's bytes lie in its two blocks. -/
-theorem NumObj.foot_blocks {Mt : Mem} {H : Heap} {x : NumObj} (h : NumAt Mt x.rep)
+theorem NumObj.foot_blocks {Mt : Mem} {H : Heap} {x : NumObj} (_h : NumAt Mt x.rep)
     (hb : x.Blocks H) {a : Nat} (ha : x.rep.Foot a) : x.sb.In a ∨ x.db.In a := by
-  have := hb.sPay; have := hb.sSz; have := hb.dPay; have := hb.dFit; have := h.shape.ptrLe
+  have := hb.sPay; have := hb.sSz; have := hb.dLo; have := hb.dFit
   simp only [Blk.In, Blk.fin, Blk.pay] at *
   rcases ha with ⟨h1, h2⟩ | ⟨h1, h2⟩
   · exact .inl ⟨by omega, by omega⟩

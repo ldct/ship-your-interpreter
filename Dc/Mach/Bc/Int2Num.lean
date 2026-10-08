@@ -255,11 +255,11 @@ theorem BufAt.transport {M M' : Mem} {base : Nat} {buf : List Nat} (h : BufAt M 
 /-- One copy step on the heap: digit `j` of `ds` stored. -/
 theorem copy_step_heap {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {ds : List Nat} {j : Nat} (hyl : y.rep.len + y.rep.scale = ds.length)
-    (hb : BcHeap S M H F (withDs y (ds.take j ++ List.replicate (ds.length - j) 0) :: L))
+    (hyo : y.Owns) (hb : BcHeap S M H F (withDs y (ds.take j ++ List.replicate (ds.length - j) 0) :: L))
     (hj : j < ds.length) (hd : ds.getD j 0 < 10) :
     BcHeap S (writeLog M [(y.rep.val + j, 1, zero_extend (m := 64) (BitVec.ofNat 8 (ds.getD j 0)))])
       H F (withDs y (ds.take (j + 1) ++ List.replicate (ds.length - (j + 1)) 0) :: L) := by
-  have h := BcHeap.setDigit (L1 := []) hb (i := j) (d := ds.getD j 0) (by simp only [withDs]; omega)
+  have h := BcHeap.setDigit (L1 := []) hb (hb.head_noView hyo) (i := j) (d := ds.getD j 0) (by simp only [withDs]; omega)
     hd (v := zero_extend (m := 64) (BitVec.ofNat 8 (ds.getD j 0))) (sbData_zext _)
   simp only [withDs, List.nil_append] at h ⊢
   rw [fill_step ds hj] at h
@@ -272,7 +272,7 @@ theorem i2n_copy {live : Nat → Prop} {S : Nat → Prop}
     (hS : HeapOwn S) {sp : Nat} (hsf : StackFrame S sp 128) (hab : heapEnd + 128 ≤ sp)
     {buf : List Nat} (hbd : Digits buf) (hl10 : buf.length ≤ 10)
     {H : Heap} {F : List Blk} {L : List NumObj} {y : NumObj} {M0 : Mem} {R0 : Nat → BitVec 64}
-    (hyl : y.rep.len + y.rep.scale = buf.length)
+    (hyl : y.rep.len + y.rep.scale = buf.length) (hyo : y.Owns)
     (hk : ∀ R M, BcHeap S M H F (withDs y buf.reverse :: L) → BufAt M (sp - 96) buf →
       MemOnly (fun a => ¬ OutHeap a) M M0 → Keeps [8, 14, 15] R R0 →
       DW live S Q 0x800069e8#64 R M) :
@@ -302,7 +302,7 @@ theorem i2n_copy {live : Nat → Prop} {S : Nat → Prop}
     all_goals bsimp [h8, p8]
     all_goals first | bc_addr | exact frame_acc hsf (by omega) (by omega) | skip
     have hvb : y.rep.val + y.rep.len + y.rep.scale ≤ 2273312768 := hn.shape.vHi
-    have hvl : 2147603920 ≤ y.rep.ptr := hn.shape.vLo
+    have hvl : 2147603920 ≤ y.rep.val := hn.shape.vLo
     have hpl : y.rep.ptr ≤ y.rep.val := hn.shape.ptrLe
     have hrl : buf.reverse.length = buf.length := List.length_reverse
     have hdj : buf.reverse.getD j 0 = buf.getD (buf.length - 1 - j) 0 := rev_getD buf hj
@@ -311,7 +311,7 @@ theorem i2n_copy {live : Nat → Prop} {S : Nat → Prop}
       simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show buf.length - 1 - j < buf.length by omega),
         Option.getD_some]
       exact hbd _ (List.getElem_mem _)
-    have hb' := copy_step_heap (hyl.trans hrl.symm) (hrl ▸ hb) (by omega) hd10
+    have hb' := copy_step_heap (hyl.trans hrl.symm) hyo (hrl ▸ hb) (by omega) hd10
     rw [hdj, hrl] at hb'
     have hst : MemOnly (fun a => ¬ OutHeap a) (writeLog M [(y.rep.val + j, 1,
         zero_extend (m := 64) (BitVec.ofNat 8 (buf.getD (buf.length - 1 - j) 0)))]) M :=
@@ -548,13 +548,14 @@ theorem i2n_fill {live : Nat → Prop} {S : Nat → Prop}
   have hnot := add_not_ofNat (A := sp - 96 + (i2nBuf v.natAbs).length)
     (B := (i2nBuf v.natAbs).length - 1) (by omega) (by omega)
   have hyl : y.rep.len + y.rep.scale = (i2nBuf v.natAbs).length := by rw [hy]; rfl
+  have hyo : y.Owns := by show y.rep.ptr ≠ 0; rw [hy]; show y.db.h + 16 ≠ 0; omega
   have hds : List.take 0 (i2nBuf v.natAbs).reverse ++
       List.replicate ((i2nBuf v.natAbs).length - 0) 0 = y.rep.ds := by rw [hy]; simp [zeroRep]
   have hsv := st.saved
   have hr2 := st.r2
   have hkp := st.regs
   bc_run hlive hS [hr10, hval, hr19, hr8, hnot] at 0x800069d4
-  refine i2n_copy hlive hS hsf cx.above bm.dig bm.le10 hyl (fun R' M' hb' hbuf' hmo hkp' => ?_)
+  refine i2n_copy hlive hS hsf cx.above bm.dig bm.le10 hyl hyo (fun R' M' hb' hbuf' hmo hkp' => ?_)
     _ 0 _ _ rfl hlen (by bsimp [hr8]) (by bsimp []; congr 1; omega) (by bsimp []) (by rw [hds]; exact hb)
     st.buf (MemOnly.refl _ _) (Keeps.refl _ _)
   have hout : ∀ a, OutHeap a → imgM M' a = imgM M a := fun a ha => hmo a fun h => h ha

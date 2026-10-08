@@ -190,7 +190,8 @@ theorem init_store {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : L
   have fa := FreshAt.of_heap hb hx
   have hb1 := hb.out_frame (MemOnly.store M g 8 (BitVec.ofNat 64 x.sb.pay)) fun a ha =>
     constBytes_out ⟨by omega, by simp only [zeroAddr] at *; omega⟩
-  have hb2 := BcHeap.setDigit (L1 := []) hb1 (i := 0) (d := d) (by rw [hx]; simp [zeroRep]) hd
+  have hb2 := BcHeap.setDigit (L1 := []) hb1
+    (hb1.head_noView (by show x.rep.ptr ≠ 0; rw [hx]; show x.db.h + 16 ≠ 0; omega)) (i := 0) (d := d) (by rw [hx]; simp [zeroRep]) hd
     (v := BitVec.ofNat 64 d) (by
       rw [sbData_eq]; apply BitVec.eq_of_toNat_eq
       simp only [lo8, toNat_setWidth8, BitVec.toNat_ofNat]; omega)

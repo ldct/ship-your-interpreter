@@ -12,39 +12,22 @@ namespace Dc.Mach
 
 open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
 
-private theorem objBlocks_separate {L : List NumObj} (hd : (objBlocks L).Nodup)
-    {x y : NumObj} (hx : x ∈ L) (hy : y ∈ L) (hne : x ≠ y)
-    {b c : Blk} (hb : b ∈ [x.sb, x.db]) (hc : c ∈ [y.sb, y.db]) : b ≠ c := by
-  induction L with
-  | nil => cases hx
-  | cons z L ih =>
-    have hd' : ([z.sb, z.db] ++ objBlocks L).Nodup := hd
-    obtain ⟨_, ht, hcross⟩ := List.nodup_append.mp hd'
-    rcases List.mem_cons.mp hx with rfl | hxt
-    · rcases List.mem_cons.mp hy with rfl | hy
-      · exact False.elim (hne rfl)
-      · exact hcross b hb c (List.mem_flatMap.mpr ⟨y, hy, hc⟩)
-    · rcases List.mem_cons.mp hy with rfl | hyt
-      · exact fun he => hcross c hc b (List.mem_flatMap.mpr ⟨x, hxt, hb⟩) he.symm
-      · exact ih ht hxt hyt
-
-/-- Distinct represented objects cannot share a byte: their allocated blocks
-are distinct by `BcHeap.distinct` and apart by `HeapInv.apart`. -/
+/-- Two objects that share no digit buffer cannot share a byte: their
+allocated blocks are distinct by `BcHeap.distinct` and apart by
+`HeapInv.apart`. (A view shares its buffer with its owner.) -/
 theorem BcHeap.foot_disjoint {S : Nat → Prop} {Mt : Mem} {H : Heap}
     {F : List Blk} {L : List NumObj} (h : BcHeap S Mt H F L)
-    {x y : NumObj} (hx : x ∈ L) (hy : y ∈ L) (hne : x ≠ y)
+    {x y : NumObj} (hx : x ∈ L) (hy : y ∈ L) (hne : x ≠ y) (hdb : x.db ≠ y.db)
     {a : Nat} (hax : x.rep.Foot a) (hay : y.rep.Foot a) : False := by
   have hd := (List.nodup_append.mp h.distinct).2.1
   have hxb := h.blocks x hx
   have hyb := h.blocks y hy
-  have hs : ∀ {b c : Blk}, b ∈ [x.sb, x.db] → c ∈ [y.sb, y.db] → b ≠ c :=
-    fun hb hc => objBlocks_separate hd hx hy hne hb hc
   rcases NumObj.foot_blocks (h.nums x hx) hxb hax with hxs | hxd <;>
     rcases NumObj.foot_blocks (h.nums y hy) hyb hay with hys | hyd
-  · exact live_apart h.heap hxb.sLive hyb.sLive (hs (by simp) (by simp)) hxs hys
-  · exact live_apart h.heap hxb.sLive hyb.dLive (hs (by simp) (by simp)) hxs hyd
-  · exact live_apart h.heap hxb.dLive hyb.sLive (hs (by simp) (by simp)) hxd hys
-  · exact live_apart h.heap hxb.dLive hyb.dLive (hs (by simp) (by simp)) hxd hyd
+  · exact live_apart h.heap hxb.sLive hyb.sLive (objBlocks_sb_ne_sb hd hx hy hne) hxs hys
+  · exact live_apart h.heap hxb.sLive hyb.dLive (h.sb_ne_db hx hy) hxs hyd
+  · exact live_apart h.heap hxb.dLive hyb.sLive (fun e => h.sb_ne_db hy hx e.symm) hxd hys
+  · exact live_apart h.heap hxb.dLive hyb.dLive hdb hxd hyd
 
 /-- Every represented number footprint is disjoint from allocator metadata. -/
 theorem BcHeap.foot_not_alloc {S : Nat → Prop} {Mt : Mem} {H : Heap}
@@ -96,14 +79,22 @@ theorem NewNumPost.blocks {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
       rw [hf]
       exact ⟨List.mem_cons_of_mem _ (hd _ (by rw [he]; exact List.mem_cons_self)), List.mem_cons_self⟩
     | fresh _ _ hf => rw [hf]; simp
-  refine ⟨hl.1, hl.2, ?_, h.sSz, ?_, ?_⟩
+  refine ⟨hl.1, hl.2, ?_, h.sSz, fun _ => ?_, ?_, ?_⟩
   · rw [h.rep]; rfl
   · rw [h.rep]; rfl
+  · rw [h.rep]; exact Nat.le_refl _
   · rw [h.rep]
     change x.db.pay + len + scale ≤ x.db.fin
     have := h.dSz
     simp only [Blk.fin, Blk.pay] at *
     omega
+
+/-- A new number owns its digit buffer. -/
+theorem NewNumPost.owns {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
+    {F F' : List Blk} {fr : Nat → Prop} {len scale : Nat} {x : NumObj}
+    (h : NewNumPost S Mt Mt' H H' F F' fr len scale x) : x.Owns := by
+  show x.rep.ptr ≠ 0
+  rw [h.rep]; simp only [zeroRep, Blk.pay]; omega
 
 /-- The allocator's live list contains each block at most once. -/
 theorem HeapInv.live_nodup {S : Nat → Prop} {Mt : Mem} {H : Heap}
@@ -127,10 +118,12 @@ theorem NewNumPost.insert {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
     · exact (h.deadLive b hf).1
     · obtain ⟨y, hy, hb⟩ := List.mem_flatMap.mp hl
       have hby := h.blocks y hy
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
-      rcases hb with rfl | rfl
-      · exact hby.sLive
-      · exact hby.dLive
+      unfold NumObj.blocks at hb
+      split at hb <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
+      · subst hb; exact hby.sLive
+      · rcases hb with rfl | rfl
+        · exact hby.sLive
+        · exact hby.dLive
   have hbase : (x.sb :: (F' ++ objBlocks L)).Nodup := by
     cases p.src with
     | reuse he _ => simpa only [he, List.cons_append] using h.distinct
@@ -178,6 +171,7 @@ theorem NewNumPost.insert {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
     nums := ?_
     blocks := ?_
     distinct := ?_
+    views := .cons (.inl p.owns) h.views
     globOwn := h.globOwn }
   · intro b hb
     obtain ⟨hbl, hsz⟩ := h.deadLive b (hsub b hb)
@@ -188,9 +182,9 @@ theorem NewNumPost.insert {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
     · have hb := h.blocks y hy
       refine (h.nums y hy).frame fun a ha => ?_
       have hys : y.sb ≠ x.sb := fun he =>
-        hsb (List.mem_append_right _ (he ▸ (mem_objBlocks hy).1))
+        hsb (List.mem_append_right _ (he ▸ mem_objBlocks hy))
       have hyd : y.db ≠ x.sb := fun he =>
-        hsb (List.mem_append_right _ (he ▸ (mem_objBlocks hy).2))
+        hsb (List.mem_append_right _ (he ▸ h.db_mem hy))
       rcases NumObj.foot_blocks (h.nums y hy) hb ha with hs | hd
       · exact p.live y.sb hb.sLive hys a hs
       · exact p.live y.db hb.dLive hyd a hd
@@ -199,6 +193,7 @@ theorem NewNumPost.insert {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
     · exact p.blocks fun b hb => (h.deadLive b hb).1
     · have hb := h.blocks y hy
       exact { hb with sLive := p.src.live_mono hb.sLive, dLive := p.src.live_mono hb.dLive }
-  · exact horder.nodup_iff.mpr hnew
+  · rw [objBlocks_cons, NumObj.blocks_own p.owns]
+    exact horder.nodup_iff.mpr hnew
 
 end Dc.Mach

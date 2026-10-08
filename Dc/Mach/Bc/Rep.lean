@@ -261,7 +261,7 @@ theorem dval_take_succ (ds : List Nat) {m : Nat} (h : m < ds.length) :
 structure NumRep where
   /-- the struct (40 bytes) -/
   p : Nat
-  /-- `n_ptr`: the digit buffer `malloc` returned -/
+  /-- `n_ptr`: the digit buffer `malloc` returned, or `NULL` for a view (`new_sub_num`) -/
   ptr : Nat
   /-- `n_value`: the first digit -/
   val : Nat
@@ -289,10 +289,10 @@ structure NumShape (o : NumRep) : Prop where
   pLo : heapStart ≤ o.p
   pHi : o.p + 40 ≤ heapEnd
   ptrLe : o.ptr ≤ o.val
-  vLo : heapStart ≤ o.ptr
+  vLo : heapStart ≤ o.val
   vHi : o.val + o.len + o.scale ≤ heapEnd
-  /-- the digit buffer is apart from the struct -/
-  sep : o.val + o.len + o.scale ≤ o.p ∨ o.p + 40 ≤ o.ptr
+  /-- the digits are apart from the struct -/
+  sep : o.val + o.len + o.scale ≤ o.p ∨ o.p + 40 ≤ o.val
 
 /-- **Memory `Mt` holds the object `o`.** -/
 structure NumAt (Mt : Mem) (o : NumRep) : Prop where

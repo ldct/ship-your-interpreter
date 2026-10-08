@@ -258,11 +258,11 @@ index `N - k`. -/
 theorem add_store {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {a b : NumRep} {smin k : Nat} (h : AddModel a b)
     (hyl : y.rep.len + y.rep.scale = max a.len b.len + 1 + max smin (max a.scale b.scale))
-    (hb : BcHeap S M H F (withDs y (addDs a b smin k) :: L)) (hk : k < addN a b + 1)
+    (hyo : y.Owns) (hb : BcHeap S M H F (withDs y (addDs a b smin k) :: L)) (hk : k < addN a b + 1)
     {v : BitVec 64} (hv : sbData v = BitVec.ofNat 8 ((addR a b).getD k 0)) :
     BcHeap S (writeLog M [(y.rep.val + (addN a b - k), 1, v)]) H F
       (withDs y (addDs a b smin (k + 1)) :: L) := by
-  have hst := BcHeap.setDigit (L1 := []) hb (i := addN a b - k) (d := (addR a b).getD k 0)
+  have hst := BcHeap.setDigit (L1 := []) hb (hb.head_noView hyo) (i := addN a b - k) (d := (addR a b).getD k 0)
     (by simp only [withDs, addN, loopLen] at hyl ⊢; omega) (h.getD_lt_r k) hv
   simp only [withDs, List.nil_append] at hst ⊢
   rw [show addN a b - k = addN a b + 1 - 1 - k by omega, sumDs_step hk (by rw [h.rl]; exact hk)] at hst
@@ -283,6 +283,7 @@ theorem NumAt.advance {Mt : Mem} {o : NumRep} (h : NumAt Mt o) (hl : 2 ≤ o.len
       lenPos := by simp only [NumRep.drop]; omega
       size := by simp only [NumRep.drop]; omega
       ptrLe := by simp only [NumRep.drop]; omega
+      vLo := by have := hs.vLo; simp only [NumRep.drop]; omega
       vHi := by simp only [NumRep.drop]; omega
       sep := by simp only [NumRep.drop]; omega }
   refine ⟨hshape, ?_, ?_, ?_, ?_, ?_, ?_, fun i hi => ?_⟩
@@ -315,30 +316,16 @@ theorem BcHeap.advance {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
   have hx : x ∈ x :: L := List.mem_cons_self
   have hn := h.nums x hx
   have hxb := h.blocks x hx
-  have hi' := h.heap
-  have hsp := hxb.sPay; have hsz := hxb.sSz; have hdf := hxb.dFit
+  have hsp := hxb.sPay; have hsz := hxb.sSz; have hdf := hxb.dFit; have hdl := hxb.dLo
   have hfin : x.sb.fin = x.sb.pay + x.sb.sz := rfl
   have hin : ∀ a, x.rep.p + 4 ≤ a ∧ a < x.rep.p + 40 → x.sb.In a := fun a ha => ⟨by omega, by omega⟩
   have hsep := hn.shape.sep; have hpl := hn.shape.ptrLe
-  refine BcHeap.update h' rfl rfl ⟨hxb.sLive, hxb.dLive, hxb.sPay, hxb.sSz, hxb.dPay, by
-      simp only [NumRep.drop]; omega⟩
+  exact BcHeap.update h' rfl rfl rfl ⟨hxb.sLive, hxb.dLive, hxb.sPay, hxb.sSz, hxb.dPay,
+      by simp only [NumRep.drop]; omega, by simp only [NumRep.drop]; omega⟩
     (hn.advance hl h1 h2) (P := fun a => x.rep.p + 4 ≤ a ∧ a < x.rep.p + 40)
     (fun a ha => by
-      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]) fun a ha => ?_
-  have hsa := hin a ha
-  have hhp := live_in_heap hi' hxb.sLive hsa
-  refine ⟨live_not_alloc hi' hxb.sLive hsa, ?_, fun b hb hba => ?_⟩
-  · simp only [bcFreeBytes, bcFreeAddr, heapStart] at *; omega
-  · have sf := SplitFacts.of_nodup (L1 := []) h.distinct
-    rcases List.mem_append.mp hb with hb | hb
-    · exact live_apart hi' (h.deadLive b hb).1 hxb.sLive (fun e' => sf.sF (e' ▸ hb)) hba hsa
-    · obtain ⟨y, hy, hby⟩ := List.mem_flatMap.mp hb
-      have ⟨n1, _, n3, _⟩ := sf.other hy
-      have hyb := h.blocks y (mem_split (L1 := []) hy)
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hby
-      rcases hby with rfl | rfl
-      · exact live_apart hi' hyb.sLive hxb.sLive n1 hba hsa
-      · exact live_apart hi' hyb.dLive hxb.sLive n3 hba hsa
+      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)])
+    fun a ha => h'.sb_writeOK (hin a ha)
 
 theorem NumRep.drop_zero (o : NumRep) : o.drop 0 = o := by
   cases o; simp [NumRep.drop]
@@ -387,6 +374,7 @@ structure AddPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L
     resScale a.scale b.scale smin⟩
   norm : y.rep.Norm
   refs : y.rep.refs = 1
+  owns : y.Owns
   out : ∀ a, OutHeap a → ¬ frameIn sp 96 a → imgM Mt a = imgM Mt0 a
 
 /-- `_bc_do_add`'s continuations: the result, or `out_of_memory`. -/
@@ -473,6 +461,7 @@ structure AddFinal (o a b : NumRep) (smin : Nat) : Prop where
   scale : o.scale = resScale a.scale b.scale smin
   dsLen : o.ds.length = o.len + o.scale
   lenPos : 1 ≤ o.len
+  ptr : o.ptr ≠ 0
 
 /-- Leading zeros removed: the result. -/
 theorem add_done {live : Nat → Prop} {S : Nat → Prop}
@@ -486,7 +475,7 @@ theorem add_done {live : Nat → Prop} {S : Nat → Prop}
   obtain ⟨hnum, hnorm, -, -⟩ := NumRep.rmLeadingZeros_spec hf.dsLen hf.lenPos
   have e : o.rmLeadingZeros = o.drop j := by rw [NumRep.rmLeadingZeros, hj]
   rw [e] at hnum hnorm
-  refine add_epi hlive cx hk (y := { y with rep := o.drop j }) st ⟨hb, ?_, hnorm, hf.refs, st.out⟩
+  refine add_epi hlive cx hk (y := { y with rep := o.drop j }) st ⟨hb, ?_, hnorm, hf.refs, hf.ptr, st.out⟩
   show (o.drop j).num = _
   rw [hnum, NumRep.num, hf.neg, hf.ds, hf.scale]
 
@@ -623,6 +612,11 @@ theorem AddSum.N_lt {y : NumObj} {a b : NumRep} {smin : Nat} (h : AddSum y a b s
 theorem AddSum.p {y : NumObj} {a b : NumRep} {smin : Nat} (h : AddSum y a b smin) :
     y.rep.p = y.sb.pay := by rw [h.rep]; rfl
 
+theorem AddSum.owns {y : NumObj} {a b : NumRep} {smin : Nat} (h : AddSum y a b smin) :
+    y.Owns := by
+  show y.rep.ptr ≠ 0
+  rw [h.rep]; show y.db.h + 16 ≠ 0; omega
+
 theorem AddSum.lenScale {y : NumObj} {a b : NumRep} {smin : Nat} (h : AddSum y a b smin) :
     y.rep.len + y.rep.scale = max a.len b.len + 1 + max smin (max a.scale b.scale) := by
   rw [h.rep]; rfl
@@ -639,7 +633,8 @@ theorem AddSum.final {y : NumObj} {a b : NumRep} {smin : Nat} (h : AddSum y a b 
       scale := by show y.rep.scale = _; rw [h.rep]; rfl
       dsLen := by show (addDs a b smin (addN a b + 1)).length = y.rep.len + y.rep.scale
                   rw [hl, h.lenScale]
-      lenPos := by show 1 ≤ y.rep.len; rw [h.rep]; simp [zeroRep] }
+      lenPos := by show 1 ≤ y.rep.len; rw [h.rep]; simp [zeroRep]
+      ptr := h.owns }
 
 /-- Index `0` is still zero before the last position. -/
 theorem addDs_getD_zero (a b : NumRep) (smin : Nat) :
@@ -672,7 +667,7 @@ theorem add_final {live : Nat → Prop} {S : Nat → Prop}
   have hn := hb.nums _ List.mem_cons_self
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hls := hy.lenScale
-  have v1 : heapStart ≤ y.rep.ptr := hn.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn.shape.vLo
   have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn.shape.vHi
   have v3 : y.rep.ptr ≤ y.rep.val := hn.shape.ptrLe
   simp only [heapStart, heapEnd] at v1 v2
@@ -690,7 +685,7 @@ theorem add_final {live : Nat → Prop} {S : Nat → Prop}
   · intro hne
     bv_nat at hne
     rw [Nat.mod_eq_of_lt (by omega)] at hne
-    have hb' := add_store hm hy.lenScale hb (Nat.lt_succ_self _) (v := BitVec.ofNat 64 1)
+    have hb' := add_store hm hy.lenScale hy.owns hb (Nat.lt_succ_self _) (v := BitVec.ofNat 64 1)
       (by rw [sbData_ofNat, hlast]; congr 1; omega)
     rw [Nat.sub_self, Nat.add_zero] at hb'
     have e1 : BitVec.signExtend 64 (BitVec.extractLsb 31 0 1#64) = 1#64 := by decide
@@ -738,7 +733,7 @@ theorem add_carry_exit {live : Nat → Prop} {S : Nat → Prop}
   have hn0 := hb.nums _ List.mem_cons_self
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hls := hy.lenScale
-  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn0.shape.vLo
   have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   simp only [heapStart, heapEnd] at v1 v2
@@ -775,7 +770,7 @@ theorem add_carry_tail {live : Nat → Prop} {S : Nat → Prop}
   have hm := hy.model
   have hn0 := hb.nums _ List.mem_cons_self
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
-  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn0.shape.vLo
   have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   have hls := hy.lenScale
@@ -787,7 +782,7 @@ theorem add_carry_tail {live : Nat → Prop} {S : Nat → Prop}
       BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))]) H F
       (withDs y (addDs x1.rep x2.rep smin (k0 + j + 1)) :: L) := by
     rw [eaddr]
-    exact add_store hm hls hb (by omega) (sbData_ofNat _)
+    exact add_store hm hls hy.owns hb (by omega) (sbData_ofNat _)
   have st' := st.heap cx (M' := writeLog M [(Y - j, 1,
       BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))]) fun a ha =>
     imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; simp only [addN, loopLen] at hstop hY hls; omega)
@@ -1097,7 +1092,7 @@ theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop}
   have hm := hy.model
   have hn0 := hb.nums _ List.mem_cons_self
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
-  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn0.shape.vLo
   have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   have hls := hy.lenScale
@@ -1112,7 +1107,7 @@ theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop}
       BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))]) H F
       (withDs y (addDs x1.rep x2.rep smin (k0 + j + 1)) :: L) := by
     rw [eaddr]
-    exact add_store hm hy.lenScale hb (by simp only [addN, loopLen]; omega) (sbData_ofNat _)
+    exact add_store hm hy.lenScale hy.owns hb (by simp only [addN, loopLen]; omega) (sbData_ofNat _)
   have st' := st.heap cx (M' := writeLog M [(Y - j, 1,
       BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))]) fun a ha =>
     imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; omega)
@@ -1316,7 +1311,7 @@ theorem add_copy1_exit {live : Nat → Prop} {S : Nat → Prop}
   have a1 := hs1.vLo; have a2 := hs1.ptrLe; have a3 := hs1.size; have a4 := hs1.vHi
   have p1 := hs1.pLo; have p2 := hs1.pHi; have p3 := hs2.pLo; have p4 := hs2.pHi
   have hn0 := hb.nums _ List.mem_cons_self
-  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn0.shape.vLo
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   simp only [heapStart, heapEnd] at a1 a4 v1 p1 p2 p3 p4
   have l1 := hn1.len; have l2 := hn2.len
@@ -1360,7 +1355,7 @@ theorem add_copy1_body {live : Nat → Prop} {S : Nat → Prop}
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hn0 := hb.nums _ List.mem_cons_self
-  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn0.shape.vLo
   have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   have hls := hy.lenScale
@@ -1369,7 +1364,7 @@ theorem add_copy1_body {live : Nat → Prop} {S : Nat → Prop}
   have hb' : BcHeap S (writeLog M [(Y - j - 1 + 1, 1, BitVec.ofNat 64 d)]) H F
       (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) := by
     rw [show Y - j - 1 + 1 = y.rep.val + (addN x1.rep x2.rep - j) by simp only [addN, loopLen]; omega]
-    exact add_store hm hy.lenScale hb (by simp only [addN, loopLen]; omega) (by rw [sbData_ofNat, hr])
+    exact add_store hm hy.lenScale hy.owns hb (by simp only [addN, loopLen]; omega) (by rw [sbData_ofNat, hr])
   have st' := st.heap cx (M' := writeLog M [(Y - j - 1 + 1, 1, BitVec.ofNat 64 d)]) fun a ha =>
     imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; omega)
   have h15 := cr.r15; have h13 := cr.r13; have h6 := cr.r6; have h28 := cr.r28
@@ -1467,7 +1462,7 @@ theorem add_copy2_exit {live : Nat → Prop} {S : Nat → Prop}
   have hs1 := hn1.shape; have hs2 := hn2.shape
   have a1 := hs2.vLo; have a2 := hs2.ptrLe; have a3 := hs2.size; have a4 := hs2.vHi
   have hn0 := hb.nums _ List.mem_cons_self
-  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn0.shape.vLo
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   simp only [heapStart, heapEnd] at a1 a4 v1
   num_facts hn1
@@ -1514,7 +1509,7 @@ theorem add_copy2_body {live : Nat → Prop} {S : Nat → Prop}
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hn0 := hb.nums _ List.mem_cons_self
-  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn0.shape.vLo
   have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   have hls := hy.lenScale
@@ -1523,7 +1518,7 @@ theorem add_copy2_body {live : Nat → Prop} {S : Nat → Prop}
   have hb' : BcHeap S (writeLog M [(Y - j, 1, BitVec.ofNat 64 d)]) H F
       (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) := by
     rw [show Y - j = y.rep.val + (addN x1.rep x2.rep - j) by simp only [addN, loopLen]; omega]
-    exact add_store hm hy.lenScale hb (by simp only [addN, loopLen]; omega) (by rw [sbData_ofNat, hr])
+    exact add_store hm hy.lenScale hy.owns hb (by simp only [addN, loopLen]; omega) (by rw [sbData_ofNat, hr])
   have st' := st.heap cx (M' := writeLog M [(Y - j, 1, BitVec.ofNat 64 d)]) fun a ha =>
     imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; omega)
   have h15 := cr.r15; have h6 := cr.r6; have h17 := cr.r17; have h14 := cr.r14
@@ -1763,11 +1758,11 @@ theorem add_setup {live : Nat → Prop} {S : Nat → Prop}
 theorem BcHeap.zeroFill {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {a b : NumRep} {smin i : Nat}
     (hyl : y.rep.len + y.rep.scale = max a.len b.len + 1 + max smin (max a.scale b.scale))
-    (hb : BcHeap S M H F (withDs y (addDs a b smin 0) :: L))
+    (hyo : y.Owns) (hb : BcHeap S M H F (withDs y (addDs a b smin 0) :: L))
     (hi : i < max a.len b.len + 1 + max smin (max a.scale b.scale)) {v : BitVec 64}
     (hv : sbData v = BitVec.ofNat 8 0) :
     BcHeap S (writeLog M [(y.rep.val + i, 1, v)]) H F (withDs y (addDs a b smin 0) :: L) := by
-  have hst := BcHeap.setDigit (L1 := []) hb (i := i) (d := 0) (by simp only [withDs]; omega)
+  have hst := BcHeap.setDigit (L1 := []) hb (hb.head_noView hyo) (i := i) (d := 0) (by simp only [withDs]; omega)
     (by decide) hv
   simp only [withDs, List.nil_append] at hst ⊢
   rw [← addDs_zero, List.set_replicate_self] at hst
@@ -1804,13 +1799,13 @@ theorem add_zfill_body {live : Nat → Prop} {S : Nat → Prop}
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hn0 := hb.nums _ List.mem_cons_self
-  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v1 : heapStart ≤ y.rep.val := hn0.shape.vLo
   have v2 : y.rep.val + y.rep.len + y.rep.scale ≤ heapEnd := hn0.shape.vHi
   have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
   have hls := hy.lenScale
   simp only [heapStart, heapEnd] at v1 v2
   have hb' := BcHeap.zeroFill (i := max x1.rep.scale x2.rep.scale + (max x1.rep.len x2.rep.len + 1) + i)
-    (v := 0#64) hls hb (by omega) (sbData_ofNat 0)
+    (v := 0#64) hls hy.owns hb (by omega) (sbData_ofNat 0)
   rw [show y.rep.val + (max x1.rep.scale x2.rep.scale + (max x1.rep.len x2.rep.len + 1) + i) = Z + i by
     omega] at hb'
   have st' := st.heap cx (M' := writeLog M [(Z + i, 1, 0#64)]) fun a ha =>

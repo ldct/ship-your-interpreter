@@ -4522,8 +4522,11 @@ slot separation `SlotOff`, the 32-byte callee frame) into `FreeNumK`:
   slot, callee frame, and `_bc_Free_list`).
 - `bc_free_num_null`: a `NULL` slot returns at once.
 
-The digit-pointer `NULL` arm (`0x80004924`) is unreachable under `NumAt`: its `vLo` field puts
-`n_ptr` at or above the heap start.
+- `free_num_view` (`n_refs = 1`, `n_ptr = NULL`, `0x80004924`): a view made
+  by `new_sub_num` pushes its struct on the dead chain without calling `free`;
+  `release_post_view` supplies `ReleasePost` with the allocator unchanged
+  (`ReleasePost.view`). An owner's release (`ReleasePost.owned`) requires
+  `FreeEntry.noView`: no object before it in the heap list reads its buffer.
 Decrements reloaded by `lw` need `word_pred` and `sxw_ofNat` passed to
 `bc_run` as instantiated facts: the generic second `bsimp` pass otherwise
 produces a sub-of-sum literal whose kernel check recurses too deeply.
@@ -4692,6 +4695,34 @@ simplifies hypotheses, so load facts about memory written in the run are
 stated after it. Splitting the four sign cases out of the entry lemma keeps
 each declaration inside its budget. The axioms of both specs are `propext`,
 `Classical.choice`, `Quot.sound`.
+
+### M6 prerequisite: number views in the heap (checked)
+
+`new_sub_num` (used by `_bc_rec_mul`) builds a struct whose `n_ptr` is `NULL`
+and whose `n_value` points into another number's digit buffer. The heap
+invariant now admits these views:
+
+- `NumShape` bounds `n_value` (`vLo`, `vHi`) instead of `n_ptr`; `ptrLe` keeps
+  `n_ptr ≤ n_value`. `NumObj.Owns` is `n_ptr ≠ 0`; `NumObj.Blocks.dPay` holds
+  for owners and `dLo`/`dFit` place the digits inside `db` for every object.
+- `objBlocks` lists every struct block and only owners' buffers
+  (`NumObj.blocks`). `BcHeap.views : ViewsOwned L` says each view's buffer
+  belongs to an owner later in the list; `BcHeap.db_mem`,
+  `BcHeap.sb_ne_db`, and `BcHeap.head_noView` follow.
+- Stores into an object go through `BcHeap.update` with a `HeapWriteOK`
+  supplier: `BcHeap.sb_writeOK` for struct bytes and `BcHeap.db_writeOK` for an
+  owner's buffer that no other object reads. `BcHeap.setDigit` takes that
+  no-view premise (`BcHeap.owns_of_noView` recovers ownership from it); result
+  writers obtain it at the head from `head_noView` and `AddSum.owns` /
+  `SubSum.owns`.
+- `BcHeap.unlink` removes an object; `BcHeap.release` (owner, buffer freed)
+  and `BcHeap.releaseView` (allocator unchanged) specialize it.
+- `AddPost`, `SubPost`, and `BinPost` return `owns`; `ResSlot` carries the
+  slot object's `noView` premise and `ResSlot.noView_cons` extends it past the
+  fresh result. Callers of `bc_add`/`bc_sub` must supply `ResSlot.noView` from
+  their dc-state ownership (M9).
+
+All modified theorems keep the three permitted axioms.
 
 ### M3 representation and heap closure (checked)
 

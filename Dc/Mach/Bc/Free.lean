@@ -18,10 +18,10 @@ import Dc.Mach.Bc.Small
 ```
 
 `bc_free_num(num)` drops one reference to `*num` and clears the slot. The
-last reference frees the digit buffer and pushes the struct on
-`_bc_Free_list`: the object leaves the number heap and its struct joins the
-dead chain (`ReleasePost`). The `n_ptr == NULL` arm is unreachable for a
-represented object (`n_ptr` is a live block's payload).
+last reference frees the digit buffer (`n_ptr`; a view has none) and pushes
+the struct on `_bc_Free_list`: the object leaves the number heap and its
+struct joins the dead chain (`ReleasePost`). An owner is released only when
+no view before it in the heap reads its buffer (`FreeEntry.noView`).
 
 The slot may lie inside another live heap block (a `dc_list` node, a
 register or array node): `SlotOff` only separates it from allocator bytes,
@@ -67,9 +67,11 @@ change. -/
 structure ReleasePost (S : Nat → Prop) (Mt Mt' : Mem) (H H' : Heap) (F : List Blk)
     (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) : Prop where
   heap : BcHeap S Mt' H' (x.sb :: F) (L1 ++ L2)
-  free : H'.free = x.db :: H.free
-  live : ∀ b, b ∈ H'.live ↔ b ∈ H.live ∧ b ≠ x.db
-  braw : H'.braw = H.braw
+  /-- an owner's buffer is freed -/
+  owned : x.Owns → H'.free = x.db :: H.free ∧ (∀ b, b ∈ H'.live ↔ b ∈ H.live ∧ b ≠ x.db) ∧
+    H'.braw = H.braw
+  /-- a view leaves the allocator alone -/
+  view : ¬ x.Owns → H' = H
   slot : ldv .ld Mt' q = 0#64
   frame : MemOnly (fun a => AllocByte H a ∨ x.sb.In a ∨ slotBytes q a ∨ frameIn sp 32 a ∨
     bcFreeBytes a) Mt' Mt
@@ -87,76 +89,123 @@ structure FreeNumK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat →
 
 /-! ## The number heap after `bc_free_num` -/
 
-theorem objBlocks_append (L1 L2 : List NumObj) :
-    objBlocks (L1 ++ L2) = objBlocks L1 ++ objBlocks L2 := by
-  simp only [objBlocks, List.flatMap_append]
-
-theorem objBlocks_cons (x : NumObj) (L : List NumObj) :
-    objBlocks (x :: L) = x.sb :: x.db :: objBlocks L := by
-  simp only [objBlocks, List.flatMap_cons, List.cons_append, List.nil_append]
-
-/-- The blocks of `L1 ++ x :: L2` are `x`'s two and those of `L1 ++ L2`. -/
+/-- The blocks of `L1 ++ x :: L2` are `x`'s and those of `L1 ++ L2`. -/
 theorem objBlocks_perm (L1 L2 : List NumObj) (x : NumObj) :
-    (objBlocks (L1 ++ x :: L2)).Perm (x.sb :: x.db :: objBlocks (L1 ++ L2)) := by
+    (objBlocks (L1 ++ x :: L2)).Perm (x.blocks ++ objBlocks (L1 ++ L2)) := by
   rw [objBlocks_append, objBlocks_cons, objBlocks_append]
-  exact List.perm_middle.trans (List.Perm.cons _ List.perm_middle)
+  exact List.perm_append_comm_assoc _ _ _
 
-/-- What the block uniqueness of `F ++ objBlocks (L1 ++ x :: L2)` says about `x`. -/
+/-- What the block uniqueness of `F ++ objBlocks (L1 ++ x :: L2)` says about
+`x`; the facts about its buffer hold for an owner. -/
 structure SplitFacts (F : List Blk) (L1 L2 : List NumObj) (x : NumObj) : Prop where
-  sd : x.sb ≠ x.db
   sF : x.sb ∉ F
-  dF : x.db ∉ F
   sRest : x.sb ∉ objBlocks (L1 ++ L2)
-  dRest : x.db ∉ objBlocks (L1 ++ L2)
   nodup : (F ++ objBlocks (L1 ++ L2)).Nodup
   disj : ∀ b ∈ F, ∀ c ∈ objBlocks (L1 ++ L2), b ≠ c
+  sd : x.Owns → x.sb ≠ x.db
+  dF : x.Owns → x.db ∉ F
+  dRest : x.Owns → x.db ∉ objBlocks (L1 ++ L2)
 
 theorem SplitFacts.of_nodup {F : List Blk} {L1 L2 : List NumObj} {x : NumObj}
     (h : (F ++ objBlocks (L1 ++ x :: L2)).Nodup) : SplitFacts F L1 L2 x := by
-  have hp : (F ++ objBlocks (L1 ++ x :: L2)).Perm (x.sb :: x.db :: (F ++ objBlocks (L1 ++ L2))) :=
-    ((objBlocks_perm L1 L2 x).append_left F).trans
-      (List.perm_middle.trans (List.Perm.cons _ List.perm_middle))
+  have hp : (F ++ objBlocks (L1 ++ x :: L2)).Perm (x.blocks ++ (F ++ objBlocks (L1 ++ L2))) :=
+    ((objBlocks_perm L1 L2 x).append_left F).trans (List.perm_append_comm_assoc _ _ _)
   have hn := hp.nodup_iff.mp h
-  obtain ⟨h1, hn⟩ := List.nodup_cons.mp hn
-  obtain ⟨h2, hn⟩ := List.nodup_cons.mp hn
-  refine ⟨fun e => h1 (e ▸ List.mem_cons_self), fun hb => h1 (List.mem_cons_of_mem _
-      (List.mem_append_left _ hb)), fun hb => h2 (List.mem_append_left _ hb),
-    fun hb => h1 (List.mem_cons_of_mem _ (List.mem_append_right _ hb)),
-    fun hb => h2 (List.mem_append_right _ hb), hn, ?_⟩
-  intro b hb c hc e
-  subst e
-  exact (List.nodup_append.mp hn).2.2 b hb b hc rfl
-
-/-- An object of `L1 ++ L2` beside `x` in `L1 ++ x :: L2`. -/
-theorem SplitFacts.other {F : List Blk} {L1 L2 : List NumObj} {x y : NumObj}
-    (h : SplitFacts F L1 L2 x) (hy : y ∈ L1 ++ L2) :
-    y.sb ≠ x.sb ∧ y.sb ≠ x.db ∧ y.db ≠ x.sb ∧ y.db ≠ x.db := by
-  have ⟨hs, hd⟩ := mem_objBlocks hy
-  exact ⟨fun e => h.sRest (e ▸ hs), fun e => h.dRest (e ▸ hs), fun e => h.sRest (e ▸ hd),
-    fun e => h.dRest (e ▸ hd)⟩
+  obtain ⟨hx, hn, hc⟩ := List.nodup_append.mp hn
+  have hs : x.sb ∉ F ++ objBlocks (L1 ++ L2) := fun hb => hc x.sb x.sb_mem_blocks x.sb hb rfl
+  have hdm : x.Owns → x.db ∈ x.blocks := fun ho => by rw [NumObj.blocks_own ho]; simp
+  refine ⟨fun hb => hs (List.mem_append_left _ hb), fun hb => hs (List.mem_append_right _ hb), hn,
+    fun b hb c hc' e => ?_, fun ho e => ?_, fun ho hb => hc _ (hdm ho) _ (List.mem_append_left _ hb) rfl,
+    fun ho hb => hc _ (hdm ho) _ (List.mem_append_right _ hb) rfl⟩
+  · subst e
+    exact (List.nodup_append.mp hn).2.2 b hb b hc' rfl
+  · rw [NumObj.blocks_own ho] at hx
+    exact (List.nodup_cons.mp hx).1 (by rw [e]; simp)
 
 theorem mem_split {L1 L2 : List NumObj} {x y : NumObj} (hy : y ∈ L1 ++ L2) : y ∈ L1 ++ x :: L2 := by
   rcases List.mem_append.mp hy with h | h
   · exact List.mem_append_left _ h
   · exact List.mem_append_right _ (List.mem_cons_of_mem _ h)
 
+/-- An object of `L1 ++ L2` beside `x` in `L1 ++ x :: L2`: its blocks are
+not `x`'s struct. -/
+theorem BcHeap.otherS {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x y : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+    (hy : y ∈ L1 ++ L2) : y.sb ≠ x.sb ∧ y.db ≠ x.sb :=
+  ⟨fun e => (SplitFacts.of_nodup h.distinct).sRest (e ▸ mem_objBlocks hy),
+    fun e => h.sb_ne_db (List.mem_append_right _ List.mem_cons_self) (mem_split hy) e.symm⟩
+
+/-- An object of `L1 ++ L2` that is no view of `x`: its blocks are not `x`'s
+buffer. -/
+theorem BcHeap.otherD {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x y : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+    (hy : y ∈ L1 ++ L2) (hnv : y.db ≠ x.db) : y.sb ≠ x.db ∧ y.db ≠ x.db :=
+  ⟨h.sb_ne_db (mem_split hy) (List.mem_append_right _ List.mem_cons_self), hnv⟩
+
+/-- A byte a store into `L1 ++ x :: L2` may write: no allocator byte, not
+`_bc_Free_list`, in no dead block and no block of another object. -/
+structure HeapWriteOK (H : Heap) (F : List Blk) (L1 L2 : List NumObj) (a : Nat) : Prop where
+  alloc : ¬ AllocByte H a
+  glob : ¬ bcFreeBytes a
+  dead : ∀ b ∈ F, ¬ b.In a
+  sb : ∀ y ∈ L1 ++ L2, ¬ y.sb.In a
+  db : ∀ y ∈ L1 ++ L2, ¬ y.db.In a
+
+/-- A byte of `x`'s struct may be written. -/
+theorem BcHeap.sb_writeOK {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) {a : Nat}
+    (ha : x.sb.In a) : HeapWriteOK H F L1 L2 a := by
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hxb := h.blocks x hx
+  have hi := h.heap
+  have sf := SplitFacts.of_nodup h.distinct
+  have fb := hi.blk (List.mem_append_right _ hxb.sLive)
+  have hb1 := fb.lo; have hb2 := fb.fin; have hb3 := fb.top
+  refine ⟨live_not_alloc hi hxb.sLive ha, ?_, fun b hb hba => ?_, fun y hy hya => ?_,
+    fun y hy hya => ?_⟩
+  · intro hg
+    simp only [bcFreeBytes, bcFreeAddr] at hg
+    simp only [Blk.In, Blk.pay, Blk.fin] at ha hb2
+    simp only [heapStart] at hb1
+    omega
+  · exact live_apart hi (h.deadLive b hb).1 hxb.sLive (fun e' => sf.sF (e' ▸ hb)) hba ha
+  · exact live_apart hi (h.blocks y (mem_split hy)).sLive hxb.sLive (h.otherS hy).1 hya ha
+  · exact live_apart hi (h.blocks y (mem_split hy)).dLive hxb.sLive (h.otherS hy).2 hya ha
+
+/-- A byte of an owner's buffer that no other object reads may be written. -/
+theorem BcHeap.db_writeOK {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) (ho : x.Owns)
+    (hnv : ∀ y ∈ L1 ++ L2, y.db ≠ x.db) {a : Nat} (ha : x.db.In a) : HeapWriteOK H F L1 L2 a := by
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hxb := h.blocks x hx
+  have hi := h.heap
+  have sf := SplitFacts.of_nodup h.distinct
+  have fb := hi.blk (List.mem_append_right _ hxb.dLive)
+  have hb1 := fb.lo; have hb2 := fb.fin; have hb3 := fb.top
+  refine ⟨live_not_alloc hi hxb.dLive ha, ?_, fun b hb hba => ?_, fun y hy hya => ?_,
+    fun y hy hya => ?_⟩
+  · intro hg
+    simp only [bcFreeBytes, bcFreeAddr] at hg
+    simp only [Blk.In, Blk.pay, Blk.fin] at ha hb2
+    simp only [heapStart] at hb1
+    omega
+  · exact live_apart hi (h.deadLive b hb).1 hxb.dLive (fun e' => sf.dF ho (e' ▸ hb)) hba ha
+  · exact live_apart hi (h.blocks y (mem_split hy)).sLive hxb.dLive (h.otherD hy (hnv y hy)).1 hya ha
+  · exact live_apart hi (h.blocks y (mem_split hy)).dLive hxb.dLive (hnv y hy) hya ha
+
 /-- **One reference fewer**: the object `x'` replaces `x` (same blocks) in a
 memory that differs from the old one only inside `x`'s struct block and in
 bytes off the allocator, `_bc_Free_list` and every other heap block. -/
 theorem BcHeap.update {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x x' : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
-    (hsb : x'.sb = x.sb) (hdb : x'.db = x.db) (hbl : x'.Blocks H) (hn : NumAt Mt' x'.rep)
-    {P : Nat → Prop} (hfr : MemOnly P Mt' Mt)
-    (hP : ∀ a, P a → ¬ AllocByte H a ∧ ¬ bcFreeBytes a ∧
-      ∀ b ∈ F ++ objBlocks (L1 ++ L2), ¬ b.In a) :
+    (hsb : x'.sb = x.sb) (hdb : x'.db = x.db) (hptr : x'.rep.ptr = x.rep.ptr)
+    (hbl : x'.Blocks H) (hn : NumAt Mt' x'.rep)
+    {P : Nat → Prop} (hfr : MemOnly P Mt' Mt) (hP : ∀ a, P a → HeapWriteOK H F L1 L2 a) :
     BcHeap S Mt' H F (L1 ++ x' :: L2) := by
-  have sf := SplitFacts.of_nodup h.distinct
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have hob : objBlocks (L1 ++ x' :: L2) = objBlocks (L1 ++ x :: L2) := by
-    rw [objBlocks_append, objBlocks_cons, objBlocks_append, objBlocks_cons, hsb, hdb]
-  -- a byte of a block of `F` or of another object is unchanged
-  have hkeep : ∀ b ∈ F ++ objBlocks (L1 ++ L2), ∀ a, b.In a → imgM Mt' a = imgM Mt a :=
-    fun b hb a ha => hfr a fun hp => (hP a hp).2.2 b hb ha
+    rw [objBlocks_append, objBlocks_cons, objBlocks_append, objBlocks_cons]
+    simp only [NumObj.blocks, hsb, hdb, hptr]
   have hmem : ∀ y ∈ L1 ++ x' :: L2, y = x' ∨ y ∈ L1 ++ L2 := by
     intro y hy
     rcases List.mem_append.mp hy with h1 | h1
@@ -165,16 +214,17 @@ theorem BcHeap.update {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk
       · exact .inl rfl
       · exact .inr (List.mem_append_right _ h1)
   refine
-    { heap := h.heap.transport fun a ha => hfr a fun hp => (hP a hp).1 ha
-      dead := h.dead.frame (ldv_congr .ld fun j hj => hfr _ fun hp => (hP _ hp).2.1
+    { heap := h.heap.transport fun a ha => hfr a fun hp => (hP a hp).alloc ha
+      dead := h.dead.frame (ldv_congr .ld fun j hj => hfr _ fun hp => (hP _ hp).glob
           ⟨by omega, by simp only [widthOfM] at hj; omega⟩)
-        fun b hb j hj => hkeep b (List.mem_append_left _ hb) _ (by
+        fun b hb j hj => hfr _ fun hp => (hP _ hp).dead b hb (by
           have := (h.deadLive b hb).2
           simp only [Blk.In, Blk.fin, Blk.pay]; omega)
       deadLive := h.deadLive
       nums := ?_
       blocks := ?_
       distinct := by rw [hob]; exact h.distinct
+      views := ViewsOwned.replace hptr hdb h.views
       globOwn := h.globOwn }
   · intro y hy
     rcases hmem y hy with rfl | hy
@@ -182,8 +232,8 @@ theorem BcHeap.update {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk
     · have hyL := mem_split (x := x) hy
       refine (h.nums y hyL).frame fun a ha => ?_
       rcases NumObj.foot_blocks (h.nums y hyL) (h.blocks y hyL) ha with hs | hd
-      · exact hkeep _ (List.mem_append_right _ (mem_objBlocks hy).1) a hs
-      · exact hkeep _ (List.mem_append_right _ (mem_objBlocks hy).2) a hd
+      · exact hfr a fun hp => (hP a hp).sb y hy hs
+      · exact hfr a fun hp => (hP a hp).db y hy hd
   · intro y hy
     rcases hmem y hy with rfl | hy
     · exact hbl
@@ -215,34 +265,23 @@ theorem AllocByte.of_free {H : Heap} {lpre lpost : List Blk} {d : Blk}
     · exact .inl (.freePay b hb h1 h2)
   | top h1 h2 => exact .inl (.top (by simpa [Heap.brk] using h1) h2)
 
-/-- **The last reference released**: with `x`'s digit block freed (`FreePost`
-shape), `x`'s struct linked in front of the dead chain, and every other live
-block unchanged, `x` leaves the number heap and its struct heads the chain. -/
-theorem BcHeap.release {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
+/-- **The object leaves the heap**: `x`'s struct linked in front of the dead
+chain, every other block kept and still live in `H'` (an owner's buffer may
+have been freed), the views of `L1 ++ L2` owned. -/
+theorem BcHeap.unlink {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
-    {lpre lpost : List Blk} (hl : H.live = lpre ++ x.db :: lpost)
-    (hi : HeapInv S Mt' ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩)
+    (hvw : ViewsOwned (L1 ++ L2)) (hlive : ∀ b ∈ H.live, (x.Owns → b ≠ x.db) → b ∈ H'.live)
+    (hi : HeapInv S Mt' H')
     (hhead : ldv .ld Mt' bcFreeAddr = BitVec.ofNat 64 x.sb.pay)
     (hnext : ldv .ld Mt' (x.sb.pay + 16) = BitVec.ofNat 64 (deadHead F))
     (hkeep : ∀ b ∈ F ++ objBlocks (L1 ++ L2), ∀ a, b.In a → imgM Mt' a = imgM Mt a) :
-    BcHeap S Mt' ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩ (x.sb :: F) (L1 ++ L2) := by
+    BcHeap S Mt' H' (x.sb :: F) (L1 ++ L2) := by
   have sf := SplitFacts.of_nodup h.distinct
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have hxb := h.blocks x hx
-  have hnd := h.heap.live_nodup
-  rw [hl] at hnd
-  have hdn : x.db ∉ lpre ++ lpost := by
-    have := (List.perm_middle.nodup_iff.mp hnd)
-    exact (List.nodup_cons.mp this).1
-  have hlive : ∀ b ∈ H.live, b ≠ x.db → b ∈ lpre ++ lpost := fun b hb hne => by
-    rw [hl] at hb
-    rcases List.mem_append.mp hb with h1 | h1
-    · exact List.mem_append_left _ h1
-    · rcases List.mem_cons.mp h1 with rfl | h1
-      · exact absurd rfl hne
-      · exact List.mem_append_right _ h1
-  have hFd : ∀ b ∈ F, b ≠ x.db := fun b hb e => sf.dF (e ▸ hb)
-  have hFs : ∀ b ∈ F, b ≠ x.sb := fun b hb e => sf.sF (e ▸ hb)
+  have hdm : ∀ y ∈ L1 ++ L2, y.db ∈ objBlocks (L1 ++ L2) := fun y hy => by
+    obtain ⟨w, hw, hwo, he⟩ := hvw.owner hy
+    rw [← he]; exact mem_objBlocks_db hw hwo
   have hFk : ∀ b ∈ F, ∀ a, b.In a → imgM Mt' a = imgM Mt a := fun b hb =>
     hkeep b (List.mem_append_left _ hb)
   refine
@@ -255,28 +294,62 @@ theorem BcHeap.release {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Bl
       nums := ?_
       blocks := ?_
       distinct := ?_
+      views := hvw
       globOwn := h.globOwn }
   · intro b hb
     rcases List.mem_cons.mp hb with rfl | hb
-    · exact ⟨hlive _ hxb.sLive sf.sd, hxb.sSz⟩
-    · exact ⟨hlive b (h.deadLive b hb).1 (hFd b hb), (h.deadLive b hb).2⟩
+    · exact ⟨hlive _ hxb.sLive fun _ => h.sb_ne_db hx hx, hxb.sSz⟩
+    · exact ⟨hlive b (h.deadLive b hb).1 fun ho e => sf.dF ho (e ▸ hb), (h.deadLive b hb).2⟩
   · intro y hy
     have hyL := mem_split (x := x) hy
     have hyb := h.blocks y hyL
     refine (h.nums y hyL).frame fun a ha => ?_
     rcases NumObj.foot_blocks (h.nums y hyL) hyb ha with hs | hd
-    · exact hkeep _ (List.mem_append_right _ (mem_objBlocks hy).1) a hs
-    · exact hkeep _ (List.mem_append_right _ (mem_objBlocks hy).2) a hd
+    · exact hkeep _ (List.mem_append_right _ (mem_objBlocks hy)) a hs
+    · exact hkeep _ (List.mem_append_right _ (hdm y hy)) a hd
   · intro y hy
     have hyL := mem_split (x := x) hy
-    have ⟨_, n2, _, n4⟩ := sf.other hy
     have hyb := h.blocks y hyL
-    exact { hyb with sLive := hlive _ hyb.sLive n2, dLive := hlive _ hyb.dLive n4 }
+    exact { hyb with
+      sLive := hlive _ hyb.sLive fun _ => h.sb_ne_db hyL hx
+      dLive := hlive _ hyb.dLive fun ho e => sf.dRest ho (e ▸ hdm y hy) }
   · rw [List.cons_append]
     exact List.nodup_cons.mpr ⟨fun hb => by
       rcases List.mem_append.mp hb with h1 | h1
       · exact sf.sF h1
       · exact sf.sRest h1, sf.nodup⟩
+
+/-- **The last reference to an owner released**: with `x`'s digit block freed
+(`FreePost` shape), `x` leaves the number heap and its struct heads the
+chain. -/
+theorem BcHeap.release {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+    (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db) {lpre lpost : List Blk}
+    (hl : H.live = lpre ++ x.db :: lpost)
+    (hi : HeapInv S Mt' ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩)
+    (hhead : ldv .ld Mt' bcFreeAddr = BitVec.ofNat 64 x.sb.pay)
+    (hnext : ldv .ld Mt' (x.sb.pay + 16) = BitVec.ofNat 64 (deadHead F))
+    (hkeep : ∀ b ∈ F ++ objBlocks (L1 ++ L2), ∀ a, b.In a → imgM Mt' a = imgM Mt a) :
+    BcHeap S Mt' ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩ (x.sb :: F) (L1 ++ L2) := by
+  refine h.unlink (ViewsOwned.remove h.views fun _ => hnv) (fun b hb hne => ?_) hi hhead hnext
+    hkeep
+  have hb' : b ∈ lpre ++ x.db :: lpost := hl ▸ hb
+  rcases List.mem_append.mp hb' with h1 | h1
+  · exact List.mem_append_left _ h1
+  · rcases List.mem_cons.mp h1 with rfl | h1
+    · exact absurd rfl (hne ho)
+    · exact List.mem_append_right _ h1
+
+/-- **The last reference to a view released**: the allocator is untouched. -/
+theorem BcHeap.releaseView {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) (hv : ¬ x.Owns)
+    (hi : HeapInv S Mt' H)
+    (hhead : ldv .ld Mt' bcFreeAddr = BitVec.ofNat 64 x.sb.pay)
+    (hnext : ldv .ld Mt' (x.sb.pay + 16) = BitVec.ofNat 64 (deadHead F))
+    (hkeep : ∀ b ∈ F ++ objBlocks (L1 ++ L2), ∀ a, b.In a → imgM Mt' a = imgM Mt a) :
+    BcHeap S Mt' H (x.sb :: F) (L1 ++ L2) :=
+  h.unlink (ViewsOwned.remove h.views fun ho => absurd ho hv) (fun b hb _ => hb) hi hhead hnext
+    hkeep
 
 /-- **`bc_free_num(num)`** at `0x800048c0` on a `NULL` slot: returns at once. -/
 theorem bc_free_num_null {live : Nat → Prop} {S : Nat → Prop}
@@ -306,6 +379,8 @@ structure FreeEntry (S : Nat → Prop) (Mt : Mem) (H : Heap) (F : List Blk)
   word : ldv .ld Mt q = BitVec.ofNat 64 x.rep.p
   stack : StackFrame S sp 32
   above : heapEnd + 32 ≤ sp
+  /-- no view before an owner reads its buffer -/
+  noView : x.Owns → ∀ y ∈ L1, y.db ≠ x.db
 
 theorem FreeEntry.mem {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (_ : FreeEntry S Mt H F L1 L2 x q sp) :
@@ -315,7 +390,7 @@ theorem FreeEntry.mem {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
 theorem FreeEntry.slot_apart {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (e : FreeEntry S Mt H F L1 L2 x q sp) :
     q + 8 ≤ x.sb.pay ∨ x.sb.fin ≤ q := by
-  have hs := e.off.blocks x.sb (List.mem_append_right _ (mem_objBlocks e.mem).1)
+  have hs := e.off.blocks x.sb (List.mem_append_right _ (mem_objBlocks e.mem))
   have hz := (e.heap.blocks x e.mem).sSz
   rcases Nat.lt_or_ge q x.sb.pay with h1 | h1
   · refine Classical.byContradiction fun hc => hs x.sb.pay ⟨by omega, by omega⟩ ⟨Nat.le_refl _, ?_⟩
@@ -346,18 +421,21 @@ theorem SplitFacts.rest_mem {F : List Blk} {L1 L2 : List NumObj} {x : NumObj} {b
 
 /-- The blocks of `F ++ objBlocks (L1 ++ L2)` are live and apart from `x`'s. -/
 theorem BcHeap.rest_live {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) {b : Blk}
-    (hb : b ∈ F ++ objBlocks (L1 ++ L2)) : b ∈ H.live ∧ b ≠ x.sb ∧ b ≠ x.db := by
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+    {b : Blk} (hb : b ∈ F ++ objBlocks (L1 ++ L2)) :
+    b ∈ H.live ∧ b ≠ x.sb ∧ (x.Owns → b ≠ x.db) := by
   have sf := SplitFacts.of_nodup h.distinct
   rcases List.mem_append.mp hb with hf | ho
-  · exact ⟨(h.deadLive b hf).1, fun e => sf.sF (e ▸ hf), fun e => sf.dF (e ▸ hf)⟩
-  · obtain ⟨y, hy, hby⟩ := List.mem_flatMap.mp ho
-    have ⟨n1, n2, n3, n4⟩ := sf.other hy
+  · exact ⟨(h.deadLive b hf).1, fun e => sf.sF (e ▸ hf), fun hxo e => sf.dF hxo (e ▸ hf)⟩
+  · refine ⟨?_, fun e => sf.sRest (e ▸ ho), fun hxo e => sf.dRest hxo (e ▸ ho)⟩
+    obtain ⟨y, hy, hby⟩ := List.mem_flatMap.mp ho
     have hyb := h.blocks y (mem_split hy)
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hby
-    rcases hby with rfl | rfl
-    · exact ⟨hyb.sLive, n1, n2⟩
-    · exact ⟨hyb.dLive, n3, n4⟩
+    unfold NumObj.blocks at hby
+    split at hby <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hby
+    · subst hby; exact hyb.sLive
+    · rcases hby with rfl | rfl
+      · exact hyb.sLive
+      · exact hyb.dLive
 
 /-- The state after `free(n_ptr)` returns to `0x800048f4`: the allocator's
 post, the memory before the call (`M2`: `n_refs` cleared, the frame
@@ -375,7 +453,7 @@ structure AfterFree (S : Nat → Prop) (Mt M2 Mt3 : Mem) (H : Heap) (x : NumObj)
 /-- The release path's final memory: `ReleasePost`. -/
 theorem release_post {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (e : FreeEntry S Mt H F L1 L2 x q sp)
-    {lpre lpost : List Blk} (hl : H.live = lpre ++ x.db :: lpost)
+    (ho : x.Owns) {lpre lpost : List Blk} (hl : H.live = lpre ++ x.db :: lpost)
     {M2 Mt3 : Mem} {R R1 : Nat → BitVec 64} (af : AfterFree S Mt M2 Mt3 H x lpre lpost q sp R R1)
     {Mt' : Mem}
     (hM4e : writeLog (writeLog (writeLog Mt3
@@ -399,7 +477,7 @@ theorem release_post {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
   have hpt := hn.ptr
   have hw := e.word
   have hpp : x.rep.p = x.sb.pay := hxb.sPay
-  have hdp : x.rep.ptr = x.db.pay := hxb.dPay
+  have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
   have hqs := e.slot_apart
   have hsz := hxb.sSz
   have sf := SplitFacts.of_nodup h.distinct
@@ -415,7 +493,7 @@ theorem release_post {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
   have hsph : x.sb.pay = x.sb.h + 16 := rfl
   have hdph : x.db.pay = x.db.h + 16 := rfl
   have hsd : x.sb.fin ≤ x.db.h ∨ x.db.fin ≤ x.sb.h :=
-    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) sf.sd
+    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) (h.sb_ne_db hx hx)
   have hgl : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
     exact h.globOwn b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
@@ -457,7 +535,7 @@ theorem release_post {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
       hM2 a (fun h' => h3 ⟨by omega, by omega⟩) h5]
   have hkeep : ∀ b ∈ F ++ objBlocks (L1 ++ L2), ∀ a, b.In a → imgM Mt' a = imgM Mt a := by
     intro b hb a ha
-    have ⟨hbl, hbs, hbd⟩ := h.rest_live hb
+    have ⟨hbl, hbs, _⟩ := h.rest_live hb
     have fb := hi.blk (List.mem_append_right _ hbl)
     have hb1 : 2147603920 ≤ b.h := fb.lo
     have hb2 : b.fin ≤ H.brk := fb.fin
@@ -476,7 +554,7 @@ theorem release_post {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
     · intro h'
       rcases AllocByte.of_free hl ha with ha | ha
       · exact e.off.alloc a h' ha
-      · exact e.off.blocks x.db (List.mem_append_right _ (mem_objBlocks hx).2) a h' ha
+      · exact e.off.blocks x.db (List.mem_append_right _ (mem_objBlocks_db hx ho)) a h' ha
     · intro h'
       simp only [bcFreeBytes, bcFreeAddr] at h'
       rcases AllocByte.of_free hl ha with ha | ha
@@ -507,10 +585,9 @@ theorem release_post {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
         · exact absurd rfl hne
         · exact List.mem_append_right _ h1
   exact
-    { heap := BcHeap.release h hl hi' hhead hnext hkeep
-      free := rfl
-      live := hlive'
-      braw := rfl
+    { heap := BcHeap.release h ho (e.noView ho) hl hi' hhead hnext hkeep
+      owned := fun _ => ⟨rfl, hlive', rfl⟩
+      view := fun hv => absurd ho hv
       slot := by rw [← hM4e, ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _
       frame := fun a ha => by
         simp only [not_or] at ha
@@ -558,7 +635,8 @@ theorem free_num_tail {live : Nat → Prop} {S : Nat → Prop}
     {x : NumObj} {q sp : Nat} (e : FreeEntry S Mt H F L1 L2 x q sp)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
     (hal : (R 1).toNat % 4 = 0) (hk : FreeNumK live S Q R Mt H F L1 L2 x q sp)
-    (hr1 : x.rep.refs = 1) {lpre lpost : List Blk} (hl : H.live = lpre ++ x.db :: lpost)
+    (hr1 : x.rep.refs = 1) (ho : x.Owns) {lpre lpost : List Blk}
+    (hl : H.live = lpre ++ x.db :: lpost)
     {M2 Mt3 : Mem} {R1 : Nat → BitVec 64}
     (af : AfterFree S Mt M2 Mt3 H x lpre lpost q sp R R1) :
     DW live S Q 0x800048f4#64 R1 Mt3 := by
@@ -579,7 +657,7 @@ theorem free_num_tail {live : Nat → Prop} {S : Nat → Prop}
   have hpt := hn.ptr
   have hw := e.word
   have hpp : x.rep.p = x.sb.pay := hxb.sPay
-  have hdp : x.rep.ptr = x.db.pay := hxb.dPay
+  have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
   have hqs := e.slot_apart
   have hsz := hxb.sSz
   have sf := SplitFacts.of_nodup h.distinct
@@ -595,7 +673,7 @@ theorem free_num_tail {live : Nat → Prop} {S : Nat → Prop}
   have hsph : x.sb.pay = x.sb.h + 16 := rfl
   have hdph : x.db.pay = x.db.h + 16 := rfl
   have hsd : x.sb.fin ≤ x.db.h ∨ x.db.fin ≤ x.sb.h :=
-    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) sf.sd
+    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) (h.sb_ne_db hx hx)
   have hgl : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
     exact h.globOwn b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
@@ -643,7 +721,7 @@ theorem free_num_tail {live : Nat → Prop} {S : Nat → Prop}
     rw [ldv_ld_miss _ _ (by omega)]; exact wq
   refine free_num_ret hlive hS hsf (by simp only [heapEnd]; omega) hq (by omega) (by omega) (by omega) hgl R R1 hal r2
     w8 w24 wq wq3 wg fun R' e1 e2 hr => ?_
-  refine hk.rel hr1 R' _ _ ?_ (release_post e hl af rfl)
+  refine hk.rel hr1 R' _ _ ?_ (release_post e ho hl af rfl)
   intro z hz
   simp only [freeNumClob, List.mem_cons, List.not_mem_nil, or_false, not_or] at hz
   rcases (show z = 1 ∨ z = 2 ∨ (z ≠ 1 ∧ z ≠ 2) by omega) with rfl | rfl | ⟨z1, z2⟩
@@ -659,7 +737,7 @@ theorem free_num_release {live : Nat → Prop} {S : Nat → Prop}
     {x : NumObj} {q sp : Nat} (e : FreeEntry S Mt H F L1 L2 x q sp)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
     (hal : (R 1).toNat % 4 = 0) (hk : FreeNumK live S Q R Mt H F L1 L2 x q sp)
-    (hr1 : x.rep.refs = 1) :
+    (hr1 : x.rep.refs = 1) (ho : x.Owns) :
     DW live S Q 0x800048c0#64 R Mt := by
   have h := e.heap
   have hi := h.heap
@@ -678,7 +756,7 @@ theorem free_num_release {live : Nat → Prop} {S : Nat → Prop}
   have hpt := hn.ptr
   have hw := e.word
   have hpp : x.rep.p = x.sb.pay := hxb.sPay
-  have hdp : x.rep.ptr = x.db.pay := hxb.dPay
+  have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
   have hqs := e.slot_apart
   have hsz := hxb.sSz
   have sf := SplitFacts.of_nodup h.distinct
@@ -694,7 +772,7 @@ theorem free_num_release {live : Nat → Prop} {S : Nat → Prop}
   have hsph : x.sb.pay = x.sb.h + 16 := rfl
   have hdph : x.db.pay = x.db.h + 16 := rfl
   have hsd : x.sb.fin ≤ x.db.h ∨ x.db.fin ≤ x.sb.h :=
-    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) sf.sd
+    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) (h.sb_ne_db hx hx)
   have hgl : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
     exact h.globOwn b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
@@ -736,13 +814,127 @@ theorem free_num_release {live : Nat → Prop} {S : Nat → Prop}
   refine free_spec hlive hi2 hl _ (by bsimp [hdp]) (by bsimp []) ?_
   intro R1 Mt3 hk1 hfp
   bsimp []
-  refine free_num_tail hlive e R h10 h2 hal hk hr1 hl
+  refine free_num_tail hlive e R h10 h2 hal hk hr1 ho hl
     ⟨hfp, hM2, by rw [← hM2e]; exact ldv_store_hit _ _ _,
       by rw [← hM2e, ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _,
       by rw [hk1.get 2]; bsimp [h2],
       fun z z1 z2 z10 z13 z14 z15 => by
         rw [hk1 z (by simp; omega)]
         simp only [upd_apply, z1, z2, z10, z13, z14, z15, ite_false]⟩
+
+/-- The view release path's final memory: `ReleasePost` with the allocator
+untouched. -/
+theorem release_post_view {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (e : FreeEntry S Mt H F L1 L2 x q sp)
+    (hv : ¬ x.Owns) {Mt' : Mem}
+    (hM : ∀ a, ¬ x.sb.In a → ¬ slotBytes q a → ¬ bcFreeBytes a → imgM Mt' a = imgM Mt a)
+    (hhead : ldv .ld Mt' bcFreeAddr = BitVec.ofNat 64 x.sb.pay)
+    (hnext : ldv .ld Mt' (x.sb.pay + 16) = BitVec.ofNat 64 (deadHead F))
+    (hslot : ldv .ld Mt' q = 0#64) :
+    ReleasePost S Mt Mt' H H F L1 L2 x q sp := by
+  have h := e.heap
+  have hi := h.heap
+  have hxb := h.blocks x e.mem
+  have hnG : ∀ a, AllocByte H a → ¬ bcFreeBytes a := fun a ha hg => by
+    simp only [bcFreeBytes, bcFreeAddr] at hg
+    rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
+      simp only [freeListAddr, heapStart, heapEnd] at h' <;> omega
+  have hi' : HeapInv S Mt' H := hi.transport fun a ha =>
+    hM a (fun hs => live_not_alloc hi hxb.sLive hs ha) (fun hq => e.off.alloc a hq ha) (hnG a ha)
+  have hkeep : ∀ b ∈ F ++ objBlocks (L1 ++ L2), ∀ a, b.In a → imgM Mt' a = imgM Mt a := by
+    intro b hb a ha
+    have ⟨hbl, hbs, _⟩ := h.rest_live hb
+    have fb := hi.blk (List.mem_append_right _ hbl)
+    have hb1 : 2147603920 ≤ b.h := fb.lo
+    have hbp : b.pay = b.h + 16 := rfl
+    simp only [Blk.In] at ha
+    exact hM a (fun h' => live_apart hi hbl hxb.sLive hbs ha h')
+      (fun h' => e.off.blocks b (SplitFacts.rest_mem hb) a h' ha)
+      (by simp only [bcFreeBytes, bcFreeAddr]; omega)
+  exact
+    { heap := h.releaseView hv hi' hhead hnext hkeep
+      owned := fun ho => absurd ho hv
+      view := fun _ => rfl
+      slot := hslot
+      frame := fun a ha => by
+        simp only [not_or] at ha
+        exact hM a ha.2.1 ha.2.2.1 ha.2.2.2.2 }
+
+/-- The last reference to a view, from `0x800048c0` with `n_refs = 1` and
+`n_ptr = NULL` (`0x80004924`): no `free` call. -/
+theorem free_num_view {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} {q sp : Nat} (e : FreeEntry S Mt H F L1 L2 x q sp)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q)
+    (hal : (R 1).toNat % 4 = 0) (hk : FreeNumK live S Q R Mt H F L1 L2 x q sp)
+    (hr1 : x.rep.refs = 1) (hv : ¬ x.Owns) :
+    DW live S Q 0x800048c0#64 R Mt := by
+  have h := e.heap
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hx := e.mem
+  have hn := h.nums x hx
+  have hxb := h.blocks x hx
+  num_facts hn
+  have hq := e.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  have hrf := hn.refs
+  have hpt := hn.ptr
+  have hw := e.word
+  have hv0 : x.rep.ptr = 0 := Classical.not_not.mp hv
+  have hpp : x.rep.p = x.sb.pay := hxb.sPay
+  have hqs := e.slot_apart
+  have hsz := hxb.sSz
+  have fbs := hi.blk (List.mem_append_right _ hxb.sLive)
+  have hs1 : 2147603920 ≤ x.sb.h := fbs.lo
+  have hs2 : x.sb.fin ≤ H.brk := fbs.fin
+  have hs3 : H.brk ≤ 2273312768 := fbs.top
+  have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
+  have hsph : x.sb.pay = x.sb.h + 16 := rfl
+  have hgl : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact h.globOwn b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
+  have hoffg := e.off.glob
+  simp only [bcFreeAddr] at hoffg
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have wg : ldv .ld Mt 2147601840 = BitVec.ofNat 64 (deadHead F) := h.dead.head
+  have hp0 : 2147603936 ≤ x.rep.p := by rw [hpp]; simp only [Blk.pay]; omega
+  have hpq : x.rep.p + 24 ≤ q ∨ q + 8 ≤ x.rep.p := by
+    rw [hpp]; simp only [Blk.pay, Blk.fin] at hqs ⊢; omega
+  iterate 2
+    try bc_run hlive hS [h10, hw, hrf, hr1, ldv_ld_miss, hpt, hv0] at 0x80004928
+    all_goals first | exact hq.acc | skip
+    all_goals try (intro hc; bv_nat at hc; omega)
+    all_goals try intro _
+  bc_run hlive hS [h10, hw, hrf, hr1, ldv_ld_miss, hpt, hv0] at 0x80004928
+  all_goals first | exact hq.acc | skip
+  bc_run hlive hS [h10, hw] at 0x80004928
+  apply st_80004928 hlive
+  · bsimp []; bc_addr
+  · bsimp []; exact hgl
+  have wg' : ldv .ld (writeLog Mt [(x.rep.p + 12, 4, 0#64)]) 2147601840 =
+      BitVec.ofNat 64 (deadHead F) := by
+    rw [ldv_ld_miss _ _ (by omega)]; exact wg
+  have wq2 : ldv .ld (writeLog (writeLog Mt [(x.rep.p + 12, 4, 0#64)])
+      [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))]) q = BitVec.ofNat 64 x.rep.p := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]; exact hw
+  bsimp [wg']
+  bc_run hlive hS [h10, hw, wq2, ldv_ld_miss]
+  all_goals first | exact hq.acc | exact hgl | exact hal | bc_addr | skip
+  have hfin : x.sb.fin = x.rep.p + x.sb.sz := by rw [hpp]
+  refine hk.rel hr1 _ _ H (by keeps_tac Keeps.refl _ _) (release_post_view e hv ?_ ?_ ?_ ?_)
+  · intro a h1 h2 h3
+    simp only [Blk.In, ← hpp, hfin] at h1
+    simp only [slotBytes] at h2
+    simp only [bcFreeBytes, bcFreeAddr] at h3
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+      imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
+  · rw [← hpp]; simp only [bcFreeAddr]
+    rw [ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _
+  · rw [← hpp, ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]
+    exact ldv_store_hit _ _ _
+  · exact ldv_store_hit _ _ _
 
 /-- The memory after one reference fewer: the count lowered, the slot cleared. -/
 abbrev decMem (Mt : Mem) (x : NumObj) (q : Nat) : Mem :=
@@ -766,45 +958,28 @@ theorem free_num_dec_heap {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk
   have hsfin : x.sb.fin = x.sb.pay + x.sb.sz := rfl
   have hset := hn.setRefs (v := BitVec.ofNat 64 (x.rep.refs - 1)) (k := x.rep.refs - 1)
     (toNat_ofNat_mod32 (by omega)) (by omega)
-  refine BcHeap.update h rfl rfl ⟨hxb.sLive, hxb.dLive, hxb.sPay, hxb.sSz, hxb.dPay, hxb.dFit⟩ (hset.frame fun a ha => ?_) (P := fun a =>
-    refsBytes x.rep a ∨ slotBytes q a) ?_ ?_
+  refine BcHeap.update h rfl rfl rfl
+    ⟨hxb.sLive, hxb.dLive, hxb.sPay, hxb.sSz, hxb.dPay, hxb.dLo, hxb.dFit⟩
+    (hset.frame fun a ha => ?_) (P := fun a => refsBytes x.rep a ∨ slotBytes q a) ?_ ?_
   · refine imgM_store_miss _ _ ?_
-    have hmx : ∀ b ∈ [x.sb, x.db], b ∈ F ++ objBlocks (L1 ++ x :: L2) := fun b hb =>
-      List.mem_append_right _ (List.mem_flatMap.mpr ⟨x, hx, hb⟩)
-    have hdf := hxb.dFit; have hdp := hxb.dPay
-    have hsf' : x.sb.fin = x.sb.pay + x.sb.sz := rfl
-    have hdf' : x.db.fin = x.db.pay + x.db.sz := rfl
-    simp only [NumRep.Foot, NumObj.decRef] at ha
-    by_cases hs : slotBytes q a
-    · have h1 := e.off.blocks x.sb (hmx _ (by simp)) a hs
-      have h2 := e.off.blocks x.db (hmx _ (by simp)) a hs
-      simp only [Blk.In] at h1 h2
-      omega
-    · simp only [slotBytes] at hs; omega
+    have hs := e.off.blocks x.sb (List.mem_append_right _ (mem_objBlocks hx))
+    have hd := e.off.blocks x.db (List.mem_append_right _ (h.db_mem hx))
+    have hfa := NumObj.foot_blocks hn hxb (a := a) ha
+    by_cases hsq : slotBytes q a
+    · rcases hfa with h1 | h1
+      · exact absurd h1 (hs a hsq)
+      · exact absurd h1 (hd a hsq)
+    · simp only [slotBytes] at hsq; omega
   · intro a ha
     simp only [not_or, refsBytes, slotBytes, NumObj.decRef] at ha
     rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
   · intro a ha
     rcases ha with ha | ha
-    · have hsa : x.sb.In a := ⟨by omega, by omega⟩
-      refine ⟨live_not_alloc hi hxb.sLive hsa, ?_, fun b hb hba => ?_⟩
-      · simp only [bcFreeBytes, bcFreeAddr]; omega
-      · have sf := SplitFacts.of_nodup h.distinct
-        rcases List.mem_append.mp hb with hb | hb
-        · exact live_apart hi (h.deadLive b hb).1 hxb.sLive (fun e' => sf.sF (e' ▸ hb)) hba hsa
-        · obtain ⟨y, hy, hby⟩ := List.mem_flatMap.mp hb
-          have ⟨n1, _, n3, _⟩ := sf.other hy
-          have hyb := h.blocks y (mem_split hy)
-          simp only [List.mem_cons, List.not_mem_nil, or_false] at hby
-          rcases hby with rfl | rfl
-          · exact live_apart hi hyb.sLive hxb.sLive n1 hba hsa
-          · exact live_apart hi hyb.dLive hxb.sLive n3 hba hsa
-    · refine ⟨e.off.alloc a ha, ?_, fun b hb => e.off.blocks b ?_ a ha⟩
-      · have := e.off.glob; simp only [bcFreeBytes]; omega
-      · rcases List.mem_append.mp hb with hb | hb
-        · exact List.mem_append_left _ hb
-        · obtain ⟨y, hy, hby⟩ := List.mem_flatMap.mp hb
-          exact List.mem_append_right _ (List.mem_flatMap.mpr ⟨y, mem_split hy, hby⟩)
+    · exact h.sb_writeOK ⟨by omega, by omega⟩
+    · refine ⟨e.off.alloc a ha, ?_, fun b hb => e.off.blocks b (List.mem_append_left _ hb) a ha,
+        fun y hy => e.off.blocks _ (List.mem_append_right _ (mem_objBlocks (mem_split hy))) a ha,
+        fun y hy => e.off.blocks _ (List.mem_append_right _ (h.db_mem (mem_split hy))) a ha⟩
+      have := e.off.glob; simp only [bcFreeBytes]; omega
 
 /-- One reference fewer writes only the count and the slot. -/
 theorem free_num_dec_frame {Mt : Mem} {x : NumObj} {q : Nat} :
@@ -839,7 +1014,9 @@ theorem bc_free_num_spec {live : Nat → Prop} {S : Nat → Prop}
   have hsz := hxb.sSz
   have hsfin : x.sb.fin = x.sb.pay + x.sb.sz := rfl
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by have := e.refs; omega) with hr1 | hr2
-  · exact free_num_release hlive e R h10 h2 hal hk hr1
+  · by_cases ho : x.Owns
+    · exact free_num_release hlive e R h10 h2 hal hk hr1 ho
+    · exact free_num_view hlive e R h10 hal hk hr1 ho
   · -- one reference fewer
     bc_run hlive hS [h10, hw, hrf] at 0x8000493c
     all_goals first | exact hq.acc | skip

@@ -52,10 +52,12 @@ structure BinArgs (L : List NumObj) (x1 x2 : NumObj) (smin : Nat) : Prop where
   n2 : x2.rep.Norm
   size : max x1.rep.len x2.rep.len + 1 + max smin (max x1.rep.scale x2.rep.scale) < 2 ^ 31
 
-/-- The result slot `q` holds the number `x` (`L = L1 ++ x :: L2`). -/
-structure ResSlot (Mt : Mem) (x : NumObj) (q : Nat) : Prop where
+/-- The result slot `q` holds the number `x` (`L = L1 ++ x :: L2`); no view
+before it reads an owner's buffer. -/
+structure ResSlot (Mt : Mem) (L1 : List NumObj) (x : NumObj) (q : Nat) : Prop where
   refs : 1 ≤ x.rep.refs
   word : ldv .ld Mt q = BitVec.ofNat 64 x.rep.p
+  noView : x.Owns → ∀ z ∈ L1, z.db ≠ x.db
 
 /-- The result: the new number `y` for `n` (normalized, one reference) heads
 the heap left by freeing `x`, its struct is in the slot, and off the heap only
@@ -68,6 +70,7 @@ structure BinPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
   num : y.rep.num = n
   norm : y.rep.Norm
   refs : y.rep.refs = 1
+  owns : y.Owns
   slot : ldv .ld Mt q = BitVec.ofNat 64 y.sb.pay
   out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 176 a → imgM Mt a = imgM Mt0 a
 
@@ -84,26 +87,44 @@ structure BinK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → Bit
 
 /-- `bc_free_num`'s entry facts for the slot `q` holding `x` of the heap. -/
 theorem FreeEntry.of_slot {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (h : BcHeap S Mt H F (L1 ++ x :: L2))
-    (hr : ResSlot Mt x q) (hq : PtrSlot S q) (hout : ∀ a, slotBytes q a → OutHeap a)
+    {L0 L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+    (hr : ResSlot Mt L0 x q) (hnv : x.Owns → ∀ z ∈ L1, z.db ≠ x.db) (hq : PtrSlot S q)
+    (hout : ∀ a, slotBytes q a → OutHeap a)
     (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp) (hap : q + 8 ≤ sp - 32 ∨ sp ≤ q) :
     FreeEntry S Mt H F L1 L2 x q sp := by
   have hq0 := hout q ⟨Nat.le_refl _, by omega⟩
   have hq7 := hout (q + 7) ⟨by omega, by omega⟩
   refine ⟨h, hr.refs, hq, ⟨fun a ha => OutHeap.not_alloc h.heap (hout a ha),
-    fun b hb a ha hba => ?_, ?_, hap⟩, hr.word, hsf, hab⟩
+    fun b hb a ha hba => ?_, ?_, hap⟩, hr.word, hsf, hab, hnv⟩
   · have hbl : b ∈ H.live := by
       rcases List.mem_append.mp hb with hb | hb
       · exact (h.deadLive b hb).1
       · obtain ⟨y, hy, hby⟩ := List.mem_flatMap.mp hb
         have hyb := h.blocks y hy
-        simp only [List.mem_cons, List.not_mem_nil, or_false] at hby
-        rcases hby with rfl | rfl
-        · exact hyb.sLive
-        · exact hyb.dLive
+        unfold NumObj.blocks at hby
+        split at hby <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hby
+        · subst hby; exact hyb.sLive
+        · rcases hby with rfl | rfl
+          · exact hyb.sLive
+          · exact hyb.dLive
     exact (hout a ha).1 (live_in_heap h.heap hbl hba)
   · simp only [OutHeap] at hq0 hq7
     omega
+
+/-- With an owner `y` heading the heap, the slot's object has no view before
+it in `y :: L1`. -/
+theorem ResSlot.noView_cons {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x y : NumObj} {q : Nat} (hb : BcHeap S M H F (y :: (L1 ++ x :: L2)))
+    (hyo : y.Owns) (hr : ResSlot Mt L1 x q) : x.Owns → ∀ z ∈ y :: L1, z.db ≠ x.db := by
+  intro hxo z hz
+  rcases List.mem_cons.mp hz with rfl | hz
+  · have hd := hb.distinct
+    rw [objBlocks_cons, NumObj.blocks_own hyo] at hd
+    intro e
+    have hxm : z.db ∈ objBlocks (L1 ++ x :: L2) :=
+      e ▸ mem_objBlocks_db (List.mem_append_right _ List.mem_cons_self) hxo
+    exact (List.nodup_append.mp (List.nodup_append.mp hd).2.1).2.2 z.db (by simp) z.db hxm rfl
+  · exact hr.noView hxo z hz
 
 /-- After `bc_free_num` dropped one reference: the slot written with `y`. -/
 theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Blk}
@@ -113,7 +134,7 @@ theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Bl
     (hb : BcHeap S Mt' H F (y :: (L1 ++ x.decRef :: L2)))
     (hmo : MemOnly (fun a => refsBytes x.rep a ∨ slotBytes q a) Mt' M)
     (hxp : heapStart ≤ x.rep.p ∧ x.rep.p + 16 ≤ heapEnd)
-    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) :
+    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) (hyo : y.Owns) :
     BinPost S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 x q sp n
       (L1 ++ x.decRef :: L2) y :=
   { heap := hb.out_frame (P := slotBytes q) (fun a ha => imgM_store_miss _ _ (by
@@ -122,6 +143,7 @@ theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Bl
     num := hnum
     norm := hnorm
     refs := hrefs
+    owns := hyo
     slot := ldv_store_hit _ _ _
     out := fun a ha hs hf => by
       rw [imgM_store_miss _ _ (by simp only [slotBytes] at hs; omega), hmo a fun hc => ?_]
@@ -138,7 +160,7 @@ theorem binPost_rel {S : Nat → Prop} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List
     (hb0 : BcHeap S M H F (y :: (L1 ++ x :: L2)))
     (hrp : ReleasePost S M Mt' H H' F (y :: L1) L2 x q (sp - 48))
     (hsp : heapEnd + 176 ≤ sp)
-    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) :
+    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) (hyo : y.Owns) :
     BinPost S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H' (x.sb :: F) L1 L2 x q sp n
       (L1 ++ L2) y :=
   { heap := hrp.heap.out_frame (P := slotBytes q) (fun a ha => imgM_store_miss _ _ (by
@@ -147,6 +169,7 @@ theorem binPost_rel {S : Nat → Prop} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List
     num := hnum
     norm := hnorm
     refs := hrefs
+    owns := hyo
     slot := ldv_store_hit _ _ _
     out := fun a ha hs hf => by
       have hxb := hb0.blocks x (List.mem_cons_of_mem _ (List.mem_append_right _ List.mem_cons_self))
@@ -232,10 +255,10 @@ theorem BcHeap.zeroAgain {S : Nat → Prop} {M Mt' : Mem} {H : Heap} {F : List B
 
 /-- The slot keeps its word while only the heap and the window change. -/
 theorem ResSlot.of_out {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat}
-    {x : NumObj} (cx : BinCtx S R0 sp q) (st : BinAt S Mt0 M R0 R sp q) (h : ResSlot Mt0 x q) :
-    ResSlot M x q := by
+    {L1 : List NumObj} {x : NumObj} (cx : BinCtx S R0 sp q) (st : BinAt S Mt0 M R0 R sp q)
+    (h : ResSlot Mt0 L1 x q) : ResSlot M L1 x q := by
   have hap := cx.slotApart
-  refine ⟨h.refs, ?_⟩
+  refine ⟨h.refs, ?_, h.noView⟩
   rw [ldv_congr .ld fun j hj => st.out _ (cx.slotOut _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩)
     (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
   exact h.word

@@ -38,7 +38,8 @@ theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop}
     (sa1 : KSubArgs z hu1 hu0) (sa2 : KSubArgs z hv0 hv1)
     (ds : KDiffSpec z hu1 hu0 hv1 hv0 u v n la lb N W)
     (m3s : KM3Spec z hu0 hv0 n la lb N W)
-    (m1s : KM1Spec z hu1 hv1 n la lb N W) :
+    (m1s : ∀ x1 x2, hu1 = some x1 → hv1 = some x2 → 1 ≤ x1.rep.len → 1 ≤ x2.rep.len →
+      KM1Spec z hu1 hv1 n la lb N W) :
     DW live S Q 0x80004f70#64 R M := by
   have hb' : BcHeap S M H F ((temps hs0 ++ A) ++
       z.withRefs (z.rep.refs + zeroCount hs0) :: B) := by
@@ -102,6 +103,6 @@ theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop}
       (h3 := some y2) fun x e => by cases e; exact ps.d2.owns)
     ((hok.cons (h3 := some y1) fun x e => by cases e; exact ps.d1.refs).cons
       (h3 := some y2) fun x e => by cases e; exact ps.d2.refs)
-    (hga.zero kz) (hga.mulBase hmb) hNla hn1 hx1p hx2p ds m3s m1s
+    (hga.zero kz) (hga.mulBase hmb) hNla hn1 hx1p hx2p ds m3s (m1s _ _ rfl rfl hx1p hx2p)
 
 end Dc.Mach

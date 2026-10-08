@@ -276,11 +276,13 @@ structure KDiffSpec (z : NumObj) (hu1 hu0 hv1 hv0 : Hd) (u v : NumRep) (n la lb 
   fit : ∀ y1 y2 : NumObj,
     y1.rep.num = (Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0 →
     y2.rep.num = (Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0 →
+    y1.rep.Norm → y2.rep.Norm → NumShape y1.rep → NumShape y2.rep →
     n + y1.rep.len + y2.rep.len ≤ la + lb + 1 ∧ y1.rep.len + y2.rep.len ≤ N ∧
       rmStack (y1.rep.len + y2.rep.len) + 192 ≤ W
   fill : ∀ y1 y2 : NumObj,
     y1.rep.num = (Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0 →
     y2.rep.num = (Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0 →
+    y1.rep.Norm → y2.rep.Norm → NumShape y1.rep → NumShape y2.rep →
     KFillVal (hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1)) (hdVal y1 * hdVal y2)
       (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n) (kUV u v la lb) (la + lb + 1)
       (y1.rep.neg != y2.rep.neg)
@@ -337,9 +339,14 @@ theorem kara_m2enter {live : Nat → Prop} {S : Nat → Prop}
     (hd2 : y2.rep.num = (Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0)
     (hm1v : hdVal (Hd.o z hm1) = hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1))
     (hd1p : 1 ≤ y1.rep.len) (hd2p : 1 ≤ y2.rep.len)
+    (hy1n : y1.rep.Norm) (hy2n : y2.rep.Norm)
     (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len) :
     DW live S Q 0x80005050#64 R M := by
-  obtain ⟨hf1, hN1, hW1⟩ := ds.fit y1 y2 hd1 hd2
+  have sy1 : NumShape y1.rep := (hb.nums _ (Hd.objIn_mem (h := some y1)
+    (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self)) [] A B z)).shape
+  have sy2 : NumShape y2.rep := (hb.nums _ (Hd.objIn_mem (h := some y2)
+    (List.mem_cons_of_mem _ List.mem_cons_self) [] A B z)).shape
+  obtain ⟨hf1, hN1, hW1⟩ := ds.fit y1 y2 hd1 hd2 hy1n hy2n sy1 sy2
   have hu1m : hu1 ∈ kHs1 hm1 y1 y2 hs0 :=
     List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
       (hp0.mem_iff.mpr (by simp))))
@@ -358,7 +365,7 @@ theorem kara_m2enter {live : Nat → Prop} {S : Nat → Prop}
     hd1p hd2p hm1z hfit1 (by show n + y1.rep.len + y2.rep.len ≤ _; omega) m3s.fit hw1 m3s.pu0 m3s.pv0 ?_
   · show KFillVal _ (hdVal y1 * hdVal y2) _ _ _ _ _
     rw [hm1v]
-    exact ds.fill y1 y2 hd1 hd2
+    exact ds.fill y1 y2 hd1 hd2 hy1n hy2n sy1 sy2
 
 /-- **`m1` is a copy of `_zero_`** (`0x8000550c`, `u1` or `v1` zero): its
 pointer in `m1`'s slot, one more reference, the flag `s10`; then `m2`. -/
@@ -446,7 +453,7 @@ theorem kara_m1zero {live : Nat → Prop} {S : Nat → Prop}
     (hga.mulBase hmb) hNla hn1 (fun _ => by rw [Hd.o, hzv])
     (by simp)
     ds m3s ps2.d1.num ps2.d2.num
-    (by rw [Hd.o, hzv, hz0]) ps2.d1.pos ps2.d2.pos (by simp)
+    (by rw [Hd.o, hzv, hz0]) ps2.d1.pos ps2.d2.pos ps2.d1.norm ps2.d2.norm (by simp)
   exact hm1
 
 /-- **`m1` returned** (`0x80005044`): the product in `m1`'s slot, `d2`'s digit
@@ -518,7 +525,7 @@ theorem kara_m1ret {live : Nat → Prop} {S : Nat → Prop}
     (hok.cons fun x e => by cases e; exact kr.refs)
     (kz'.mono (by simp only [zeroCount_some]; omega)) (by bsimp []) (hga.mulBase hmb) hNla hn1
     (by simp) (fun _ => by show 2 * n + valCount ym.rep ≤ _; omega) ds m3s ps.d1.num ps.d2.num
-    (by rw [Hd.o, Hd.o, Hd.o, kr.val]) ps.d1.pos ps.d2.pos (fun _ => kr.pos)
+    (by rw [Hd.o, Hd.o, Hd.o, kr.val]) ps.d1.pos ps.d2.pos ps.d1.norm ps.d2.norm (fun _ => kr.pos)
 
 /-- **The recursive call for `m1`** at `0x80005028` (both halves nonzero):
 `d2`'s digit count spilled, then `_bc_rec_mul (u1, n_len (u1), v1,

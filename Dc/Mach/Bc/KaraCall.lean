@@ -104,7 +104,8 @@ theorem kara_child {live : Nat → Prop} {S : Nat → Prop}
     ⟨⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩,
       by simp only [heapEnd]; omega, by omega,
       ⟨fun i hi => ks.own _ (mem_accAddrs (by omega)), by omega, by omega, by omega⟩,
-      fun a ha => ks.out a ha.1 ha.2, .inr (by omega), cx.mulBase, cx.consts, st.r2, hal⟩
+      fun a ha => ks.out a ha.1 ha.2, .inr (by omega), .inl (by simp only [zeroAddr]; omega),
+      cx.mulBase, cx.consts, st.r2, hal⟩
     ⟨hret, fun R' M' sp' h1 h2 hr2 hout => hk.oom R' M' sp' (by omega) (by omega) hr2
       fun a ha hs hf => by
         rw [hout a ha (fun h => hf (by simp only [slotBytes, frameIn] at h ⊢; omega))

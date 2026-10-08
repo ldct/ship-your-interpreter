@@ -26,6 +26,8 @@ structure KHalf (z : NumObj) (h : Hd) (ds : List Nat) : Prop where
   norm : (Hd.o z h).rep.Norm
   len : (Hd.o z h).rep.len ≤ max 1 ds.length
   pos : ds ≠ [] → 1 ≤ (Hd.o z h).rep.len
+  /-- a half that is not `_zero_` has at most its digits -/
+  lenS : ∀ x, h = some x → x.rep.len ≤ ds.length
 
 theorem KHalf.neg {z : NumObj} {h : Hd} {ds : List Nat} (k : KHalf z h ds) :
     (Hd.o z h).rep.neg = false := congrArg Num.neg k.num
@@ -39,6 +41,7 @@ theorem khalf_zero {M : Mem} {z : NumObj} {k : Nat} (kz : KZero M z k) : KHalf z
   norm := .inl (by simp only [Hd.o, kz.len]; exact Nat.le_refl 1)
   len := by simp only [Hd.o, kz.len]; exact Nat.le_max_left 1 _
   pos := fun h => absurd rfl h
+  lenS := fun _ e => nomatch e
 
 /-- A view's handle after `_bc_rm_leading_zeros`. -/
 theorem Hd.o_trim_view (z w : NumObj) (sb : Blk) (off k : Nat) :
@@ -57,14 +60,19 @@ theorem khalf_view {z w : NumObj} {sb : Blk} {off k : Nat} (hw : NumShape w.rep)
       ((w.rep.ds.drop off).take k) from h
   rcases Nat.eq_zero_or_pos k with hk | hk
   · subst hk
-    refine ⟨?_, .inl ?_, ?_, fun h => absurd List.take_zero h⟩ <;>
+    refine ⟨?_, .inl ?_, ?_, fun h => absurd List.take_zero h, fun x e => ?_⟩ <;>
+      try (cases e)
+    all_goals
       simp only [Hd.o, NumRep.rmLeadingZeros, NumRep.drop, viewRep, NumRep.num, List.take_zero,
         List.drop_nil] <;> first | rfl | omega
   · obtain ⟨hnum, hnorm, -, hpos⟩ := NumRep.rmLeadingZeros_spec (o := viewRep sb.pay w.rep off k)
       (by simp only [viewRep]; omega) (by simp only [viewRep]; omega)
-    refine ⟨hnum.trans rfl, hnorm, ?_, fun _ => hpos⟩
-    simp only [Hd.o, NumRep.rmLeadingZeros, NumRep.drop, viewRep]
-    omega
+    refine ⟨hnum.trans rfl, hnorm, ?_, fun _ => hpos, fun x e => ?_⟩
+    · simp only [Hd.o, NumRep.rmLeadingZeros, NumRep.drop, viewRep]
+      omega
+    · cases e
+      simp only [NumRep.rmLeadingZeros, NumRep.drop, viewRep]
+      omega
 
 /-- `KAt` through a scratch run on the heap and the allocator's words. -/
 theorem KAt.touch {S : Nat → Prop} {M0 M M' : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat}

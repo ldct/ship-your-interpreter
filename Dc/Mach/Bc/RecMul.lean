@@ -39,6 +39,8 @@ structure RmCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp q W : Nat) : Pro
   slot : PtrSlot S q
   slotOut : ∀ a, slotBytes q a → OutHeap a
   slotApart : q + 8 ≤ sp - W ∨ sp ≤ q
+  /-- the slot is not one of the globals the step reads (`_zero_`, `mul_base_digits`) -/
+  slotGlob : zeroAddr + 8 ≤ q ∨ q + 8 ≤ mulBaseAddr
   mulBase : ∀ a, mulBaseAddr ≤ a → a < mulBaseAddr + 4 → S a
   consts : ∀ a, constBytes a → S a
   sp0 : R0 2 = BitVec.ofNat 64 sp

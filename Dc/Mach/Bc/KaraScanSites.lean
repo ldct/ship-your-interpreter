@@ -91,8 +91,12 @@ theorem kzero_80004f70 {live : Nat → Prop} {S : Nat → Prop}
     intro _
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x80004f98
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
-    refine kscan_80004f98 hlive hS hn (Rb := R) (fun R' kk hd => hz R' kk fun y hy => by cases hy; exact hd)
-      hnz (x.rep.len + x.rep.scale - 1) 0 _ (by omega) (fun j hj => absurd hj (Nat.not_lt_zero _)) (by keeps_tac Keeps.refl _ _) ?_ ?_
+    refine kscan_80004f98 hlive hS hn ?_ ?_ (x.rep.len + x.rep.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) ?_ ?_
+    · intro R' kk hd
+      exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
+    · intro R' kk
+      exact hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 
@@ -174,8 +178,12 @@ theorem kzero_80004fa0 {live : Nat → Prop} {S : Nat → Prop}
     intro _
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x80004fd0
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
-    refine kscan_80004fd0 hlive hS hn (Rb := R) (fun R' kk hd => hz R' kk fun y hy => by cases hy; exact hd)
-      hnz (x.rep.len + x.rep.scale - 1) 0 _ (by omega) (fun j hj => absurd hj (Nat.not_lt_zero _)) (by keeps_tac Keeps.refl _ _) ?_ ?_
+    refine kscan_80004fd0 hlive hS hn ?_ ?_ (x.rep.len + x.rep.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) ?_ ?_
+    · intro R' kk hd
+      exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
+    · intro R' kk
+      exact hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 
@@ -257,8 +265,12 @@ theorem kzero_80005050 {live : Nat → Prop} {S : Nat → Prop}
     intro _
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x80005078
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
-    refine kscan_80005078 hlive hS hn (Rb := R) (fun R' kk hd => hz R' kk fun y hy => by cases hy; exact hd)
-      hnz (x.rep.len + x.rep.scale - 1) 0 _ (by omega) (fun j hj => absurd hj (Nat.not_lt_zero _)) (by keeps_tac Keeps.refl _ _) ?_ ?_
+    refine kscan_80005078 hlive hS hn ?_ ?_ (x.rep.len + x.rep.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) ?_ ?_
+    · intro R' kk hd
+      exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
+    · intro R' kk
+      exact hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 
@@ -340,8 +352,12 @@ theorem kzero_80005080 {live : Nat → Prop} {S : Nat → Prop}
     intro _
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x800050b0
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
-    refine kscan_800050b0 hlive hS hn (Rb := R) (fun R' kk hd => hz R' kk fun y hy => by cases hy; exact hd)
-      hnz (x.rep.len + x.rep.scale - 1) 0 _ (by omega) (fun j hj => absurd hj (Nat.not_lt_zero _)) (by keeps_tac Keeps.refl _ _) ?_ ?_
+    refine kscan_800050b0 hlive hS hn ?_ ?_ (x.rep.len + x.rep.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) ?_ ?_
+    · intro R' kk hd
+      exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
+    · intro R' kk
+      exact hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 
@@ -349,11 +365,11 @@ theorem kzero_80005080 {live : Nat → Prop} {S : Nat → Prop}
 theorem kscan_800050fc {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {o : NumRep} {Rb : Nat → BitVec 64} (hS : HeapOwn S) (hn : NumAt M o)
-    (hz : ∀ R', Keeps [11, 13, 14, 15] R' Rb → (∀ j, j < o.len + o.scale → o.ds.getD j 0 = 0) →
+    (hz : ∀ R', Keeps [13, 14, 15] R' Rb → (∀ j, j < o.len + o.scale → o.ds.getD j 0 = 0) →
       DW live S Q 0x80005440#64 R' M)
-    (hnz : ∀ R', Keeps [11, 13, 14, 15] R' Rb → DW live S Q 0x80005104#64 R' M) :
+    (hnz : ∀ R', Keeps [13, 14, 15] R' Rb → DW live S Q 0x80005104#64 R' M) :
     ∀ k i (R : Nat → BitVec 64), o.len + o.scale = i + k + 1 → (∀ j, j < i → o.ds.getD j 0 = 0) →
-      Keeps [11, 13, 14, 15] R Rb → R 15 = BitVec.ofNat 64 (k + 1) → R 14 = BitVec.ofNat 64 (o.val + i) →
+      Keeps [13, 14, 15] R Rb → R 15 = BitVec.ofNat 64 (k + 1) → R 14 = BitVec.ofNat 64 (o.val + i) →
       DW live S Q 0x800050fc#64 R M := by
   num_facts hn
   intro k
@@ -400,7 +416,8 @@ theorem kzero_800050d4 {live : Nat → Prop} {S : Nat → Prop}
     (hob : R 19 = BitVec.ofNat 64 (Hd.p z h)) (hzr : R 12 = BitVec.ofNat 64 z.rep.p)
     (hzb : z.rep.p < 2 ^ 64) (hx : ∀ x, h = some x → NumAt M x.rep ∧ x.rep.p ≠ z.rep.p)
     (hz : ∀ R', Keeps [11, 13, 14, 15] R' R → HdZero h → DW live S Q 0x80005440#64 R' M)
-    (hnz : ∀ R', Keeps [11, 13, 14, 15] R' R → DW live S Q 0x80005104#64 R' M) :
+    (hnz : ∀ R', Keeps [11, 13, 14, 15] R' R →
+      (∀ x, h = some x → R' 11 = BitVec.ofNat 64 x.rep.len) → DW live S Q 0x80005104#64 R' M) :
     DW live S Q 0x800050d4#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   cases h with
@@ -423,8 +440,13 @@ theorem kzero_800050d4 {live : Nat → Prop} {S : Nat → Prop}
     intro _
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x800050fc
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
-    refine kscan_800050fc hlive hS hn (Rb := R) (fun R' kk hd => hz R' kk fun y hy => by cases hy; exact hd)
-      hnz (x.rep.len + x.rep.scale - 1) 0 _ (by omega) (fun j hj => absurd hj (Nat.not_lt_zero _)) (by keeps_tac Keeps.refl _ _) ?_ ?_
+    refine kscan_800050fc hlive hS hn ?_ ?_ (x.rep.len + x.rep.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) ?_ ?_
+    · intro R' kk hd
+      exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
+    · intro R' kk
+      exact hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+        fun y hy => by cases hy; rw [kk.get 11 (by decide)]; bsimp []
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 
@@ -432,11 +454,11 @@ theorem kzero_800050d4 {live : Nat → Prop} {S : Nat → Prop}
 theorem kscan_80005134 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {o : NumRep} {Rb : Nat → BitVec 64} (hS : HeapOwn S) (hn : NumAt M o)
-    (hz : ∀ R', Keeps [10, 13, 14, 15] R' Rb → (∀ j, j < o.len + o.scale → o.ds.getD j 0 = 0) →
+    (hz : ∀ R', Keeps [10, 14, 15] R' Rb → (∀ j, j < o.len + o.scale → o.ds.getD j 0 = 0) →
       DW live S Q 0x80005440#64 R' M)
-    (hnz : ∀ R', Keeps [10, 13, 14, 15] R' Rb → DW live S Q 0x8000513c#64 R' M) :
+    (hnz : ∀ R', Keeps [10, 14, 15] R' Rb → DW live S Q 0x8000513c#64 R' M) :
     ∀ k i (R : Nat → BitVec 64), o.len + o.scale = i + k + 1 → (∀ j, j < i → o.ds.getD j 0 = 0) →
-      Keeps [10, 13, 14, 15] R Rb → R 15 = BitVec.ofNat 64 (k + 1) → R 14 = BitVec.ofNat 64 (o.val + i) →
+      Keeps [10, 14, 15] R Rb → R 15 = BitVec.ofNat 64 (k + 1) → R 14 = BitVec.ofNat 64 (o.val + i) →
       DW live S Q 0x80005134#64 R M := by
   num_facts hn
   intro k
@@ -483,7 +505,8 @@ theorem kzero_80005104 {live : Nat → Prop} {S : Nat → Prop}
     (hob : R 20 = BitVec.ofNat 64 (Hd.p z h)) (hzr : R 12 = BitVec.ofNat 64 z.rep.p)
     (hzb : z.rep.p < 2 ^ 64) (hx : ∀ x, h = some x → NumAt M x.rep ∧ x.rep.p ≠ z.rep.p)
     (hz : ∀ R', Keeps [10, 13, 14, 15] R' R → HdZero h → DW live S Q 0x80005440#64 R' M)
-    (hnz : ∀ R', Keeps [10, 13, 14, 15] R' R → DW live S Q 0x8000513c#64 R' M) :
+    (hnz : ∀ R', Keeps [10, 13, 14, 15] R' R →
+      (∀ x, h = some x → R' 13 = BitVec.ofNat 64 x.rep.len) → DW live S Q 0x8000513c#64 R' M) :
     DW live S Q 0x80005104#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   cases h with
@@ -506,8 +529,13 @@ theorem kzero_80005104 {live : Nat → Prop} {S : Nat → Prop}
     intro _
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x80005134
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
-    refine kscan_80005134 hlive hS hn (Rb := R) (fun R' kk hd => hz R' kk fun y hy => by cases hy; exact hd)
-      hnz (x.rep.len + x.rep.scale - 1) 0 _ (by omega) (fun j hj => absurd hj (Nat.not_lt_zero _)) (by keeps_tac Keeps.refl _ _) ?_ ?_
+    refine kscan_80005134 hlive hS hn ?_ ?_ (x.rep.len + x.rep.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) ?_ ?_
+    · intro R' kk hd
+      exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
+    · intro R' kk
+      exact hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+        fun y hy => by cases hy; rw [kk.get 13 (by decide)]; bsimp []
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 

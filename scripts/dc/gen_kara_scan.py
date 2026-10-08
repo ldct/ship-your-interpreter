@@ -54,11 +54,11 @@ LOOP = """/-- The digit scan at `0x@L@`: the first `i` digits zero, `k + 1` left
 theorem kscan_@L@ {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {o : NumRep} {Rb : Nat → BitVec 64} (hS : HeapOwn S) (hn : NumAt M o)
-    (hz : ∀ R', Keeps @K@ R' Rb → (∀ j, j < o.len + o.scale → o.ds.getD j 0 = 0) →
+    (hz : ∀ R', Keeps @KS@ R' Rb → (∀ j, j < o.len + o.scale → o.ds.getD j 0 = 0) →
       DW live S Q 0x@Z@#64 R' M)
-    (hnz : ∀ R', Keeps @K@ R' Rb → DW live S Q 0x@NZ@#64 R' M) :
+    (hnz : ∀ R', Keeps @KS@ R' Rb → DW live S Q 0x@NZ@#64 R' M) :
     ∀ k i (R : Nat → BitVec 64), o.len + o.scale = i + k + 1 → (∀ j, j < i → o.ds.getD j 0 = 0) →
-      Keeps @K@ R Rb → R @c@ = BitVec.ofNat 64 (k + 1) → R @p@ = BitVec.ofNat 64 (o.val + i) →
+      Keeps @KS@ R Rb → R @c@ = BitVec.ofNat 64 (k + 1) → R @p@ = BitVec.ofNat 64 (o.val + i) →
       DW live S Q 0x@L@#64 R M := by
   num_facts hn
   intro k
@@ -107,7 +107,7 @@ theorem kzero_@E@ {live : Nat → Prop} {S : Nat → Prop}
     (hob : R @obj@ = BitVec.ofNat 64 (Hd.p z h)) (hzr : R @zr@ = BitVec.ofNat 64 z.rep.p)
     (hzb : z.rep.p < 2 ^ 64) (hx : ∀ x, h = some x → NumAt M x.rep ∧ x.rep.p ≠ z.rep.p)
     (hz : ∀ R', Keeps @K@ R' R → HdZero h → DW live S Q 0x@Z@#64 R' M)
-    (hnz : ∀ R', Keeps @K@ R' R → DW live S Q 0x@NZ@#64 R' M) :
+    (hnz : ∀ R', Keeps @K@ R' R@NZX@ → DW live S Q 0x@NZ@#64 R' M) :
     DW live S Q 0x@E@#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   cases h with
@@ -130,8 +130,12 @@ theorem kzero_@E@ {live : Nat → Prop} {S : Nat → Prop}
     intro _
     bc_run hlive hS [hob, hzr, hne', hl, hsc, hv, addw_ofNat] at 0x@L@
     all_goals first | exact acc_heap hS (by omega) (by omega) | skip
-    refine kscan_@L@ hlive hS hn (Rb := R) (fun R' kk hd => hz R' kk fun y hy => by cases hy; exact hd)
-      hnz (x.rep.len + x.rep.scale - 1) 0 _ (by omega) (fun j hj => absurd hj (Nat.not_lt_zero _)) (by keeps_tac Keeps.refl _ _) ?_ ?_
+    refine kscan_@L@ hlive hS hn ?_ ?_ (x.rep.len + x.rep.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) ?_ ?_
+    · intro R' kk hd
+      exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
+    · intro R' kk
+      exact hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))@NZP@
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 
@@ -147,14 +151,19 @@ def gen():
     for (e, pair, obj, zr, c, p, t, lr, L, Z) in SITES:
         ks = sorted({c, p, t, lr} | ({15} if pair else set()))
         K = "[" + ", ".join(map(str, ks)) + "]"
+        KS = "[" + ", ".join(map(str, sorted({c, p, t}))) + "]"
+        keep = lr not in (c, p, t)
+        nzx = f" →\n      (∀ x, h = some x → R' {lr} = BitVec.ofNat 64 x.rep.len)" if keep else ""
+        nzp = f"\n        fun y hy => by cases hy; rw [kk.get {lr} (by decide)]; bsimp []" if keep else ""
         s = LOOP
         for k, v in [("@L@", hx(L)), ("@B@", hx(L - 12)), ("@NZ@", hx(L + 8)), ("@Z@", hx(Z)),
-                     ("@K@", K), ("@c@", str(c)), ("@p@", str(p))]:
+                     ("@KS@", KS), ("@c@", str(c)), ("@p@", str(p))]:
             s = s.replace(k, v)
         out.append(s)
         s = ENTRY
         for k, v in [("@E@", hx(e)), ("@L@", hx(L)), ("@NZ@", hx(L + 8)), ("@Z@", hx(Z)),
-                     ("@K@", K), ("@obj@", str(obj)), ("@zr@", str(zr))]:
+                     ("@K@", K), ("@obj@", str(obj)), ("@zr@", str(zr)), ("@NZX@", nzx),
+                     ("@NZP@", nzp)]:
             s = s.replace(k, v)
         out.append(s)
     out.append("end Dc.Mach\n")

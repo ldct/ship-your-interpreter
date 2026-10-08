@@ -1388,4 +1388,138 @@ theorem sub_fracB_body {live : Nat → Prop} {S : Nat → Prop}
         (by bsimp [h16]) (by bsimp [h11]) (by bsimp [h8]) (by bsimp [h9]) hjN hY hnext hexit
     · intro hc; omega
 
+/-- After the subtraction of `n2`'s extra fraction digits, from
+`0x800048a4`. -/
+theorem sub_fracB_exit {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {A B Y0 : Nat}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (hs : x1.rep.scale < x2.rep.scale) (hf : FracGeom x1.rep x2.rep y.rep.val A B Y0)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin (x2.rep.scale - x1.rep.scale)) :: L))
+    (fr : FracBRegs R B Y0 (x2.rep.scale - x1.rep.scale) A x1.rep.scale x1.rep.len
+      (x2.rep.scale - x1.rep.scale) (subB x1.rep x2.rep (x2.rep.scale - x1.rep.scale))) :
+    DW live S Q 0x800048a4#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+  have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+  have b1 := hs2.vLo; have b2 := hs2.ptrLe; have b3 := hs2.size; have b4 := hs2.vHi
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hNl := hy.N_lt
+  simp only [addN, loopLen] at hNl
+  simp only [heapStart, heapEnd] at b1 b4 v1
+  have f1 := hf.eA; have f2 := hf.eB; have f3 := hf.eY
+  have l1p := hs1.lenPos; have l2p := hs2.lenPos
+  have h13 := fr.r13; have h16 := fr.r16; have h28 := fr.r28; have h11 := fr.r11
+  have h8 := fr.r8; have h9 := fr.r9; have h14 := fr.r14
+  have hg : SubMain x1.rep x2.rep y.rep.val (x2.rep.scale - x1.rep.scale)
+      (x2.rep.len + x1.rep.scale) A (B - (x2.rep.scale - x1.rep.scale))
+      (Y0 - (x2.rep.scale - x1.rep.scale)) :=
+    ⟨by omega, by omega, by omega, by omega, by omega⟩
+  bc_run hlive hS [h13, h11, h28, word_pred, sub_ofNat] at 0x8000472c
+  exact sub_join hlive cx hk hy ha hg
+    (st.keeps (by keeps_tac Keeps.refl _ _)) hb (by bsimp [h16])
+    (by bsimp []; congr 1; omega) (by bsimp []; congr 1; omega) (by bsimp [h14])
+    (by bsimp [h8]; congr 1; omega) (by bsimp [h9])
+
+/-- The subtraction of `n2`'s extra fraction digits from zero at
+`0x80004878` (`s1 < s2`), then the join. -/
+theorem sub_fracB {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {A B Y0 : Nat}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (hs : x1.rep.scale < x2.rep.scale) (hf : FracGeom x1.rep x2.rep y.rep.val A B Y0) :
+    ∀ m j (R : Nat → BitVec 64) (M : Mem), x2.rep.scale - x1.rep.scale - j = m →
+      j < x2.rep.scale - x1.rep.scale →
+      SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
+      BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin j) :: L) →
+      FracBRegs R B Y0 (x2.rep.scale - x1.rep.scale) A x1.rep.scale x1.rep.len j
+        (subB x1.rep x2.rep j) →
+      DW live S Q 0x80004878#64 R M := by
+  have hm := hy.model
+  have f2 := hf.eB; have f3 := hf.eY
+  intro m
+  induction m with
+  | zero => intro j R M h1 h2; omega
+  | succ m ih =>
+    intro j R M hm' hj st hb fr
+    have hn2 := hb.nums x2 (List.mem_cons_of_mem _ ha.m2)
+    have hs2 := hn2.shape
+    have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+    have b1 := hs2.vLo; have b2 := hs2.ptrLe; have b3 := hs2.size; have b4 := hs2.vHi
+    have hn0 := hb.nums _ List.mem_cons_self
+    have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+    have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+    simp only [heapStart, heapEnd] at b1 b4 v1
+    have hl := hn2.lbu (i := x2.rep.len + x2.rep.scale - 1 - j) (by omega)
+    rw [show x2.rep.val + (x2.rep.len + x2.rep.scale - 1 - j) = B - j by omega] at hl
+    have hjN : j < addN x1.rep x2.rep := by simp only [addN, loopLen]; omega
+    have hx0 := addXs_out hs1 (b := x2.rep) (k := j) (.inl (by omega))
+    have hyy := addYs_in hs2 (a := x1.rep) (k := j) (by omega) (by omega)
+    have ⟨hr, hbs⟩ := hm.step hjN
+    rw [hx0, hyy, show x2.rep.len + max x1.rep.scale x2.rep.scale - 1 - j =
+      x2.rep.len + x2.rep.scale - 1 - j by omega] at hr hbs
+    simp only [Nat.zero_add, Nat.zero_sub] at hr
+    exact sub_fracB_body hlive cx hy st hb fr hj (by omega) (by omega) hl (hn2.getD_lt _)
+      (hm.borrow_le j) hr hbs (by omega) (by omega) hjN
+      (by simp only [addN, loopLen]; omega) (by omega)
+      (fun e R' M' => ih (j + 1) R' M' (by omega) e)
+      (fun e R' M' st' hb' fr' => by
+        rw [e] at hb' fr'
+        exact sub_fracB_exit hlive cx hk hy ha hs hf st' hb' fr')
+
+/-- The second fraction phase's entry at `0x80004850` (`s1 = min s1 s2`):
+none when `s1 = s2`, else the subtraction of `n2`'s extra digits. -/
+theorem sub_fracB_entry {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
+    {H : Heap} {F : List Blk} {A B Y0 : Nat}
+    (cx : SubCtx S R0 sp) (hk : SubK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (hy : SubSum y x1.rep x2.rep smin) (ha : SubArgs L x1 x2 smin)
+    (hs : x1.rep.scale ≤ x2.rep.scale) (hf : FracGeom x1.rep x2.rep y.rep.val A B Y0)
+    (st : SubAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
+    (hb : BcHeap S M H F (withDs y (subDs x1.rep x2.rep smin 0) :: L))
+    (h17 : R 17 = BitVec.ofNat 64 x2.rep.scale) (h8 : R 8 = BitVec.ofNat 64 x1.rep.scale)
+    (h13 : R 13 = BitVec.ofNat 64 Y0) (h16 : R 16 = BitVec.ofNat 64 A)
+    (h11 : R 11 = BitVec.ofNat 64 B) (h9 : R 9 = BitVec.ofNat 64 x1.rep.len) :
+    DW live S Q 0x80004850#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hs1 := (hb.nums x1 (List.mem_cons_of_mem _ ha.m1)).shape
+  have hs2 := (hb.nums x2 (List.mem_cons_of_mem _ ha.m2)).shape
+  have b1 := hs2.vLo; have b2 := hs2.ptrLe; have b3 := hs2.size; have b4 := hs2.vHi
+  have hn0 := hb.nums _ List.mem_cons_self
+  have v1 : heapStart ≤ y.rep.ptr := hn0.shape.vLo
+  have v3 : y.rep.ptr ≤ y.rep.val := hn0.shape.ptrLe
+  have hNl := hy.N_lt
+  simp only [addN, loopLen] at hNl
+  simp only [heapStart, heapEnd] at b1 b4 v1
+  have f1 := hf.eA; have f2 := hf.eB; have f3 := hf.eY
+  have l1p := hs1.lenPos; have l2p := hs2.lenPos; have a3 := hs1.size
+  have hb0 : subB x1.rep x2.rep 0 = 0 := borrowAt_zero _ _ _
+  bc_run hlive hS [h17, h8, subw_ofNat, toInt_ofNat_small] at 0x80004858 0x800048b8
+  · intro hc
+    have e : x1.rep.scale = x2.rep.scale := by
+      (try simp (disch := omega) only [toInt_ofNat_small] at hc); omega
+    have hg : SubMain x1.rep x2.rep y.rep.val 0 (x2.rep.len + x1.rep.scale) A B Y0 :=
+      ⟨by omega, by omega, by omega, by omega, by omega⟩
+    bc_run hlive hS [] at 0x8000472c
+    exact sub_join hlive cx hk hy ha hg (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+      (by bsimp [h16]) (by bsimp [h13]) (by bsimp [h11]) (by bsimp [hb0])
+      (by bsimp [h8]; congr 1; omega) (by bsimp [h9])
+  · intro hc
+    have e : x1.rep.scale < x2.rep.scale := by
+      (try simp (disch := omega) only [toInt_ofNat_small] at hc); omega
+    bc_run hlive hS [h17, h8, h13, h11, se12_fff, word_pred, sxw_ofNat, subw_ofNat, shl_shr32,
+      add_not_ofNat] at 0x80004878
+    exact sub_fracB hlive cx hk hy ha e hf _ 0 _ _ rfl (by omega)
+      (st.keeps (by keeps_tac Keeps.refl _ _)) hb
+      ⟨by bsimp [h11], by bsimp [h13], by bsimp []; congr 1; omega, by bsimp [],
+        by bsimp [hb0], by bsimp [h13], by bsimp [h16], by bsimp [h11], by bsimp [h8], by bsimp [h9]⟩
+
 end Dc.Mach

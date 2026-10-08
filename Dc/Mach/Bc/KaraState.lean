@@ -62,6 +62,22 @@ def Hd.obj (hs : List Hd) (z : NumObj) : Hd → NumObj
   | some x => x
   | none => z.withRefs (z.rep.refs + zeroCount (none :: hs))
 
+/-- The object a handle of `hs` names in `KList P hs A B z`. -/
+def Hd.objIn (hs : List Hd) (z : NumObj) : Hd → NumObj
+  | some x => x
+  | none => z.withRefs (z.rep.refs + zeroCount hs)
+
+theorem Hd.objIn_p (hs : List Hd) (z : NumObj) (h : Hd) : (Hd.objIn hs z h).rep.p = Hd.p z h := by
+  cases h <;> rfl
+
+theorem Hd.objIn_mem {hs : List Hd} {h : Hd} (hm : h ∈ hs) (P A B : List NumObj) (z : NumObj) :
+    Hd.objIn hs z h ∈ KList P hs A B z := by
+  cases h with
+  | some x =>
+    exact List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _
+      (List.mem_filterMap.mpr ⟨some x, hm, rfl⟩)))
+  | none => exact List.mem_append_right _ List.mem_cons_self
+
 theorem Hd.obj_p (hs : List Hd) (z : NumObj) (h : Hd) : (Hd.obj hs z h).rep.p = Hd.p z h := by
   cases h <;> rfl
 
@@ -79,6 +95,9 @@ theorem KList_none (P : List NumObj) (hs : List Hd) (A B : List NumObj) (z : Num
 theorem KList_rest (P : List NumObj) (hs : List Hd) (A B : List NumObj) (z : NumObj) :
     KList P hs A B z = P ++ (temps hs ++ A ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
   simp only [KList, List.append_assoc]
+
+theorem KList_single (y : NumObj) (hs : List Hd) (A B : List NumObj) (z : NumObj) :
+    KList [y] hs A B z = y :: KList [] hs A B z := rfl
 
 theorem KList_nil (P A B : List NumObj) (z : NumObj) : KList P [] A B z = P ++ (A ++ z :: B) := by
   simp only [KList, temps, List.filterMap_nil, zeroCount_nil, Nat.add_zero, NumObj.withRefs_self,

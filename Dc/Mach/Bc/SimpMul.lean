@@ -599,6 +599,17 @@ theorem fval_digLE (ds : List Nat) {n : Nat} (h : n ≤ ds.length) :
     List.getElem?_take]
   simp [show n - 1 - i < n by omega]
 
+/-- The columns' value is the product of the operands' first digits. -/
+theorem fval_colv (u v : List Nat) {la lb : Nat} (hla : la ≤ u.length) (hlb : lb ≤ v.length)
+    (hlb1 : 1 ≤ lb) :
+    fval (colv (digLE u la) la (digLE v lb) lb) (la + lb) =
+      dvalBE (u.take la) * dvalBE (v.take lb) := by
+  rw [← fval_digLE u hla, ← fval_digLE v hlb,
+    ← fval_conv la _ _ lb (la + lb) (fun i h => digLE_out u h) (fun i h => digLE_out v h) (Nat.le_refl _)]
+  unfold fval
+  exact sumR_congr fun k _ => by
+    rw [colv_eq_conv _ _ _ _ _ hlb1 (fun i h => digLE_out u h) (fun i h => digLE_out v h)]
+
 /-- **The base case's value**: the carry and the `la + lb` stored digits
 are the product of the operands' first `la` and `lb` digits. -/
 theorem colSt_final (u v : List Nat) {la lb : Nat} (hla : la ≤ u.length) (hlb : lb ≤ v.length)
@@ -607,10 +618,27 @@ theorem colSt_final (u v : List Nat) {la lb : Nat} (hla : la ≤ u.length) (hlb 
       (colSt (digLE u la) la (digLE v lb) lb (la + lb)).1) =
       dvalBE (u.take la) * dvalBE (v.take lb) := by
   rw [dvalBE_cons, ← dvalLE_reverse, colSt_len, Nat.mul_comm, Nat.add_comm, colSt_val,
-    ← fval_digLE u hla, ← fval_digLE v hlb,
-    ← fval_conv la _ _ lb (la + lb) (fun i h => digLE_out u h) (fun i h => digLE_out v h) (Nat.le_refl _)]
-  unfold fval
-  exact sumR_congr fun k _ => by
-    rw [colv_eq_conv _ _ _ _ _ hlb1 (fun i h => digLE_out u h) (fun i h => digLE_out v h)]
+    fval_colv u v hla hlb hlb1]
 
-end Dc.Mach
+theorem dvalBE_take_lt {u : List Nat} (hu : IsDigits u) {n : Nat} (h : n ≤ u.length) :
+    dvalBE (u.take n) < 10 ^ n := by
+  rw [← dvalLE_reverse]
+  have := dvalLE_lt (ds := (u.take n).reverse) fun d hd =>
+    hu d (List.mem_of_mem_take (List.mem_reverse.mp hd))
+  rwa [List.length_reverse, List.length_take, Nat.min_eq_left h] at this
+
+/-- The final carry is zero: the product has at most `la + lb` digits. -/
+theorem colSt_carry (u v : List Nat) {la lb : Nat} (hla : la ≤ u.length) (hlb : lb ≤ v.length)
+    (hlb1 : 1 ≤ lb) (hu : IsDigits u) (hv : IsDigits v) :
+    (colSt (digLE u la) la (digLE v lb) lb (la + lb)).2 = 0 := by
+  have h := colSt_val (digLE u la) la (digLE v lb) lb (la + lb)
+  rw [fval_colv u v hla hlb hlb1] at h
+  have h1 := dvalBE_take_lt hu hla
+  have h2 := dvalBE_take_lt hv hlb
+  have h3 : dvalBE (u.take la) * dvalBE (v.take lb) < 10 ^ (la + lb) := by
+    rw [Nat.pow_add]; exact Nat.mul_lt_mul_of_lt_of_lt h1 h2
+  generalize (colSt (digLE u la) la (digLE v lb) lb (la + lb)).2 = c at h
+  rcases Nat.eq_zero_or_pos c with hc | hc
+  · exact hc
+  · have : 10 ^ (la + lb) ≤ 10 ^ (la + lb) * c := Nat.le_mul_of_pos_right _ hc
+    omega

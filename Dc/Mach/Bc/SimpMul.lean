@@ -385,9 +385,8 @@ theorem sm_col_tail {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {u v : NumRep} (hS : HeapOwn S) (hus : NumShape u) {la lb P sp k s : Nat}
     (hk : k < la + lb) (hN : la + lb < 2 ^ 31) (hkP : k < P) (hs : s < 2 ^ 30)
-    (hPlo : 2147603920 ≤ P - k) (hPhi : P ≤ 2273312768)
+    (hPlo : 2147603920 ≤ P - k) (hPhi : P + 1 ≤ 2273312768)
     {R : Nat → BitVec 64} (hsf : StackFrame S (sp + 192) 192) (hr : ColRegs R u v la lb P sp k s)
-    (hsto : ∀ b ∈ accAddrs (P - k) 1, S b)
     (hs0 : ldv .ld (writeLog M [(P - k, 1, BitVec.ofNat 64 (s % 10))]) sp = BitVec.ofNat 64 u.p)
     (hval : ldv .ld (writeLog M [(P - k, 1, BitVec.ofNat 64 (s % 10))]) (u.p + 32) =
       BitVec.ofNat 64 u.val)
@@ -405,7 +404,7 @@ theorem sm_col_tail {live : Nat → Prop} {S : Nat → Prop}
   rw [srem10_small (by omega)] at hr1
   have q1 := hr.keep (R' := R1) (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
   bc_run hlive hS [hr1, q1.r19, q1.r26] at 0x80004d24
-  all_goals first | exact hsto | skip
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
   apply st_80004d24 hlive
   refine divdi3_spec hlive _ (by bsimp []) fun R2 hk2 hr2 => ?_
   bsimp [] at hr2 ⊢
@@ -425,5 +424,125 @@ theorem sm_col_tail {live : Nat → Prop} {S : Nat → Prop}
     bc_run hlive hS [hs0, hval, q2.r2] at 0x80004cb4
     all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
     exact hnext (by omega) _ (by keeps_tac hkk) (q2.next.reload _)
+
+/-! ## The column loop -/
+
+theorem dotR_le {a b : Nat → Nat} (ha : ∀ i, a i ≤ 9) (hb : ∀ j, b j ≤ 9) (la : Nat) :
+    ∀ r i, dotR a la b i r ≤ 81 * min r (la - i)
+  | 0, i => by simp [dotR]
+  | r + 1, i => by
+    rcases Nat.lt_or_ge i la with hi | hi
+    · rw [dotR_step a la b hi (by omega), Nat.add_sub_cancel]
+      have h1 : a i * b r ≤ 81 := Nat.mul_le_mul (ha i) (hb r)
+      have h2 := dotR_le ha hb la r (i + 1)
+      omega
+    · rw [dotR_out a la b hi]; omega
+
+theorem digLE_le {ds : List Nat} (hd : ∀ i, ds.getD i 0 < 10) (n i : Nat) : digLE ds n i ≤ 9 := by
+  unfold digLE; split
+  · have := hd (n - 1 - i); omega
+  · omega
+
+theorem colv_le {a b : Nat → Nat} (ha : ∀ i, a i ≤ 9) (hb : ∀ j, b j ≤ 9) (la lb k : Nat)
+    (hlb : 1 ≤ lb) : colv a la b lb k ≤ 81 * min la lb := by
+  have := dotR_le ha hb la (min k (lb - 1) + 1) (k - min k (lb - 1))
+  unfold colv; omega
+
+/-- The carry stays below `9 * min la lb`. -/
+theorem colSt_le {a b : Nat → Nat} (ha : ∀ i, a i ≤ 9) (hb : ∀ j, b j ≤ 9) (la lb : Nat)
+    (hlb : 1 ≤ lb) : ∀ k, (colSt a la b lb k).2 ≤ 9 * min la lb
+  | 0 => by simp [colSt]
+  | k + 1 => by
+    have h1 := colSt_le ha hb la lb hlb k
+    have h2 := colv_le ha hb la lb k hlb
+    simp only [colSt]
+    omega
+
+/-- The product's digits through column `k` (big-endian, unwritten zeros first). -/
+abbrev colDs (u v : NumRep) (la lb k : Nat) : List Nat :=
+  List.replicate (la + lb + 1 - k) 0 ++ (colSt (digLE u.ds la) la (digLE v.ds lb) lb k).1
+
+/-- **The column loop** at `0x80004cb4` with `j` columns left: each column
+adds its products to the carry, stores `sum % 10` at `pvptr` and keeps
+`sum / 10`. -/
+theorem sm_cols {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    (hS : HeapOwn S) {H : Heap} {F : List Blk} {L : List NumObj} {y uo vo : NumObj}
+    (hyo : y.Owns) (huL : uo ∈ L) (hvL : vo ∈ L) {la lb P sp : Nat} {A8 A10 : BitVec 64}
+    (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
+    (hla1 : 1 ≤ la) (hlb1 : 1 ≤ lb) (hN : la + lb < 2 ^ 31) (hm : 90 * min la lb < 2 ^ 30)
+    (hyl : y.rep.len + y.rep.scale = la + lb + 1) (hP : P = y.rep.val + (la + lb))
+    (hsf : StackFrame S (sp + 192) 192) (hsp : heapEnd ≤ sp)
+    (hA8 : ∀ k, k ≤ P →
+      subw A8 (BitVec.ofNat 64 (P - k)) = subw (BitVec.ofNat 64 k) (BitVec.ofNat 64 lb))
+    (hA10 : ∀ k, k ≤ P →
+      subw A10 (BitVec.ofNat 64 (P - k)) = subw (BitVec.ofNat 64 (k + 1)) (BitVec.ofNat 64 lb))
+    {M0 : Mem} {R0 : Nat → BitVec 64}
+    (hk : ∀ R' M', Keeps colClob R' R0 →
+      ColRegs R' uo.rep vo.rep la lb P sp (la + lb)
+        (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb (la + lb)).2 →
+      BcHeap S M' H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L) →
+      MemOnly (accBytes y.rep) M' M0 → DW live S Q 0x80004d44#64 R' M') :
+    ∀ j k R M, j + k = la + lb → 1 ≤ j → Keeps colClob R R0 →
+      ColRegs R uo.rep vo.rep la lb P sp k
+        (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).2 →
+      BcHeap S M H F (withDs y (colDs uo.rep vo.rep la lb k) :: L) →
+      MemOnly (accBytes y.rep) M M0 → ldv .ld M sp = BitVec.ofNat 64 uo.rep.p →
+      ldv .ld M (sp + 8) = A8 → ldv .ld M (sp + 16) = A10 →
+      DW live S Q 0x80004cb4#64 R M := by
+  intro j
+  induction j with
+  | zero => intro k R M _ h; omega
+  | succ j ih =>
+    intro k R M hjk _ hkR hr hb hmo h0 h8 h10
+    have hu := hb.nums uo (List.mem_cons_of_mem _ huL)
+    have hv := hb.nums vo (List.mem_cons_of_mem _ hvL)
+    have hys := (hb.nums _ List.mem_cons_self).shape
+    have y1 := hys.vLo; have y2 := hys.vHi
+    simp only [withDs, heapStart, heapEnd] at y1 y2
+    have hsp' := hsp
+    simp only [heapEnd] at hsp'
+    have ha9 : ∀ i, digLE uo.rep.ds la i ≤ 9 := digLE_le hu.getD_lt la
+    have hb9 : ∀ i, digLE vo.rep.ds lb i ≤ 9 := digLE_le hv.getD_lt lb
+    have hc := colSt_le ha9 hb9 la lb hlb1 k
+    have hcv := colv_le ha9 hb9 la lb k hlb1
+    refine sm_col_head hlive hS hu hv hla hlb hla1 hlb1 (by omega) hN (by omega) (by omega) hsf h8 h10
+      (hA8 k (by omega)) (hA10 k (by omega)) hr fun R1 hk1 h1 => ?_
+    have hrev : (0 :: List.replicate (la + lb - k) 0).reverse ++
+        (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).1 = colDs uo.rep vo.rep la lb k := by
+      unfold colDs
+      rw [← List.replicate_succ, List.reverse_replicate, show la + lb - k + 1 = la + lb + 1 - k by omega]
+    have hb' := BcHeap.storeRev hyo (xs := List.replicate (la + lb - k) 0)
+      (D := (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).1) (a := 0)
+      (d := ((colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).2 +
+        colv (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k) % 10)
+      (by rw [hrev]; exact hb) (by simp only [withDs, List.length_replicate]; omega)
+      (Nat.mod_lt _ (by decide)) (sbData_ofNat _)
+    rw [List.length_replicate, show y.rep.val + (la + lb - k) = P - k by omega] at hb'
+    have hcd : (List.replicate (la + lb - k) 0).reverse ++
+        (((colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).2 +
+          colv (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k) % 10 ::
+          (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).1) =
+        colDs uo.rep vo.rep la lb (k + 1) := by
+      unfold colDs
+      rw [List.reverse_replicate, show la + lb + 1 - (k + 1) = la + lb - k by omega]
+      rfl
+    rw [hcd] at hb'
+    have hmo' : MemOnly (accBytes y.rep) (writeLog M [(P - k, 1, BitVec.ofNat 64
+        (((colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).2 +
+          colv (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k) % 10))]) M0 :=
+      ((MemOnly.store M _ 1 _).mono fun a ha => by simp only [accBytes]; omega).trans hmo
+    refine sm_col_tail hlive hS hu.shape (by omega) hN (by omega) (by omega) (by omega) (by omega) hsf
+      (hr.set26 hk1 h1) (by rw [ldv_ld_miss _ _ (by omega)]; exact h0)
+      (hb'.nums uo (List.mem_cons_of_mem _ huL)).value
+      (fun hlt R2 hk2 hr2 => ih (k + 1) R2 _ (by omega) (by omega) (hk2.trans ((hk1.mono (by decide)).trans hkR)) hr2 hb' hmo'
+        (by rw [ldv_ld_miss _ _ (by omega)]; exact h0) (by rw [ldv_ld_miss _ _ (by omega)]; exact h8)
+        (by rw [ldv_ld_miss _ _ (by omega)]; exact h10))
+      fun heq R2 hk2 hr2 => ?_
+    have hfin := hk R2 (writeLog M [(P - k, 1, BitVec.ofNat 64
+        (((colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).2 +
+          colv (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k) % 10))]) (hk2.trans ((hk1.mono (by decide)).trans hkR))
+    rw [← heq] at hfin
+    exact hfin hr2 hb' hmo'
 
 end Dc.Mach

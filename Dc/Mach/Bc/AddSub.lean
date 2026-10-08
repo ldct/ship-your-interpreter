@@ -248,4 +248,21 @@ theorem NumRep.num_withNeg {o : NumRep} {b : Bool} {v s : Nat} (h : o.num = ⟨f
   show (⟨b, dval o.ds, o.scale⟩ : Num) = ⟨b, v, s⟩
   rw [e1, e2]
 
+/-- `BinAt` through stores into the low half of the frame (`sp - 48` to
+`sp - 24`, below the saved registers). -/
+theorem BinAt.low {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp q : Nat}
+    (st : BinAt S Mt0 M R0 R sp q) (hk : Keeps binTmp R' R)
+    (hm : MemOnly (fun a => sp - 48 ≤ a ∧ a < sp - 24) M' M) : BinAt S Mt0 M' R0 R' sp q :=
+  { st.keeps hk with
+    saved := st.saved.transport (lo := 24) (top := 48) (hag := fun a h1 h2 => hm a (by omega))
+    out := fun a ha hf => (hm a fun h => hf (by simp only [frameIn]; omega)).trans
+      (st.out a ha hf) }
+
+/-- `addi sp, sp, -48`. -/
+theorem word_sub48 {x : Nat} (h : 48 ≤ x) :
+    BitVec.ofNat 64 x + 18446744073709551568#64 = BitVec.ofNat 64 (x - 48) := by
+  change BitVec.ofNat 64 x + -(48#64) = _
+  rw [BitVec.add_neg_eq_sub]
+  exact BitVec.ofNat_sub_ofNat_of_le x 48 (by decide) h
+
 end Dc.Mach

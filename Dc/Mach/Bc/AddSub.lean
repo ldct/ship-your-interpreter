@@ -57,7 +57,7 @@ before it reads an owner's buffer. -/
 structure ResSlot (Mt : Mem) (L1 : List NumObj) (x : NumObj) (q : Nat) : Prop where
   refs : 1 ≤ x.rep.refs
   word : ldv .ld Mt q = BitVec.ofNat 64 x.rep.p
-  noView : x.Owns → ∀ z ∈ L1, z.db ≠ x.db
+  noView : x.rep.refs = 1 → x.Owns → ∀ z ∈ L1, z.db ≠ x.db
 
 /-- The result: the new number `y` for `n` (normalized, one reference) heads
 the heap left by freeing `x`, its struct is in the slot, and off the heap only
@@ -88,7 +88,7 @@ structure BinK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → Bit
 /-- `bc_free_num`'s entry facts for the slot `q` holding `x` of the heap. -/
 theorem FreeEntry.of_slot {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
     {L0 L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (h : BcHeap S Mt H F (L1 ++ x :: L2))
-    (hr : ResSlot Mt L0 x q) (hnv : x.Owns → ∀ z ∈ L1, z.db ≠ x.db) (hq : PtrSlot S q)
+    (hr : ResSlot Mt L0 x q) (hnv : x.rep.refs = 1 → x.Owns → ∀ z ∈ L1, z.db ≠ x.db) (hq : PtrSlot S q)
     (hout : ∀ a, slotBytes q a → OutHeap a)
     (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp) (hap : q + 8 ≤ sp - 32 ∨ sp ≤ q) :
     FreeEntry S Mt H F L1 L2 x q sp := by
@@ -115,8 +115,9 @@ theorem FreeEntry.of_slot {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk
 it in `y :: L1`. -/
 theorem ResSlot.noView_cons {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x y : NumObj} {q : Nat} (hb : BcHeap S M H F (y :: (L1 ++ x :: L2)))
-    (hyo : y.Owns) (hr : ResSlot Mt L1 x q) : x.Owns → ∀ z ∈ y :: L1, z.db ≠ x.db := by
-  intro hxo z hz
+    (hyo : y.Owns) (hr : ResSlot Mt L1 x q) :
+    x.rep.refs = 1 → x.Owns → ∀ z ∈ y :: L1, z.db ≠ x.db := by
+  intro hx1 hxo z hz
   rcases List.mem_cons.mp hz with rfl | hz
   · have hd := hb.distinct
     rw [objBlocks_cons, NumObj.blocks_own hyo] at hd
@@ -124,7 +125,7 @@ theorem ResSlot.noView_cons {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F : List
     have hxm : z.db ∈ objBlocks (L1 ++ x :: L2) :=
       e ▸ mem_objBlocks_db (List.mem_append_right _ List.mem_cons_self) hxo
     exact (List.nodup_append.mp (List.nodup_append.mp hd).2.1).2.2 z.db (by simp) z.db hxm rfl
-  · exact hr.noView hxo z hz
+  · exact hr.noView hx1 hxo z hz
 
 /-- After `bc_free_num` dropped one reference: the slot written with `y`. -/
 theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Blk}
@@ -134,12 +135,13 @@ theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Bl
     (hb : BcHeap S Mt' H F (y :: (L1 ++ x.decRef :: L2)))
     (hmo : MemOnly (fun a => refsBytes x.rep a ∨ slotBytes q a) Mt' M)
     (hxp : heapStart ≤ x.rep.p ∧ x.rep.p + 16 ≤ heapEnd)
-    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) (hyo : y.Owns) :
+    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
+    (hx2 : 2 ≤ x.rep.refs) :
     BinPost S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 x q sp n
       (L1 ++ x.decRef :: L2) y :=
   { heap := hb.out_frame (P := slotBytes q) (fun a ha => imgM_store_miss _ _ (by
       simp only [slotBytes] at ha; omega)) hout
-    rest := .dec
+    rest := .dec hx2
     num := hnum
     norm := hnorm
     refs := hrefs
@@ -160,12 +162,13 @@ theorem binPost_rel {S : Nat → Prop} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List
     (hb0 : BcHeap S M H F (y :: (L1 ++ x :: L2)))
     (hrp : ReleasePost S M Mt' H H' F (y :: L1) L2 x q (sp - 48))
     (hsp : heapEnd + 176 ≤ sp)
-    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) (hyo : y.Owns) :
+    (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
+    (hx1 : x.rep.refs = 1) :
     BinPost S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H' (x.sb :: F) L1 L2 x q sp n
       (L1 ++ L2) y :=
   { heap := hrp.heap.out_frame (P := slotBytes q) (fun a ha => imgM_store_miss _ _ (by
       simp only [slotBytes] at ha; omega)) hout
-    rest := .rel
+    rest := .rel hx1
     num := hnum
     norm := hnorm
     refs := hrefs

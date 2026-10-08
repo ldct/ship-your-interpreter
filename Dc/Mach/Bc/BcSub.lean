@@ -107,7 +107,7 @@ theorem bsub_tail {live : Nat → Prop} {S : Nat → Prop}
   have e : FreeEntry S M H F (y :: L1) L2 xr q (sp - 48) :=
     FreeEntry.of_slot hb hr (hr.noView_cons hb hyo) hq cx.slotOut hsf' (by simp only [heapEnd]; omega) (by omega)
   refine bc_free_num_spec hlive e _ (by bsimp [h9]) (by bsimp [h2]) (by bsimp [])
-    ⟨fun _ R1 Mt1 hk1 hb1 _ hmo => ?_, fun _ R1 Mt1 H1 hk1 hrp => ?_⟩
+    ⟨fun hx2 R1 Mt1 hk1 hb1 _ hmo => ?_, fun hx1 R1 Mt1 H1 hk1 hrp => ?_⟩
   · bsimp []
     have sv := st.saved.transport (lo := 24) (top := 48) (M' := Mt1) (hag := fun a h1 h2' =>
       hmo a fun hc => by
@@ -117,7 +117,7 @@ theorem bsub_tail {live : Nat → Prop} {S : Nat → Prop}
     exact bsub_epi hlive cx hk sv (by rw [hk1.get 2]; bsimp [h2]) (by rw [hk1.get 8]; bsimp [h8])
       (by rw [hk1.get 9]; bsimp [h9]) (by rw [hk1.get 18]; bsimp [h18])
       (((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps binAll _ R)).trans st.regs) hS
-      (binPost_dec cx.slotOut (fun a ha _ hf => st.out a ha hf) hb1 hmo hxp hnum hnorm hrefs hyo)
+      (binPost_dec cx.slotOut (fun a ha _ hf => st.out a ha hf) hb1 hmo hxp hnum hnorm hrefs hyo hx2)
   · bsimp []
     have sv := st.saved.transport (lo := 24) (top := 48) (M' := Mt1) (hag := fun a h1 h2' =>
       hrp.frame a fun hc => by
@@ -134,7 +134,7 @@ theorem bsub_tail {live : Nat → Prop} {S : Nat → Prop}
       (by rw [hk1.get 9]; bsimp [h9]) (by rw [hk1.get 18]; bsimp [h18])
       (((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps binAll _ R)).trans st.regs)
       (fun a h1 h2 => hrp.heap.heap.own a h1 h2)
-      (binPost_rel cx.slotOut (fun a ha _ hf => st.out a ha hf) hb hrp cx.above hnum hnorm hrefs hyo)
+      (binPost_rel cx.slotOut (fun a ha _ hf => st.out a ha hf) hb hrp cx.above hnum hnorm hrefs hyo hx1)
 
 /-- The sign `b` stored into the new number `y` (positive, value `v`, scale
 `s`), then the tail. -/

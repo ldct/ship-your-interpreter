@@ -43,8 +43,8 @@ def NumObj.decRef (x : NumObj) : NumObj := { x with rep := { x.rep with refs := 
 
 /-- What freeing the old number left: `x` with one reference fewer, or gone. -/
 inductive FreedRest (L1 L2 : List NumObj) (x : NumObj) : List NumObj → Prop
-  | dec : FreedRest L1 L2 x (L1 ++ x.decRef :: L2)
-  | rel : FreedRest L1 L2 x (L1 ++ L2)
+  | dec : 2 ≤ x.rep.refs → FreedRest L1 L2 x (L1 ++ x.decRef :: L2)
+  | rel : x.rep.refs = 1 → FreedRest L1 L2 x (L1 ++ L2)
 
 /-- The bytes of `_bc_Free_list`. -/
 abbrev bcFreeBytes (a : Nat) : Prop := bcFreeAddr ≤ a ∧ a < bcFreeAddr + 8
@@ -379,8 +379,8 @@ structure FreeEntry (S : Nat → Prop) (Mt : Mem) (H : Heap) (F : List Blk)
   word : ldv .ld Mt q = BitVec.ofNat 64 x.rep.p
   stack : StackFrame S sp 32
   above : heapEnd + 32 ≤ sp
-  /-- no view before an owner reads its buffer -/
-  noView : x.Owns → ∀ y ∈ L1, y.db ≠ x.db
+  /-- no view before an owner with one reference reads its buffer -/
+  noView : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db
 
 theorem FreeEntry.mem {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (_ : FreeEntry S Mt H F L1 L2 x q sp) :
@@ -453,8 +453,8 @@ structure AfterFree (S : Nat → Prop) (Mt M2 Mt3 : Mem) (H : Heap) (x : NumObj)
 /-- The release path's final memory: `ReleasePost`. -/
 theorem release_post {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (e : FreeEntry S Mt H F L1 L2 x q sp)
-    (ho : x.Owns) {lpre lpost : List Blk} (hl : H.live = lpre ++ x.db :: lpost)
-    {M2 Mt3 : Mem} {R R1 : Nat → BitVec 64} (af : AfterFree S Mt M2 Mt3 H x lpre lpost q sp R R1)
+    (ho : x.Owns) (hr1 : x.rep.refs = 1) {lpre lpost : List Blk}
+    (hl : H.live = lpre ++ x.db :: lpost) {M2 Mt3 : Mem} {R R1 : Nat → BitVec 64} (af : AfterFree S Mt M2 Mt3 H x lpre lpost q sp R R1)
     {Mt' : Mem}
     (hM4e : writeLog (writeLog (writeLog Mt3
       [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))]) [(q, 8, 0#64)])
@@ -585,7 +585,7 @@ theorem release_post {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
         · exact absurd rfl hne
         · exact List.mem_append_right _ h1
   exact
-    { heap := BcHeap.release h ho (e.noView ho) hl hi' hhead hnext hkeep
+    { heap := BcHeap.release h ho (e.noView hr1 ho) hl hi' hhead hnext hkeep
       owned := fun _ => ⟨rfl, hlive', rfl⟩
       view := fun hv => absurd ho hv
       slot := by rw [← hM4e, ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _
@@ -721,7 +721,7 @@ theorem free_num_tail {live : Nat → Prop} {S : Nat → Prop}
     rw [ldv_ld_miss _ _ (by omega)]; exact wq
   refine free_num_ret hlive hS hsf (by simp only [heapEnd]; omega) hq (by omega) (by omega) (by omega) hgl R R1 hal r2
     w8 w24 wq wq3 wg fun R' e1 e2 hr => ?_
-  refine hk.rel hr1 R' _ _ ?_ (release_post e ho hl af rfl)
+  refine hk.rel hr1 R' _ _ ?_ (release_post e ho hr1 hl af rfl)
   intro z hz
   simp only [freeNumClob, List.mem_cons, List.not_mem_nil, or_false, not_or] at hz
   rcases (show z = 1 ∨ z = 2 ∨ (z ≠ 1 ∧ z ≠ 2) by omega) with rfl | rfl | ⟨z1, z2⟩

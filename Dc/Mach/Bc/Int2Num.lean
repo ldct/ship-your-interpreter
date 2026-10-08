@@ -686,17 +686,17 @@ theorem i2n_free {live : Nat → Prop} {S : Nat → Prop}
   have hr20 := st.rq; have hr2 := st.r2
   bc_run hlive hS [hr20, hr2] at 0x800048c0
   refine bc_free_num_spec hlive e _ (by bsimp [hr20]) (by bsimp [hr2]) (by bsimp [])
-    ⟨fun _ R' Mt' hk1 hb' _ hmo => ?_, fun _ R' Mt' H' hk1 hrp => ?_⟩
+    ⟨fun hx2 R' Mt' hk1 hb' _ hmo => ?_, fun hx1 R' Mt' H' hk1 hrp => ?_⟩
   · bsimp []
     refine i2n_new hlive cx hk ((st.calls ((hk1.mono (by decide)).trans
-      (by keeps_tac Keeps.refl _ _))).mem cx fun a ha hsl _ => hmo a fun hc => ?_) hb' .dec
+      (by keeps_tac Keeps.refl _ _))).mem cx fun a ha hsl _ => hmo a fun hc => ?_) hb' (.dec hx2)
     rcases hc with hc | hc
     · simp only [refsBytes, OutHeap, heapStart, heapEnd] at hc ha hp1 hp2; omega
     · exact hsl hc
   · bsimp []
     refine i2n_new hlive cx hk ((st.calls ((hk1.mono (by decide)).trans
       (by keeps_tac Keeps.refl _ _))).mem cx fun a ha hsl hf => hrp.frame a fun hc => ?_)
-      hrp.heap .rel
+      hrp.heap (.rel hx1)
     rcases hc with hc | hc | hc | hc | hc
     · exact OutHeap.not_alloc h.heap ha hc
     · exact ha.1 (live_in_heap h.heap hxb.sLive hc)

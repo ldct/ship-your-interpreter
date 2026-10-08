@@ -24,3 +24,5 @@ import Dc.Mach.Bc.Heap
 import Dc.Mach.Bc.New
 import Dc.Mach.Bc.HeapClosure
 import Dc.Mach.Bc.Free
+import Dc.Mach.Bc.NumStore
+import Dc.Mach.Bc.Init

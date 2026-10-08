@@ -4492,7 +4492,7 @@ comparison. The following suppliers remain explicit:
 - Comparison consumes `NumRep.Norm`; number-producing function specs must
   preserve normalization. Boot and runtime invariants must supply live code,
   owned globals, initial allocator resources, and stack bounds.
-- M4 still needs `bc_init_numbers`, `bc_int2num`, and `bc_out_long`, followed
+- M4 still needs `bc_int2num` and `bc_out_long`, followed
   by their callers. Inlined leading-zero removal has a representation-level
   model but still needs its machine-site proofs.
 
@@ -4528,6 +4528,16 @@ Decrements reloaded by `lw` need `word_pred` and `sxw_ofNat` passed to
 `bc_run` as instantiated facts: the generic second `bsimp` pass otherwise
 produces a sub-of-sum literal whose kernel check recurses too deeply.
 All public theorems use only the three permitted axioms.
+
+### M4 `bc_init_numbers` (checked)
+
+`Dc/Mach/Bc/Init.lean` proves `bc_init_numbers_spec` at `0x80004948`: from a
+number heap `L` and `InitCtx` (48-byte stack window above the heap, owned
+constant words), `InitK.ret` receives `InitPost` (heap `two :: one :: zero ::
+L` with digits `2`, `1`, `0`, the three struct pointers in `_two_`, `_one_`,
+`_zero_`, off-heap writes confined to the window and those words), or
+`InitK.oom` at `out_of_memory`. `BcHeap.setDigit` (`NumStore.lean`) supplies
+the digit stores.
 
 ### M3 representation and heap closure (checked)
 

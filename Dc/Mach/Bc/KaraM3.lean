@@ -129,6 +129,43 @@ theorem valCount_le_of_lt {o : NumRep} (hl : o.ds.length = o.len + o.scale) (h1 
         rw [show o.len + o.scale - 1 = rest.length by omega] at hlt; omega
     simp [this]
 
+/-- What a recursive call's result gives the step: the product `y` heading
+the handles, its slot, its value and digit count. -/
+structure KRet (S : Nat → Prop) (M' : Mem) (H' : Heap) (F' : List Blk) (hs : List Hd)
+    (A B : List NumObj) (z x0 y0 y : NumObj) (qs : Nat) : Prop where
+  heap : BcHeap S M' H' F' (KList [] (some y :: hs) A B z)
+  owns : y.Owns
+  refs : y.rep.refs = 1
+  slot : ldv .ld M' qs = BitVec.ofNat 64 (Hd.p z (some y))
+  val : hdVal y = hdVal x0 * hdVal y0
+  vc : valCount y.rep ≤ x0.rep.len + y0.rep.len
+
+/-- `RmPost` of a recursive call on two handles of the step. -/
+theorem RmPost.kret {S : Nat → Prop} {M M' : Mem} {H' : Heap} {F' : List Blk} {hs : List Hd}
+    {A B : List NumObj} {z x0 y0 y : NumObj} {qs sp' W' : Nat}
+    (post : RmPost S M M' H' F' ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B)
+      x0.rep y0.rep x0.rep.len y0.rep.len qs sp' W' y)
+    (hx0 : NumAt M x0.rep) (hy0 : NumAt M y0.rep) :
+    KRet S M' H' F' hs A B z x0 y0 y qs := by
+  have hyb := post.heap.blocks y List.mem_cons_self
+  have hyn := post.heap.nums y List.mem_cons_self
+  have hlen : y.rep.ds.length = y.rep.len := by rw [hyn.shape.dsLen, post.scale]; rfl
+  have hyv : hdVal y = hdVal x0 * hdVal y0 := by
+    show dvalBE (y.rep.ds.take y.rep.len) = _
+    rw [List.take_of_length_le (by omega), post.val]
+  have hlt := Nat.mul_lt_mul'' hx0.hdVal_lt hy0.hdVal_lt
+  rw [← Nat.pow_add] at hlt
+  refine ⟨?_, post.owns, post.refs, post.slot.trans (by rw [← hyb.sPay]; rfl), hyv, ?_⟩
+  · have := post.heap
+    simpa only [KList, temps, List.filterMap_cons, id, zeroCount_some, List.nil_append,
+      List.append_assoc, List.cons_append] using this
+  · have := valCount_le_of_lt hyn.shape.dsLen hyn.shape.lenPos (by
+      rw [post.len, post.scale, Nat.add_zero, Nat.add_sub_cancel]
+      have : dvalBE y.rep.ds = hdVal y := by
+        show _ = dvalBE (y.rep.ds.take y.rep.len); rw [List.take_of_length_le (by omega)]
+      rw [this, hyv]; exact hlt)
+    rw [post.len] at this; omega
+
 /-- **`m3` returned** (`0x8000514c`): `_bc_rec_mul (u0, v0)`'s product in
 `m3`'s slot; the handles reordered, then the product's `bc_new_num`. -/
 theorem kara_m3ret {live : Nat → Prop} {S : Nat → Prop}
@@ -154,8 +191,7 @@ theorem kara_m3ret {live : Nat → Prop} {S : Nat → Prop}
     DW live S Q 0x8000514c#64 R' M' := by
   have hab := cx.above; have hW := cx.big
   simp only [heapEnd] at hab
-  have hyb := post.heap.blocks y List.mem_cons_self
-  have hyn := post.heap.nums y List.mem_cons_self
+  have kr := post.kret hx0 hy0
   have st := pk.st.call cx 56 (by omega) post.out
   have hfr : ∀ a, sp - 192 + 40 ≤ a → a < sp - 192 + 56 → imgM M' a = imgM M a := fun a h1 h2 =>
     post.out a (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
@@ -164,34 +200,18 @@ theorem kara_m3ret {live : Nat → Prop} {S : Nat → Prop}
     ⟨st, pk.tr,
       ⟨(ldv_congr .ld fun j hj => hfr _ (by omega) (by simp only [widthOfM] at hj; omega)).trans pk.m1,
         (ldv_congr .ld fun j hj => hfr _ (by omega) (by simp only [widthOfM] at hj; omega)).trans pk.m2,
-        post.slot.trans (by rw [← hyb.sPay]; rfl)⟩, pk.s6, pk.s10⟩
-  have hb1 : BcHeap S M' H' F' (KList [] (some y :: hs) A B z) := by
-    have := post.heap
-    simpa only [KList, temps, List.filterMap_cons, id, zeroCount_some, List.nil_append,
-      List.append_assoc, List.cons_append] using this
-  have hb2 := hb1.kperm (hpm (some y)) (fun _ h => nomatch h)
-    ((hown.cons fun x e => by cases e; exact post.owns).perm (hpm (some y)))
-  have hlen : y.rep.ds.length = y.rep.len := by rw [hyn.shape.dsLen, post.scale]; rfl
-  have hyv : hdVal y = hdVal x0 * hdVal y0 := by
-    show dvalBE (y.rep.ds.take y.rep.len) = _
-    rw [List.take_of_length_le (by omega), post.val]
-  have hlt := Nat.mul_lt_mul'' hx0.hdVal_lt hy0.hdVal_lt
-  rw [← Nat.pow_add] at hlt
-  have hvc : valCount y.rep ≤ x0.rep.len + y0.rep.len := by
-    have := valCount_le_of_lt hyn.shape.dsLen hyn.shape.lenPos (by
-      rw [post.len, post.scale, Nat.add_zero, Nat.add_sub_cancel]
-      have : dvalBE y.rep.ds = hdVal y := by
-        show _ = dvalBE (y.rep.ds.take y.rep.len); rw [List.take_of_length_le (by omega)]
-      rw [this, hyv]; exact hlt)
-    rw [post.len] at this; omega
+        kr.slot⟩, pk.s6, pk.s10⟩
+  have hb2 := kr.heap.kperm (hpm (some y)) (fun _ h => nomatch h)
+    ((hown.cons fun x e => by cases e; exact kr.owns).perm (hpm (some y)))
+  have hvc := kr.vc
   refine kara_new514c hlive cx hk (pk2.keeps kk) hb2 ((hok.cons fun x e => by
-      cases e; exact post.refs).perm (hpm (some y))) hzr hNla ?_ ?_ ?_ ?_ ?_
+      cases e; exact kr.refs).perm (hpm (some y))) hzr hNla ?_ ?_ ?_ ?_ ?_
   · simpa only [Hd.hdVal_objIn] using hm1z
   · simpa only [Hd.valCount_objIn] using hfit1
   · show n + valCount y.rep ≤ _; omega
   · simpa only [Hd.valCount_objIn] using hfit2
   · show KFillVal _ _ (hdVal y) _ _ _ _
-    rw [hyv]; simpa only [Hd.hdVal_objIn, Hd.objIn_neg] using hv
+    rw [kr.val]; simpa only [Hd.hdVal_objIn, Hd.objIn_neg] using hv
 
 /-- A zero handle's value. -/
 theorem HdZero.val {z : NumObj} {h : Hd} (hz : HdZero h) (hzd : z.rep.ds = [0]) (hzl : z.rep.len = 1) :

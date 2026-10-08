@@ -123,4 +123,50 @@ theorem sumDs_step {N k : Nat} {r Z : List Nat} (hk : k < N) (hr : k < r.length)
   simp only [List.length_replicate, show N - 1 - k - (N - (k + 1)) = 0 by omega, List.set_cons_zero,
     List.nil_append]
 
+/-! ## Subtraction, position by position -/
+
+/-- The borrow into position `k` of `subLE xs ys b`. -/
+def borrowAt : List Nat → List Nat → Nat → Nat → Nat
+  | x :: xs, y :: ys, b, k + 1 => borrowAt xs ys (if x < y + b then 1 else 0) k
+  | _, _, b, _ => b
+
+theorem borrowAt_zero (xs ys : List Nat) (b : Nat) : borrowAt xs ys b 0 = b := by
+  cases xs <;> cases ys <;> rfl
+
+theorem subLE_getD : ∀ (xs ys : List Nat) (b k : Nat), xs.length = ys.length → k < xs.length →
+    (subLE xs ys b).getD k 0 =
+      if xs.getD k 0 < ys.getD k 0 + borrowAt xs ys b k then
+        xs.getD k 0 + 10 - ys.getD k 0 - borrowAt xs ys b k
+      else xs.getD k 0 - ys.getD k 0 - borrowAt xs ys b k
+  | _ :: _, _ :: _, b, 0, _, _ => by
+    simp only [subLE, borrowAt_zero, List.getD_cons_zero]; split <;> rfl
+  | x :: xs, y :: ys, b, k + 1, h, hk => by
+    simp only [subLE, List.getD_cons_succ, borrowAt]
+    split
+    · rw [List.getD_cons_succ, subLE_getD xs ys 1 k (by simpa using h) (by simpa using hk)]
+    · rw [List.getD_cons_succ, subLE_getD xs ys 0 k (by simpa using h) (by simpa using hk)]
+  | [], _, _, _, _, hk => by simp at hk
+  | _ :: _, [], _, _, h, _ => by simp at h
+
+theorem borrowAt_succ : ∀ (xs ys : List Nat) (b k : Nat), xs.length = ys.length → k < xs.length →
+    borrowAt xs ys b (k + 1) =
+      if xs.getD k 0 < ys.getD k 0 + borrowAt xs ys b k then 1 else 0
+  | _ :: _, _ :: _, b, 0, _, _ => by simp only [borrowAt, borrowAt_zero, List.getD_cons_zero]
+  | x :: xs, y :: ys, b, k + 1, h, hk => by
+    simp only [borrowAt, List.getD_cons_succ]
+    exact borrowAt_succ xs ys _ k (by simpa using h) (by simpa using hk)
+  | [], _, _, _, _, hk => by simp at hk
+  | _ :: _, [], _, _, h, _ => by simp at h
+
+theorem borrowAt_le : ∀ (xs ys : List Nat) (b k : Nat), b ≤ 1 → borrowAt xs ys b k ≤ 1
+  | x :: xs, y :: ys, b, k + 1, hb => borrowAt_le xs ys _ k (by split <;> decide)
+  | [], _, b, _, hb => by cases ‹List Nat› <;> exact hb
+  | _ :: _, [], b, _, hb => hb
+  | _ :: _, _ :: _, b, 0, hb => hb
+
+/-- One position of a difference: the digit and the borrow out. -/
+theorem digit_sub {x y b : Nat} (hx : x < 10) (hy : y < 10) (hb : b ≤ 1) :
+    (if x < y + b then x + 10 - y - b else x - y - b) < 10 := by
+  split <;> omega
+
 end Dc.BcModel

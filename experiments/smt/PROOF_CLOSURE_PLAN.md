@@ -4830,3 +4830,33 @@ composition of the four routes from `0x80004db0` to the trims and on to
 `kara_m1` at `0x80004f70` (the `KM1` state with `hs0` a permutation of the four
 handles), the Karatsuba arithmetic identity feeding `KDiffSpec`, `KM3Spec` and
 `KM1Spec`, and the `rmDepth` induction that closes `RmIH` and `bc_multiply`.
+
+### M6 obstruction: `_bc_rec_mul` can build a zero-length half
+
+`kara_half` (`Dc/Mach/Bc/KaraEntry.lean`) computes the Karatsuba split
+`n = (max la lb + 1) / 2`. The dispatch at `0x80004df4` (`blt s4, s0`) takes
+the splitting route whenever `n ≤ la`, and that route stores
+`n_len = la - n` (`subw` at `0x80004e04`, `sw` at `0x80004e10`). With `la = n`
+the inlined `new_sub_num` therefore writes `n_len = 0`.
+
+`NumShape.lenPos : 1 ≤ o.len` (`Dc/Mach/Bc/Rep.lean`) forbids such an object,
+so `BcHeap.nums` cannot hold for the step's object list on that route, and
+`kview_80004e08` demands `n < la` rather than `n ≤ la`. The same applies to
+`lb` at the second dispatch (`kview_800053d0`, `n < lb`).
+
+Evidence that the route is reachable from the Karatsuba case's own entry
+conditions (`80 ≤ la + lb`, `20 ≤ la`, `20 ≤ lb`): `kara_emptyHalf_reachable`
+and `kara_emptyHalfV_reachable` (`Dc/Mach/Bc/KaraRoute.lean`) exhibit
+`la = 27, lb = 53` and `la = 53, lb = 27`, both checked by `decide`.
+
+Affected declarations: `kview_80004e08`, `kview_80004e3c`, `kview_800053d0`,
+`kview_80005400` (all requiring a positive half), `kara_vhigh`, and every
+consumer of `NumShape.lenPos` (53 projections in 13 files, of which
+`KaraTrimSites.lean` and `KaraShiftSites.lean` are generated).
+
+Resolution: weaken `NumShape.lenPos` so that `len = 0` is representable
+(`len = 0 → scale = 0 ∧ ds = []`) and supply `1 ≤ len` explicitly at the
+consumers that need it, which are the digit loops, the comparison, the scan
+and the trims — all of which already know their operand is nonempty from
+their callers. A zero-length view is inert at the trims: `lbu 0(n_value)`
+reads a byte of the parent's buffer and either branch leaves `n_len = 0`.

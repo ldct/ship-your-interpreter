@@ -192,6 +192,23 @@ theorem word_pred {k : Nat} (h1 : 1 ≤ k) :
   rw [BitVec.add_neg_eq_sub]
   exact BitVec.ofNat_sub_ofNat_of_le k 1 (by decide) h1
 
+/-- `slli 32; srli 32` of a word below `2^32`. -/
+theorem shl_shr32 {n : Nat} (h : n < 2 ^ 32) :
+    BitVec.ofNat 64 n <<< 32 >>> 32 = BitVec.ofNat 64 n := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft, BitVec.toNat_ofNat,
+    Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+  omega
+
+/-- `add a, b, ~c`: `a - c - 1`. -/
+theorem add_not_ofNat {A B : Nat} (hA : A < 2 ^ 64) (hB : B < A) :
+    BitVec.ofNat 64 A + (BitVec.ofNat 64 B ^^^ 18446744073709551615#64) =
+      BitVec.ofNat 64 (A - B - 1) := by
+  rw [show (18446744073709551615#64) = BitVec.allOnes 64 from rfl, BitVec.xor_allOnes]
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_add, BitVec.toNat_not, BitVec.toNat_ofNat]
+  omega
+
 /-- Register lookups, literal immediates and `BitVec.ofNat` address arithmetic
 (bounds by `omega`), with the facts `hs`. -/
 macro "bsimp" " [" ts:Lean.Parser.Tactic.simpLemma,* "]" loc:(Lean.Parser.Tactic.location)? : tactic =>

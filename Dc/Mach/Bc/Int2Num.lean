@@ -523,14 +523,6 @@ theorem I2NAt.a5 {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp
     rcur := by rw [upd_other _ _ (by decide)]; exact st.rcur
     regs := by keeps_tac st.regs }
 
-theorem add_not_ofNat {A B : Nat} (hA : A < 2 ^ 64) (hB : B < A) :
-    BitVec.ofNat 64 A + (BitVec.ofNat 64 B ^^^ 18446744073709551615#64) =
-      BitVec.ofNat 64 (A - B - 1) := by
-  rw [show (18446744073709551615#64) = BitVec.allOnes 64 from rfl, BitVec.xor_allOnes]
-  apply BitVec.eq_of_toNat_eq
-  simp only [BitVec.toNat_add, BitVec.toNat_not, BitVec.toNat_ofNat]
-  omega
-
 /-- The new number's digits from the buffer, from `0x800069c8`, then the
 epilogue. -/
 theorem i2n_fill {live : Nat → Prop} {S : Nat → Prop}

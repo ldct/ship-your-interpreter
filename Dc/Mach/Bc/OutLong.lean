@@ -315,14 +315,6 @@ theorem ol_out {live : Nat → Prop} {S : Nat → Prop}
 
 /-! ## Before the output loop (`0x80006558`) -/
 
-/-- `slli 32; srli 32` of a word below `2^32`. -/
-theorem shl_shr32 {n : Nat} (h : n < 2 ^ 32) :
-    BitVec.ofNat 64 n <<< 32 >>> 32 = BitVec.ofNat 64 n := by
-  apply BitVec.eq_of_toNat_eq
-  simp only [BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft, BitVec.toNat_ofNat,
-    Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
-  omega
-
 theorem ol_start {live : Nat → Prop} {S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d : Nat}

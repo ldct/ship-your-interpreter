@@ -285,4 +285,109 @@ theorem karatsuba_sub {u1 u0 v1 v0 B : Nat} (h : ¬ kSame u1 u0 v1 v0) :
     simp only [h1, h2, ite_true, ite_false, Nat.add_sub_cancel_left]
     grind
 
+/-! ## The accumulator never overflows
+
+`_bc_rec_mul` adds `m1·B²`, `m1·B`, `m3·B`, `m3` into a product array of
+`ulen + vlen + 1` digits before it adds or subtracts `m2·B`
+(`B = 10^n`, `n = (max ulen vlen + 1) / 2`). `kara_bound` bounds that
+partial sum by the array's capacity, so no `_bc_shift_addsub` carries out of
+the array. -/
+
+theorem sq_mul_lt {B x y : Nat} (hx : x < B) (hy : 0 < y) : x * y * B + x * y < B * B * y := by
+  obtain ⟨c, rfl⟩ : ∃ c, B = x + 1 + c := ⟨B - x - 1, by omega⟩
+  grind
+
+theorem cube_lt {B x y : Nat} (hx : x < B) (hy : y < B) : x * y * B + x * y < B * B * B := by
+  rcases Nat.eq_zero_or_pos y with rfl | hy0
+  · simp; exact Nat.mul_pos (Nat.mul_pos (by omega) (by omega)) (by omega)
+  exact Nat.lt_of_lt_of_le (sq_mul_lt hx hy0) (Nat.mul_le_mul_left _ (Nat.le_of_lt hy))
+
+theorem pow_ul_pos {x ul : Nat} (hx0 : 0 < x) (hx : x < 10 ^ ul) : 1 ≤ ul := by
+  rcases ul with _ | ul
+  · simp at hx; omega
+  · omega
+
+/-- The two products of the low (or only) halves. -/
+theorem half_bound {n ul vl x y : Nat} (hx : x < 10 ^ ul) (hxB : x < 10 ^ n) (hy : y < 10 ^ vl)
+    (hyB : y < 10 ^ n) (hmax : 2 * n ≤ max ul vl + 1) :
+    x * y * 10 ^ n + x * y < 10 ^ (ul + vl + 1) := by
+  rcases Nat.eq_zero_or_pos x with rfl | hx0
+  · simp; exact Nat.pow_pos (by decide)
+  rcases Nat.eq_zero_or_pos y with rfl | hy0
+  · simp; exact Nat.pow_pos (by decide)
+  have hul := pow_ul_pos hx0 hx
+  have hvl := pow_ul_pos hy0 hy
+  have hBB : 10 ^ n * 10 ^ n = 10 ^ (2 * n) := by rw [← Nat.pow_add]; congr 1; omega
+  by_cases hv : vl ≤ n
+  · have h1 := sq_mul_lt hxB hy0
+    rw [hBB] at h1
+    have h2 : 10 ^ n * 10 ^ n * y < 10 ^ n * 10 ^ n * 10 ^ vl :=
+      Nat.mul_lt_mul_of_pos_left hy (Nat.mul_pos (Nat.pow_pos (by decide)) (Nat.pow_pos (by decide)))
+    rw [hBB, ← Nat.pow_add] at h2
+    have h3 : 10 ^ (2 * n + vl) ≤ 10 ^ (ul + vl + 1) := Nat.pow_le_pow_right (by decide) (by omega)
+    omega
+  by_cases hu : ul ≤ n
+  · have h1 := sq_mul_lt hyB hx0
+    rw [Nat.mul_comm y x, hBB] at h1
+    have h2 : 10 ^ n * 10 ^ n * x < 10 ^ n * 10 ^ n * 10 ^ ul :=
+      Nat.mul_lt_mul_of_pos_left hx (Nat.mul_pos (Nat.pow_pos (by decide)) (Nat.pow_pos (by decide)))
+    rw [hBB, ← Nat.pow_add] at h2
+    have h3 : 10 ^ (2 * n + ul) ≤ 10 ^ (ul + vl + 1) := Nat.pow_le_pow_right (by decide) (by omega)
+    omega
+  have h1 := cube_lt hxB hyB
+  rw [hBB, ← Nat.pow_add] at h1
+  have h3 : 10 ^ (2 * n + n) ≤ 10 ^ (ul + vl + 1) := Nat.pow_le_pow_right (by decide) (by omega)
+  omega
+
+/-- The partial sum `m1·B² + m1·B + m3·B + m3` fits in `ulen + vlen + 1`
+digits. -/
+theorem kara_bound {n ul vl u1 u0 v1 v0 : Nat} (hu : u1 * 10 ^ n + u0 < 10 ^ ul)
+    (hv : v1 * 10 ^ n + v0 < 10 ^ vl) (hu0 : u0 < 10 ^ n) (hv0 : v0 < 10 ^ n)
+    (hul : ul ≤ 2 * n) (hvl : vl ≤ 2 * n) (hmax : 2 * n ≤ max ul vl + 1) :
+    u1 * v1 * 10 ^ n * 10 ^ n + u1 * v1 * 10 ^ n + u0 * v0 * 10 ^ n + u0 * v0 <
+      10 ^ (ul + vl + 1) := by
+  have hBpos : 0 < 10 ^ n := Nat.pow_pos (by decide)
+  have hBB : 10 ^ n * 10 ^ n = 10 ^ (2 * n) := by rw [← Nat.pow_add]; congr 1; omega
+  by_cases hu1 : u1 = 0
+  · subst hu1; simp only [Nat.zero_mul, Nat.zero_add] at hu ⊢
+    exact half_bound hu hu0 (by omega) hv0 hmax
+  by_cases hv1 : v1 = 0
+  · subst hv1; simp only [Nat.mul_zero, Nat.zero_mul, Nat.zero_add] at hv ⊢
+    exact half_bound (by omega) hu0 hv hv0 hmax
+  -- both high halves are nonzero: both lengths exceed `n`
+  have hB1 : 10 ^ n ≤ u1 * 10 ^ n := Nat.le_mul_of_pos_left _ (by omega)
+  have hB2 : 10 ^ n ≤ v1 * 10 ^ n := Nat.le_mul_of_pos_left _ (by omega)
+  have hnu : n < ul := Nat.lt_of_not_le fun h => by
+    have : 10 ^ ul ≤ 10 ^ n := Nat.pow_le_pow_right (by decide) h
+    omega
+  have hnv : n < vl := Nat.lt_of_not_le fun h => by
+    have : 10 ^ vl ≤ 10 ^ n := Nat.pow_le_pow_right (by decide) h
+    omega
+  -- `u1 < B`
+  have hu1B : u1 < 10 ^ n := by
+    have h1 : u1 * 10 ^ n < 10 ^ n * 10 ^ n := by
+      rw [hBB]; exact Nat.lt_of_lt_of_le (by omega) (Nat.pow_le_pow_right (by decide) hul)
+    exact Nat.lt_of_mul_lt_mul_right h1
+  have hv1B : v1 < 10 ^ n := by
+    have h1 : v1 * 10 ^ n < 10 ^ n * 10 ^ n := by
+      rw [hBB]; exact Nat.lt_of_lt_of_le (by omega) (Nat.pow_le_pow_right (by decide) hvl)
+    exact Nat.lt_of_mul_lt_mul_right h1
+  have hd1 : dist u1 u0 < 10 ^ n := by simp only [dist]; split <;> omega
+  have hd2 : dist v0 v1 < 10 ^ n := by simp only [dist]; split <;> omega
+  -- `uv < 10^(ul+vl)` and `|d1||d2|B < B³ ≤ 10^(ul+vl)`
+  have huv : (u1 * 10 ^ n + u0) * (v1 * 10 ^ n + v0) < 10 ^ ul * 10 ^ vl :=
+    Nat.mul_lt_mul_of_lt_of_le hu (Nat.le_of_lt hv) (Nat.pow_pos (by decide))
+  have hdd : dist u1 u0 * dist v0 v1 * 10 ^ n < 10 ^ n * 10 ^ n * 10 ^ n :=
+    Nat.mul_lt_mul_of_pos_right
+      (Nat.mul_lt_mul_of_lt_of_le hd1 (Nat.le_of_lt hd2) hBpos) hBpos
+  rw [hBB, ← Nat.pow_add] at hdd
+  rw [← Nat.pow_add] at huv
+  have h3 : 10 ^ (2 * n + n) ≤ 10 ^ (ul + vl) := Nat.pow_le_pow_right (by decide) (by omega)
+  have h4 : 10 ^ (ul + vl + 1) = 10 * 10 ^ (ul + vl) := by rw [Nat.pow_succ, Nat.mul_comm]
+  by_cases hk : kSame u1 u0 v1 v0
+  · have := karatsuba_add (B := 10 ^ n) hk
+    omega
+  · have := karatsuba_sub (B := 10 ^ n) hk
+    omega
+
 end Dc.BcModel

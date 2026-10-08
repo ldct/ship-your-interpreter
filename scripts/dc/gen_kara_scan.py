@@ -107,7 +107,7 @@ theorem kzero_@E@ {live : Nat → Prop} {S : Nat → Prop}
     (hob : R @obj@ = BitVec.ofNat 64 (Hd.p z h)) (hzr : R @zr@ = BitVec.ofNat 64 z.rep.p)
     (hzb : z.rep.p < 2 ^ 64) (hx : ∀ x, h = some x → NumAt M x.rep ∧ x.rep.p ≠ z.rep.p)
     (hz : ∀ R', Keeps @K@ R' R → HdZero h → DW live S Q 0x@Z@#64 R' M)
-    (hnz : ∀ R', Keeps @K@ R' R@NZX@ → DW live S Q 0x@NZ@#64 R' M) :
+    (hnz : ∀ x, h = some x → ∀ R', Keeps @K@ R' R@NZX@ → DW live S Q 0x@NZ@#64 R' M) :
     DW live S Q 0x@E@#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   cases h with
@@ -135,7 +135,7 @@ theorem kzero_@E@ {live : Nat → Prop} {S : Nat → Prop}
     · intro R' kk hd
       exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun y hy => by cases hy; exact hd
     · intro R' kk
-      exact hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))@NZP@
+      exact hnz x rfl R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))@NZP@
     · bsimp [show x.rep.scale + x.rep.len = x.rep.len + x.rep.scale - 1 + 1 by omega]
     · bsimp []
 
@@ -153,8 +153,8 @@ def gen():
         K = "[" + ", ".join(map(str, ks)) + "]"
         KS = "[" + ", ".join(map(str, sorted({c, p, t}))) + "]"
         keep = lr not in (c, p, t)
-        nzx = f" →\n      (∀ x, h = some x → R' {lr} = BitVec.ofNat 64 x.rep.len)" if keep else ""
-        nzp = f"\n        fun y hy => by cases hy; rw [kk.get {lr} (by decide)]; bsimp []" if keep else ""
+        nzx = f" →\n      R' {lr} = BitVec.ofNat 64 x.rep.len" if keep else ""
+        nzp = f"\n        (by rw [kk.get {lr} (by decide)]; bsimp [])" if keep else ""
         s = LOOP
         for k, v in [("@L@", hx(L)), ("@B@", hx(L - 12)), ("@NZ@", hx(L + 8)), ("@Z@", hx(Z)),
                      ("@KS@", KS), ("@c@", str(c)), ("@p@", str(p))]:

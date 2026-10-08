@@ -75,7 +75,7 @@ theorem BcHeap.p_ne_split {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk}
 /-- `KZero` of `_zero_` with `j` more references. -/
 theorem KZero.withRefs {M : Mem} {z : NumObj} {k j : Nat} (h : KZero M z (j + k)) :
     KZero M (z.withRefs (z.rep.refs + j)) k :=
-  ⟨h.glob, h.len, h.scale, h.ds, by simp only [NumObj.withRefs]; have := h.refs; omega,
+  ⟨h.glob, h.len, h.scale, h.ds, h.neg, by simp only [NumObj.withRefs]; have := h.refs; omega,
     by simp only [NumObj.withRefs]; have := h.room; omega⟩
 
 /-- `KM3` through register changes off the step's registers. -/

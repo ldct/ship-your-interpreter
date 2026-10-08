@@ -57,6 +57,7 @@ structure KZero (M : Mem) (z : NumObj) (k : Nat) : Prop where
   len : z.rep.len = 1
   scale : z.rep.scale = 0
   ds : z.rep.ds = [0]
+  neg : z.rep.neg = false
   refs : 1 ≤ z.rep.refs
   room : z.rep.refs + k < 2 ^ 31
 

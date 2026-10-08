@@ -194,10 +194,12 @@ theorem kara_entry {live : Nat → Prop} {S : Nat → Prop}
     (h9 : R 9 = BitVec.ofNat 64 q)
     (hlo : ∀ (R' : Nat → BitVec 64) (M' : Mem),
       KEntry S M0 M' R0 R' sp q W ((max la lb + 1) / 2) la lb uo vo F →
-      la < (max la lb + 1) / 2 → BcHeap S M' H F L → DW live S Q 0x80005378#64 R' M')
+      la < (max la lb + 1) / 2 → BcHeap S M' H F L → M' = kSpillMem M R0 (sp - 192) →
+      DW live S Q 0x80005378#64 R' M')
     (hhi : ∀ (R' : Nat → BitVec 64) (M' : Mem),
       KEntry S M0 M' R0 R' sp q W ((max la lb + 1) / 2) la lb uo vo F →
-      (max la lb + 1) / 2 ≤ la → BcHeap S M' H F L → DW live S Q 0x80004df8#64 R' M') :
+      (max la lb + 1) / 2 ≤ la → BcHeap S M' H F L → M' = kSpillMem M R0 (sp - 192) →
+      DW live S Q 0x80004df8#64 R' M') :
     DW live S Q 0x80004db0#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -211,16 +213,17 @@ theorem kara_entry {live : Nat → Prop} {S : Nat → Prop}
   have hdis : ∀ p ∈ rmSlots, ∀ o ∈ kSpills, p.2 + 8 ≤ o ∨ o + 8 ≤ p.2 := by decide
   have half : ∀ (R' : Nat → BitVec 64) (M' : Mem), KAt S M0 M' R0 R sp q W → Keeps [15] R' R →
       BcHeap S M' H F L → ldv .ld M' (sp - 192) = BitVec.ofNat 64 uo.rep.p →
-      R' 15 = BitVec.ofNat 64 (max la lb) → DW live S Q 0x80004dd0#64 R' M' := by
-    intro R' M' ka0 kk hb' h0' h15
+      R' 15 = BitVec.ofNat 64 (max la lb) → M' = kSpillMem M R0 (sp - 192) →
+      DW live S Q 0x80004dd0#64 R' M' := by
+    intro R' M' ka0 kk hb' h0' h15 hM
     have ka : KAt S M0 M' R0 R' sp q W :=
       ⟨ka0.rm.keeps (kk.mono (by decide)) (kk.get 2 (by decide)), ka0.saved2⟩
     exact kara_half hlive cx ka hb' huL hN hla hlb h15 h0'
       ((kk.get 22 (by decide)).trans h22) ((kk.get 20 (by decide)).trans h20)
       ((kk.get 21 (by decide)).trans h21) ((kk.get 18 (by decide)).trans h18)
       ((kk.get 9 (by decide)).trans h9)
-      (fun R'' M'' ke hlt he => hlo R'' M'' (he ▸ ke) hlt (he ▸ hb'))
-      (fun R'' M'' ke hge he => hhi R'' M'' (he ▸ ke) hge (he ▸ hb'))
+      (fun R'' M'' ke hlt he => hlo R'' M'' (he ▸ ke) hlt (he ▸ hb') (he.trans hM))
+      (fun R'' M'' ke hge he => hhi R'' M'' (he ▸ ke) hge (he ▸ hb') (he.trans hM))
   have hbS : BcHeap S (kSpillMem M R0 (sp - 192)) H F L :=
     hb.out_frame (P := frameIn sp W) (fun a hp => kSpillMem_off M R0 (by
         rcases Nat.lt_or_ge a (sp - W) with h | h
@@ -243,7 +246,7 @@ theorem kara_entry {live : Nat → Prop} {S : Nat → Prop}
   all_goals try (simp only [LdOK, StOK, StOKb, tohostAddr] at *; omega)
   all_goals (try (intro hc; simp (disch := omega) only [toInt_ofNat_small] at hc))
   all_goals (try (bc_run hlive hS [h21] at 0x80004dd0))
-  all_goals refine half _ _ katS ?_ hbS h0S ?_
+  all_goals refine half _ _ katS ?_ hbS h0S ?_ rfl
   all_goals try (keeps_tac Keeps.refl _ _)
   all_goals (bsimp [h20, h21]; congr 1; omega)
 

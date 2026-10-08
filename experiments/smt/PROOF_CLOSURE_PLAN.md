@@ -4553,9 +4553,11 @@ Segments: prologue (`i2nPro_saved`), first digit (`i2n_head`), digit loop
 and sign stores (`i2n_tail`, `BcHeap.setSign`), copy loop (`i2n_copy`), and
 epilogue (`i2n_epi`).
 
-Scope premise: `I2NCtx.slotOut` places the slot off the number heap. Callers
-whose slot is a heap word (none among the M4 sites) need a `BcHeap` variant
-of the slot store; record that supplier when such a caller appears.
+Scope premises: `I2NCtx.slotOut` places the slot off the number heap; every
+`jal bc_int2num` in the binary passes `sp + k` of the caller's frame. The value
+range is a caller obligation; the site at `0x800072b8` passes the
+`sext.w` of a `bc_num2long` result, so its caller must supply `vlo`/`vhi`
+from its own range check.
 
 ### M3 representation and heap closure (checked)
 

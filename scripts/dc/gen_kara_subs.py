@@ -54,8 +54,8 @@ theorem ksubsC_@C@ {live : Nat → Prop} {S : Nat → Prop}
     (h21 : R 21 = BitVec.ofNat 64 y1.rep.p) (hl1 : ldv .ld M (sp - 192) = BitVec.ofNat 64 y1.rep.len)
     (hb : BcHeap S M H F (KList [] (some y2 :: some y1 :: hs) A B z))
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 y2.sb.pay)
-    (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
-    (d2 : KDiff y2 (Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0))
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
+    (d2 : KDiff y2 ((Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0))
     (hga : GlobAgree M Ms)@H26P@
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
     DW live S Q 0x@C@#64 R M := by

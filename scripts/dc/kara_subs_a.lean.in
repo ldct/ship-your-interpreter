@@ -78,5 +78,5 @@ theorem ksubs_@A@ {live : Nat → Prop} {S : Nat → Prop}
   have kk' : Keeps (1 :: binClob) R' R :=
     (kk.mono (fun r hr => List.mem_cons_of_mem _ hr)).trans (by keeps_tac Keeps.refl _ _)
   exact ksubsB_@B@ hlive cx hk hW ((pk.mem st2).keeps kk') hb2 post.slot h72 hv0m hv1m sa2 hzr
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
       post.pos⟩ hga2@H26A@ hnext

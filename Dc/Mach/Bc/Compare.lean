@@ -120,6 +120,32 @@ theorem cmpMag_of_len_gt {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hna
     Dc.Num.cmpMag a.num b.num = .gt := by
   rw [cmpMag_swap, cmpMag_of_len_lt hb ha hna hlb hl]; rfl
 
+/-- What `_bc_do_compare` decides: integer lengths first, then the digits.
+On normalised numbers it is `cmpMag` unless an empty number meets a zero
+(`cmpRep_eq`), where the length test answers and the magnitudes are equal. -/
+def NumRep.cmpRep (a b : NumRep) : Ordering :=
+  if a.len = b.len then Dc.Num.cmpMag a.num b.num else compare a.len b.len
+
+theorem cmpRep_eq {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hna : a.Norm)
+    (hnb : b.Norm) (hla : a.len = 0 → 0 < dval b.ds) (hlb : b.len = 0 → 0 < dval a.ds) :
+    a.cmpRep b = Dc.Num.cmpMag a.num b.num := by
+  unfold NumRep.cmpRep
+  split
+  · rfl
+  · rcases Nat.lt_or_gt_of_ne (by assumption : a.len ≠ b.len) with hl | hl
+    · rw [cmpMag_of_len_lt ha hb hnb hla hl, Nat.compare_eq_lt.2 hl]
+    · rw [cmpMag_of_len_gt ha hb hna hlb hl, Nat.compare_eq_gt.2 hl]
+
+/-- Not both empty: one operand has an integer digit. -/
+theorem len_one_of_nonzero {a b : NumRep} (hb : NumShape b) (hla : a.len = 0 → 0 < dval b.ds) :
+    1 ≤ a.len ∨ 1 ≤ b.len := by
+  rcases Nat.eq_zero_or_pos a.len with h0 | h
+  · have hz := hla h0
+    rcases Nat.eq_zero_or_pos b.len with h1 | h1
+    · rw [NumRep.mag_eq_zero hb h1] at hz; omega
+    · exact .inr h1
+  · exact .inl h
+
 /-! ## `_bc_do_compare.part.0.constprop.0` (`0x80003fb0`)
 
 ```
@@ -456,18 +482,16 @@ theorem cmp_loop {live : Nat → Prop} {S : Nat → Prop}
           ⟨by keeps_tac hkeep, by bsimp [hr.a0], by bsimp [hr.a2], hr.ra⟩ ?_
         rw [hc, Nat.compare_eq_lt.2 (by omega)] at hk; exact hk
 
-/-- **`_bc_do_compare(n1, n2, use_sign, FALSE)`** past the sign test, at
-`0x80003fb0`, on normalised numbers: `a0 = ordWord (cmpRes u neg₁ (Num.cmpMag
-n₁ n₂))`; clobbers `a0`, `a1`, `a3`–`a7`, `t1`. -/
-theorem do_compare_spec {live : Nat → Prop} {S : Nat → Prop}
+/-- **`_bc_do_compare`** as the machine decides (`NumRep.cmpRep`), for two
+operands not both empty. -/
+theorem do_compare_rep {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
     (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {a b : NumRep} (ha : NumAt Mt a)
     (hb : NumAt Mt b) (hna : a.Norm) (hnb : b.Norm)
-    (hla : a.len = 0 → 0 < dval b.ds) (hlb : b.len = 0 → 0 < dval a.ds)
-    {u : Bool}
+    (hne : 1 ≤ a.len ∨ 1 ≤ b.len) {u : Bool}
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 a.p) (h11 : R 11 = BitVec.ofNat 64 b.p)
     (h12 : R 12 = boolWord u) (hal : (R 1).toNat % 4 = 0)
-    (hk : CmpK live S Q R Mt (cmpRes u a.neg (Dc.Num.cmpMag a.num b.num))) :
+    (hk : CmpK live S Q R Mt (cmpRes u a.neg (NumRep.cmpRep a b))) :
     DW live S Q 0x80003fb0#64 R Mt := by
   have h := ha
   num_facts h
@@ -483,14 +507,8 @@ theorem do_compare_spec {live : Nat → Prop} {S : Nat → Prop}
     bv_nat at he
     rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at he
     have hp : CmpPair Mt a b := ⟨ha, hb, he⟩
-    -- equal lengths: both empty would make both magnitudes `0`, which `hla`
-    -- forbids, so the common length is positive
-    have hlp : 1 ≤ a.len := by
-      rcases Nat.eq_zero_or_pos a.len with h0 | h
-      · have hz := hla h0
-        rw [NumRep.mag_eq_zero hb.shape (by omega)] at hz
-        omega
-      · exact h
+    rw [NumRep.cmpRep, if_pos he] at hk
+    have hlp : 1 ≤ a.len := by omega
     -- from `0x80003ff0` with `a6 = min s₁ s₂`
     have mid : ∀ R', R' 16 = BitVec.ofNat 64 (min a.scale b.scale) → R' 15 = BitVec.ofNat 64 a.len →
         R' 10 = BitVec.ofNat 64 a.p → R' 11 = BitVec.ofNat 64 b.p → R' 12 = boolWord u →
@@ -522,10 +540,26 @@ theorem do_compare_spec {live : Nat → Prop} {S : Nat → Prop}
     bc_run hlive hS [h10, h11, la, lb, toInt_ofNat_small] at 0x80003fc0 0x80004030 0x80003fdc
     · intro hle
       refine cmp_lt_path hlive hS ha (u := u) ⟨by keeps_tac Keeps.refl _ _, by bsimp [h10], by bsimp [h12], hal⟩ ?_
-      rw [cmpMag_of_len_lt ha.shape hb.shape hnb hla (by omega)] at hk; exact hk
+      rw [NumRep.cmpRep, if_neg (by omega), Nat.compare_eq_lt.2 (by omega)] at hk; exact hk
     · intro hgt
       refine cmp_gt_path hlive hS ha (u := u) ⟨by keeps_tac Keeps.refl _ _, by bsimp [h10], by bsimp [h12], hal⟩ ?_
-      rw [cmpMag_of_len_gt ha.shape hb.shape hna hlb (by omega)] at hk; exact hk
+      rw [NumRep.cmpRep, if_neg (by omega), Nat.compare_eq_gt.2 (by omega)] at hk; exact hk
+
+/-- **`_bc_do_compare(n1, n2, use_sign, FALSE)`** past the sign test, at
+`0x80003fb0`, on normalised numbers: `a0 = ordWord (cmpRes u neg₁ (Num.cmpMag
+n₁ n₂))`; clobbers `a0`, `a1`, `a3`–`a7`, `t1`. -/
+theorem do_compare_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {Mt : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {a b : NumRep} (ha : NumAt Mt a)
+    (hb : NumAt Mt b) (hna : a.Norm) (hnb : b.Norm)
+    (hla : a.len = 0 → 0 < dval b.ds) (hlb : b.len = 0 → 0 < dval a.ds)
+    {u : Bool}
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 a.p) (h11 : R 11 = BitVec.ofNat 64 b.p)
+    (h12 : R 12 = boolWord u) (hal : (R 1).toNat % 4 = 0)
+    (hk : CmpK live S Q R Mt (cmpRes u a.neg (Dc.Num.cmpMag a.num b.num))) :
+    DW live S Q 0x80003fb0#64 R Mt := by
+  refine do_compare_rep hlive hS ha hb hna hnb (len_one_of_nonzero hb.shape hla) R h10 h11 h12 hal ?_
+  rwa [cmpRep_eq ha.shape hb.shape hna hnb hla hlb]
 
 /-! ## `bc_compare` (`0x800049d8`)
 

@@ -11,7 +11,7 @@ theorem ksubsB_@B@ {live : Nat → Prop} {S : Nat → Prop}
     (h64 : ldv .ld M (sp - 192 + 64) = BitVec.ofNat 64 y1.sb.pay)
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 z.rep.p)
     (hv0m : hv0 ∈ hs) (hv1m : hv1 ∈ hs) (sa : KSubArgs z hv0 hv1) (hzr : 1 ≤ z.rep.refs)
-    (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
     (hga : GlobAgree M Ms)@H26P@
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
     DW live S Q 0x@B@#64 R M := by
@@ -68,5 +68,5 @@ theorem ksubsB_@B@ {live : Nat → Prop} {S : Nat → Prop}
       (by keeps_tac Keeps.refl _ _)
   exact ksubsC_@C@ hlive cx ((pk.mem st2).keeps kk')
     (by rw [kk.get 21 (by decide)]; bsimp [hyp]) hl1 hb2 post.slot d1
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
       post.pos⟩ hga2@H26A@ hnext

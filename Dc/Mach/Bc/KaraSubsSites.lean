@@ -25,8 +25,8 @@ theorem ksubsC_80005020 {live : Nat → Prop} {S : Nat → Prop}
     (h21 : R 21 = BitVec.ofNat 64 y1.rep.p) (hl1 : ldv .ld M (sp - 192) = BitVec.ofNat 64 y1.rep.len)
     (hb : BcHeap S M H F (KList [] (some y2 :: some y1 :: hs) A B z))
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 y2.sb.pay)
-    (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
-    (d2 : KDiff y2 (Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0))
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
+    (d2 : KDiff y2 ((Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0))
     (hga : GlobAgree M Ms)
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x80005028#64) :
     DW live S Q 0x80005020#64 R M := by
@@ -67,7 +67,7 @@ theorem ksubsB_80005000 {live : Nat → Prop} {S : Nat → Prop}
     (h64 : ldv .ld M (sp - 192 + 64) = BitVec.ofNat 64 y1.sb.pay)
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 z.rep.p)
     (hv0m : hv0 ∈ hs) (hv1m : hv1 ∈ hs) (sa : KSubArgs z hv0 hv1) (hzr : 1 ≤ z.rep.refs)
-    (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
     (hga : GlobAgree M Ms)
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x80005028#64) :
     DW live S Q 0x80005000#64 R M := by
@@ -124,7 +124,7 @@ theorem ksubsB_80005000 {live : Nat → Prop} {S : Nat → Prop}
       (by keeps_tac Keeps.refl _ _)
   exact ksubsC_80005020 hlive cx ((pk.mem st2).keeps kk')
     (by rw [kk.get 21 (by decide)]; bsimp [hyp]) hl1 hb2 post.slot d1
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
       post.pos⟩ hga2 hnext
 
 /-- **The differences** from `0x80004fd8`: `_zero_` two more references, in the
@@ -206,7 +206,7 @@ theorem ksubs_80004fd8 {live : Nat → Prop} {S : Nat → Prop}
   have kk' : Keeps (1 :: binClob) R' R :=
     (kk.mono (fun r hr => List.mem_cons_of_mem _ hr)).trans (by keeps_tac Keeps.refl _ _)
   exact ksubsB_80005000 hlive cx hk hW ((pk.mem st2).keeps kk') hb2 post.slot h72 hv0m hv1m sa2 hzr
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
       post.pos⟩ hga2 hnext
 
 /-- After `d2`'s `bc_sub` (`0x80005504`): `d2` and its digit count into `s7`, `a7`. -/
@@ -219,8 +219,8 @@ theorem ksubsC_80005504 {live : Nat → Prop} {S : Nat → Prop}
     (h21 : R 21 = BitVec.ofNat 64 y1.rep.p) (hl1 : ldv .ld M (sp - 192) = BitVec.ofNat 64 y1.rep.len)
     (hb : BcHeap S M H F (KList [] (some y2 :: some y1 :: hs) A B z))
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 y2.sb.pay)
-    (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
-    (d2 : KDiff y2 (Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0))
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
+    (d2 : KDiff y2 ((Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0))
     (hga : GlobAgree M Ms)
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x8000550c#64) :
     DW live S Q 0x80005504#64 R M := by
@@ -261,7 +261,7 @@ theorem ksubsB_800054e4 {live : Nat → Prop} {S : Nat → Prop}
     (h64 : ldv .ld M (sp - 192 + 64) = BitVec.ofNat 64 y1.sb.pay)
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 z.rep.p)
     (hv0m : hv0 ∈ hs) (hv1m : hv1 ∈ hs) (sa : KSubArgs z hv0 hv1) (hzr : 1 ≤ z.rep.refs)
-    (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
     (hga : GlobAgree M Ms)
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x8000550c#64) :
     DW live S Q 0x800054e4#64 R M := by
@@ -318,7 +318,7 @@ theorem ksubsB_800054e4 {live : Nat → Prop} {S : Nat → Prop}
       (by keeps_tac Keeps.refl _ _)
   exact ksubsC_80005504 hlive cx ((pk.mem st2).keeps kk')
     (by rw [kk.get 21 (by decide)]; bsimp [hyp]) hl1 hb2 post.slot d1
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
       post.pos⟩ hga2 hnext
 
 /-- **The differences** from `0x800054bc`: `_zero_` two more references, in the
@@ -400,7 +400,7 @@ theorem ksubs_800054bc {live : Nat → Prop} {S : Nat → Prop}
   have kk' : Keeps (1 :: binClob) R' R :=
     (kk.mono (fun r hr => List.mem_cons_of_mem _ hr)).trans (by keeps_tac Keeps.refl _ _)
   exact ksubsB_800054e4 hlive cx hk hW ((pk.mem st2).keeps kk') hb2 post.slot h72 hv0m hv1m sa2 hzr
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
       post.pos⟩ hga2 hnext
 
 /-- After `d2`'s `bc_sub` (`0x80005578`): `d2` and its digit count into `s7`, `a7`. -/
@@ -413,8 +413,8 @@ theorem ksubsC_80005578 {live : Nat → Prop} {S : Nat → Prop}
     (h21 : R 21 = BitVec.ofNat 64 y1.rep.p) (hl1 : ldv .ld M (sp - 192) = BitVec.ofNat 64 y1.rep.len)
     (hb : BcHeap S M H F (KList [] (some y2 :: some y1 :: hs) A B z))
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 y2.sb.pay)
-    (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
-    (d2 : KDiff y2 (Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0))
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
+    (d2 : KDiff y2 ((Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0))
     (hga : GlobAgree M Ms)
     (h26 : R 26 = BitVec.ofNat 64 0)
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x8000550c#64) :
@@ -457,7 +457,7 @@ theorem ksubsB_80005558 {live : Nat → Prop} {S : Nat → Prop}
     (h64 : ldv .ld M (sp - 192 + 64) = BitVec.ofNat 64 y1.sb.pay)
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 z.rep.p)
     (hv0m : hv0 ∈ hs) (hv1m : hv1 ∈ hs) (sa : KSubArgs z hv0 hv1) (hzr : 1 ≤ z.rep.refs)
-    (d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0))
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
     (hga : GlobAgree M Ms)
     (h26 : R 26 = BitVec.ofNat 64 0)
     (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x8000550c#64) :
@@ -515,7 +515,7 @@ theorem ksubsB_80005558 {live : Nat → Prop} {S : Nat → Prop}
       (by keeps_tac Keeps.refl _ _)
   exact ksubsC_80005578 hlive cx ((pk.mem st2).keeps kk')
     (by rw [kk.get 21 (by decide)]; bsimp [hyp]) hl1 hb2 post.slot d1
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
       post.pos⟩ hga2 (by rw [kk.get 26 (by decide)]; bsimp [h26]) hnext
 
 /-- **The differences** from `0x80005530`: `_zero_` two more references, in the
@@ -598,7 +598,7 @@ theorem ksubs_80005530 {live : Nat → Prop} {S : Nat → Prop}
   have kk' : Keeps (1 :: binClob) R' R :=
     (kk.mono (fun r hr => List.mem_cons_of_mem _ hr)).trans (by keeps_tac Keeps.refl _ _)
   exact ksubsB_80005558 hlive cx hk hW ((pk.mem st2).keeps kk') hb2 post.slot h72 hv0m hv1m sa2 hzr
-    ⟨by rw [post.num, Hd.objIn_num, Hd.objIn_num], post.norm, post.refs, post.owns,
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
       post.pos⟩ hga2 (by rw [kk.get 26 (by decide)]; bsimp [h26]) hnext
 
 end Dc.Mach

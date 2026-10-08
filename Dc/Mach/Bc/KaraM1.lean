@@ -32,14 +32,14 @@ theorem kara_subCall {live : Nat → Prop} {S : Nat → Prop}
     (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L u v la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (o : Nat) (ho : o + 8 ≤ 88) (hoa : o % 8 = 0)
     (hW : 368 ≤ W)
-    (ha : BinArgs (L1 ++ xr :: L2) x1 x2 0)
+    (ha : BinArgsM (L1 ++ xr :: L2) x1 x2 0)
     (hadd : x1.rep.neg ≠ x2.rep.neg → 1 ≤ x1.rep.len ∧ 1 ≤ x2.rep.len)
     (hb : BcHeap S M H F (L1 ++ xr :: L2))
     (hr : ResSlot M L1 xr (sp - 192 + o)) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 192 + o)) (h13 : R 13 = BitVec.ofNat 64 0)
     (hret : ∀ R' M' H' F' L' y, Keeps binClob R' R →
-      BinPost S M M' H' F' L1 L2 xr (sp - 192 + o) (sp - 192) (Num.sub x1.rep.num x2.rep.num 0)
+      BinPost S M M' H' F' L1 L2 xr (sp - 192 + o) (sp - 192) (x1.rep.subM x2.rep 0)
         L' y → DW live S Q (R 1) R' M') :
     DW live S Q 0x80004ac4#64 R M := by
   have hsf := cx.frame
@@ -48,7 +48,7 @@ theorem kara_subCall {live : Nat → Prop} {S : Nat → Prop}
   simp only [heapEnd] at hab
   have htx : tohostAddr = 0x8001ad00 := rfl
   have ks := cx.kslot o (by omega) hoa
-  exact bc_sub_spec hlive
+  exact bc_sub_specM hlive
     ⟨⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩,
       by simp only [heapEnd]; omega,
       ⟨fun i hi => ks.own _ (mem_accAddrs (by omega)), by omega, by omega, by omega⟩,
@@ -125,6 +125,11 @@ theorem Hd.objIn_num (hs : List Hd) (z : NumObj) (h : Hd) :
     (Hd.objIn hs z h).rep.num = (Hd.o z h).rep.num := by
   cases h <;> rfl
 
+/-- ... and on `bc_sub`'s machine result. -/
+theorem Hd.objIn_subM (hs : List Hd) (z : NumObj) (h1 h2 : Hd) (smin : Nat) :
+    (Hd.objIn hs z h1).rep.subM (Hd.objIn hs z h2).rep smin = (Hd.o z h1).rep.subM (Hd.o z h2).rep smin := by
+  cases h1 <;> cases h2 <;> rfl
+
 theorem Hd.objIn_norm (hs : List Hd) (z : NumObj) (h : Hd) :
     (Hd.objIn hs z h).rep.Norm ↔ (Hd.o z h).rep.Norm := by
   cases h <;> rfl
@@ -146,18 +151,16 @@ structure KSubArgs (z : NumObj) (x1 x2 : Hd) : Prop where
   /-- both are halves or differences of magnitudes: non-negative -/
   neg1 : (Hd.o z x1).rep.neg = false
   neg2 : (Hd.o z x2).rep.neg = false
-  /-- an empty operand (a zero-length high half) meets a nonzero one -/
-  e1 : (Hd.o z x1).rep.len = 0 → 0 < dval (Hd.o z x2).rep.ds
-  e2 : (Hd.o z x2).rep.len = 0 → 0 < dval (Hd.o z x1).rep.ds
+  /-- not both empty: a zero-length high half meets a low half of `n ≥ 1` digits -/
+  ne : 1 ≤ (Hd.o z x1).rep.len ∨ 1 ≤ (Hd.o z x2).rep.len
 
 theorem KSubArgs.binArgs {z : NumObj} {x1 x2 : Hd} (h : KSubArgs z x1 x2) {P A B : List NumObj}
     {hs : List Hd} (h1 : x1 ∈ hs) (h2 : x2 ∈ hs) :
-    BinArgs (KList P hs A B z) (Hd.objIn hs z x1) (Hd.objIn hs z x2) 0 :=
+    BinArgsM (KList P hs A B z) (Hd.objIn hs z x1) (Hd.objIn hs z x2) 0 :=
   ⟨Hd.objIn_mem h1 P A B z, Hd.objIn_mem h2 P A B z, (Hd.objIn_norm hs z x1).mpr h.n1,
     (Hd.objIn_norm hs z x2).mpr h.n2, by
       simp only [Hd.objIn_len', Hd.objIn_scale]; exact h.size,
-    by rw [Hd.objIn_len', Hd.objIn_ds]; exact h.e1,
-    by rw [Hd.objIn_len', Hd.objIn_ds]; exact h.e2⟩
+    by rw [Hd.objIn_len', Hd.objIn_len']; exact h.ne⟩
 
 /-- Two non-negative operands: `bc_sub` never adds magnitudes. -/
 theorem KSubArgs.noAdd {z : NumObj} {x1 x2 : Hd} (h : KSubArgs z x1 x2) (hs : List Hd) :
@@ -183,8 +186,8 @@ structure KSubs (S : Nat → Prop) (M0 M : Mem) (R0 R : Nat → BitVec 64) (sp q
   s2 : R 18 = BitVec.ofNat 64 zeroAddr
   l1 : ldv .ld M (sp - 192) = BitVec.ofNat 64 y1.rep.len
   l2 : R 17 = BitVec.ofNat 64 y2.rep.len
-  d1 : KDiff y1 (Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0)
-  d2 : KDiff y2 (Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0)
+  d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0)
+  d2 : KDiff y2 ((Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0)
 
 /-- What the differences hand on (at `pc`): the step, the heap with `d2`, `d1`
 heading the handles, the globals kept. -/
@@ -271,13 +274,13 @@ and the Karatsuba identity (the step's entry supplies them). -/
 structure KDiffSpec (z : NumObj) (hu1 hu0 hv1 hv0 : Hd) (u v : NumRep) (n la lb N W : Nat) :
     Prop where
   fit : ∀ y1 y2 : NumObj,
-    y1.rep.num = Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0 →
-    y2.rep.num = Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0 →
+    y1.rep.num = (Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0 →
+    y2.rep.num = (Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0 →
     n + y1.rep.len + y2.rep.len ≤ la + lb + 1 ∧ y1.rep.len + y2.rep.len ≤ N ∧
       rmStack (y1.rep.len + y2.rep.len) + 192 ≤ W
   fill : ∀ y1 y2 : NumObj,
-    y1.rep.num = Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0 →
-    y2.rep.num = Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0 →
+    y1.rep.num = (Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0 →
+    y2.rep.num = (Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0 →
     KFillVal (hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1)) (hdVal y1 * hdVal y2)
       (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n) (kUV u v la lb) (la + lb + 1)
       (y1.rep.neg != y2.rep.neg)
@@ -330,8 +333,8 @@ theorem kara_m2enter {live : Nat → Prop} {S : Nat → Prop}
     (hfit1 : fl = false → 2 * n + valCount (Hd.o z hm1).rep ≤ la + lb + 1)
     (ds : KDiffSpec z hu1 hu0 hv1 hv0 u v n la lb N W)
     (m3s : KM3Spec z hu0 hv0 n la lb N W)
-    (hd1 : y1.rep.num = Num.sub (Hd.o z hu1).rep.num (Hd.o z hu0).rep.num 0)
-    (hd2 : y2.rep.num = Num.sub (Hd.o z hv0).rep.num (Hd.o z hv1).rep.num 0)
+    (hd1 : y1.rep.num = (Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0)
+    (hd2 : y2.rep.num = (Hd.o z hv0).rep.subM (Hd.o z hv1).rep 0)
     (hm1v : hdVal (Hd.o z hm1) = hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1))
     (hd1p : 1 ≤ y1.rep.len) (hd2p : 1 ≤ y2.rep.len)
     (hw1 : fl = false → 1 ≤ (Hd.o z hm1).rep.len) :

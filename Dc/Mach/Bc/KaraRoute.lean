@@ -294,4 +294,15 @@ theorem kara_emptyHalfV_reachable :
     ∃ la lb : Nat, 20 ≤ la ∧ 20 ≤ lb ∧ 80 ≤ la + lb ∧ (max la lb + 1) / 2 = lb :=
   ⟨53, 27, by decide, by decide, by decide, by decide⟩
 
+/-- **An all-zero operand meets the empty half**: a normalised `u` of `la`
+zero digits (`0` at scale `la - 1`) with `la = n`. Then `d1 = u1 - u0` compares
+the empty `u1` with the zero `u0`: `_bc_do_compare`'s length test answers `lt`
+while the magnitudes are equal, so `bc_sub` leaves a zero with the minus sign
+and `KSubArgs.e1` (`u1` empty → `u0` nonzero) is false. -/
+theorem kara_zeroOperand_emptyHalf :
+    ∃ (u : NumRep) (la lb : Nat), u.Norm ∧ u.len + u.scale = la ∧ u.ds.length = la ∧
+      dval u.ds = 0 ∧ 20 ≤ la ∧ 20 ≤ lb ∧ 80 ≤ la + lb ∧ (max la lb + 1) / 2 = la :=
+  ⟨⟨0, 0, 0, false, 1, 26, 1, List.replicate 27 0⟩, 27, 53, Or.inl (Nat.le_refl 1), rfl, rfl,
+    by decide, by decide, by decide, by decide, by decide⟩
+
 end Dc.Mach

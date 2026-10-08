@@ -4894,6 +4894,16 @@ Empty-half routes (closed, all Kara modules through `OutLong` rebuilt):
 - Karatsuba operands are non-negative, so `bc_sub` never takes its add route
   (`KSubArgs.noAdd`); `kara_subCall` takes that as `hadd`.
 
-Remaining for M6: supply `KSubArgs` (`neg1`/`neg2`, `e1`/`e2`), `KM3Spec`
+- An all-zero operand reaches `bc_sub` with an empty and a zero operand
+  (`kara_zeroOperand_emptyHalf`, `KaraRoute.lean`: `la = 27`, `lb = 53`, `u`
+  27 zero digits at scale 26). `_bc_do_compare` answers by integer length
+  (`lt`) while the magnitudes are equal, so `bc_sub` returns a zero with the
+  minus sign and `Num.sub`'s positive zero is not its result. The spec now
+  follows the machine: `NumRep.cmpRep` (`do_compare_rep`) and
+  `NumRep.subM` (`bc_sub_specM`, `BinArgsM` with `ne`: not both empty);
+  `do_compare_spec`/`bc_sub_spec` are the `cmpRep_eq`/`subM_eq` corollaries.
+  The Karatsuba differences are `subM` (`KDiff`, `KSubs`, `KDiffSpec`).
+
+Remaining for M6: supply `KSubArgs` (`neg1`/`neg2`, `ne`), `KM3Spec`
 (`pu0`/`pv0`), `KDiffSpec` and `KM1Spec` at the step, compose the u/v routes
 into `RmKara`, then the `rmDepth` induction for the full `_bc_rec_mul` spec.

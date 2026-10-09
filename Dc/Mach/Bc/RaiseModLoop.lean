@@ -234,6 +234,7 @@ structure RxM (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W 
   okT : RHOK L hT
   okX : RHOK L hX
   ex : hE.p ≠ hX.p
+  tx : hT.p ≠ hX.p
   vP : RxNum hP p B Sc
   vT : RxNum hT tv B Sc
   vE : RxNum hE ⟨false, m, 0⟩ Ee 0
@@ -291,8 +292,8 @@ theorem rx_head {live : Nat → Prop} {S : Nat → Prop}
     {hP hE hT hX : RH} {m : Nat} {p tv : Num}
     (st : RxM S Mt0 M R0 R sp W q H F L xm k rs B Sc Ee hP hE hT hX m p tv)
     (r24 : R 24 = BitVec.ofNat 64 hE.p)
-    (hz : ∀ R', RxM S Mt0 M R0 R' sp W q H F L xm k rs B Sc Ee hP hE hT hX m p tv → m = 0 →
-      DW live S Q 0x800063b4#64 R' M)
+    (hz : ∀ R', RxM S Mt0 M R0 R' sp W q H F L xm k rs B Sc Ee hP hE hT hX m p tv →
+      R' 24 = BitVec.ofNat 64 hE.p → m = 0 → DW live S Q 0x800063b4#64 R' M)
     (hnz : ∀ R', RxM S Mt0 M R0 R' sp W q H F L xm k rs B Sc Ee hP hE hT hX m p tv →
       R' 24 = BitVec.ofNat 64 hE.p → m ≠ 0 → DW live S Q 0x800062f8#64 R' M) :
     DW live S Q 0x800062cc#64 R M := by
@@ -301,9 +302,29 @@ theorem rx_head {live : Nat → Prop} {S : Nat → Prop}
   have hm : (RH.obj [hP, hE, hT, hX] hE).rep.num.mag = m := by
     rw [RH.obj_num, st.vE.num]
   refine ztest_800062cc hlive hS (hb.nums _ st.objE) (by rw [RH.obj_p]; exact r24)
-    (fun R' hk h0 => hz R' (st.regs hk) (by rw [← hm]; exact h0))
+    (fun R' hk h0 => hz R' (st.regs hk) (by rw [hk.get 24 (by decide)]; exact r24)
+      (by rw [← hm]; exact h0))
     (fun R' hk h0 => hnz R' (st.regs hk) (by rw [hk.get 24 (by decide)]; exact r24)
       (by rw [← hm]; exact h0))
+
+/-- A number a handle owns is apart from every other handle's. -/
+theorem RList.own_ne {hs1 hs2 : List RH} {L : List NumObj} {y : NumObj} {h : RH}
+    (hd : PDist (RList (hs1 ++ .own y :: hs2) L)) (hm : h ∈ hs1 ++ hs2) (hh : RHOK L h) :
+    y.rep.p ≠ h.p := by
+  rw [RList.own_split] at hd
+  have hne := hd.ne
+  cases h with
+  | own w =>
+    have hw : w ∈ rTemps (hs1 ++ hs2) := List.mem_flatMap.mpr ⟨.own w, hm, by simp [RH.tmp]⟩
+    rw [rTemps_append] at hw
+    rcases List.mem_append.mp hw with hw | hw
+    · exact fun e => hne w (List.mem_append_left _ hw) e.symm
+    · exact fun e => hne w (List.mem_append_right _ (List.mem_append_left _ hw)) e.symm
+  | ref o =>
+    obtain ⟨A, B, e, _⟩ := hh
+    have ho : o ∈ L := by rw [e]; simp
+    exact fun e => hne (rBump (hs1 ++ hs2) o)
+      (List.mem_append_right _ (List.mem_append_right _ (List.mem_map_of_mem ho))) e.symm
 
 /-! ## Halving (`0x800062f8`) -/
 
@@ -410,6 +431,9 @@ theorem rx_halve {live : Nat → Prop} {S : Nat → Prop}
       okT := st.okT
       okX := ⟨hr.refs, hr.owns⟩
       ex := fun e => hne e.symm
+      tx := fun e => RList.own_ne (hs1 := [hP, .own yq, hT]) (hs2 := [])
+        (show PDist (RList ([hP, .own yq, hT] ++ .own yr :: []) L) from hb1.pdist) (by simp) st.okT
+        e.symm
       vP := st.vP
       vT := st.vT
       vE := ⟨hq.num, hq.norm, hq.pos, hhalf.1, hhalf.2⟩
@@ -627,6 +651,8 @@ theorem rx_tmul {live : Nat → Prop} {S : Nat → Prop}
       okT := ⟨hres.refs, hres.owns⟩
       okX := st.okX
       ex := st.ex
+      tx := RList.own_ne (hs1 := [hP, hE]) (hs2 := [hX])
+        (show PDist (RList ([hP, hE] ++ .own y2 :: [hX]) L) from hb2.pdist) (by simp) st.okX
       vP := st.vP
       vT := by rw [hval]; exact vT2
       vE := st.vE
@@ -768,6 +794,7 @@ theorem rx_psq {live : Nat → Prop} {S : Nat → Prop}
           okT := st.okT
           okX := st.okX
           ex := st.ex
+          tx := st.tx
           vP := by rw [hval]; exact vT2
           vT := st.vT
           vE := st.vE
@@ -805,7 +832,7 @@ theorem rx_body {live : Nat → Prop} {S : Nat → Prop}
     (fun R2 st2 hb => ?_) (fun R2 st2 hb => ?_)
   · refine rx_tmul hlive env hoom st2 fun R3 M3 H3 F3 y st3 => ?_
     refine rx_psq hlive env hoom st3 hez fun R4 M4 H4 F4 y4 st4 h24 => ?_
-    rw [if_neg hb] at hnext
+    simp only [hb, ↓reduceIte] at hnext
     exact hnext R4 M4 H4 F4 _ _ _ _ st4 h24
   · refine rx_psq hlive env hoom st2 hez fun R4 M4 H4 F4 y4 st4 h24 => ?_
     simp only [hb, ↓reduceIte] at hnext
@@ -824,20 +851,20 @@ theorem rx_loop {live : Nat → Prop} {S : Nat → Prop}
       R 24 = BitVec.ofNat 64 hE.p →
       (∀ R' M' H' F' hP' hE' hT' hX' m' p', RxM S Mt0 M' R0 R' sp W q H' F' L xm k rs B Sc Ee
         hP' hE' hT' hX' m' p' (Num.raisemodLoop xm.rep.num k rs (m + 1) ⟨false, m, 0⟩ p tv) →
-        DW live S Q 0x800063b4#64 R' M') →
+        R' 24 = BitVec.ofNat 64 hE'.p → DW live S Q 0x800063b4#64 R' M') →
       DW live S Q 0x800062cc#64 R M := by
   intro m
   induction m using Nat.strongRecOn with
   | ind m ih =>
     intro M R H F hP hE hT hX p tv st r24 hexit
-    refine rx_head hlive st r24 (fun R' st' h0 => ?_) (fun R' st' r24' h0 => ?_)
+    refine rx_head hlive st r24 (fun R' st' r24' h0 => ?_) (fun R' st' r24' h0 => ?_)
     · subst h0
-      refine hexit R' M H F hP hE hT hX 0 p ?_
+      refine hexit R' M H F hP hE hT hX 0 p ?_ r24'
       rw [Dc.BcModel.raisemodLoop_zero]
       exact st'
     · refine rx_body hlive env hoom st' r24' fun R2 M2 H2 F2 hP2 hE2 hT2 hX2 st2 h24 => ?_
-      refine ih (m / 2) (by omega) st2 h24 fun R3 M3 H3 F3 hP3 hE3 hT3 hX3 m3 p3 st3 => ?_
+      refine ih (m / 2) (by omega) st2 h24 fun R3 M3 H3 F3 hP3 hE3 hT3 hX3 m3 p3 st3 h3 => ?_
       rw [← Dc.BcModel.raisemodLoop_step _ _ _ _ _ _ h0] at st3
-      exact hexit R3 M3 H3 F3 hP3 hE3 hT3 hX3 m3 p3 st3
+      exact hexit R3 M3 H3 F3 hP3 hE3 hT3 hX3 m3 p3 st3 h3
 
 end Dc.Mach

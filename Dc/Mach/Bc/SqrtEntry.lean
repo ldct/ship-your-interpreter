@@ -416,4 +416,115 @@ theorem sq_setNew {live : Nat → Prop} {S : Nat → Prop}
         rsk := rfl, xneg := g.xneg, gt := hcmp, xz := g.xz, xo := g.xo, oz := g.oz,
         loop := hS0, ret := g.ret } st
 
+/-- `addiw` of a small count. -/
+theorem addiw_ofNat {c d : Nat} (hc : c + d < 2 ^ 31) :
+    BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 c + BitVec.ofNat 64 d)) =
+      BitVec.ofNat 64 (c + d) := by
+  rw [show BitVec.ofNat 64 c + BitVec.ofNat 64 d = BitVec.ofNat 64 (c + d) by
+    rw [BitVec.ofNat_add]]
+  exact sxw_ofNat hc
+
+/-- **`_zero_`'s count raised by three** and stored as `guess`, `guess1`
+and `diff`, then `bc_new_num (1, 1)`, from `0x80006efc`. -/
+theorem sq_setRefs {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {r : Num}
+    (g : SqSet live S Q t Mt0 R0 sp W q k L x z o r) (sa : SqAt S Mt0 M R0 R sp W sqSlots1)
+    (hb : BcHeap S M H F L)
+    (h8 : R 8 = ordWord (Num.cmp x.rep.num Num.one)) (h19 : R 19 = BitVec.ofNat 64 q)
+    (h24 : R 24 = BitVec.ofNat 64 (max k x.rep.scale)) (h26 : R 26 = BitVec.ofNat 64 z.rep.p)
+    (wq : ldv .ld M q = BitVec.ofNat 64 x.rep.p)
+    (w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr) :
+    DW live S (DQ live S Q t) 0x80006efc#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have h2 := sa.r2
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hap := hsl.apart
+  have hql := hq.lo; have hqh := hq.hi
+  have hq0 := hsl.out q ⟨Nat.le_refl _, by omega⟩
+  have hq7 := hsl.out (q + 7) ⟨by omega, by omega⟩
+  simp only [OutHeap, heapStart, heapEnd] at hq0 hq7
+  have hzn := hb.nums z ha.mz
+  num_facts hzn
+  have hzr := ha.refs z ha.mz
+  have hx3 := addiw_ofNat (c := z.rep.refs) (d := 3) (by omega)
+  obtain ⟨Az, Bz, eZ⟩ := List.append_of_mem ha.mz
+  have hd : ∀ w ∈ Az ++ Bz, w.rep.p ≠ z.rep.p := fun w hw => by
+    have hp := hb.pdist; rw [eZ] at hp; exact hp.ne w hw
+  have hb1 := (eZ ▸ hb).setRefs (k := z.rep.refs + 3) (v := BitVec.ofNat 64 (z.rep.refs + 3))
+    (toNat_ofNat_mod32 (by omega)) (by omega)
+  rw [← RList.ref3 hd, ← eZ] at hb1
+  have hm3 : MemOnly (fun a => sp - 160 + 24 ≤ a ∧ a < sp - 160 + 48)
+      (writeLog (writeLog (writeLog
+        (writeLog M [(z.rep.p + 12, 4, BitVec.ofNat 64 (z.rep.refs + 3))])
+        [(sp - 160 + 24, 8, BitVec.ofNat 64 z.rep.p)]) [(sp - 160 + 32, 8, BitVec.ofNat 64 z.rep.p)])
+        [(sp - 160 + 40, 8, BitVec.ofNat 64 z.rep.p)])
+      (writeLog M [(z.rep.p + 12, 4, BitVec.ofNat 64 (z.rep.refs + 3))]) := fun a ha' => by
+    simp only [not_and, Nat.not_lt] at ha'
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+      imgM_store_miss _ _ (by omega)]
+  have hb2 := hb1.out_frame hm3 fun a h => outHeap_of_ge (by simp only [heapEnd]; omega)
+  have hsx3 : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (z.rep.refs + 3))) =
+      BitVec.ofNat 64 (z.rep.refs + 3) := sxw_ofNat (by omega)
+  bc_run hlive hS [h2, h26, hzn.refs, hx3, hsx3] at 0x80004250
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hsf' : StackFrame S (sp - 160) 32 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  -- memory at the call against `M` off the heap
+  have hMc : ∀ a, OutHeap a → ¬ (sp - 160 + 24 ≤ a ∧ a < sp - 160 + 48) →
+      imgM (writeLog (writeLog (writeLog
+        (writeLog M [(z.rep.p + 12, 4, BitVec.ofNat 64 (z.rep.refs + 3))])
+        [(sp - 160 + 24, 8, BitVec.ofNat 64 z.rep.p)]) [(sp - 160 + 32, 8, BitVec.ofNat 64 z.rep.p)])
+        [(sp - 160 + 40, 8, BitVec.ofNat 64 z.rep.p)]) a = imgM M a := fun a ha' hn => by
+    rw [hm3 a hn, imgM_store_miss _ _ (by
+      simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha'; omega)]
+  refine bc_new_num_spec hlive hb2.newHeap hsf' (len := 1) (scale := 1)
+    (by simp only [heapEnd]; omega) (by decide) (Nat.le_refl _) _ (by bsimp []) (by bsimp [])
+    (by bsimp [h2]) (by bsimp []) ⟨fun R1 Mt1 H1 F1 y hk1 hp1 hr1 => ?_, fun R' Mt' hr2 hout => ?_⟩
+  · bsimp []
+    have hM1 : ∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) → ¬ frameIn (sp - 160) (W - 160) a →
+        imgM Mt1 a = imgM M a := fun a ha' h1 h3 => by
+      rw [hp1.out a ha' (fun h => h3 (by simp only [frameIn] at h ⊢; omega)),
+        hMc a ha' (fun h => h1 (by omega))]
+    have hw : ∀ c, sp - 160 ≤ c → c + 8 ≤ sp - 160 + 48 →
+        ldv .ld Mt1 c = ldv .ld (writeLog (writeLog (writeLog
+          (writeLog M [(z.rep.p + 12, 4, BitVec.ofNat 64 (z.rep.refs + 3))])
+          [(sp - 160 + 24, 8, BitVec.ofNat 64 z.rep.p)]) [(sp - 160 + 32, 8, BitVec.ofNat 64 z.rep.p)])
+          [(sp - 160 + 40, 8, BitVec.ofNat 64 z.rep.p)]) c := fun c h1 h3 =>
+      ldv_congr .ld fun j hj => hp1.out _ (outHeap_of_ge (by
+        simp only [heapEnd, widthOfM] at hj ⊢; omega))
+        (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+    have hk' : Keeps raCallClob R1 R := (hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
+    refine sq_setNew hlive g
+      (sa.call (hsp := by omega) (hW := by omega) (hkp := hk') (hag := hM1)
+        (hst := fun a h1 _ => outHeap_of_ge (by simp only [heapEnd]; omega)))
+      (NewNumPost.insert hb2 hp1) hp1.rep hr1 ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    · rw [hk1.get 8 (by decide)]; bsimp [h8]
+    · rw [hk1.get 19 (by decide)]; bsimp [h19]
+    · rw [hk1.get 24 (by decide)]; bsimp [h24]
+    · rw [hk1.get 26 (by decide)]; bsimp [h26]
+    · rw [ldv_congr .ld fun j hj => hM1 _ (hsl.out _ (by simp only [widthOfM] at hj; omega))
+        (by simp only [widthOfM] at hj; omega) (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+      exact wq
+    · rw [hw _ (by omega) (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+        ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]
+      exact w8
+    · rw [hw _ (by omega) (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]
+      exact ldv_store_hit _ _ _
+    · rw [hw _ (by omega) (by omega), ldv_ld_miss _ _ (by omega)]
+      exact ldv_store_hit _ _ _
+    · rw [hw _ (by omega) (by omega)]
+      exact ldv_store_hit _ _ _
+  · refine g.oom R' Mt' (sp - 160 - 32) (by omega) (by omega) hr2 fun a ha' hs hf => ?_
+    rw [hout a ha' (fun h => hf (by simp only [frameIn] at h ⊢; omega)),
+      hMc a ha' (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
+    exact sa.out a ha' hf
+
 end Dc.Mach

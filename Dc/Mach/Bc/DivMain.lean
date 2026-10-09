@@ -238,8 +238,8 @@ theorem DvFix.setDigit {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 : Nat →
   have hin : y.db.In (y.rep.val + i) := ⟨by simp only [withDs] at hdl; omega,
     by simp only [withDs] at hdf; omega⟩
   have hyl : y.db ∈ H.live := hb.dLive
-  have hyo : y.db ∈ F ++ objBlocks (y :: Lh) :=
-    List.mem_append_right _ (mem_objBlocks_db List.mem_cons_self hf.owns)
+  have hyo : y.db ∈ F ++ objBlocks (y :: Lh) ++ X.bs :=
+    List.mem_append_left _ (List.mem_append_right _ (mem_objBlocks_db List.mem_cons_self hf.owns))
   have hH := live_in_heap hi' hyl hin
   have hm : ∀ a, a ≠ y.rep.val + i → imgM (writeLog M [(y.rep.val + i, 1, v)]) a = imgM M a :=
     fun a ha => imgM_store_miss _ _ (by omega)
@@ -327,8 +327,8 @@ theorem DvMid.store {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R : Nat → 
   have hin : y.db.In (y.rep.val + D.off + k) := ⟨by simp only [withDs] at hdl; omega,
     by simp only [withDs] at hdf; omega⟩
   have hyl : y.db ∈ H.live := hb.dLive
-  have hyo : y.db ∈ F ++ objBlocks (y :: Lh) :=
-    List.mem_append_right _ (mem_objBlocks_db List.mem_cons_self hf.owns)
+  have hyo : y.db ∈ F ++ objBlocks (y :: Lh) ++ X.bs :=
+    List.mem_append_left _ (List.mem_append_right _ (mem_objBlocks_db List.mem_cons_self hf.owns))
   have h1 : ∀ a, D.b1.In a → imgM (writeLog M [(y.rep.val + D.off + k, 1, v)]) a = imgM M a :=
     fun a ha => by
       have hne : a ≠ y.rep.val + D.off + k := fun e =>

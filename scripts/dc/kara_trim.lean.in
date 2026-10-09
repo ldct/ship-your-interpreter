@@ -8,7 +8,7 @@ theorem ktrimLoop_@H@ {live : Nat → Prop} {S : Nat → Prop}
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' Rb →
       BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
-      MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →
+      MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →@HN15@
       DW live S Q 0x@X@#64 R' M') :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), x.rep.len - 1 - j = n → j < x.rep.len →
       Keeps [12, 13, 14, 15] R Rb →
@@ -33,7 +33,7 @@ theorem ktrimLoop_@H@ {live : Nat → Prop} {S : Nat → Prop}
     · intro _
       exact hnext _ _ j (by keeps_tac kk) hb
         (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => hz i (by omega)) (.inl (by omega)))
-        hmo
+        hmo@P15@
     · intro hc; exfalso; (try simp (disch := omega) only [toInt_ofNat_small] at hc); omega
   | succ n ih =>
     intro j R M hn hj kk hb hmo h15 h14 h12 hz
@@ -51,7 +51,7 @@ theorem ktrimLoop_@H@ {live : Nat → Prop} {S : Nat → Prop}
     · intro _
       exact hnext _ _ j (by keeps_tac kk) hb
         (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => hz i (by omega)) (.inl (by omega)))
-        hmo
+        hmo@P15@
     · intro hc
       have hb' := hb.advanceAt' (v1 := BitVec.ofNat 64 (x.rep.len - j - 1))
         (v2 := BitVec.ofNat 64 (x.rep.val + j + 1)) (by simp only [NumRep.drop]; omega)
@@ -90,7 +90,7 @@ theorem ktrimLoop_@H@ {live : Nat → Prop} {S : Nat → Prop}
               rcases Nat.lt_or_ge i (j + 1) with h | h
               · exact hz i (by omega)
               · rw [show i = j by omega]; exact hz j (by omega))
-            (.inr (by rw [List.getD_eq_getElem?_getD]; exact hne))) hmo'
+            (.inr (by rw [List.getD_eq_getElem?_getD]; exact hne))) hmo'@P15S@
 
 /-- **The leading-zero trim at `0x@E@`** of the object in `x@r@`: `n_value`
 advanced past its leading zeros, `n_len` shrunk (`NumRep.rmLeadingZeros`). -/

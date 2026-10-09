@@ -30,6 +30,8 @@ structure KProd (u v : NumRep) (ulen vlen : Nat) (y : NumObj) : Prop where
   owns : y.Owns
   refs : y.rep.refs = 1
   neg : y.rep.neg = false
+  /-- `n_value` is `n_ptr` -/
+  vptr : y.rep.val = y.rep.ptr
   len : y.rep.len = ulen + vlen + 1
   scale : y.rep.scale = 0
   val : dvalBE y.rep.ds = dvalBE (u.ds.take ulen) * dvalBE (v.ds.take vlen)
@@ -88,7 +90,7 @@ theorem kara_ret {live : Nat → Prop} {S : Nat → Prop}
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   exact rm_epi hlive cx hk (st.rm.keeps (by keeps_tac Keeps.refl _ _) (by bsimp []))
     (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
-    ⟨hb, hy.owns, hy.refs, hy.neg, hy.len, hy.scale, hy.val, hq, st.rm.out⟩
+    ⟨hb, hy.owns, hy.refs, hy.neg, hy.vptr, hy.len, hy.scale, hy.val, hq, st.rm.out⟩
 
 /-- **The nine inlined frees** from `0x800051c4` (`u1`, `u0`, `v1`, `m1`, `v0`,
 `m2`, `m3`, `d1`, `d2`), then the return. -/

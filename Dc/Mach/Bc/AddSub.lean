@@ -66,8 +66,8 @@ structure ResSlot (Mt : Mem) (L1 : List NumObj) (x : NumObj) (q : Nat) : Prop wh
 /-- The result: the new number `y` for `n` (normalized, one reference) heads
 the heap left by freeing `x`, its struct is in the slot, and off the heap only
 the slot and the stack window changed. -/
-structure BinPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
-    (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (n : Num) (L : List NumObj) (y : NumObj) :
+structure BinPostW (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
+    (L1 L2 : List NumObj) (x : NumObj) (q sp W : Nat) (n : Num) (L : List NumObj) (y : NumObj) :
     Prop where
   heap : BcHeap S Mt H F (y :: L)
   rest : FreedRest L1 L2 x L
@@ -77,18 +77,30 @@ structure BinPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
   refs : y.rep.refs = 1
   owns : y.Owns
   slot : ldv .ld Mt q = BitVec.ofNat 64 y.sb.pay
-  out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 176 a → imgM Mt a = imgM Mt0 a
+  out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM Mt a = imgM Mt0 a
+
+/-- `BinPostW` for `bc_add`/`bc_sub`'s 176-byte window. -/
+abbrev BinPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
+    (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (n : Num) (L : List NumObj) (y : NumObj) :
+    Prop :=
+  BinPostW S Mt0 Mt H F L1 L2 x q sp 176 n L y
 
 /-- The continuations: the result, or `out_of_memory` with `sp` inside the
 window. -/
-structure BinK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
-    (R0 : Nat → BitVec 64) (Mt0 : Mem) (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (n : Num) :
-    Prop where
-  ret : ∀ R' Mt' H F L y, Keeps binClob R' R0 → BinPost S Mt0 Mt' H F L1 L2 x q sp n L y →
+structure BinKW (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (R0 : Nat → BitVec 64) (Mt0 : Mem) (L1 L2 : List NumObj) (x : NumObj) (q sp W : Nat)
+    (n : Num) : Prop where
+  ret : ∀ R' Mt' H F L y, Keeps binClob R' R0 → BinPostW S Mt0 Mt' H F L1 L2 x q sp W n L y →
     DW live S Q (R0 1) R' Mt'
-  oom : ∀ R' Mt' sp', sp - 176 ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
-    (∀ a, OutHeap a → ¬ frameIn sp 176 a → imgM Mt' a = imgM Mt0 a) →
+  oom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+    (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
     DW live S Q 0x80002bcc#64 R' Mt'
+
+/-- `BinKW` for `bc_add`/`bc_sub`'s 176-byte window. -/
+abbrev BinK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (R0 : Nat → BitVec 64) (Mt0 : Mem) (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (n : Num) :
+    Prop :=
+  BinKW live S Q R0 Mt0 L1 L2 x q sp 176 n
 
 /-- `bc_free_num`'s entry facts for the slot `q` holding `x` of the heap. -/
 theorem FreeEntry.of_slot {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
@@ -134,16 +146,16 @@ theorem ResSlot.noView_cons {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F : List
 
 /-- After `bc_free_num` dropped one reference: the slot written with `y`. -/
 theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x y : NumObj} {q sp : Nat} {n : Num}
+    {L1 L2 : List NumObj} {x y : NumObj} {q sp W : Nat} {n : Num}
     (hout : ∀ a, slotBytes q a → OutHeap a)
-    (hm : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 176 a → imgM M a = imgM Mt0 a)
+    (hm : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (hb : BcHeap S Mt' H F (y :: (L1 ++ x.decRef :: L2)))
     (hmo : MemOnly (fun a => refsBytes x.rep a ∨ slotBytes q a) Mt' M)
     (hxp : heapStart ≤ x.rep.p ∧ x.rep.p + 16 ≤ heapEnd)
     (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
     (hyo : y.Owns)
     (hx2 : 2 ≤ x.rep.refs) :
-    BinPost S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 x q sp n
+    BinPostW S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 x q sp W n
       (L1 ++ x.decRef :: L2) y :=
   { heap := hb.out_frame (P := slotBytes q) (fun a ha => imgM_store_miss _ _ (by
       simp only [slotBytes] at ha; omega)) hout
@@ -163,17 +175,17 @@ theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Bl
 
 /-- After `bc_free_num` released the last reference: the slot written with `y`. -/
 theorem binPost_rel {S : Nat → Prop} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x y : NumObj} {q sp : Nat} {n : Num}
+    {L1 L2 : List NumObj} {x y : NumObj} {q sp W sp' : Nat} {n : Num}
     (hout : ∀ a, slotBytes q a → OutHeap a)
-    (hm : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 176 a → imgM M a = imgM Mt0 a)
+    (hm : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (hb0 : BcHeap S M H F (y :: (L1 ++ x :: L2)))
-    (hrp : ReleasePost S M Mt' H H' F (y :: L1) L2 x q (sp - 48))
-    (hsp : heapEnd + 176 ≤ sp)
+    (hrp : ReleasePost S M Mt' H H' F (y :: L1) L2 x q sp')
+    (hsp : heapEnd + W ≤ sp) (hsp' : sp - W + 32 ≤ sp' ∧ sp' ≤ sp)
     (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
     (hyo : y.Owns)
     (hx1 : x.rep.refs = 1) :
-    BinPost S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H' (x.sb :: F) L1 L2 x q sp n
-      (L1 ++ L2) y :=
+    BinPostW S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H' (x.sb :: F) L1 L2 x q sp W
+      n (L1 ++ L2) y :=
   { heap := hrp.heap.out_frame (P := slotBytes q) (fun a ha => imgM_store_miss _ _ (by
       simp only [slotBytes] at ha; omega)) hout
     rest := .rel hx1
@@ -191,7 +203,8 @@ theorem binPost_rel {S : Nat → Prop} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List
         · exact OutHeap.not_alloc hb0.heap ha hc
         · exact ha.1 (live_in_heap hb0.heap hxb.sLive hc)
         · exact hs hc
-        · simp only [frameIn, OutHeap, heapStart, heapEnd] at hc hf ha hsp; omega
+        · obtain ⟨hs1, hs2⟩ := hsp'
+          simp only [frameIn, OutHeap, heapStart, heapEnd] at hc hf ha hsp; omega
         · exact ha.2.2 hc }
 
 /-! ## Values on `NumRep.num` -/

@@ -35,7 +35,7 @@ theorem kara_fill5164 {live : Nat → Prop} {S : Nat → Prop}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
     (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hok : HdOK (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2)) (hz : 1 ≤ z.rep.refs)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0) (hy15 : R 15 = BitVec.ofNat 64 y.rep.p)
     (hP : dvalBE y.rep.ds =
       hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) * 10 ^ n * 10 ^ n +
@@ -59,7 +59,7 @@ theorem kara_fill5164 {live : Nat → Prop} {S : Nat → Prop}
   refine kshift_80005180 hlive cx km2 hb2 hyo hw3 (by simp only [withDs, hyl, hys]; omega)
     (by simp only [withDs, hyl, hys, Nat.add_zero, Nat.pow_zero, Nat.mul_one]; rw [hv2, hP]; omega) fun R3 M3 ds3 km3 hb3 hv3 => ?_
   simp only [withDs] at hv3
-  exact kara_m2 hlive cx hk km3.st hb3 hok hz hyo hyr hyn hyl hys km3.hq km3.tr km3.sl hfit2
+  exact kara_m2 hlive cx hk km3.st hb3 hok hz hyo hyr hyn hyv hyl hys km3.hq km3.tr km3.sl hfit2
     (fun hs => by rw [hv3, hv2, hP]; have := hv.subV hs; simp only [Nat.pow_zero, Nat.mul_one]; omega)
     (fun hs => by rw [hv3, hv2, hP]; have := hv.addV hs; simp only [Nat.pow_zero, Nat.mul_one]; omega)
     hv.uv hw2
@@ -75,7 +75,7 @@ theorem kara_fill5468 {live : Nat → Prop} {S : Nat → Prop}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
     (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hok : HdOK (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2)) (hz : 1 ≤ z.rep.refs)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0) (hy10 : R 10 = BitVec.ofNat 64 y.rep.p)
     (hP : dvalBE y.rep.ds = 0)
     (hfit1 : 2 * n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep ≤
@@ -119,7 +119,7 @@ theorem kara_fill5468 {live : Nat → Prop} {S : Nat → Prop}
   exact kara_fill5164 (R := upd R3 15 (BitVec.ofNat 64 y.sb.pay)) hlive cx hk ((km3.st.rm.keeps (by keeps_tac Keeps.refl _ _) (by bsimp [])) |>
       fun r => ⟨⟨r, km3.st.saved2⟩, km3.tr.keeps (ks := [15]) (by keeps_tac Keeps.refl _ _),
         km3.sl, km3.hq⟩)
-    hb3 hok hz hyo hyr hyn hyl hys h15
+    hb3 hok hz hyo hyr hyn hyv hyl hys h15
     (by rw [hv3, hv2, hP, hBB, ← Nat.mul_assoc]; omega) hfit3 hfit2 hw2 hw3 hv
 
 end Dc.Mach

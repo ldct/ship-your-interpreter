@@ -100,7 +100,7 @@ theorem kara_ret_frees {live : Nat → Prop} {S : Nat → Prop}
     (hb2 : BcHeap S M2 H F
       (withDs y ds :: KList [] [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] A B z))
     (hok : HdOK [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2]) (hz : 1 ≤ z.rep.refs)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hval : dvalBE ds = kUV u v la lb)
     (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay)
@@ -119,7 +119,7 @@ theorem kara_ret_frees {live : Nat → Prop} {S : Nat → Prop}
   have st2 := st.heapOnly cx hm hP
   have sl2 := sl.heapOnly hm hP (by simp only [heapEnd] at hab ⊢; omega)
   exact kara_frees hlive cx hk ⟨st2.rm.keeps (kk.mono (by decide)) (kk.get 2), st2.saved2⟩ hb2
-    hok hz ⟨hyo, hyr, hyn, hyl, hys, hval⟩
+    hok hz ⟨hyo, hyr, hyn, hyv, hyl, hys, hval⟩
     ((hm.ldv_off hP (by simp only [heapStart, heapEnd]; omega)).trans hq)
     tr2.u1 tr2.u0 tr2.v1 tr2.v0 tr2.d1 tr2.d2 tr2.fl sl2.m1 sl2.m2 sl2.m3
 
@@ -133,7 +133,7 @@ theorem kara_m2 {live : Nat → Prop} {S : Nat → Prop}
     (st : KAt S M0 M R0 R sp q W) {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
     (hb : BcHeap S M H F (y :: KList [] [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] A B z))
     (hok : HdOK [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2]) (hz : 1 ≤ z.rep.refs)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay)
     (tr : KTailRegs z hu1 hu0 hv1 hv0 hd1 hd2 q n R) (sl : KSlots z hm1 hm2 hm3 sp M)
@@ -200,7 +200,7 @@ theorem kara_m2 {live : Nat → Prop} {S : Nat → Prop}
         rw [hsub hsb]; exact Nat.le_add_left _ _)
   intro R2 M2 hsh hb2
   subst hhs
-  refine kara_ret_frees hlive cx hk st hb2 hok hz hyo hyr hyn hyl hys ?_ hq tr sl hsh.mem
+  refine kara_ret_frees hlive cx hk st hb2 hok hz hyo hyr hyn hyv hyl hys ?_ hq tr sl hsh.mem
     (fun a ha => by simp only [accBytes, heapStart, heapEnd] at ha ⊢; omega)
     ((hsh.keeps.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
   have hfit' : n + valCount w2.rep ≤ y.rep.len + y.rep.scale := by rw [hyl, hys]; exact hfit

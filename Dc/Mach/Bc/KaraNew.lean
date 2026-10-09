@@ -199,7 +199,7 @@ theorem kara_newRet {live : Nat → Prop} {S : Nat → Prop}
     (pk : KPre S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 fl)
     (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hok : HdOK (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2)) (hz : 1 ≤ z.rep.refs)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0) (hP : dvalBE y.rep.ds = 0)
     (h10 : R 10 = BitVec.ofNat 64 y.sb.pay)
     (hm1z : fl = true → hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) = 0)
@@ -234,9 +234,9 @@ theorem kara_newRet {live : Nat → Prop} {S : Nat → Prop}
     fun R' M' kk r15 r10 hm hq => by
       have km := pk.toMid (y := y) cx kk hm hq
       have hb2 := hb.out_frame hm fun a ha => cx.slotOut a ha
-      refine ⟨fun hf => kara_fill5164 hlive cx hk km hb2 hok hz hyo hyr hyn hyl hys (r15.trans (by rw [hyp]))
+      refine ⟨fun hf => kara_fill5164 hlive cx hk km hb2 hok hz hyo hyr hyn hyv hyl hys (r15.trans (by rw [hyp]))
         (by rw [hP, hm1z hf]; simp) hfit3 hfit2 hw2 hw3 hv,
-        fun hf => kara_fill5468 hlive cx hk km hb2 hok hz hyo hyr hyn hyl hys (r10.trans (by rw [hyp]))
+        fun hf => kara_fill5468 hlive cx hk km hb2 hok hz hyo hyr hyn hyv hyl hys (r10.trans (by rw [hyp]))
           hP (hfit1 hf) hfit3 hfit2 (hw1 hf) hw2 hw3 hv⟩
   have fin := fun (b : Bool) => go (upd R 15 (BitVec.ofNat 64 y.sb.pay))
     (writeLog M [(q, 8, BitVec.ofNat 64 y.sb.pay)]) (by keeps_tac Keeps.refl _ _) (by bsimp [])
@@ -290,7 +290,7 @@ theorem kara_newCall {live : Nat → Prop} {S : Nat → Prop}
   · have hrep := hp1.rep
     exact kara_newRet hlive hra cx hk ((pk.out cx (k := 32) (by omega) hp1.out).keeps hk1)
       (NewNumPost.insert hb hp1) hok hz hp1.owns (by rw [hrep]; rfl) (by rw [hrep]; rfl)
-      (by rw [hrep]; rfl) (by rw [hrep]; rfl)
+      (by rw [hrep]; rfl) (by rw [hrep]; rfl) (by rw [hrep]; rfl)
       (by rw [hrep]; simp only [zeroRep, dvalBE_replicate_zero]) hr1 hm1z hfit1 hfit3 hfit2 hw1 hw2 hw3 hv
   · refine hk.oom R' Mt' (sp - 192 - 32) (by omega) (by omega) hr2 fun a ha hs hf => ?_
     rw [hout a ha fun h => hf (by simp only [frameIn] at *; omega)]

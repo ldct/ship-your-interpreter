@@ -240,7 +240,7 @@ theorem bsub_tail {live : Nat → Prop} {S : Nat → Prop}
       (by rw [hk1.get 9]; bsimp [h9]) (by rw [hk1.get 18]; bsimp [h18])
       (((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps binAll _ R)).trans st.regs)
       (fun a h1 h2 => hrp.heap.heap.own a h1 h2)
-      (binPost_rel cx.slotOut (fun a ha _ hf => st.out a ha hf) hb hrp cx.above hnum hnorm hpos hrefs hyo hx1)
+      (binPost_rel cx.slotOut (fun a ha _ hf => st.out a ha hf) hb hrp cx.above ⟨by omega, by omega⟩ hnum hnorm hpos hrefs hyo hx1)
 
 /-- The sign `b` stored into the new number `y` (positive, value `v`, scale
 `s`), then the tail. -/

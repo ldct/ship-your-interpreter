@@ -67,6 +67,8 @@ structure RmPost (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : 
   owns : y.Owns
   refs : y.rep.refs = 1
   neg : y.rep.neg = false
+  /-- `n_value` is `n_ptr` -/
+  vptr : y.rep.val = y.rep.ptr
   len : y.rep.len = ulen + vlen + 1
   scale : y.rep.scale = 0
   val : dvalBE y.rep.ds = dvalBE (u.ds.take ulen) * dvalBE (v.ds.take vlen)
@@ -198,7 +200,7 @@ theorem rm_fin2 {live : Nat → Prop} {S : Nat → Prop}
     (h13 : R 13 = 0#64) (h15 : R 15 = BitVec.ofNat 64 (y.rep.val + 1))
     (h19 : R 19 = R0 19) (h23 : R 23 = R0 23) (h24 : R 24 = R0 24) (h25 : R 25 = R0 25)
     (h26 : R 26 = R0 26) (h27 : R 27 = R0 27)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hb : BcHeap S M H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L))
     (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
@@ -235,7 +237,7 @@ theorem rm_fin2 {live : Nat → Prop} {S : Nat → Prop}
     ((st.mem (st.saved.transport (lo := 128) (top := 192) (hag := fun a h1 h2 => ?_))
       fun a ha _ hf => ?_).keeps (by keeps_tac Keeps.refl _ _) (by bsimp []))
     (by bsimp [h19]) (by bsimp [h23]) (by bsimp [h24]) (by bsimp [h25]) (by bsimp [h26])
-    (by bsimp [h27]) ⟨hb2, hyo, hyr, hyn, hyl, hys, hval, ?_, fun a ha hs hf => ?_⟩
+    (by bsimp [h27]) ⟨hb2, hyo, hyr, hyn, hyv, hyl, hys, hval, ?_, fun a ha hs hf => ?_⟩
   · rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
   · simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, frameIn] at ha hf
     rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
@@ -262,7 +264,7 @@ theorem rm_fin {live : Nat → Prop} {S : Nat → Prop}
     (h18 : R 18 = BitVec.ofNat 64 (la + lb))
     (h26 : R 26 = BitVec.ofNat 64
       (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb (la + lb)).2)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hb : BcHeap S M H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L))
     (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
@@ -287,7 +289,7 @@ theorem rm_fin {live : Nat → Prop} {S : Nat → Prop}
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   exact rm_fin2 hlive cx hk (st.keeps (by keeps_tac Keeps.refl _ _) (by bsimp [])) hla hlb hlb1 hla1
     hdu hdv hul hvl (by bsimp []) (by bsimp []; congr 1; omega) (by bsimp []) (by bsimp [])
-    (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) hyo hyr hyn hyl hys hb hq
+    (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) hyo hyr hyn hyv hyl hys hb hq
 
 theorem ex_add (a b : BitVec 64) :
     BitVec.extractLsb 31 0 (a + b) = BitVec.extractLsb 31 0 a + BitVec.extractLsb 31 0 b := by
@@ -323,7 +325,7 @@ theorem rm_cols_call {live : Nat → Prop} {S : Nat → Prop}
     (h10 : ldv .ld M (sp - 192 + 16) = BitVec.signExtend 64 (BitVec.extractLsb 31 0
       (subw (BitVec.ofNat 64 (y.rep.val + (la + lb))) (BitVec.ofNat 64 lb) + 1#64)))
     (hP : ldv .ld M (sp - 192 + 24) = BitVec.ofNat 64 (y.rep.val + (la + lb)))
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hyd : y.rep.ds = List.replicate (la + lb + 1) 0)
     (hb : BcHeap S M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
@@ -358,7 +360,7 @@ theorem rm_cols_call {live : Nat → Prop} {S : Nat → Prop}
         fun a ha _ _ => hag a (by simp only [OutHeap, heapStart, heapEnd] at ha; simp only [accBytes]; omega)).keeps
         (hk'.mono (by decide)) (hk'.get 2))
       (sv.transport (lo := 88) (top := 160) (hag := fun a h1 h2 => hag a (by simp only [accBytes]; omega)))
-      hla hlb hlb1 hla1 hN hdu hdv hu.shape.dsLen hv.shape.dsLen ?_ hr'.r18 hr'.r26 hyo hyr hyn hyl hys hb' ?_
+      hla hlb hlb1 hla1 hN hdu hdv hu.shape.dsLen hv.shape.dsLen ?_ hr'.r18 hr'.r26 hyo hyr hyn hyv hyl hys hb' ?_
     · rw [ldv_congr .ld fun j hj => hag _ (by simp only [accBytes, widthOfM] at hj ⊢; omega)]; exact hP
     · rw [ldv_congr .ld fun j hj => hag _ (by simp only [accBytes, widthOfM] at hj ⊢; omega)]; exact hq
 
@@ -380,7 +382,7 @@ theorem rm_setup2 {live : Nat → Prop} {S : Nat → Prop}
     (r2 : R 2 = BitVec.ofNat 64 (sp - 192)) (r20 : R 20 = BitVec.ofNat 64 la)
     (r21 : R 21 = BitVec.ofNat 64 lb) (r22 : R 22 = BitVec.ofNat 64 (la + lb))
     (r24 : R 24 = BitVec.ofNat 64 uo.rep.val) (r25 : R 25 = BitVec.ofNat 64 vo.rep.val)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hyd : y.rep.ds = List.replicate (la + lb + 1) 0)
     (hb : BcHeap S M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
@@ -428,7 +430,7 @@ theorem rm_setup2 {live : Nat → Prop} {S : Nat → Prop}
       r9 := by bsimp []; congr 1; omega
       r8 := by bsimp []
       r2 := by bsimp [r2] }
-    ?_ ?_ ?_ ?_ hyo hyr hyn hyl hys hyd
+    ?_ ?_ ?_ ?_ hyo hyr hyn hyv hyl hys hyd
     (hb.out_frame (P := frameIn sp W) (fun a ha => hfr a ha _ _ _ _) fun a ha => by
       simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha ⊢; omega) ?_
   all_goals simp (disch := omega) only [ldv_ld_miss, ldv_ld_hit_eq]
@@ -454,7 +456,7 @@ theorem rm_setup1b {live : Nat → Prop} {S : Nat → Prop}
     (r21 : R 21 = BitVec.ofNat 64 lb) (r22 : R 22 = BitVec.ofNat 64 (la + lb))
     (r18 : R 18 = BitVec.ofNat 64 vo.rep.p) (r24 : R 24 = BitVec.ofNat 64 uo.rep.val)
     (r15 : R 15 = BitVec.ofNat 64 (y.rep.val + (la + lb)))
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hyd : y.rep.ds = List.replicate (la + lb + 1) 0)
     (hb : BcHeap S M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
@@ -486,7 +488,7 @@ theorem rm_setup1b {live : Nat → Prop} {S : Nat → Prop}
     ((sv.store 19 152).storeFrame 16 _)
     (by bsimp [k23]) (by bsimp [k26]) (by bsimp [k27])
     huL hvL hla hlb hla1 hlb1 hN hm ?_ ?_ ?_ (by bsimp [r2]) (by bsimp [r20]) (by bsimp [r21])
-    (by bsimp [r22]) (by bsimp [r24]) (by bsimp []) hyo hyr hyn hyl hys hyd
+    (by bsimp [r22]) (by bsimp [r24]) (by bsimp []) hyo hyr hyn hyv hyl hys hyd
     (hb.out_frame (P := frameIn sp W) (fun a ha => hfr a ha _ _) fun a ha => by
       simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha ⊢; omega) ?_
   all_goals simp (disch := omega) only [ldv_ld_miss, ldv_ld_hit_eq]
@@ -509,7 +511,7 @@ theorem rm_setup1 {live : Nat → Prop} {S : Nat → Prop}
     (r2 : R 2 = BitVec.ofNat 64 (sp - 192)) (r20 : R 20 = BitVec.ofNat 64 la)
     (r21 : R 21 = BitVec.ofNat 64 lb) (r22 : R 22 = BitVec.ofNat 64 (la + lb))
     (r18 : R 18 = BitVec.ofNat 64 vo.rep.p)
-    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hyd : y.rep.ds = List.replicate (la + lb + 1) 0)
     (hb : BcHeap S M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
@@ -544,7 +546,7 @@ theorem rm_setup1 {live : Nat → Prop} {S : Nat → Prop}
     (((SavedWords.nil _ _ R0).store 24 112).store 25 104)
     (by bsimp [kp.k19]) (by bsimp [kp.k23]) (by bsimp [kp.k26]) (by bsimp [kp.k27])
     huL hvL hla hlb hla1 hlb1 hN hm ?_ ?_ (by bsimp [r2]) (by bsimp [r20]) (by bsimp [r21])
-    (by bsimp [r22]) (by bsimp [r18]) (by bsimp []) (by bsimp []) hyo hyr hyn hyl hys hyd
+    (by bsimp [r22]) (by bsimp [r18]) (by bsimp []) (by bsimp []) hyo hyr hyn hyv hyl hys hyd
     (hb.out_frame (P := frameIn sp W) (fun a ha => hfr a ha _ _) fun a ha => by
       simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha ⊢; omega) ?_
   all_goals simp (disch := omega) only [ldv_ld_miss, ldv_ld_hit_eq]
@@ -616,7 +618,7 @@ theorem rm_setup {live : Nat → Prop} {S : Nat → Prop}
     (by bsimp [h22]) (by bsimp [h18])
     (show y.rep.ptr ≠ 0 by have : y.rep.ptr = y.rep.val := by rw [hy]; rfl
                            omega)
-    (by rw [hy]; rfl) (by rw [hy]; rfl) (by rw [hy]; rfl) (by rw [hy]; rfl) hyd
+    (by rw [hy]; rfl) (by rw [hy]; rfl) (by rw [hy]; rfl) (by rw [hy]; rfl) (by rw [hy]; rfl) hyd
     (hb.out_frame (P := fun a => frameIn sp W a ∨ slotBytes q a)
       (fun a ha => hfr a (fun h => ha (.inl h)) (fun h => ha (.inr h)) _ _) fun a ha => by
         rcases ha with ha | ha

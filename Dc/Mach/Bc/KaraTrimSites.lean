@@ -607,4 +607,99 @@ theorem ktrim_80004f40 {live : Nat → Prop} {S : Nat → Prop}
         (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp []) (by bsimp []) (by bsimp [])
         fun i hi => by rw [show i = 0 by omega]; exact he
 
+
+/-- The trim loop at `0x8000580c`: `j` leading zeros dropped from the object in
+`x8`, digit `j` zero too. -/
+theorem ktrimLoop_8000580c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt : Mem} {Rb : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (hS : HeapOwn S) (hr : Rb 8 = BitVec.ofNat 64 x.rep.p)
+    (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' Rb →
+      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      lzCount (x.rep.len - 1) x.rep.ds = j →
+      MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →
+      R' 15 = BitVec.ofNat 64 (x.rep.val + j) →
+      DW live S Q 0x80005828#64 R' M') :
+    ∀ n j (R : Nat → BitVec 64) (M : Mem), x.rep.len - 1 - j = n → j < x.rep.len →
+      Keeps [12, 13, 14, 15] R Rb →
+      BcHeap S M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M Mt →
+      R 15 = BitVec.ofNat 64 (x.rep.val + j) → R 14 = BitVec.ofNat 64 (x.rep.len - j) →
+      R 12 = BitVec.ofNat 64 1 → (∀ i, i ≤ j → x.rep.ds.getD i 0 = 0) →
+      DW live S Q 0x8000580c#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  intro n
+  induction n with
+  | zero =>
+    intro j R M hn hj kk hb hmo h15 h14 h12 hz
+    have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
+    num_facts hn0
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
+    have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
+    have vl := hn0.shape.dsLen
+    simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
+    bc_run hlive hS [h15, h14, h12, toInt_ofNat_small] at 0x80005828
+    · intro _
+      exact hnext _ _ j (by keeps_tac kk) hb
+        (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => hz i (by omega)) (.inl (by omega)))
+        hmo (by bsimp [h15])
+    · intro hc; exfalso; (try simp (disch := omega) only [toInt_ofNat_small] at hc); omega
+  | succ n ih =>
+    intro j R M hn hj kk hb hmo h15 h14 h12 hz
+    have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
+    num_facts hn0
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
+    have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
+    have vl := hn0.shape.dsLen
+    simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
+    have hrr : R 8 = BitVec.ofNat 64 x.rep.p := by rw [kk.get 8 (by decide)]; exact hr
+    have hpl := hn0.shape.pLo; have hph := hn0.shape.pHi
+    simp only [NumRep.drop, heapStart, heapEnd] at hpl hph
+    bc_run hlive hS [h15, h14, h12, hrr, toInt_ofNat_small] at 0x80005828
+    · intro _
+      exact hnext _ _ j (by keeps_tac kk) hb
+        (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => hz i (by omega)) (.inl (by omega)))
+        hmo (by bsimp [h15])
+    · intro hc
+      have hb' := hb.advanceAt' (v1 := BitVec.ofNat 64 (x.rep.len - j - 1))
+        (v2 := BitVec.ofNat 64 (x.rep.val + j + 1)) (by simp only [NumRep.drop]; omega)
+        (by simp only [NumRep.drop]; rw [toNat_ofNat_mod32 (by omega)])
+        (by simp only [NumRep.drop])
+      simp only [NumRep.drop_drop] at hb'
+      have hp' : ({ x with rep := x.rep.drop j } : NumObj).rep.p = x.rep.p := rfl
+      rw [hp'] at hb'
+      have hmo' : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd)
+          (writeLog (writeLog M [(x.rep.p + 32, 8, BitVec.ofNat 64 (x.rep.val + j + 1))])
+            [(x.rep.p + 4, 4, BitVec.ofNat 64 (x.rep.len - j - 1))]) Mt := fun a ha => by
+        rw [imgM_store_miss _ _ (by simp only [heapStart, heapEnd] at ha; omega),
+          imgM_store_miss _ _ (by simp only [heapStart, heapEnd] at ha; omega)]
+        exact hmo a ha
+      have hn1 := hb'.nums _ (List.mem_append_right _ List.mem_cons_self)
+      have hl1 := hn1.lbu (i := 0) (by simp only [NumRep.drop]; omega)
+      simp only [NumRep.drop, Nat.add_zero, List.getD_eq_getElem?_getD, List.getElem?_drop,
+        ← Nat.add_assoc] at hl1
+      have hd := hn1.getD_lt 0
+      simp only [NumRep.drop, List.getD_eq_getElem?_getD, List.getElem?_drop, Nat.add_zero] at hd
+      bc_run hlive hS [h15, h14, h12, hrr] at 0x80005820
+      bc_run hlive hS [h12, hl1] at 0x8000580c 0x80005828
+      · intro he
+        bv_nat at he
+        rw [Nat.mod_eq_of_lt (by omega)] at he
+        refine ih (j + 1) _ _ (by omega) (by omega) (by keeps_tac kk) hb' hmo'
+          (by bsimp [Nat.add_assoc]) (by bsimp [Nat.sub_sub]) (by bsimp [h12]) fun i hi => ?_
+        rcases Nat.lt_or_ge i (j + 1) with h | h
+        · exact hz i (by omega)
+        · rw [show i = j + 1 by omega, List.getD_eq_getElem?_getD]; exact he
+      · intro hne
+        bv_nat at hne
+        rw [Nat.mod_eq_of_lt (by omega)] at hne
+        exact hnext _ _ (j + 1) (by keeps_tac kk) hb'
+          (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => by
+              rcases Nat.lt_or_ge i (j + 1) with h | h
+              · exact hz i (by omega)
+              · rw [show i = j by omega]; exact hz j (by omega))
+            (.inr (by rw [List.getD_eq_getElem?_getD]; exact hne))) hmo' (by bsimp [h15]; simp only [Nat.add_assoc])
+
 end Dc.Mach

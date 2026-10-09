@@ -11,6 +11,10 @@ Each copy gets
 - `ktrim_<E>`: the whole trim, handing on `NumRep.drop j` with
   `lzCount (len - 1) ds = j`.
 
+`bc_multiply`'s inlined trim has the same loop (head `H`, struct register) but
+its own preamble and scans the digits after it from `a5`; it gets
+`ktrimLoop_<H>` only (`LOOPS`), whose exit also gives `a5 = n_value`.
+
 Output (do not hand-edit): `Dc/Mach/Bc/KaraTrimSites.lean`.
 
     python3 scripts/dc/gen_kara_trim.py [--check]
@@ -24,6 +28,11 @@ SITES = [
     (0x80004ee0, 19),
     (0x80004f10, 27),
     (0x80004f40, 20),
+]
+
+# (loop head H, struct register): the loop alone
+LOOPS = [
+    (0x8000580c, 8),
 ]
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "Dc/Mach/Bc/KaraTrimSites.lean"
@@ -53,13 +62,23 @@ def hx(n):
 
 def gen():
     tmpl = (pathlib.Path(__file__).resolve().parent / "kara_trim.lean.in").read_text()
+    loop = tmpl[:tmpl.index("/-- **The leading-zero trim at")]
     out = [HEAD]
     for (e, r) in SITES:
         t = tmpl
         for k, val in [("@E@", hx(e)), ("@H@", hx(e + 0x14)), ("@B@", hx(e + 0x28)),
-                       ("@X@", hx(e + 0x30)), ("@r@", str(r))]:
+                       ("@X@", hx(e + 0x30)), ("@r@", str(r)), ("@HN15@", ""), ("@P15@", ""),
+                       ("@P15S@", "")]:
             t = t.replace(k, val)
         out.append(t)
+    for (h, r) in LOOPS:
+        t = loop
+        for k, val in [("@H@", hx(h)), ("@B@", hx(h + 0x14)), ("@X@", hx(h + 0x1c)), ("@r@", str(r)),
+                       ("@HN15@", "\n      R' 15 = BitVec.ofNat 64 (x.rep.val + j) →"),
+                       ("@P15@", " (by bsimp [h15])"),
+                       ("@P15S@", " (by bsimp [h15]; simp only [Nat.add_assoc])")]:
+            t = t.replace(k, val)
+        out.append("\n" + t.rstrip("\n") + "\n")
     out.append("\nend Dc.Mach\n")
     return "".join(out)
 

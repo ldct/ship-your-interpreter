@@ -40,6 +40,7 @@ structure DivCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp q W : Nat) : Pr
   slot : PtrSlot S q
   slotOut : ∀ a, slotBytes q a → OutHeap a
   slotApart : q + 8 ≤ sp - W ∨ sp ≤ q
+  slotZero : q + 8 ≤ zeroAddr ∨ zeroAddr + 8 ≤ q
   consts : ∀ a, constBytes a → S a
   sp0 : R0 2 = BitVec.ofNat 64 sp
   al : (R0 1).toNat % 4 = 0

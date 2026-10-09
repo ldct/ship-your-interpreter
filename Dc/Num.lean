@@ -135,19 +135,24 @@ def powExact (n : Num) (u : Nat) : Num :=
   let m := n.mag ^ u
   ⟨if m == 0 then false else n.neg && u % 2 == 1, m, n.scale * u⟩
 
+/-- `n ^ u` as `bc_raise` holds it before the final truncation: `num1`
+itself for `u = 1` (no product recomputes the sign, so a negative zero stays
+negative), otherwise `powExact`. -/
+def powRaise (n : Num) (u : Nat) : Num := if u = 1 then n else powExact n u
+
 /-- `bc_raise a b scale`. Returns the result and whether the
 "exponent too large" runtime error was reported. -/
 def raise (a b : Num) (k : Nat) : Num × Bool :=
   let e := b.toLong
   if e == 0 then (one, b.intPart != 0)
   else if e < 0 then
-    let t := powExact a e.natAbs
+    let t := powRaise a e.natAbs
     -- `bc_divide (_one_, temp, result, rscale)` leaves `result` (= `_zero_`)
     -- untouched when `temp` is zero.
     ((div one t k).getD (zero 0), false)
   else
     let u := e.natAbs
-    let t := powExact a u
+    let t := powRaise a u
     let rs := min (a.scale * u) (max k a.scale)
     (⟨t.neg, t.mag / 10 ^ (t.scale - rs), rs⟩, false)
 

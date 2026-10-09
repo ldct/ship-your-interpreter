@@ -52,6 +52,35 @@ theorem powExact_one (a : Num) (h : a.neg = true → a.mag ≠ 0) : Num.powExact
     congr 1
     cases neg <;> simp_all
 
+theorem powRaise_one (a : Num) : Num.powRaise a 1 = a := by simp [Num.powRaise]
+
+theorem powRaise_scale (a : Num) (u : Nat) : (Num.powRaise a u).scale = a.scale * u := by
+  unfold Num.powRaise; split <;> simp_all [powExact_scale]
+
+theorem powRaise_mag (a : Num) (u : Nat) : (Num.powRaise a u).mag = a.mag ^ u := by
+  unfold Num.powRaise; split <;> simp_all [powExact_mag]
+
+/-- With a nonzero magnitude `powRaise` is `powExact`. -/
+theorem powRaise_eq (a : Num) (u : Nat) (h : a.mag ≠ 0) : Num.powRaise a u = Num.powExact a u := by
+  unfold Num.powRaise; split
+  · subst_vars; exact (powExact_one a fun _ => h).symm
+  · rfl
+
+/-- The exact product of two of `bc_raise`'s powers of `a` is a power of `a`. -/
+theorem mul_powRaise (a : Num) (m n k : Nat) (hk : a.scale * m + a.scale * n ≤ k) :
+    Num.mul (Num.powRaise a m) (Num.powRaise a n) k = Num.powExact a (m + n) := by
+  by_cases h0 : a.mag = 0
+  · have hm : 1 ≤ m + n ∨ m + n = 0 := by omega
+    rw [mul_exact _ _ _ (by rw [powRaise_scale, powRaise_scale]; exact hk)]
+    simp only [powRaise_mag, powRaise_scale, Num.powExact, h0, ← Nat.pow_add, Nat.mul_add]
+    rcases Nat.eq_zero_or_pos (m + n) with h | h
+    · have hm0 : m = 0 := by omega
+      have hn0 : n = 0 := by omega
+      subst hm0; subst hn0
+      simp [Num.powRaise, Num.powExact]
+    · simp [Nat.zero_pow h]
+  · rw [powRaise_eq a m h0, powRaise_eq a n h0]; exact mul_powExact a m n k hk
+
 /-- The invariant of `bc_raise`'s second loop: `temp = a^T`, `power = a^P`,
 the remaining exponent `e`, with `u = T + 2·P·e`. -/
 structure RaiseInv (u T P e : Nat) : Prop where

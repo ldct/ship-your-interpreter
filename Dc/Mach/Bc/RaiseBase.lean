@@ -104,9 +104,16 @@ structure RaSlot (M : Mem) (L : List NumObj) (x1 x2 z o xr : NumObj) (q : Nat) :
 the old number `xr` dropped. Off the heap only the slot and the window
 changed. -/
 structure RaPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
-    (xr : NumObj) (q sp W : Nat) (n : Num) (Lf : List NumObj) (y : NumObj) : Prop where
+    (xr : NumObj) (ps : List Nat) (q sp W : Nat) (n : Num) (Lf : List NumObj) (y : NumObj) :
+    Prop where
   heap : BcHeap S Mt H F Lf
   mid : ∃ Lm, AddRef L y Lm ∧ DropAt Lm xr.rep.p Lf
+  /-- the result is in the heap left (`mid` alone admits dropping a fresh
+  `y` at `xr`'s address) -/
+  res : ∃ k, y.withRefs k ∈ Lf
+  /-- a new number, the old one, or one of the numbers at `ps` (`bc_raise`:
+  the base and `_one_`) -/
+  src : y.rep.refs = 1 ∨ y.rep.p = xr.rep.p ∨ y.rep.p ∈ ps
   num : y.rep.num = n
   norm : y.rep.Norm
   pos : 1 ≤ y.rep.len
@@ -131,8 +138,8 @@ theorem RaOom.dm {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
 `out_of_memory`. -/
 structure RaK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t : String) (R0 : Nat → BitVec 64) (Mt0 : Mem) (L : List NumObj) (xr : NumObj)
-    (q sp W : Nat) (n : Num) : Prop where
-  ret : ∀ R' Mt' H F Lf y, Keeps binClob R' R0 → RaPost S Mt0 Mt' H F L xr q sp W n Lf y →
+    (ps : List Nat) (q sp W : Nat) (n : Num) : Prop where
+  ret : ∀ R' Mt' H F Lf y, Keeps binClob R' R0 → RaPost S Mt0 Mt' H F L xr ps q sp W n Lf y →
     DWO live S Q t (R0 1) R' Mt'
   oom : RaOom live S (DQ live S Q t) Mt0 sp W q
 

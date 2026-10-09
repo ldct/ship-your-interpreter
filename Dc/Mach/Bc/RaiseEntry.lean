@@ -55,7 +55,7 @@ theorem ra_end2 {live : Nat → Prop} {S : Nat → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k u rs nf P : Nat} {H : Heap} {F : List Blk}
     {A B : List NumObj} {x1 x2 z o xr Pw T : NumObj}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u)
-    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
     (hm : RaMode x1 x2 k u rs nf)
     (st : RaP2 S Mt0 M R0 R sp W q H F A B x1 Pw (some T) P u 0 rs nf) :
@@ -119,7 +119,7 @@ theorem ra_endW {live : Nat → Prop} {S : Nat → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k u rs nf i : Nat} {H H0 : Heap}
     {F F0 : List Blk} {A B A' B' : List NumObj} {x1 x2 z o xr w : NumObj} {hP : Hd}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u)
-    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
     (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hm : RaMode x1 x2 k u rs nf)
     (st : RaC S Mt0 M R0 R sp W q H F A B x1 hP i rs nf)
@@ -128,6 +128,7 @@ theorem ra_endW {live : Nat → Prop} {S : Nat → Prop}
     (hsame : xr.inK x1 (zeroCount (Hd.cp hP)) = w → 3 ≤ w.rep.refs)
     (hadd : nf = 0 → AddRef (A ++ x1 :: B) ((w.cutTo rs).withRefs (w.rep.refs - 1))
       (A' ++ (w.cutTo rs).withRefs (w.rep.refs - 1) :: B'))
+    (hsrc : nf = 0 → w.rep.refs - 1 = 1 ∨ w.rep.p ∈ [x1.rep.p, o.rep.p])
     (hL0 : nf = 1 → (3 ≤ w.rep.refs ∧ A ++ x1 :: B = A' ++ w.withRefs (w.rep.refs - 2) :: B') ∨
       (w.rep.refs = 2 ∧ A ++ x1 :: B = A' ++ B')) :
     DW live S (DQ live S Q t) 0x800068cc#64 R M := by
@@ -159,13 +160,14 @@ theorem ra_endW {live : Nat → Prop} {S : Nat → Prop}
     rw [e, st.r18, hwp]
   rcases hm.cases with ⟨rfl, hpos, hrs⟩ | ⟨rfl, hneg, hrs⟩
   · have hadd0 := hadd rfl
+    have hsrc0 := hsrc rfl
     bc_run hlive hS [st.r24] at 0x80006890
     all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
     refine ra_posPow2 hlive cx hK (st.ra.regsA (ks := [20]) (by keeps_tac Keeps.refl _ _))
       (by bsimp [st.r21]) hb hown hL.symm
       ⟨hxsr, by rw [hs.wr, hxsp], fun _ hxo y hy => BcHeap.owner_db_ne hbL
         hxo hy (hown y (by rw [hL]; exact List.mem_append_left _ hy))⟩ hxsp hw2 hsame
-      hw.norm hw.len (by rw [hws, hrs]; omega) (by rw [hrs]; omega) hadd0 ?_
+      hw.norm hw.len (by rw [hws, hrs]; omega) (by rw [hrs]; omega) hadd0 hsrc0 ?_
       (h20 _ (by bsimp [])) (by bsimp [st.r22]) (by rw [st.w8, hwp])
     have hne : ¬ (raExp x2 == 0) = true := by simp; omega
     have hlt : ¬ (raExp x2 < 0) := by omega
@@ -218,7 +220,7 @@ theorem ra_endC {live : Nat → Prop} {S : Nat → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k u rs nf i : Nat} {H H0 : Heap}
     {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj} {hP : Hd}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u)
-    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
     (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hm : RaMode x1 x2 k u rs nf)
     (st : RaC S Mt0 M R0 R sp W q H F A B x1 hP i rs nf) (hui : u = 2 ^ i) :
@@ -230,7 +232,8 @@ theorem ra_endC {live : Nat → Prop} {S : Nat → Prop}
       List.nil_append, Nat.add_zero, NumObj.withRefs_self, List.singleton_append] at hb
     refine ra_endW (A' := []) (w := P.withRefs 2) (B' := A ++ x1 :: B) hlive env hK ha hs0 hb0 hm st
       (by simp [KList, Hd.cp, temps, zeroCount, NumObj.withRefs_self]) rfl
-      (by have := st.pow.withRefs 2; rwa [← hui] at this) (by simp) ?_ ?_ ?_
+      (by have := st.pow.withRefs 2; rwa [← hui] at this) (by simp) ?_ ?_
+      (fun _ => .inl rfl) ?_
     · intro e
       have hp : (P.withRefs 2).rep.p = xr.rep.p := by
         rw [← e, NumObj.inK_p]
@@ -248,7 +251,7 @@ theorem ra_endC {live : Nat → Prop} {S : Nat → Prop}
     refine ra_endW (A' := A) (w := x1.withRefs (x1.rep.refs + 2)) (B' := B) hlive env hK ha hs0 hb0
       hm st (by simp [KList, Hd.cp, temps, zeroCount]) rfl
       (by have := st.pow.withRefs (x1.rep.refs + 2); rwa [← hui] at this) (by simp)
-      (fun _ => by simp; omega) ?_ ?_
+      (fun _ => by simp; omega) ?_ (fun _ => .inr List.mem_cons_self) ?_
     · intro h0
       rcases hm.cases with ⟨_, _, hrs⟩ | ⟨h1, _⟩
       · have hrs' : rs = x1.rep.scale := by rw [hrs, hu1]; omega
@@ -379,7 +382,7 @@ theorem ra_one {live : Nat → Prop} {S : Nat → Prop}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x1 x2 z o xr : NumObj} (cx : RaCtx S R0 sp W q)
-    (hK : RaK live S Q t R0 Mt0 L xr q sp W Num.one)
+    (hK : RaK live S Q t R0 Mt0 L xr [x1.rep.p, o.rep.p] q sp W Num.one)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
     (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
     (hb : BcHeap S M H F L) {k : Nat} (ha : RaArgs S Mt0 L x1 x2 z o k)
@@ -433,7 +436,8 @@ theorem ra_one {live : Nat → Prop} {S : Nat → Prop}
       (by rw [hk1.get 2]; bsimp [h2]) ((hk1.mono (ks' := raAll) (by decide)).trans (by keeps_tac ra.keep)) (hreg 9 (by simp)) (hreg 20 (by simp))
       (hreg 21 (by simp)) (hreg 24 (by simp)) (by rw [hk1.get 23]; bsimp [ra.r23])
       fun R' M' hk' hb' hq' ho' => hK.ret R' M' H1 F1 _ (o.withRefs (o.rep.refs + 1)) hk'
-        ⟨hb', ⟨_, by rw [hAB]; exact AddRef.share, hd _⟩, hon, honz, hol, hown o hom, hq', hout M' ho'⟩
+        ⟨hb', ⟨_, by rw [hAB]; exact AddRef.share, hd _⟩,
+          ⟨_, List.mem_append_right _ List.mem_cons_self⟩, .inr (.inr (by simp)), hon, honz, hol, hown o hom, hq', hout M' ho'⟩
   · cases hfr with
     | rel h => have := hor1 rfl; omega
     | dec h =>
@@ -477,7 +481,7 @@ theorem ra_err {live : Nat → Prop} {S : Nat → Prop}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x1 x2 z o xr : NumObj} (cx : RaCtx S R0 sp W q)
-    (hK : RaK live S Q t R0 Mt0 L xr q sp W Num.one)
+    (hK : RaK live S Q t R0 Mt0 L xr [x1.rep.p, o.rep.p] q sp W Num.one)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
     (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
     (hb : BcHeap S M H F L) (ha : RaArgs S Mt0 L x1 x2 z o k)
@@ -510,7 +514,7 @@ theorem ra_zero {live : Nat → Prop} {S : Nat → Prop}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x1 x2 z o xr : NumObj} (cx : RaCtx S R0 sp W q)
-    (hK : RaK live S Q t R0 Mt0 L xr q sp W Num.one)
+    (hK : RaK live S Q t R0 Mt0 L xr [x1.rep.p, o.rep.p] q sp W Num.one)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
     (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
     (hb : BcHeap S M H F L) (ha : RaArgs S Mt0 L x1 x2 z o k)
@@ -547,7 +551,7 @@ theorem ra_go {live : Nat → Prop} {S : Nat → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k u rs nf : Nat} {H H0 : Heap}
     {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
     (cx : RaCtx S R0 sp W q)
-    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
     (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
     (hm : RaMode x1 x2 k u rs nf) (hu : u ≠ 0)
@@ -574,7 +578,7 @@ theorem ra_rscale {live : Nat → Prop} {S : Nat → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k u : Nat} {H H0 : Heap}
     {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
     (cx : RaCtx S R0 sp W q)
-    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
     (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
     (hu : u = (raExp x2).natAbs) (hpos : 0 < raExp x2)
@@ -647,7 +651,7 @@ theorem ra_body {live : Nat → Prop} {S : Nat → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H H0 : Heap}
     {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
     (cx : RaCtx S R0 sp W q)
-    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
     (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
@@ -725,7 +729,7 @@ theorem ra_num {live : Nat → Prop} {S : Nat → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H H0 : Heap}
     {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
     (cx : RaCtx S R0 sp W q)
-    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
     (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
@@ -779,7 +783,7 @@ theorem ra_warn {live : Nat → Prop} {S : Nat → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H H0 : Heap}
     {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
     (cx : RaCtx S R0 sp W q)
-    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
     (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
@@ -838,7 +842,7 @@ theorem bc_raise_spec {live : Nat → Prop} {S : Nat → Prop}
     {L : List NumObj} {x1 x2 z o xr : NumObj}
     (cx : RaCtx S R0 sp W q) (ha : RaArgs S Mt0 L x1 x2 z o k) (hs0 : RaSlot Mt0 L x1 x2 z o xr q)
     (hb : BcHeap S Mt0 H F L) (hr1 : 1 ≤ x1.rep.refs)
-    (hK : RaK live S Q t R0 Mt0 L xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (hK : RaK live S Q t R0 Mt0 L xr [x1.rep.p, o.rep.p] q sp W (Num.raise x1.rep.num x2.rep.num k).1)
     (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R0 12 = BitVec.ofNat 64 q) (h13 : R0 13 = BitVec.ofNat 64 k) :
     DWO live S Q t 0x8000660c#64 R0 Mt0 := by

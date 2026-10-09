@@ -72,6 +72,8 @@ for g in gen_kara_free gen_kara_shift gen_kara_scan gen_kara_subs gen_kara_trim 
   python3 -B "scripts/dc/$g.py" --check \
     || fail "stage a3: a generated Dc/Mach/Bc/Kara*Sites.lean is stale (scripts/dc/$g.py)"
 done
+python3 -B scripts/dc/gen_bc_free.py --check \
+  || fail "stage a3: Dc/Mach/Bc/FreeSites.lean is stale (scripts/dc/gen_bc_free.py)"
 
 # ------------------------------------------------------------ (b) grep gate
 echo "== stage a4: proof-discipline gate (exponentiating layer mandatory for new files)"

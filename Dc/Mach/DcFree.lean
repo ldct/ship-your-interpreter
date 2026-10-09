@@ -1,6 +1,7 @@
 import Dc.Mach.DcRefOps
 import Dc.Mach.Bc.Free
 import Dc.Mach.DcDup
+import Dc.Mach.DcPend
 
 /-!
 # One reference fewer (M9)
@@ -295,6 +296,52 @@ theorem DcAt.handle_num {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {
   obtain ⟨L1, L2, rfl⟩ := List.append_of_mem hx
   exact ⟨L1, L2, x, rfl, e1⟩
 
+/-- **`bc_free_num`'s entry from a handle** `.num p` held in a slot `q`, on a
+pending state (`Pend`): the slot lies in the window or above the heap,
+apart from the callee's 32-byte frame. -/
+theorem DcAt.freeEntryP {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {E : List Blk}
+    {W : Nat → Prop} {Φ : Mem → Mem} (hp : Pend G E W Φ)
+    (h : DcAt S (Φ M) H F (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st) {q sp : Nat}
+    (hq : PtrSlot S q) (hqs : (∀ a, slotBytes q a → W a) ∨ heapEnd ≤ q)
+    (hw : ldv .ld M q = BitVec.ofNat 64 x.rep.p) (hsf : StackFrame S sp 32)
+    (hab : heapEnd + 32 ≤ sp) (hqf : q + 8 ≤ sp - 32 ∨ sp ≤ q) :
+    FreeEntry S (G.rawsOff E (Φ M)) M H F L1 L2 x q sp := by
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hb := h.machHeap hp
+  have hi := hb.heap
+  obtain ⟨hE, hEo⟩ := h.pendLive hp
+  simp only [heapEnd] at hab
+  have hheap : ∀ b ∈ H.live, b ∉ E → ∀ a, b.In a → ¬ slotBytes q a := fun b hb hbE a ha hs => by
+    rcases hqs with hw' | hqh
+    · exact hp.not_win hi hE hb hbE ha (hw' a hs)
+    · have := live_in_heap hi hb ha; simp only [heapEnd] at this hqh; omega
+  have hrefs : 1 ≤ x.rep.refs := by
+    have := h.den.numRefs x hx; rw [count_cons_self] at this; omega
+  exact
+    { heap := hb
+      refs := hrefs
+      slot := hq
+      off :=
+        { alloc := fun a ha => by
+            rcases hqs with hw' | hqh
+            · exact hp.not_alloc hi hE (hw' a ha)
+            · exact OutHeap.not_alloc hi (outHeap_of_ge (by simp only [heapEnd] at hqh ⊢; omega))
+          blocks := fun b hb' a ha hba => hheap b (hb.owned_live (List.mem_append_left _ hb'))
+            (fun he => hEo b he hb') a hba ha
+          glob := by
+            rcases hqs with hw' | hqh
+            · have := hp.inHeap hi hE (hw' q ⟨Nat.le_refl q, by omega⟩)
+              simp only [bcFreeAddr, heapStart] at this ⊢; omega
+            · simp only [bcFreeAddr, heapEnd] at hqh ⊢; omega
+          frame := hqf
+          raw := fun b hb' a ha hba => hheap b (hb.raw.live b hb') (DcG.mem_rawsOff.mp hb').2 a hba ha }
+      word := hw
+      stack := hsf
+      above := by simp only [heapEnd]; omega
+      noView := fun _ hox y hy => db_ne_of_owns (List.nodup_append.mp h.heap.distinct).2.1 hy
+        (h.den.owns y (List.mem_append_left _ hy)) hox }
+
 /-- **`bc_free_num`'s entry from a handle** `.num p` held in a stack slot `q`
 above the heap, apart from the callee's 32-byte frame. -/
 theorem DcAt.freeEntry {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
@@ -303,28 +350,113 @@ theorem DcAt.freeEntry {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L
     (hqh : heapEnd ≤ q) (hw : ldv .ld M q = BitVec.ofNat 64 x.rep.p) (hsf : StackFrame S sp 32)
     (hab : heapEnd + 32 ≤ sp) (hqf : q + 8 ≤ sp - 32 ∨ sp ≤ q) :
     FreeEntry S (G.raws M) M H F L1 L2 x q sp := by
+  have e := DcAt.freeEntryP (Pend.id G) (M := M) h hq (.inr hqh) hw hsf hab hqf
+  rwa [DcG.rawsOff_nil] at e
+
+/-- **`dc_free_num (&a)`** at `0x80002ba0` on a handle `.num p` held in the
+slot `q`, on a pending state: one reference fewer, or the object released;
+the slot is `NULL`. -/
+theorem dc_free_num_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat} {E : List Blk}
+    {W : Nat → Prop} {Φ : Mem → Mem} (hp : Pend G E W Φ)
+    (h : DcAt S (Φ M) H F L C G (.num p :: hs) st) {q sp : Nat} (hq : PtrSlot S q)
+    (hqs : (∀ a, slotBytes q a → W a) ∨ heapEnd ≤ q)
+    (hw : ldv .ld M q = BitVec.ofNat 64 p) (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
+    (hqf : q + 8 ≤ sp - 32 ∨ sp ≤ q)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S (Φ M') H' F' L' C' G hs st →
+      ldv .ld M' q = 0#64 →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x80002ba0#64 R M := by
+  obtain ⟨L1, L2, x, rfl, rfl⟩ := h.handle_num
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
-  have hi := h.heap.heap
-  simp only [heapEnd] at hqh hab
-  have hheap : ∀ b ∈ H.live, ∀ a, b.In a → ¬ slotBytes q a := fun b hb a ha hs =>
-    (outHeap_of_ge (a := a) (by simp only [heapEnd]; omega)).1 (live_in_heap hi hb ha)
-  have hrefs : 1 ≤ x.rep.refs := by
-    have := h.den.numRefs x hx; rw [count_cons_self] at this; omega
-  exact
-    { heap := h.heap
-      refs := hrefs
-      slot := hq
-      off :=
-        { alloc := fun a ha => OutHeap.not_alloc hi (outHeap_of_ge (by simp only [heapEnd]; omega))
-          blocks := fun b hb a ha hba => hheap b (h.heap.owned_live (List.mem_append_left _ hb)) a hba ha
-          glob := by simp only [bcFreeAddr]; omega
-          frame := hqf
-          raw := fun b hb a ha hba => hheap b (h.heap.raw.live b hb) a hba ha }
-      word := hw
-      stack := hsf
-      above := by simp only [heapEnd]; omega
-      noView := fun _ hox y hy => db_ne_of_owns (List.nodup_append.mp h.heap.distinct).2.1 hy
-        (h.den.owns y (List.mem_append_left _ hy)) hox }
+  have e := h.freeEntryP hp hq hqs hw hsf hab hqf
+  have hi := e.heap.heap
+  obtain ⟨hE, hEo⟩ := h.pendLive hp
+  simp only [heapEnd] at hab
+  have hslotW : ∀ a, slotBytes q a → (heapStart ≤ a ∧ a < heapEnd) → W a := fun a hs ha => by
+    rcases hqs with hw' | hqh
+    · exact hw' a hs
+    · simp only [heapEnd] at hqh ha; omega
+  have hxb := h.heap.blocks x hx
+  have hGb : ∀ a, InBlocks G.blocks a → ¬ AllocByte H a ∧ ¬ x.sb.In a ∧ (slotBytes q a → W a) ∧
+      ¬ frameIn sp 32 a ∧ ¬ bcFreeBytes a := fun a ha => by
+    obtain ⟨hin, hna⟩ := h.inBlocks_heap ha
+    obtain ⟨c, hc, hca⟩ := ha
+    have hcl := h.heap.raw.live c hc
+    refine ⟨hna, fun hxa => live_apart h.heap.heap hcl hxb.sLive
+      (h.heap.raw_ne hc (List.mem_append_right _ (mem_objBlocks hx))) hca hxa,
+      fun hs => hslotW a hs hin, fun hf => ?_, fun hf => ?_⟩
+    · simp only [frameIn, heapStart, heapEnd] at hf hin; omega
+    · have e : bcFreeAddr = 0x8001cdb0 := rfl
+      simp only [bcFreeBytes, heapStart, heapEnd] at hf hin; omega
+  have hGg : ∀ a, DcGlob a → ¬ AllocByte H a ∧ ¬ x.sb.In a ∧ ¬ slotBytes q a ∧
+      ¬ frameIn sp 32 a ∧ ¬ bcFreeBytes a := fun a ha => by
+    have hlt := ha.lt
+    refine ⟨OutHeap.not_alloc hi ha.outHeap, fun hxa => ?_, fun hs => ?_, fun hf => ?_, fun hf => ?_⟩
+    · have := live_in_heap hi hxb.sLive hxa; omega
+    · rcases hqs with hw' | hqh
+      · have := hp.inHeap hi hE (hw' a hs); simp only [heapStart] at this hlt; omega
+      · simp only [heapEnd, heapStart] at hqh hs hlt; omega
+    · simp only [frameIn, heapStart] at hf hlt; omega
+    · have := ha.outHeap; simp only [OutHeap] at this; exact this.2.2 hf
+  have hob : objBlocks (L1 ++ x.decRef :: L2) = objBlocks (L1 ++ x :: L2) := by
+    rw [objBlocks_append, objBlocks_cons, objBlocks_append, objBlocks_cons]; rfl
+  refine st_80002ba0 hlive (bc_free_num_spec hlive e R h10 h2 hal ⟨fun h2r R' M' hk1 hb hz hm => ?_,
+    fun h1r R' M' H' hk1 hr => ?_⟩)
+  · have hm' := hp.memOnlyW hm
+    have hrx : ∀ a, refsBytes x.rep a → x.sb.In a := fun a ha => by
+      have := hxb.sSz; have := hxb.sPay
+      simp only [refsBytes, Blk.In, Blk.pay, Blk.fin] at ha this ⊢; omega
+    have hag : ∀ a, InBlocks G.blocks a → imgM (Φ M') a = imgM (Φ M) a := fun a ha => hm' a ?_
+    · have hb' := (hb.ofMach hp hE (by rw [hob]; exact hEo)).subRaw (X' := G.raws (Φ M)) (fun c hc => hc)
+        fun c hc a ha => hag a ⟨c, hc, ha⟩
+      refine hk R' M' H F _ _ hk1 (h.decNum h2r hb' hag fun a ha => hm' a ?_) hz
+        fun a ho hg hf hs => hm a ?_
+      · rintro ⟨hr | hs, -⟩; exact (hGg a ha).2.1 (hrx a hr); exact (hGg a ha).2.2.1 hs
+      · rintro (hr | hs')
+        · exact ho.1 (live_in_heap hi hxb.sLive (hrx a hr))
+        · exact hs hs'
+    · rintro ⟨hr | hs, hnw⟩; exact (hGb a ha).2.1 (hrx a hr); exact hnw ((hGb a ha).2.2.1 hs)
+  · have hfr := hp.memOnlyW hr.frame
+    have hE' : ∀ e ∈ E, e ∈ H'.live := fun c hc => by
+      by_cases ho : x.Owns
+      · exact ((hr.owned ho).2.1 c).mpr ⟨hE c hc, fun he => hEo c hc
+          (List.mem_append_right _ (he ▸ h.heap.db_mem hx))⟩
+      · rw [hr.view ho]; exact hE c hc
+    have hEo' : ∀ e ∈ E, e ∉ x.sb :: F ++ objBlocks (L1 ++ L2) := fun c hc hm => by
+      rcases List.mem_cons.mp hm with he | hm
+      · exact hEo c hc (List.mem_append_right _ (he ▸ mem_objBlocks hx))
+      rcases List.mem_append.mp hm with hm | hm
+      · exact hEo c hc (List.mem_append_left _ hm)
+      · refine hEo c hc (List.mem_append_right _ ?_)
+        rw [objBlocks_append, objBlocks_cons] at *
+        rcases List.mem_append.mp hm with hm | hm
+        · exact List.mem_append_left _ hm
+        · exact List.mem_append_right _ (List.mem_append_right _ hm)
+    have hag : ∀ a, InBlocks G.blocks a → imgM (Φ M') a = imgM (Φ M) a := fun a ha => hfr a ?_
+    · have hb' := (hr.heap.ofMach hp hE' hEo').subRaw (X' := G.raws (Φ M)) (fun c hc => hc)
+        fun c hc a ha => hag a ⟨c, hc, ha⟩
+      refine hk R' M' H' _ _ _ hk1 (h.relNum h1r hb' hag fun a ha => hfr a ?_) hr.slot
+        fun a ho hg hf hs => hr.frame a ?_
+      · obtain ⟨n1, n2, n3, n4, n5⟩ := hGg a ha
+        rintro ⟨c | c | c | c | c, -⟩ <;> contradiction
+      · rintro (c | c | c | c | c)
+        · exact OutHeap.not_alloc hi ho c
+        · exact ho.1 (live_in_heap hi hxb.sLive c)
+        · exact hs c
+        · exact hf c
+        · exact ho.2.2 c
+    · obtain ⟨n1, n2, n3, n4, n5⟩ := hGb a ha
+      rintro ⟨c | c | c | c | c, hnw⟩
+      · exact n1 c
+      · exact n2 c
+      · exact hnw (n3 c)
+      · exact n4 c
+      · exact n5 c
 
 /-- **`dc_free_num (&a)`** at `0x80002ba0` on a handle `.num p` held in the
 stack slot `q`: one reference fewer, or the object released; the slot is
@@ -341,67 +473,8 @@ theorem dc_free_num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
       ldv .ld M' q = 0#64 →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       DW live S Q (R 1) R' M') :
-    DW live S Q 0x80002ba0#64 R M := by
-  obtain ⟨L1, L2, x, rfl, rfl⟩ := h.handle_num
-  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
-  have hi := h.heap.heap
-  have hql := hq.lo
-  simp only [heapEnd] at hqh hab
-  have hsl : ∀ a, slotBytes q a → OutHeap a ∧ ¬ DcGlob a := fun a ha =>
-    ⟨outHeap_of_ge (by simp only [heapEnd]; omega), fun hg => by
-      have := hg.lt; simp only [heapStart] at this; omega⟩
-  have hfl : ∀ a, frameIn sp 32 a → OutHeap a ∧ ¬ DcGlob a := fun a ha =>
-    ⟨outHeap_of_ge (by simp only [heapEnd, frameIn] at ha ⊢; omega), fun hg => by
-      have := hg.lt; simp only [heapStart, frameIn] at this ha; omega⟩
-  have hheap : ∀ b ∈ H.live, ∀ a, b.In a → ¬ slotBytes q a := fun b hb a ha hs =>
-    (hsl a hs).1.1 (live_in_heap hi hb ha)
-  have e := h.freeEntry hq (by simp only [heapEnd]; omega) hw hsf (by simp only [heapEnd]; omega) hqf
-  have hGb : ∀ a, InBlocks G.blocks a → ¬ AllocByte H a ∧ ¬ x.sb.In a ∧ ¬ slotBytes q a ∧
-      ¬ frameIn sp 32 a ∧ ¬ bcFreeBytes a := fun a ha => by
-    obtain ⟨c, hc, hca⟩ := ha
-    have hcl := h.heap.raw.live c hc
-    have hxb := h.heap.blocks x hx
-    have hin := live_in_heap hi hcl hca
-    refine ⟨live_not_alloc hi hcl hca, fun hxa => live_apart hi hcl hxb.sLive
-      (h.heap.raw_ne hc (List.mem_append_right _ (mem_objBlocks hx))) hca hxa,
-      fun hs => hheap c hcl a hca hs, fun hf => ?_, fun hf => ?_⟩
-    · simp only [frameIn, heapStart, heapEnd] at hf hin; omega
-    · have e : bcFreeAddr = 0x8001cdb0 := rfl
-      simp only [bcFreeBytes, heapStart, heapEnd] at hf hin; omega
-  have hGg : ∀ a, DcGlob a → ¬ AllocByte H a ∧ ¬ x.sb.In a ∧ ¬ slotBytes q a ∧
-      ¬ frameIn sp 32 a ∧ ¬ bcFreeBytes a := fun a ha => by
-    have hlt := ha.lt
-    refine ⟨OutHeap.not_alloc hi ha.outHeap, fun hxa => ?_, fun hs => (hsl a hs).2 ha,
-      fun hf => (hfl a hf).2 ha, fun hf => ?_⟩
-    · have := live_in_heap hi (h.heap.blocks x hx).sLive hxa; omega
-    · have := ha.outHeap; simp only [OutHeap] at this; exact this.2.2 hf
-  refine st_80002ba0 hlive (bc_free_num_spec hlive e R h10 h2 hal ⟨fun h2r R' M' hk1 hb hz hm => ?_,
-    fun h1r R' M' H' hk1 hp => ?_⟩)
-  · have hm' : ∀ a, ¬ (refsBytes x.rep a ∨ slotBytes q a) → imgM M' a = imgM M a := hm
-    have hrx : ∀ a, refsBytes x.rep a → x.sb.In a := fun a ha => by
-      have hxb := h.heap.blocks x hx
-      have := hxb.sSz; have := hxb.sPay
-      simp only [refsBytes, Blk.In, Blk.pay, Blk.fin] at ha this ⊢; omega
-    refine hk R' M' H F _ _ hk1 (h.decNum h2r hb (fun a ha => hm' a ?_) (fun a ha => hm' a ?_)) hz
-      fun a ho hg hf hs => hm' a ?_
-    · rintro (hr | hs); exact (hGb a ha).2.1 (hrx a hr); exact (hGb a ha).2.2.1 hs
-    · rintro (hr | hs); exact (hGg a ha).2.1 (hrx a hr); exact (hGg a ha).2.2.1 hs
-    · rintro (hr | hs')
-      · exact ho.1 (live_in_heap hi (h.heap.blocks x hx).sLive (hrx a hr))
-      · exact hs hs'
-  · have hfr := hp.frame
-    refine hk R' M' H' _ _ _ hk1 (h.relNum h1r hp.heap (fun a ha => hfr a ?_) (fun a ha => hfr a ?_))
-      hp.slot fun a ho hg hf hs => hfr a ?_
-    · obtain ⟨n1, n2, n3, n4, n5⟩ := hGb a ha
-      rintro (c | c | c | c | c) <;> contradiction
-    · obtain ⟨n1, n2, n3, n4, n5⟩ := hGg a ha
-      rintro (c | c | c | c | c) <;> contradiction
-    · rintro (c | c | c | c | c)
-      · exact OutHeap.not_alloc hi ho c
-      · exact ho.1 (live_in_heap hi (h.heap.blocks x hx).sLive c)
-      · exact hs c
-      · exact hf c
-      · exact ho.2.2 c
+    DW live S Q 0x80002ba0#64 R M :=
+  dc_free_num_specP hlive (Pend.id G) (M := M) h hq (.inr hqh) hw hsf hab hqf R h10 h2 hal hk
 
 /-! ## Strings -/
 
@@ -420,6 +493,20 @@ theorem DcG.blocks_perm_drop {G : DcG} {A B : List StrObj} {o : StrObj} (he : G.
   have := hp.count_eq a
   simp only [DcG.dropStr, List.count_append] at this ⊢
   omega
+
+/-- A window off the string `o` stays pending without it. -/
+theorem Pend.dropStr {G : DcG} {E : List Blk} {W : Nat → Prop} {Φ : Mem → Mem}
+    (hp : Pend G E W Φ) {A B : List StrObj} {o : StrObj} (he : G.strs = A ++ o :: B) :
+    Pend (G.dropStr A B) E W Φ := by
+  have hom : o ∈ G.strs := by rw [he]; exact List.mem_append_right _ List.mem_cons_self
+  refine { hp with sub := fun e hE => ?_, nstr := fun e hE o2 ho2 => hp.nstr e hE o2 (by
+    rw [he]; exact mem_split_of ho2) }
+  have := (G.blocks_perm_drop he).mem_iff.mp (hp.sub e hE)
+  rcases List.mem_append.mp this with h | h
+  · obtain ⟨n1, n2⟩ := hp.nstr e hE o hom
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+    rcases h with h | h <;> contradiction
+  · exact h
 
 /-- A string datum other than `.str o.p` denotes without `o`. -/
 theorem GV.Den.dropStr {L : List NumObj} {A B : List StrObj} {o : StrObj} {g : GV} {v : Val}
@@ -528,16 +615,17 @@ theorem DcFresh.afterFree {H : Heap} {F : List Blk} {L : List NumObj} {G : DcG} 
   · exact hm
 
 /-- `dc_free_str`'s release (`0x800039bc`): `free (s_ptr)` then `free (s)`,
-both blocks fresh to the state, `a4` the header `b1`. -/
-theorem free_str_rel {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+both blocks fresh to the state, `a4` the header `b1`; on a pending state. -/
+theorem free_str_relP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {b1 b2 : Blk}
-    (h : DcAt S M H F L C G hs st) (hf1 : DcFresh H F L G b1) (hf2 : DcFresh H F L G b2)
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {b1 b2 : Blk} {E : List Blk}
+    {W : Nat → Prop} {Φ : Mem → Mem} (hpd : Pend G E W Φ)
+    (h : DcAt S (Φ M) H F L C G hs st) (hf1 : DcFresh H F L G b1) (hf2 : DcFresh H F L G b2)
     (hne : b1 ≠ b2) (hsz1 : 8 ≤ b1.sz) (hptr : ldv .ld M b1.pay = BitVec.ofNat 64 b2.pay) {sp : Nat}
     (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
     (R : Nat → BitVec 64) (h14 : R 14 = BitVec.ofNat 64 b1.pay) (h2 : R 2 = BitVec.ofNat 64 sp)
     (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' H', Keeps freeStrClob R' R → DcAt S M' H' F L C G hs st → StkOut sp 32 M' M →
+    (hk : ∀ R' M' H', Keeps freeStrClob R' R → DcAt S (Φ M') H' F L C G hs st → StkOut sp 32 M' M →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x800039bc#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -560,16 +648,16 @@ theorem free_str_rel {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   have hM1 : MemOnly (frameIn sp 32) (writeLog (writeLog M [(sp - 32 + 24, 8, R 1)])
       [(sp - 32 + 8, 8, BitVec.ofNat 64 b1.pay)]) M := fun a ha => by
     simp only [frameIn] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
-  have h1 := h.outWrite hM1 hP
+  have h1 := h.outWriteP hpd hM1 hP
   obtain ⟨lpre, lpost, hl2⟩ := List.append_of_mem hf2.live
-  refine free_spec hlive h1.heap.heap hl2 _ ?_ ?_ fun R1 M2 hk1 hp => ?_
+  refine free_spec hlive (h1.machHeap hpd).heap hl2 _ ?_ ?_ fun R1 M2 hk1 hp => ?_
   · bsimp []
   · bsimp []
-  have h2' := h1.free hf2 hl2 hp
+  have h2' := h1.freeP hpd hf2 hl2 hp
   have hf1' := hf1.afterFree hl2 hne H.braw (b2 :: H.free)
   have hfm : ∀ o, o + 8 ≤ 32 → ldv .ld M2 (sp - 32 + o) = ldv .ld (writeLog (writeLog M
       [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 b1.pay)]) (sp - 32 + o) := fun o ho =>
-    ldv_congr .ld fun j hj => hp.frame _ (OutHeap.not_alloc h1.heap.heap (outHeap_of_ge (by
+    ldv_congr .ld fun j hj => hp.frame _ (OutHeap.not_alloc (h1.machHeap hpd).heap (outHeap_of_ge (by
       simp only [heapEnd, widthOfM] at hj ⊢; omega)))
   have q8 : ldv .ld M2 (sp - 32 + 8) = BitVec.ofNat 64 b1.pay := by
     rw [hfm 8 (by omega), ldv_store_hit]
@@ -580,29 +668,46 @@ theorem free_str_rel {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   bc_run hlive hS [q2, q8, q24] at 0x80000a0c
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   obtain ⟨lpre2, lpost2, hl3⟩ := List.append_of_mem hf1'.live
-  refine free_spec hlive h2'.heap.heap hl3 _ ?_ ?_ fun R2 M3 hk2 hp2 => ?_
+  refine free_spec hlive (h2'.machHeap hpd).heap hl3 _ ?_ ?_ fun R2 M3 hk2 hp2 => ?_
   · bsimp []
   · bsimp []; exact hal
-  have h3 := h2'.free hf1' hl3 hp2
+  have h3 := h2'.freeP hpd hf1' hl3 hp2
   refine hk R2 M3 _ ?_ h3 fun a ho hg hf => ?_
   · refine (hk2.mono (by decide)).trans ?_
     refine Keeps.restore (by rw [h2]; congr 1; omega) ?_
     refine Keeps.restore rfl ?_
     refine Keeps.upd _ (by decide) ?_
     exact (hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
-  · rw [hp2.frame a (OutHeap.not_alloc h2'.heap.heap ho), hp.frame a (OutHeap.not_alloc h1.heap.heap ho)]
+  · rw [hp2.frame a (OutHeap.not_alloc (h2'.machHeap hpd).heap ho), hp.frame a (OutHeap.not_alloc (h1.machHeap hpd).heap ho)]
     exact hM1 a hf
 
-/-- **`dc_free_str (&s)`** at `0x800039a4` on a handle `.str p` held in the
-slot `q`: one reference fewer, or the string's two blocks freed. -/
-theorem dc_free_str_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+/-- `dc_free_str`'s release (`0x800039bc`): `free (s_ptr)` then `free (s)`,
+both blocks fresh to the state, `a4` the header `b1`. -/
+theorem free_str_rel {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat}
-    (h : DcAt S M H F L C G (.str p :: hs) st) {q sp : Nat} (hq : PtrSlot S q)
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {b1 b2 : Blk}
+    (h : DcAt S M H F L C G hs st) (hf1 : DcFresh H F L G b1) (hf2 : DcFresh H F L G b2)
+    (hne : b1 ≠ b2) (hsz1 : 8 ≤ b1.sz) (hptr : ldv .ld M b1.pay = BitVec.ofNat 64 b2.pay) {sp : Nat}
+    (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
+    (R : Nat → BitVec 64) (h14 : R 14 = BitVec.ofNat 64 b1.pay) (h2 : R 2 = BitVec.ofNat 64 sp)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H', Keeps freeStrClob R' R → DcAt S M' H' F L C G hs st → StkOut sp 32 M' M →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x800039bc#64 R M :=
+  free_str_relP hlive (Pend.id G) (M := M) h hf1 hf2 hne hsz1 hptr hsf hab R h14 h2 hal hk
+
+/-- **`dc_free_str (&s)`** at `0x800039a4` on a handle `.str p` held in the
+slot `q`, on a pending state: one reference fewer, or the string's two
+blocks freed. -/
+theorem dc_free_str_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat} {E : List Blk}
+    {W : Nat → Prop} {Φ : Mem → Mem} (hpd : Pend G E W Φ)
+    (h : DcAt S (Φ M) H F L C G (.str p :: hs) st) {q sp : Nat} (hq : PtrSlot S q)
     (hw : ldv .ld M q = BitVec.ofNat 64 p) (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
     (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' H' G', Keeps freeStrClob R' R → SameNodes G G' → DcAt S M' H' F L C G' hs st →
+    (hk : ∀ R' M' H' G', Keeps freeStrClob R' R → SameNodes G G' → DcAt S (Φ M') H' F L C G' hs st →
       StkOut sp 32 M' M → DW live S Q (R 1) R' M') :
     DW live S Q 0x800039a4#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -619,6 +724,8 @@ theorem dc_free_str_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
   subst e1
   have hso := h.view.strs o ho
   have hsz := hso.hsz
+  have hoE : ∀ x, o.hb.In x → ¬ W x := fun x hx => hpd.not_win h.heap.heap (h.pendLive hpd).1
+    (h.heap.raw.live _ (G.str_mem ho).1) (fun he => (hpd.nstr _ he o ho).1 rfl) hx
   have fbb := h.heap.heap.blk (List.mem_append_right _ (h.heap.raw.live _ (G.str_mem ho).1))
   have hblo : 2147603920 ≤ o.hb.h := fbb.lo
   have hbhi : o.hb.fin ≤ 2273312768 := Nat.le_trans fbb.fin fbb.top
@@ -628,7 +735,9 @@ theorem dc_free_str_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
   obtain ⟨hpl1, hpl2, hpl3⟩ := hpl
   have hcnt := h.den.strRefs o ho
   rw [count_cons_self] at hcnt
-  have hrf := hso.refs
+  have hrf : ldv .lw M (o.hb.pay + 16) = BitVec.ofNat 64 o.refs :=
+    (ldv_congr .lw fun j hj => (hpd.out M _ (hoE _ (by
+      simp only [Blk.In, Blk.pay, Blk.fin, widthOfM] at hj ⊢; omega))).symm).trans hso.refs
   have hrl := hso.refsLt
   have wp : BitVec.ofNat 64 o.refs + 18446744073709551615#64 = BitVec.ofNat 64 (o.refs - 1) :=
     word_pred (by omega)
@@ -647,11 +756,15 @@ theorem dc_free_str_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
     bc_run hlive hS [h10, hw, hrf, wp, wq, hz] at 0x800039bc
     all_goals first | exact hq.acc | skip
     obtain ⟨h0, fh, ft⟩ := h.dropStr he h1
-    have h1' := h0.rawWrite fh hm
+    have h1' := h0.rawWriteP (hpd.dropStr he) fh hm
     have hss := h.str_ne_str he
     have hptr : ldv .ld (writeLog M [(o.hb.pay + 16, 4, 0#64)]) o.hb.pay = BitVec.ofNat 64 o.tb.pay := by
-      rw [ldv_ld_miss _ _ (by omega)]; exact hso.ptr
-    refine free_str_rel hlive h1' fh ft (Ne.symm hss.1) (by omega) hptr hsf (by simp only [heapEnd]; omega)
+      rw [ldv_ld_miss _ _ (by omega)]
+      have e := ldv_congr (a := o.hb.pay + 0) .ld fun j hj => (hpd.out M _ (hoE _ (by
+        simp only [Blk.In, Blk.pay, Blk.fin, widthOfM] at hj ⊢; omega))).symm
+      simp only [Nat.add_zero] at e
+      exact e.trans hso.ptr
+    refine free_str_relP hlive (hpd.dropStr he) h1' fh ft (Ne.symm hss.1) (by omega) hptr hsf (by simp only [heapEnd]; omega)
       _ (by bsimp []) (by bsimp [h2]) (by bsimp []; exact hal) fun R' M' H' hk1 h' hfr => ?_
     refine hk R' M' H' (G.dropStr A B) (hk1.trans (by keeps_tac Keeps.refl _ _)) ⟨rfl, rfl, rfl⟩ h'
       fun a ho' hg hf => ?_
@@ -667,6 +780,21 @@ theorem dc_free_str_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
     · bsimp []; exact hpos
     bc_run hlive hS [h10, hw, hrf, wp, wq]
     refine hk _ _ H (G.withStr A B (o.withRefs (o.refs - 1))) (by keeps_tac Keeps.refl _ _)
-      ⟨rfl, rfl, rfl⟩ (h.decStr he h2r hv1) fun a ho' hg hf => hout a ho'
+      ⟨rfl, rfl, rfl⟩ ((h.decStr he h2r hv1).congr (hpd.store M _ (.inl rfl) fun x hx => hoE x (by
+        simp only [Blk.In, Blk.pay, Blk.fin] at hx ⊢; omega))) fun a ho' hg hf => hout a ho'
+
+/-- **`dc_free_str (&s)`** at `0x800039a4` on a handle `.str p` held in the
+slot `q`: one reference fewer, or the string's two blocks freed. -/
+theorem dc_free_str_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat}
+    (h : DcAt S M H F L C G (.str p :: hs) st) {q sp : Nat} (hq : PtrSlot S q)
+    (hw : ldv .ld M q = BitVec.ofNat 64 p) (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' G', Keeps freeStrClob R' R → SameNodes G G' → DcAt S M' H' F L C G' hs st →
+      StkOut sp 32 M' M → DW live S Q (R 1) R' M') :
+    DW live S Q 0x800039a4#64 R M :=
+  dc_free_str_specP hlive (Pend.id G) (M := M) h hq hw hsf hab R h10 h2 hal hk
 
 end Dc.Mach

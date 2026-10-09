@@ -251,6 +251,88 @@ theorem dvs_alloc_call {live : Nat → Prop} {S : Nat → Prop}
   · exact hoom R' M' (sp - 208 - 32) (by omega) (by omega) hr2' fun a ha hf =>
       (hout' a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (bf.out a ha hf)
 
+/-- `DvBufs` through stores to the frame words `sp - 208 … + 104`. -/
+theorem DvBufs.slots {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
+    {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj}
+    (bf : DvBufs S Mt0 M R0 sp W D H F Lh) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
+    (hm : ∀ a, (a < sp - 208 ∨ sp - 208 + 104 ≤ a) → imgM M' a = imgM M a) :
+    DvBufs S Mt0 M' R0 sp W D H F Lh := by
+  have hh : ∀ a, a < heapEnd → imgM M' a = imgM M a := fun a h => hm a (.inl (by omega))
+  refine { bf with
+    saved := bf.saved.transport (lo := 104) (top := 208) (hag := fun a h1 _ => hm a (.inr h1))
+    heap := bf.heap.transportOwn (fun a ha => hh a (AllocByte.bound bf.heap.heap ha).2)
+      (fun c hc a ha => hh a (live_in_heap bf.heap.heap (bf.heap.owned_live hc) ha).2)
+      (fun j hj => hh _ (by simp only [bcFreeAddr, heapEnd]; omega))
+    out := fun a ho hf => (hm a (by simp only [frameIn] at hf; omega)).trans (bf.out a ho hf) }
+
+/-- **The quotient and `mval`** from `0x80005b94` (`len1 + k ≥ L`): `qdigits`,
+`bc_new_num(qdigits - k, k)`, `memset`, `malloc(L + 1)`. -/
+theorem dvs_alloc {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
+    {Lh : List NumObj} {len1 k : Nat}
+    (cx : DvCtx S sp W) (bf : DvBufs S Mt0 M R0 sp W D H F Lh)
+    (hle : D.L ≤ len1 + k) (hL1 : 1 ≤ D.L) (hsz : len1 + k < 2 ^ 29)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h12 : R 12 = BitVec.ofNat 64 (k + 1))
+    (h21 : R 21 = BitVec.ofNat 64 k) (h23 : R 23 = BitVec.ofNat 64 D.L)
+    (h26 : R 26 = BitVec.ofNat 64 len1) (h27 : R 27 = BitVec.ofNat 64 (D.L + 1))
+    (hoom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+      (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
+      DW live S Q 0x80002bcc#64 R' Mt')
+    (hnext : ∀ R' M' H' F' y b, DvBase S Mt0 M' R0 sp W { D with b3 := b, Bm := b.pay } H' F' Lh y →
+      y.rep = zeroRep y.sb.pay y.db.pay (dvQlen len1 D.L) k →
+      (∀ a, D.b1.In a ∨ D.b2.In a → imgM M' a = imgM M a) →
+      R' 21 = BitVec.ofNat 64 y.sb.pay → R' 16 = R 16 → Keeps allocClob R' R →
+      DW live S Q 0x80005be0#64 R' M') :
+    DW live S Q 0x80005b94#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => bf.heap.heap.own a h1 h2
+  have hin : ∀ a, D.b1.In a ∨ D.b2.In a → a + W < sp := fun a ha => by
+    have : a < heapEnd := by
+      rcases ha with ha | ha
+      · exact (live_in_heap bf.heap.heap bf.b1l ha).2
+      · exact (live_in_heap bf.heap.heap bf.b2l ha).2
+    omega
+  have hfin : ∀ (ql : Nat), dvQlen len1 D.L = ql → ql + k < 2 ^ 30 → 1 ≤ ql →
+      ∀ R1, R1 1 = 0x80005bb8#64 → R1 2 = BitVec.ofNat 64 (sp - 208) → R1 10 = BitVec.ofNat 64 ql →
+      R1 11 = BitVec.ofNat 64 k → R1 27 = BitVec.ofNat 64 (D.L + 1) → R1 16 = R 16 →
+      Keeps allocClob R1 R →
+      DW live S Q 0x80004250#64 R1
+        (writeLog (writeLog M [(sp - 208 + 16, 8, R 16)]) [(sp - 208 + 8, 8, BitVec.ofNat 64 (ql + k))]) := by
+    intro ql hq hqs hq1 R1 r1 r2 r10 r11 r27 r16 hk1
+    subst hq
+    refine dvs_alloc_call hlive cx (bf.slots hab (by omega) fun a ha => by
+        simp (disch := omega) only [imgM_store_miss]) hq1 hqs (by omega)
+      (by simp (disch := omega) only [ldv_store_hit])
+      (by simp (disch := omega) only [ldv_ld_miss, ldv_store_hit, r16]) r1 r2 r10 r11 r27 hoom
+      fun R' M' H' F' y b h1 h2 h3 h4 h5 h6 => hnext R' M' H' F' y b h1 h2
+        (fun a ha => (h3 a ha).trans (by
+          have := hin a ha
+          simp (disch := omega) only [imgM_store_miss])) h4 (by rw [h5, r16]) (h6.trans hk1)
+  bc_run hlive hS [h2, h12, h21, h23, h26, h27] at 0x80004250
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  · intro hlt
+    bc_run hlive hS [h2, h12, h21, h23, h26, h27] at 0x80004250
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    have hq : dvQlen len1 D.L = 1 := if_pos hlt
+    rw [show k + 1 = 1 + k by omega]
+    exact hfin 1 hq (by omega) (Nat.le_refl 1) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
+      (by bsimp [h21]) (by bsimp [h27]) (by bsimp []) (by keeps_tac Keeps.refl _ _)
+  · intro hge
+    have e1 := addw_ofNat (a := len1) (b := k + 1) (by omega)
+    have e2 := subw_ofNat_le (a := len1 + (k + 1)) (b := D.L) (by omega) (by omega)
+    have e3 := subw_ofNat_le (a := len1 + (k + 1) - D.L) (b := k) (by omega) (by omega)
+    bc_run hlive hS [h2, h12, h21, h23, h26, h27, e1, e2, e3] at 0x80004250
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    have hq : dvQlen len1 D.L = len1 + 1 - D.L := if_neg hge
+    rw [show len1 + (k + 1) - D.L = len1 + 1 - D.L + k by omega,
+      show len1 + 1 - D.L + k - k = len1 + 1 - D.L by omega]
+    exact hfin _ hq (by omega) (by omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
+      (by bsimp [h21]) (by bsimp [h27]) (by bsimp []) (by keeps_tac Keeps.refl _ _)
+
 end
 
 end Dc.Mach

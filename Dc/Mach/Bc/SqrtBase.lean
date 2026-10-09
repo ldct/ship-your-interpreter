@@ -63,7 +63,7 @@ macro "sq_facts " cx:term : tactic =>
 
 /-- The operand `x` of the caller's heap `L` in the slot `q`, `_zero_` (`z`)
 and `_one_` (`o`) in `L` at their globals, sizes small enough for the
-callees, room for sixteen more references to each number, the stderr stream;
+callees, every number referenced and with room for sixteen more references, the stderr stream;
 `x` at `_zero_` or `_one_` holds a second reference (the global's). -/
 structure SqArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (x z o : NumObj) (q k : Nat) :
     Prop where
@@ -76,6 +76,7 @@ structure SqArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (x z o : NumObj)
   mo : o ∈ L
   size : x.rep.len + x.rep.scale + k < 2 ^ 20
   refs : ∀ y ∈ L, y.rep.refs + 16 < 2 ^ 31
+  live : ∀ y ∈ L, 1 ≤ y.rep.refs
   zero : KZero M z (2 ^ 30 + 8)
   one : ldv .ld M oneAddr = BitVec.ofNat 64 o.rep.p
   oneNum : o.rep.num = Num.one

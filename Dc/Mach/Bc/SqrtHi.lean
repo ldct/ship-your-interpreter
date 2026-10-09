@@ -341,4 +341,130 @@ theorem sq_hiMul {live : Nat → Prop} {S : Nat → Prop}
     · exact st.fr.ok _ (by simp)
     · exact ⟨hres.refs, hres.owns⟩
 
+/-- Every number of the heap referenced, from its temporaries and the
+caller's numbers. -/
+theorem RList.pos {hs : List RH} {L : List NumObj} (ht : ∀ y, .own y ∈ hs → 1 ≤ y.rep.refs)
+    (hL : ∀ y ∈ L, 1 ≤ y.rep.refs) : ∀ y ∈ RList hs L, 1 ≤ y.rep.refs := by
+  intro y hy
+  rcases List.mem_append.mp hy with h | h
+  · obtain ⟨h0, hh, hy⟩ := List.mem_flatMap.mp h
+    cases h0 with
+    | own x =>
+      simp only [RH.tmp, List.mem_singleton] at hy
+      subst hy; exact ht _ hh
+    | ref _ => cases hy
+  · obtain ⟨w, hw, rfl⟩ := List.mem_map.mp h
+    have := hL w hw
+    simp only [rBump, NumObj.withRefs_refs]; omega
+
+/-- **`guess = bc_raise (guess, guess1)`** at `0x8000660c` with `guess1` cut
+to scale `0` (`n_len / 2`): `guess`'s handle replaced by the power's
+(`raPost_handle`). -/
+theorem sq_hiRaise {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 gg m : NumObj} {r : Num}
+    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .own m])
+    (hgn : gg.rep.num = Num.ofInt 10) (hgN : gg.rep.Norm) (hgr : gg.rep.refs = 1)
+    (hmn : m.rep.num = ⟨false, x.rep.len / 2, 0⟩) (hml : 1 ≤ m.rep.len) (hmr : m.rep.refs = 1)
+    (w24 : ldv .ld M (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p)
+    (h1 : R 1 = 0x80006b24#64) (h8 : R 8 = BitVec.ofNat 64 m.rep.p)
+    (h10 : R 10 = BitVec.ofNat 64 gg.rep.p) (h11 : R 11 = BitVec.ofNat 64 m.rep.p)
+    (h12 : R 12 = BitVec.ofNat 64 (sp - 160 + 24)) (h13 : R 13 = BitVec.ofNat 64 0)
+    (hnext : ∀ R' M' H' F' y h, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+        [.own p5, .ref z, h, .own m] → RaH S M' H' F' [.own p5, .ref z] [.own m] L o y h →
+      y.rep.num = ⟨false, 10 ^ (x.rep.len / 2), 0⟩ → y.rep.Norm → 1 ≤ y.rep.len →
+      R' 8 = BitVec.ofNat 64 m.rep.p →
+      ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 h.p →
+      DW live S (DQ live S Q t) 0x80006b24#64 R' M') :
+    DW live S (DQ live S Q t) 0x8000660c#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  sq_facts cx
+  have hb := st.fr.heap
+  have hown := st.fr.own
+  have hok5 := st.fr.ok (.own p5) (by simp)
+  have objg : gg ∈ RList [.own p5, .ref z, .own gg, .own m] L :=
+    RH.obj_mem (h := .own gg) (by simp) ⟨hgr, hown.temps _ (by simp)⟩
+  have objm : m ∈ RList [.own p5, .ref z, .own gg, .own m] L :=
+    RH.obj_mem (h := .own m) (by simp) ⟨hmr, hown.temps _ (by simp)⟩
+  have hgs := (hb.nums _ objg).shape
+  have hgsc : gg.rep.scale = 0 := by rw [← NumRep.num_scale, hgn]; rfl
+  have hgv : dval gg.rep.ds = 10 := by rw [← NumRep.num_mag, hgn]; rfl
+  obtain ⟨hgl1, hgl2⟩ := NumRep.len_of_int (m := 2) hgs hgN hgsc (by omega) (by rw [hgv]; decide)
+    (by decide)
+  have hcs := (SqCst.mk (ha.zero.mono (by omega)) ha.one ha.mulBase).transport cx st.fr.sa.out
+  have hsz := ha.size
+  have hexp : (raExp m).natAbs = x.rep.len / 2 := by
+    unfold raExp
+    rw [hmn]
+    simp only [Num.toLong, Num.intPart, Nat.pow_zero, Nat.div_one, Bool.false_eq_true, if_false]
+    rw [if_pos (by unfold Num.longMax; omega)]
+    rfl
+  have hro := ha.refs o ha.mo
+  have c4 := rCnt_le [.own p5, .ref z, .own gg, .own m] o.rep.p
+  simp only [List.length_cons, List.length_nil] at c4
+  have hfd : FdAt S M stderrAddr 2 := by
+    have hfar := cx.far
+    simp only [stderrAddr] at hfar
+    exact ha.fd.transport fun j hj => st.fr.sa.out _
+      (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, stderrAddr]; omega)
+      (by simp only [frameIn, stderrAddr]; omega)
+  have hsize : ((raExp m).natAbs + 1) * (gg.rep.len + gg.rep.scale + 1) + 0 < 2 ^ 24 := by
+    rw [hexp, hgsc]
+    have := Nat.mul_le_mul (show x.rep.len / 2 + 1 ≤ 2 ^ 19 + 1 by omega)
+      (show gg.rep.len + 0 + 1 ≤ 3 by omega)
+    omega
+  have rc := cx.cc.ra (F := 160) (q := sp - 160 + 24) (R := R) (by omega) (by omega) cx.far
+    (cx.fslot (o := 24) (by omega) (by decide)) (.inr (by simp only [zeroAddr]; omega))
+    (.inr (by simp only [oneAddr]; omega)) st.fr.sa.r2 (by rw [h1]; decide)
+  refine bc_raise_spec hlive (t := t) (Q := Q) rc (L := RList [.own p5, .ref z, .own gg, .own m] L)
+    (x1 := gg) (x2 := m) (z := rBump [.own p5, .ref z, .own gg, .own m] z)
+    (o := rBump [.own p5, .ref z, .own gg, .own m] o) (xr := gg) (k := 0)
+    { m1 := objg, m2 := objm, mz := RList.mem_caller _ ha.mz, mo := RList.mem_caller _ ha.mo
+      n1 := hgN, len1 := hgl1, len2 := hml, size := hsize, refs1 := by omega
+      zero := KZero.rBump _ (by simp) (hcs.zero.mono (by omega))
+      one := hcs.one, oneNum := ha.oneNum, oneNorm := ha.oneNorm, oneLen := ha.oneLen
+      oneRefs := by simp only [rBump, NumObj.withRefs_refs]; omega
+      mulBase := hcs.mulBase, owns := hown.all, fd := hfd }
+    { mr := objg, rr := by omega, wr := w24
+      oneRef := fun e => absurd (show gg.rep.p = o.rep.p by rw [e]; rfl)
+        (RList.own_ne_caller hb.pdist (by simp) ha.mo)
+      zeroRef := fun e => absurd (show gg.rep.p = z.rep.p by rw [e]; rfl)
+        (RList.own_ne_caller hb.pdist (by simp) ha.mz)
+      zr := fun h0 => absurd h0 (by rw [hgn]; decide) }
+    hb (by omega) ⟨fun R' M' H' F' Lf y hk hp => ?_, fun R' M' sp' e1 e2 hr2 hout => ?_⟩
+    h10 h11 h12 h13
+  · have hpos : ∀ c ∈ RList ([.own p5, .ref z] ++ .own gg :: [.own m]) L, 1 ≤ c.rep.refs :=
+      RList.pos (fun y hy => by
+        simp only [List.cons_append, List.nil_append, List.mem_cons, RH.own.injEq,
+          reduceCtorEq, List.mem_singleton, List.not_mem_nil, or_false, false_or] at hy
+        rcases hy with rfl | rfl | rfl
+        · exact Nat.le_of_eq hok5.1.symm
+        · omega
+        · omega) ha.live
+    obtain ⟨h, hh⟩ := raPost_handle (hs1 := [.own p5, .ref z]) (hs2 := [.own m]) hb.pdist hown hgr
+      hpos ha.mo ha.oneRefs hp
+    have hk' := hk.mono (ks' := raCallClob) (by decide)
+    rw [h1]
+    refine hnext R' M' H' F' y h (SqH.call cx st (o := 24) (by omega) (by omega) hk' hp.out hh.heap
+      hh.own ?_) hh ?_ hp.norm hp.pos (by rw [hk.get 8 (by decide)]; exact h8)
+      (by rw [hp.slot, hh.p])
+    · intro h' hh'
+      simp only [List.cons_append, List.nil_append, List.mem_cons, List.mem_singleton,
+        List.not_mem_nil, or_false] at hh'
+      rcases hh' with rfl | rfl | rfl | rfl
+      · exact st.fr.ok _ (by simp)
+      · exact st.fr.ok _ (by simp)
+      · exact hh.ok
+      · exact st.fr.ok _ (by simp)
+    · rw [hp.num, hgn, hmn]
+      exact Dc.BcModel.raise_ten _ (by unfold Num.longMax; omega)
+  · refine g.oom R' M' sp' (by omega) (by omega) hr2 fun a ha' hs hf => ?_
+    rw [hout a ha' (fun h' => hf (by simp only [slotBytes, frameIn] at h' ⊢; omega))
+      (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
+    exact st.fr.sa.out a ha' hf
+
 end Dc.Mach

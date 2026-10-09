@@ -50,7 +50,7 @@ theorem DivCtx.dv {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp q W : Nat}
 
 /-- `bc_divide`'s continuations for the quotient `n` (`none`: division by
 zero): the new number in the slot and `a0 = 0`; `a0 = -1` with only the
-window changed; or `out_of_memory`. -/
+window changed; or `out_of_memory` (the slot may have changed). -/
 structure DivKW (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R0 : Nat → BitVec 64) (Mt0 : Mem) (L1 L2 : List NumObj) (x : NumObj) (q sp W : Nat)
     (n : Option Num) : Prop where
@@ -58,9 +58,18 @@ structure DivKW (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → Bi
     BinPostW S Mt0 Mt' H F L1 L2 x q sp W m L y → DW live S Q (R0 1) R' Mt'
   zero : n = none → ∀ R' Mt', Keeps binClob R' R0 → R' 10 = 0xffffffffffffffff#64 →
     (∀ a, ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) → DW live S Q (R0 1) R' Mt'
-  oom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
-    (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
+  oomW : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+    (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
     DW live S Q 0x80002bcc#64 R' Mt'
+
+/-- `out_of_memory` with the slot unchanged too. -/
+theorem DivKW.oom {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {R0 : Nat → BitVec 64} {Mt0 : Mem} {L1 L2 : List NumObj} {x : NumObj} {q sp W : Nat}
+    {n : Option Num} (hk : DivKW live S Q R0 Mt0 L1 L2 x q sp W n) :
+    ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+      (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
+      DW live S Q 0x80002bcc#64 R' Mt' :=
+  fun R' Mt' sp' h1 h2 h3 h4 => hk.oomW R' Mt' sp' h1 h2 h3 fun a ho _ hf => h4 a ho hf
 
 /-- The epilogue's second half from `0x80005b5c`: `s7`–`s11` back, `ret`. -/
 theorem dvt_epi2 {live : Nat → Prop} {S : Nat → Prop}

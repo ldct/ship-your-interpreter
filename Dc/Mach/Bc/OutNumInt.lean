@@ -411,4 +411,81 @@ theorem og_loop {live S : Nat → Prop} {X0 : Raws}
   · have hc : c ≠ 0 := by rw [lh.ipn.num] at hnz; exact hnz
     exact og_body hlive fx hbs hc (ih (c / ob) (Nat.div_lt_self (by omega) (by omega))) (lh.keep kk)
 
+/-- **Into the integer loop** from `0x80007164`: `base` and `max_o_digit`
+loaded, `int_part` is not `_zero_`, the empty stack. -/
+theorem og_s5 {live S : Nat → Prop} {X0 : Raws}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
+    {sp W d ob : Nat} {L : List NumObj} {x z o : NumObj} {cs : List Nat} {t : String}
+    (fx : OgFix live S X0 Q I G Mt0 R0 sp W d L x z o ob cs)
+    (hk : ∀ fr bs mx, NewNum (ogFrac x.rep.num) fr → NewNum (Num.ofInt ob) bs →
+      NewNum (Num.ofInt (ob - 1 : Nat)) mx → OgK5 live S X0 Q I G Mt0 R0 sp W L x ob cs t fr bs mx) :
+    OgK4 live S X0 Q I G Mt0 R0 sp W L x z ob cs t := by
+  intro R M H F ip fr bs mx st hip hfr hbs hmx rg h8 h22 h21
+  have cx := fx.cx
+  have ha := fx.ha
+  have cb := fx.cb
+  on_facts cx
+  have hsf := cx.cc.frame
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  have hipm : ip ∈ RList ([] ++ .own ip :: [.own fr, .ref z, .own bs, .own mx]) L := by
+    simp [RList, rTemps, RH.tmp]
+  have hipn := st.heap.nums ip hipm
+  have hips := hipn.shape
+  have hne := (show BcHeap S _ M H F (RList ([] ++ .own ip :: [.own fr, .ref z, .own bs, .own mx]) L)
+    from st.heap).own_ne_caller ha.mz
+  have hne' : z.rep.p ≠ ip.rep.p := hne
+  have hzs := (st.heap.nums _ (RList.mem_caller _ ha.mz)).shape
+  have hip1 : ip.rep.p + 40 ≤ heapEnd := hips.pHi
+  have hz1 : z.rep.p + 40 ≤ heapEnd := hzs.pHi
+  have hip2 : heapStart ≤ ip.rep.p := hips.pLo
+  have hisz := hips.size
+  simp only [heapEnd, heapStart] at hip1 hz1 hip2
+  have hG : ∀ a, G a → ¬ constBytes a := fun a hg => (cb.off a hg).2.2.1
+  have hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p := by
+    rw [st.on.glob hG (by omega) (by simp only [twoAddr, zeroAddr]; omega) (by omega)]
+    exact ha.zero.glob
+  have hz0 : (BitVec.ofNat 64 zeroAddr).toNat = zeroAddr := rfl
+  have hldz : LdOK zeroAddr 8 := by simp only [LdOK, zeroAddr, tohostAddr]; omega
+  have hcz : ∀ b ∈ accAddrs zeroAddr 8, S b := fun b hb' => by
+    have := of_mem_accAddrs hb'
+    exact cx.cc.consts b (by simp only [constBytes, twoAddr, zeroAddr] at *; omega)
+  have h2 := st.on.r2
+  have hw32 : ldv .ld M (sp - 176 + 32) = BitVec.ofNat 64 bs.rep.p :=
+    st.words.get (hs1 := [_, _, _]) (os1 := [16, 24, 40]) (hs2 := [_]) (os2 := [56]) rfl
+  have hw56 : ldv .ld M (sp - 176 + 56) = BitVec.ofNat 64 mx.rep.p :=
+    st.words.get (hs1 := [_, _, _, _]) (os1 := [16, 24, 40, 32]) (hs2 := []) (os2 := []) rfl
+  have hl := hipn.len
+  have hsc := hipn.scale
+  have hlp := hip.pos
+  bc_run hlive hS [rg.r20, hz0, hzg, h2, hw32, hw56, h8, hl, hsc, addw_ofNat] at 0x80007184
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | exact hldz | exact hcz | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+  · intro he
+    exfalso
+    have e := congrArg BitVec.toNat he
+    simp only [BitVec.toNat_ofNat] at e
+    omega
+  intro _
+  bc_run hlive hS [rg.r20, hz0, hzg, h2, hw32, hw56, h8, hl, hsc, addw_ofNat] at 0x80007184
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | exact hldz | exact hcz | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+  · intro hc
+    exfalso
+    rw [toInt_ofNat_small (k := ip.rep.scale + ip.rep.len) (by omega)] at hc
+    simp at hc
+    omega
+  intro _
+  obtain ⟨m, hm, hmag, hsc0⟩ := Dc.BcModel.div_one_zero x.rep.num
+  have hxs := (st.heap.nums _ (RList.mem_caller _ ha.mx)).shape
+  have hmx' : x.rep.num.mag < 10 ^ (x.rep.len + x.rep.scale) := by
+    have := NumRep.mag_lt hxs; rw [NumRep.num_mag]; exact this
+  refine og_loop hlive fx hbs (hk fr bs mx hfr hbs hmx) _ _ M H F ip (.ref z) [] [] X0.img 0
+    ⟨st.regs (ks := [14, 15, 19, 24]) (by keeps_tac Keeps.refl _ _),
+      RHOK.ofMem ha.mz (ha.live z ha.mz), OgStk.nil X0, by decide, hip,
+      by simp only [ogIp, hm, Option.getD_some, hmag, List.append_nil],
+      Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hmx',
+      rg.keep (ks := [14, 15, 19, 24]) (by keeps_tac Keeps.refl _ _), by bsimp [h8],
+      by bsimp [], by bsimp [h21], by bsimp [h22], by bsimp []⟩ ?_
+  bsimp []
+  rw [Nat.add_comm]
+
 end Dc.Mach

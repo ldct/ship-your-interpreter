@@ -688,4 +688,176 @@ theorem sq_sub {live : Nat → Prop} {S : Nat → Prop}
         r25 := by rw [hk'.get 25 (by decide)]; exact h25
         r26 := by rw [hk.get 26 (by decide)]; bsimp [] } hn
 
+/-! ## The near-zero branch (`0x80006d44`) -/
+
+/-- **`rscale < cscale`: done; else `cscale = MIN (3 cscale, rscale + 1)`**
+from `0x80006d44`. -/
+theorem sq_near {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb o p5 : NumObj} {k rs cs : Nat}
+    {G : RH} {d y : NumObj} {g : Num}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs)
+    (st : SqN S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs G d y g)
+    (hexit : rs < cs → DW live S Q 0x80006d68#64 R M)
+    (hrefine : cs ≤ rs → ∀ R',
+      SqN S Mt0 M R0 R' sp W q H F Lb x zb p5 k rs (min (cs * 3) (rs + 1)) G d y g →
+      DW live S Q 0x80006c44#64 R' M) :
+    DW live S Q 0x80006d44#64 R M := by
+  have hc := env.sqc_eq; have hbs := env.bsmall; have hcl := st.model.le
+  have hp := st.model.pos
+  simp only [sqB] at hbs
+  dx_run hlive at 0x80006d68 0x80006c44
+  all_goals bsimp [st.f.r24, st.r27, st.f.r22]
+  · intro hlt
+    rw [toInt_ofNat_small (by omega), toInt_ofNat_small (by omega)] at hlt
+    exact hexit (by omega)
+  · intro hge
+    rw [toInt_ofNat_small (by omega), toInt_ofNat_small (by omega)] at hge
+    have hcr : cs ≤ rs := by omega
+    have tail : ∀ R', R' 18 = BitVec.ofNat 64 (min (cs * 3) (rs + 1)) → Keeps [15, 18] R' R →
+        DW live S Q 0x80006d5c#64 R' M := by
+      intro R' h18 hk
+      have hk' : Keeps [15, 18, 27] R' R := hk.mono (by decide)
+      have hx1 := sxw_ofNat (show min (cs * 3) (rs + 1) < 2 ^ 31 by omega)
+      have hx2 := sxw_ofNat (show min (cs * 3) (rs + 1) + 1 < 2 ^ 31 by omega)
+      dx_run hlive at 0x80006c44
+      all_goals bsimp [h18, hx1, hx2]
+      have hk2 : Keeps [15, 18, 27] (upd (upd R' 27 (BitVec.ofNat 64 (min (cs * 3) (rs + 1)))) 18
+          (BitVec.ofNat 64 (min (cs * 3) (rs + 1) + 1))) R := by keeps_tac hk'
+      exact hrefine hcr _
+        { st with
+          f := st.f.regs hk2
+          model := st.model.mono (by omega) (by omega)
+          r8 := by rw [hk2.get 8 (by decide)]; exact st.r8
+          r18 := by bsimp []
+          r27 := by bsimp []
+          r25 := by rw [hk2.get 25 (by decide)]; exact st.r25
+          r26 := by rw [hk2.get 26 (by decide)]; exact st.r26 }
+    have hsl := slliw_ofNat (a := cs) (k := 1) (by omega)
+    have haw := addw_ofNat (a := cs * 2 ^ 1) (b := cs) (by omega)
+    dx_run hlive at 0x80006d68 0x80006c44 0x80006d5c
+    all_goals bsimp [st.f.r24, st.r27, st.f.r22, hsl, haw]
+    · intro h1
+      rw [toInt_ofNat_small (by omega), toInt_ofNat_small (by omega)] at h1
+      exact tail _ (by bsimp []; rw [Nat.min_eq_right (by omega)]) (by keeps_tac Keeps.refl _ _)
+    · intro h1
+      rw [toInt_ofNat_small (by omega), toInt_ofNat_small (by omega)] at h1
+      dx_run hlive at 0x80006d5c
+      exact tail _ (by bsimp []; rw [Nat.min_eq_left (by omega), show cs * 2 ^ 1 + cs = cs * 3 by omega])
+        (by keeps_tac Keeps.refl _ _)
+
+/-! ## One iteration and the loop -/
+
+/-- `x`'s scale under the ceiling. -/
+theorem SqEnv.xsc {S : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q : Nat}
+    {Lb : List NumObj} {x zb o p5 : NumObj} {k rs : Nat}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) : x.rep.num.scale ≤ sqc x k := by
+  rw [env.sqc_eq, NumRep.num_scale, env.rsk]; omega
+
+/-- `x` below `10 ^ (n_len + n_scale)`, from any heap of the loop. -/
+theorem SqEnv.xmag {S : Nat → Prop} {Mt0 M : Mem} {R0 : Nat → BitVec 64} {sp W q : Nat}
+    {Lb : List NumObj} {x zb o p5 : NumObj} {k rs : Nat} {H : Heap} {F : List Blk} {hs : List RH}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) (hb : BcHeap S M H F (RList hs Lb)) :
+    x.rep.num.mag < 10 ^ (x.rep.len + x.rep.num.scale) := by
+  have hxn := hb.nums _ (RList.mem_caller hs env.mx)
+  have := NumRep.mag_lt hxn.shape; exact this
+
+/-- The new number's digits between the step's callees. -/
+theorem SqM.ysize {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb o p5 : NumObj} {k rs cs : Nat}
+    {D G : RH} {y : NumObj} {g n : Num}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs)
+    (st : SqM S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G y g) (hy : y.rep.num = n)
+    (hm : n.mag < 10 ^ (x.rep.len + 2 * sqc x k + 3)) (hs : n.scale ≤ cs + 1) :
+    y.rep.len + y.rep.scale ≤ sqB x k :=
+  env.ssize (st.heap.nums _ (RH.obj_mem (h := .own y) (by simp) st.oky)).shape st.ny st.model.le
+    (by rw [hy]; exact hm) (by rw [hy]; exact hs)
+
+/-- The guess's digits between the step's callees. -/
+theorem SqM.gsize {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb o p5 : NumObj} {k rs cs : Nat}
+    {D G : RH} {y : NumObj} {g : Num}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs)
+    (st : SqM S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G y g) :
+    G.base.rep.len + G.base.rep.scale ≤ sqB x k := by
+  have hGn := st.heap.nums _ (RH.obj_mem (hs := [.own p5, D, .own y, G]) (by simp) st.okG)
+  have := env.gsize (env.xmag st.heap) hGn.shape ((RH.obj_norm _ _).mpr st.nG)
+    (by rw [RH.obj_num]; exact st.vG) st.model
+  rwa [RH.obj_len, RH.obj_scale] at this
+
+/-- **One iteration** from the head `0x80006b74` to the near-zero test's
+exits, the new guess `y` and difference `d` those of `Num.sqrtStep`. -/
+theorem sq_step {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb o p5 : NumObj} {k rs cs : Nat}
+    {D G : RH} {G1 : Option RH} {g : Num}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) (hoom : RaOom live S Q Mt0 sp W q)
+    (st : SqL S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G G1 g)
+    (hnear : ∀ R' M' H' F' d y, y.rep.num = (Num.sqrtStep x.rep.num g cs).1 →
+      d.rep.num = (Num.sqrtStep x.rep.num g cs).2 →
+      SqN S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs G d y g →
+      d.rep.num.isNearZero cs = true → DW live S Q 0x80006d44#64 R' M')
+    (hfar : ∀ R' M' H' F' d y, y.rep.num = (Num.sqrtStep x.rep.num g cs).1 →
+      d.rep.num = (Num.sqrtStep x.rep.num g cs).2 →
+      SqN S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs G d y g →
+      d.rep.num.isNearZero cs = false → DW live S Q 0x80006c44#64 R' M') :
+    DW live S Q 0x80006b74#64 R M := by
+  refine sq_free1 hlive env st fun R1 M1 H1 F1 st1 => ?_
+  refine sq_div hlive env hoom st1 fun R2 M2 H2 F2 y2 m hm hy2 st2 => ?_
+  have hB := Dc.BcModel.sqStepB env.xneg env.xsc (env.xmag st2.heap) st2.model hm
+  have hst := sqrtStep_of_div hm
+  have hsg := st2.gsize env
+  refine sq_add hlive env hoom st2 (st2.ysize env hy2 hB.qmag (by rw [hB.qscale]; omega)) hsg
+    fun R3 M3 H3 F3 y3 hy3 st3 => ?_
+  rw [hy2] at hy3
+  refine sq_mul hlive env hoom st3 (st3.ysize env hy3 hB.amag (by rw [hB.ascale]; omega))
+    fun R4 M4 H4 F4 y4 hy4 st4 => ?_
+  rw [hy3] at hy4
+  refine sq_sub hlive env hoom st4 (st4.ysize env hy4 hB.mmag (by rw [hB.mscale]; omega))
+    (st4.gsize env) (fun R5 M5 H5 F5 d hd st5 hn => ?_) (fun R5 M5 H5 F5 d hd st5 hn => ?_)
+  · rw [hy4] at hd
+    exact hnear R5 M5 H5 F5 d y4 (by rw [hst, hy4]) (by rw [hst, hd]) st5 hn
+  · rw [hy4] at hd
+    exact hfar R5 M5 H5 F5 d y4 (by rw [hst, hy4]) (by rw [hst, hd]) st5 hn
+
+/-- **The back edge** at `0x80006c44`: `guess1 = guess`, `guess = y`, on to
+the head with the model's guess for `y`. -/
+theorem sq_back {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb o p5 : NumObj} {k rs cs : Nat}
+    {G : RH} {d y : NumObj} {g : Num}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs)
+    (st : SqN S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs G d y g)
+    (hm : Dc.BcModel.SqG x.rep.num (sqc x k) y.rep.num cs)
+    (hnext : ∀ R', SqL S Mt0 M R0 R' sp W q H F Lb x zb p5 k rs cs (.own d) (.own y) (some G)
+      y.rep.num → DW live S Q 0x80006b74#64 R' M) :
+    DW live S Q 0x80006c44#64 R M := by
+  dx_run hlive at 0x80006b74
+  bsimp [st.r8, st.r25]
+  have hk : Keeps [8, 26] (upd (upd R 26 (BitVec.ofNat 64 G.p)) 8 (BitVec.ofNat 64 y.rep.p)) R := by
+    keeps_tac Keeps.refl _ _
+  have hd := st.heap.pdist
+  exact hnext _
+    { f := st.f.regs hk
+      heap := st.heap
+      own := st.own
+      okD := st.okD
+      okG := st.oky
+      okT := fun h hh => by simp only [Option.toList, List.mem_singleton] at hh; subst hh; exact st.okG
+      vG := rfl
+      nG := st.ny
+      lG := st.ly
+      gx := RList.own_ne_caller hd (by simp) env.mx
+      gz := RList.own_ne_caller hd (by simp) env.mz
+      model := hm
+      w24 := st.w24
+      w40 := st.w40
+      r8 := by bsimp []; rfl
+      r18 := by rw [hk.get 18 (by decide)]; exact st.r18
+      r27 := by rw [hk.get 27 (by decide)]; exact st.r27
+      r26 := by bsimp []; rfl }
+
 end Dc.Mach

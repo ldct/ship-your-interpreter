@@ -157,6 +157,8 @@ structure DvOne (Mt0 : Mem) (L1 L2 : List NumObj) (xr x1 x2 z : NumObj) (n : Opt
   dig2 : x2.rep.ds.getD 0 0 = 1
   size : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27
   zero : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p
+  /-- `bc_new_num` takes a positive integer length -/
+  len1 : 1 ≤ x1.rep.len
 
 /-- **Back into the general path** at `0x80005954`: the detour's quotient
 `y` in the slot, the operands found again in what freeing the old number
@@ -416,6 +418,177 @@ theorem dvone_copy {live : Nat → Prop} {S : Nat → Prop}
     (by rw [hk3.get 2]; bsimp [h2]) (by rw [hk3.get 8]; bsimp [h8]) (by rw [hk3.get 9]; bsimp [h9])
     (by rw [hk3.get 18]; bsimp [h18]) (by rw [hk3.get 21]; bsimp [h21]) (by rw [hk3.get 22]; bsimp [h22])
     ((hk3.mono (by decide)).trans (by keeps_tac hkp))
+
+
+/-- **`min (scale1, k)`** at `0x80005e90`, then `dvone_copy`. -/
+theorem dvone_min {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (one : DvOne Mt0 L1 L2 xr x1 x2 z n k)
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (hr : ResSlot M L1 xr q) (hyr : y.rep.refs = 1) (hyo : y.Owns)
+    (hyl : y.rep.len = x1.rep.len) (hys : y.rep.scale = k)
+    (hyz : y.rep.ds = List.replicate (x1.rep.len + k) 0)
+    (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h18 : R 18 = BitVec.ofNat 64 y.sb.pay)
+    (h21 : R 21 = BitVec.ofNat 64 k) (h22 : R 22 = BitVec.ofNat 64 q) (hkp : Keeps divAll R R0) :
+    DW live S Q 0x80005e90#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hsz := one.size
+  have hn1 := hb.nums x1 (List.mem_cons_of_mem _ one.m1)
+  num_facts hn1
+  have t1 := toInt_ofNat_small (k := k) (by omega)
+  have t2 := toInt_ofNat_small (k := x1.rep.scale) (by omega)
+  bc_run hlive hS [h8, h21, hn1.scale, t1, t2] at 0x80005ea0
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro h
+    exact dvone_copy hlive cx hk one sv hb hr hyr hyo hyl hys hyz hout (by bsimp [h2]) (by bsimp [h8])
+      (by bsimp [h9]) (by bsimp []; exact congrArg _ (by omega)) (by bsimp [h18]) (by bsimp [h21])
+      (by bsimp [h22]) (by keeps_tac hkp)
+  · intro h
+    bc_run hlive hS [h21] at 0x80005ea0
+    exact dvone_copy hlive cx hk one sv hb hr hyr hyo hyl hys hyz hout (by bsimp [h2]) (by bsimp [h8])
+      (by bsimp [h9]) (by bsimp [h21]; exact congrArg _ (by omega)) (by bsimp [h18]) (by bsimp [h21])
+      (by bsimp [h22]) (by keeps_tac hkp)
+
+
+/-- **The detour's sign and `memset`** from `0x80005e60` (`bc_new_num`
+returned `y`, all zeros): `n1.sign != n2.sign` stored, the `k` fraction
+digits from `len1` zeroed, then `dvone_min`. -/
+theorem dvone_fill {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (one : DvOne Mt0 L1 L2 xr x1 x2 z n k)
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (hr : ResSlot M L1 xr q) (hrep : y.rep = zeroRep y.sb.pay y.db.pay x1.rep.len k)
+    (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h10 : R 10 = BitVec.ofNat 64 y.sb.pay)
+    (h21 : R 21 = BitVec.ofNat 64 k) (h22 : R 22 = BitVec.ofNat 64 q) (hkp : Keeps divAll R R0) :
+    DW live S Q 0x80005e60#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have hap := cx.slotApart
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hsz := one.size
+  have hn1 := hb.nums x1 (List.mem_cons_of_mem _ one.m1)
+  num_facts hn1
+  have hn2 := hb.nums x2 (List.mem_cons_of_mem _ one.m2)
+  num_facts hn2
+  have hyn := hb.nums y List.mem_cons_self
+  num_facts hyn
+  have hyp := (hb.blocks y List.mem_cons_self).sPay
+  have hval : ldv .ld M (y.sb.pay + 32) = BitVec.ofNat 64 y.rep.val := by rw [← hyp]; exact hyn.value
+  have hyl : y.rep.len = x1.rep.len := by rw [hrep]; rfl
+  have hys : y.rep.scale = k := by rw [hrep]; rfl
+  have hyr : y.rep.refs = 1 := by rw [hrep]; rfl
+  have hyz : y.rep.ds = List.replicate (x1.rep.len + k) 0 := by rw [hrep]; rfl
+  have hpv : y.rep.ptr = y.rep.val := by rw [hrep]; rfl
+  have hyo : y.Owns := by
+    show y.rep.ptr ≠ 0
+    have := hyn.shape.vLo
+    simp only [heapStart] at this; omega
+  have yp1 := hyn.shape.pLo; have yp2 := hyn.shape.pHi; have yp3 := hyn.shape.pAl
+  rw [hyp] at yp1 yp2 yp3
+  simp only [heapStart, heapEnd] at yp1 yp2
+  bc_run hlive hS [h8, h9, h10, hn1.sign, hn2.sign, hn1.len, hval, snez_signs] at 0x80000890
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  have hob : OwnedBytes S (y.rep.val + x1.rep.len) k :=
+    ⟨fun i hi => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+      by omega⟩
+  refine memset_spec hlive hob _ (by bsimp []) (by bsimp [h21]) (by bsimp []) fun R2 M2 hk2 hf2 => ?_
+  bsimp [] at hf2 ⊢
+  have hbs := BcHeap.setSign (L1 := []) hb (x1.rep.neg != x2.rep.neg) (snezWord_toNat _)
+  rw [hyp] at hbs
+  simp only [List.nil_append] at hbs
+  have hns := hbs.nums _ List.mem_cons_self
+  have hm2 : MemOnly (fun a => y.rep.val ≤ a ∧ a < y.rep.val + y.rep.len + y.rep.scale) M2
+      (writeLog M [(y.sb.pay, 4, BitVec.ofNat 64 (if (x1.rep.neg != x2.rep.neg) = true then 1 else 0))]) :=
+    fun a ha => hf2.rest a (by simp only [not_and, Nat.not_lt] at ha; omega)
+  have hb2 := hbs.setDigits (ds := y.rep.ds) hyo (by rw [hyz]; simp [hyl, hys]) (hyn.shape.dig) hm2
+    fun i hi => by
+      dsimp only at hi ⊢
+      by_cases h : x1.rep.len ≤ i
+      · rw [show y.rep.val + i = y.rep.val + x1.rep.len + (i - x1.rep.len) by omega,
+          hf2.fill _ (by omega), hyz, List.getD_eq_getElem?_getD, List.getElem?_replicate]
+        split <;> rfl
+      · rw [hf2.rest _ (by omega)]
+        exact hns.digit i hi
+  have hag : ∀ a, OutHeap a → imgM M2 a = imgM M a := fun a ha => by
+    rw [hm2 a fun h => ha.1 ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega⟩]
+    exact imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha; omega)
+  exact dvone_min (y := { y with rep := { y.rep with neg := x1.rep.neg != x2.rep.neg } }) hlive cx hk one
+    (sv.transport (lo := 104) (top := 208) (hag := fun a h1 h2' => hag a (cx.stack_out (by omega))))
+    hb2 ⟨hr.refs, by
+      rw [ldv_congr .ld fun j hj => hag _ (cx.slotOut _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩)]
+      exact hr.word, hr.noView⟩ hyr hyo hyl hys hyz (fun a ha hs hf => (hag a ha).trans (hout a ha hs hf))
+    (by rw [hk2.get 2]; bsimp [h2]) (by rw [hk2.get 8]; bsimp [h8]) (by rw [hk2.get 9]; bsimp [h9])
+    (by rw [hk2.get 18]; bsimp [h10]) (by rw [hk2.get 21]; bsimp [h21]) (by rw [hk2.get 22]; bsimp [h22])
+    ((hk2.mono (by decide)).trans (by keeps_tac hkp))
+
+
+/-- **The divide-by-one detour** at `0x80005e54` (`n2 = 1`):
+`bc_new_num (len1, k)` for the quotient, then `dvone_fill`. GNU bc 1.07 falls
+through from here into the general division. -/
+theorem dv_one {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (one : DvOne Mt0 L1 L2 xr x1 x2 z n k) (core : DvCore S Mt0 M R0 sp W H F (L1 ++ xr :: L2))
+    (hr0 : ResSlot Mt0 L1 xr q)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h21 : R 21 = BitVec.ofNat 64 k)
+    (h22 : R 22 = BitVec.ofNat 64 q) (hkp : Keeps divAll R R0) :
+    DW live S Q 0x80005e54#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have hap := cx.slotApart
+  have hq := cx.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => core.heap.heap.own a h1 h2
+  have hsz := one.size; have hl1 := one.len1
+  have hn1 := core.heap.nums x1 one.m1
+  num_facts hn1
+  bc_run hlive hS [h8, h21, hn1.len] at 0x80004250
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  have hsf' : StackFrame S (sp - 208) 32 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  refine bc_new_num_spec hlive core.heap.newHeap hsf' (len := x1.rep.len) (scale := k)
+    (by simp only [heapEnd]; omega) (by omega) hl1 _ (by bsimp []) (by bsimp [h21]) (by bsimp [h2])
+    (by bsimp [])
+    ⟨fun R1 M1 H1 F1 y hk1 hp1 hr1 => ?_, fun R' M' hr2' hout' => ?_⟩
+  · bsimp []
+    have hb1 := NewNumPost.insert core.heap hp1
+    have hag : ∀ a, OutHeap a → ¬ frameIn (sp - 208) 32 a → imgM M1 a = imgM M a := hp1.out
+    have hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M1 a = imgM Mt0 a :=
+      fun a ha _ hf => (hag a ha (by simp only [frameIn] at hf ⊢; omega)).trans (core.out a ha hf)
+    exact dvone_fill hlive cx hk one
+      (core.saved.transport (lo := 104) (top := 208) (hag := fun a h1 h2' =>
+        hag a (cx.stack_out (by omega)) (by simp only [frameIn]; omega)))
+      hb1 ⟨hr0.refs, by
+        rw [ldv_congr .ld fun j hj => (hag _ (cx.slotOut _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩)
+          (by simp only [frameIn, widthOfM] at hj ⊢; omega)).trans
+            (core.out _ (cx.slotOut _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩)
+              (by simp only [frameIn, widthOfM] at hj ⊢; omega))]
+        exact hr0.word, hr0.noView⟩ hp1.rep hout
+      (by rw [hk1.get 2]; bsimp [h2]) (by rw [hk1.get 8]; bsimp [h8]) (by rw [hk1.get 9]; bsimp [h9])
+      hr1 (by rw [hk1.get 21]; bsimp [h21]) (by rw [hk1.get 22]; bsimp [h22])
+      ((hk1.mono (by decide)).trans (by keeps_tac hkp))
+  · exact hk.oom R' M' (sp - 208 - 32) (by omega) (by omega) hr2' fun a ha hf =>
+      (hout' a ha (by simp only [frameIn] at hf ⊢; omega)).trans (core.out a ha hf)
 
 end
 

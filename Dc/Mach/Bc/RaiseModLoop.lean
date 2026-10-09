@@ -28,11 +28,10 @@ set_option linter.unusedSimpArgs false
 
 /-! ## Values and bounds -/
 
-/-- The number a handle names holds `n`: normalized, with an integer digit, at
-most `B` digits, scale at most `Sc`. -/
+/-- The number a handle names holds `n`: with an integer digit, at most `B`
+digits, scale at most `Sc`. -/
 structure RxNum (h : RH) (n : Num) (B Sc : Nat) : Prop where
   num : h.base.rep.num = n
-  norm : h.base.rep.Norm
   len : 1 ≤ h.base.rep.len
   size : h.base.rep.len + h.base.rep.scale ≤ B
   scale : h.base.rep.scale ≤ Sc
@@ -40,7 +39,7 @@ structure RxNum (h : RH) (n : Num) (B Sc : Nat) : Prop where
 /-- The number a handle names, as the heap holds it. -/
 theorem RxNum.obj {h : RH} {n : Num} {B Sc : Nat} (hv : RxNum h n B Sc) (hs : List RH) :
     RxNum (.own (RH.obj hs h)) n B Sc := by
-  cases h <;> exact ⟨hv.num, hv.norm, hv.len, hv.size, hv.scale⟩
+  cases h <;> exact ⟨hv.num, hv.len, hv.size, hv.scale⟩
 
 /-- The handles hold at most one reference each. -/
 theorem rCnt_le (hs : List RH) (p : Nat) : rCnt hs p ≤ hs.length := by
@@ -238,6 +237,8 @@ structure RxM (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W 
   vP : RxNum hP p B Sc
   vT : RxNum hT tv B Sc
   vE : RxNum hE ⟨false, m, 0⟩ Ee 0
+  nT : hT.base.rep.Norm
+  nE : hE.base.rep.Norm
   w0 : ldv .ld M (sp - 112 + 0) = BitVec.ofNat 64 hP.p
   w8 : ldv .ld M (sp - 112 + 8) = BitVec.ofNat 64 hE.p
   w16 : ldv .ld M (sp - 112 + 16) = BitVec.ofNat 64 hX.p
@@ -382,7 +383,7 @@ theorem rx_halve {live : Nat → Prop} {S : Nat → Prop}
   refine rx_halveH (u1 := RH.obj [hP, hE, hT, hX] hE) (u2 := rBump [hP, hE, hT, hX] t)
     (z := rBump [hP, hE, hT, hX] z) hlive cx hoom ra.out hb st.own st.okE st.okX st.ex
     ⟨st.objE, RList.mem_caller _ env.mt, RList.mem_caller _ env.mz,
-      (RH.obj_norm _ _).mpr st.vE.norm, env.twoNorm, by omega,
+      (RH.obj_norm _ _).mpr st.nE, env.twoNorm, by omega,
       by have := env.twoSize; show _ + _ + 0 + t.rep.len + t.rep.scale < _; omega,
       KZero.rBump _ (Nat.le_refl _) hcs.zero, hcs.mulBase, st.own.all⟩
     (by show t.rep.num.mag ≠ 0; rw [env.twoNum]; decide) st.w8 st.w16
@@ -436,7 +437,9 @@ theorem rx_halve {live : Nat → Prop} {S : Nat → Prop}
         e.symm
       vP := st.vP
       vT := st.vT
-      vE := ⟨hq.num, hq.norm, hq.pos, hhalf.1, hhalf.2⟩
+      vE := ⟨hq.num, hq.pos, hhalf.1, hhalf.2⟩
+      nT := st.nT
+      nE := hq.norm
       w0 := by rw [hw 0 (.inl rfl)]; exact st.w0
       w8 := by rw [hq.slot, ← hqp]; rfl
       w16 := by rw [hr.slot, ← hrp]; rfl
@@ -542,7 +545,7 @@ theorem RxEnv.modB {S : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W
   have e1 : (rBump hs xm).rep.len = xm.rep.len := rfl
   have e2 : (rBump hs xm).rep.scale = xm.rep.scale := rfl
   have := env.sc; have := env.bnd
-  exact ⟨hy2.num, hy2.norm, hy2.pos, by show y2.rep.len + y2.rep.scale ≤ B; omega,
+  exact ⟨hy2.num, hy2.pos, by show y2.rep.len + y2.rep.scale ≤ B; omega,
     by show y2.rep.scale ≤ Sc; omega⟩
 
 /-- **`temp = temp · power % mod`** from `0x80006348`, on to `0x80006378`. -/
@@ -656,6 +659,8 @@ theorem rx_tmul {live : Nat → Prop} {S : Nat → Prop}
       vP := st.vP
       vT := by rw [hval]; exact vT2
       vE := st.vE
+      nT := hres.norm
+      nE := st.nE
       w0 := by rw [hw 0 (by omega)]; exact st.w0
       w8 := by rw [hw 8 (by omega)]; exact st.w8
       w16 := by rw [hw 16 (by omega)]; exact st.w16
@@ -798,6 +803,8 @@ theorem rx_psq {live : Nat → Prop} {S : Nat → Prop}
           vP := by rw [hval]; exact vT2
           vT := st.vT
           vE := st.vE
+          nT := st.nT
+          nE := st.nE
           w0 := hw2
           w8 := hw8
           w16 := by rw [hw 16 (by omega) (by omega)]; exact st.w16

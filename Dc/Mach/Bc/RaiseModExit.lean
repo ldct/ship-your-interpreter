@@ -432,7 +432,7 @@ theorem rx_fin {live : Nat → Prop} {S : Nat → Prop}
       okX := st.okX
       tx := st.tx
       num := st.vT.num
-      norm := st.vT.norm
+      norm := st.nT
       len := st.vT.len
       r8 := by bsimp [st.r8]
       r24 := by bsimp [r24]

@@ -45,7 +45,7 @@ inductive AddRef : List NumObj → NumObj → List NumObj → Prop
       AddRef (A ++ x :: B) (x.withRefs (x.rep.refs + 1)) (A ++ x.withRefs (x.rep.refs + 1) :: B)
 
 /-- `bc_raise`'s context: its 96-byte frame, the callees' room below it,
-the result slot `q` off the heap and apart from the window and `_zero_`. -/
+the result slot `q` off the heap and apart from the window, `_zero_` and `_one_`. -/
 structure RaCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp W q : Nat) : Prop where
   frame : StackFrame S sp W
   above : heapEnd + W ≤ sp
@@ -57,6 +57,8 @@ structure RaCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp W q : Nat) : Pro
   al : (R0 1).toNat % 4 = 0
   slot : DmSlot S sp W q
   slotZero : q + 8 ≤ zeroAddr ∨ zeroAddr + 8 ≤ q
+  /-- the zero exponent stores `_one_` after freeing the slot -/
+  slotOne : q + 8 ≤ oneAddr ∨ oneAddr + 8 ≤ q
 
 /-- The exponent `bc_raise` uses: `bc_num2long (num2)`. -/
 abbrev raExp (x2 : NumObj) : Int := x2.rep.num.toLong

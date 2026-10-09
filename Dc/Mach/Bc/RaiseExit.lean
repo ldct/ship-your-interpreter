@@ -433,6 +433,48 @@ theorem ra_store {live : Nat → Prop} {S : Nat → Prop}
     simp only [OutHeap, heapStart, heapEnd] at ha
     rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
 
+/-- **`bc_free_num (result)`** from `bc_raise`'s frame (`sp - 96`, `a0` the
+slot), returning to `ra`. -/
+theorem ra_freeSlot {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {xr : NumObj} (cx : RaCtx S R0 sp W q)
+    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (h10 : R 10 = BitVec.ofNat 64 q)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L', Keeps freeNumClob R' R → FreedRest L1 L2 xr L' →
+      BcHeap S M' H' F' L' →
+      (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn (sp - 96) 32 a → imgM M' a = imgM M a) →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x800048c0#64 R M := by
+  ra_facts cx
+  have hsf := cx.frame
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  have hap := hsl.apart
+  have hxm : xr ∈ L1 ++ xr :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hxn := hb.nums xr hxm
+  have hxp' : heapStart ≤ xr.rep.p ∧ xr.rep.p + 16 ≤ heapEnd :=
+    ⟨hxn.shape.pLo, by have := hxn.shape.pHi; omega⟩
+  have hsf' : StackFrame S (sp - 96) 32 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  have e : FreeEntry S M H F L1 L2 xr q (sp - 96) :=
+    FreeEntry.of_slot hb hr hr.noView hq hsl.out hsf' (by simp only [heapEnd]; omega) (by omega)
+  refine bc_free_num_spec hlive e R h10 h2 hal
+    ⟨fun hx2 R1 Mt1 hk1 hb1 _ hmo => ?_, fun hx1 R1 Mt1 H1 hk1 hrp => ?_⟩
+  · refine hk R1 Mt1 H F _ hk1 (.dec hx2) hb1 fun a ha hs _ => hmo a fun hc => ?_
+    rcases hc with hc | hc
+    · simp only [refsBytes, OutHeap, heapStart, heapEnd] at hc ha hxp'; omega
+    · exact hs hc
+  · refine hk R1 Mt1 H1 (xr.sb :: F) _ hk1 (.rel hx1) hrp.heap fun a ha hs hf => hrp.frame a fun hc => ?_
+    rcases hc with hc | hc | hc | hc | hc
+    · exact OutHeap.not_alloc hb.heap ha hc
+    · exact ha.1 (live_in_heap hb.heap (hb.blocks xr hxm).sLive hc)
+    · exact hs hc
+    · exact hf hc
+    · exact ha.2.2 hc
+
 /-- **`bc_free_num (result)`** from `0x80006890` (`s7` the slot). -/
 theorem ra_posFree {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
@@ -445,39 +487,13 @@ theorem ra_posFree {live : Nat → Prop} {S : Nat → Prop}
       (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn (sp - 96) 32 a → imgM M' a = imgM M a) →
       DW live S Q 0x80006898#64 R' M') :
     DW live S Q 0x80006890#64 R M := by
-  ra_facts cx
-  have hsf := cx.frame
-  have hsl := cx.slot
-  have hq := hsl.slot
-  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
-  have hap := hsl.apart
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
-  have hxm : xr ∈ L1 ++ xr :: L2 := List.mem_append_right _ List.mem_cons_self
-  have hxn := hb.nums xr hxm
-  have hxp' : heapStart ≤ xr.rep.p ∧ xr.rep.p + 16 ≤ heapEnd :=
-    ⟨hxn.shape.pLo, by have := hxn.shape.pHi; omega⟩
   bc_run hlive hS [h23, h2] at 0x800048c0
-  have hsf' : StackFrame S (sp - 96) 32 :=
-    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
-  have e : FreeEntry S M H F L1 L2 xr q (sp - 96) :=
-    FreeEntry.of_slot hb hr hr.noView hq hsl.out hsf' (by simp only [heapEnd]; omega) (by omega)
-  refine bc_free_num_spec hlive e _ (by bsimp [h23]) (by bsimp [h2]) (by bsimp []; try decide)
-    ⟨fun hx2 R1 Mt1 hk1 hb1 _ hmo => ?_, fun hx1 R1 Mt1 H1 hk1 hrp => ?_⟩
-  · bsimp []
-    refine hk R1 Mt1 H F _ ((hk1.mono (ks' := [1, 10, 13, 14, 15]) (by decide)).trans
-      (by keeps_tac Keeps.refl _ _)) (.dec hx2) hb1 fun a ha hs _ => hmo a fun hc => ?_
-    rcases hc with hc | hc
-    · simp only [refsBytes, OutHeap, heapStart, heapEnd] at hc ha hxp'; omega
-    · exact hs hc
-  · bsimp []
-    refine hk R1 Mt1 H1 (xr.sb :: F) _ ((hk1.mono (ks' := [1, 10, 13, 14, 15]) (by decide)).trans
-      (by keeps_tac Keeps.refl _ _)) (.rel hx1) hrp.heap fun a ha hs hf => hrp.frame a fun hc => ?_
-    rcases hc with hc | hc | hc | hc | hc
-    · exact OutHeap.not_alloc hb.heap ha hc
-    · exact ha.1 (live_in_heap hb.heap (hb.blocks xr hxm).sLive hc)
-    · exact hs hc
-    · exact hf hc
-    · exact ha.2.2 hc
+  refine ra_freeSlot hlive cx hb hr (by bsimp [h2]) (by bsimp [h23]) (by bsimp []; try decide)
+    fun R1 M1 H1 F1 L1 hk1 hfr hb1 ho1 => ?_
+  bsimp [hk1.get 1]
+  exact hk R1 M1 H1 F1 L1 ((hk1.mono (ks' := [1, 10, 13, 14, 15]) (by decide)).trans
+    (by keeps_tac Keeps.refl _ _)) hfr hb1 ho1
 
 /-- **The positive exponent's tail** from `0x8000688c`: `bc_free_num
 (result)`, `*result = temp` (`T`) cut to `rscale` (`k`), `power` (`P`)

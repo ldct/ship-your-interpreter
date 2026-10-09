@@ -5014,3 +5014,34 @@ conversions (`RtMsg p n`), the prefix, the message and a newline go to
 `stderrAddr + 4 ≤ sp - 416`: `StackFrame` alone does not keep the `stderr`
 object below the frame. The axioms are `propext`, `Classical.choice` and
 `Quot.sound`.
+
+### M8 `bc_raise` (checked)
+
+`bc_raise_spec` (`Dc/Mach/Bc/RaiseEntry.lean`) proves `bc_raise` at
+`0x8000660c` against `(Num.raise x1 x2 k).1` in `DWO`: `RaK.ret` receives the
+result in the slot (`RaPost`: one reference added to the result, then the
+old slot number dropped) or `RaK.oom` receives `out_of_memory`. The files:
+
+- `RaiseBase.lean`: the contract (`RaCtx`, `RaArgs`, `RaSlot`, `RaPost`,
+  `RaK`, `RaOom`), the frame state `RaAt`, `bc_multiply` calls (`ra_mulCall`).
+- `RaiseTail.lean`/`RaiseExit.lean`: the epilogues, `temp`/`power` releases,
+  the slot free (`ra_freeSlot`, shared by the positive tail and the zero
+  exponent), the truncation store, `bc_divide (_one_, temp)` for a negative
+  exponent, and the two `temp = power` exits (`ra_posPow2`, `ra_negPow2`).
+- `RaiseLoop.lean`/`RaiseSquare.lean`: the squaring loops (`ra_p1_loop`,
+  `ra_p2_loop`, invariant `u = T + 2·P·e`) over handles (`Hd`, `KList`),
+  composed as `ra_loops` from `0x8000668c`.
+- `RaiseEntry.lean`: the two result routes (`ra_end2`, `ra_endC`), the zero
+  exponent (`ra_zero`: "exponent too large in raise" for a nonzero integer
+  part, then `_one_` with one more reference), `rscale`, the sign split and
+  `__muldi3` (`ra_body`), `bc_num2long` (`ra_num`), the scale warning
+  (`ra_warn`) and the prologue.
+
+Premises the callers supply: `RaCtx.slotOne` (the slot is not `_one_`'s
+global, which `bc_free_num (result)` would clear before the zero exponent
+reads `_one_`), `RaSlot.oneRef`/`.zeroRef` (the slot's number is not freed when
+it is `_one_` or `_zero_`), `1 ≤ x1.refs`, and the size bound
+`(|e| + 1)(len + scale + 1) + k < 2^24` (`RaArgs.size`). Both stderr messages
+(`raScaleMsg`, `raExpMsg`) leave the console unchanged, so the error flag of
+`Num.raise` does not appear in the machine contract. The axioms are
+`propext`, `Classical.choice` and `Quot.sound`.

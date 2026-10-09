@@ -78,4 +78,10 @@ import Dc.Mach.Bc.KaraZeroRef
 import Dc.Mach.Bc.SimpMul
 import Dc.Mach.Bc.DivSpec
 import Dc.Mach.Bc.DivModEntry
+import Dc.Mach.Bc.RaiseBase
+import Dc.Mach.Bc.RaiseTail
+import Dc.Mach.Bc.RaiseExit
+import Dc.Mach.Bc.RaiseLoop
+import Dc.Mach.Bc.RaiseSquare
+import Dc.Mach.Bc.RaiseEntry
 import Dc.Mach.RtMsgSites

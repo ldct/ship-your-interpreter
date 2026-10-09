@@ -7,10 +7,12 @@ import Dc.Mach.Bc.RaiseSquare
     681c exponent 0: error for a nonzero integer part; result = _one_
     6648 rscale = MIN (scale1 · exponent, MAX (scale, scale1)) (positive) or
          scale (negative, the exponent negated); the loops (`ra_loops`)
-    6740 / 68cc the result from `temp` (`ra_end2`) or from `power` (`ra_endPow2`)
+    6740 / 68cc the result from `temp` (`ra_end2`) or from `power` (`ra_endC`)
 
 - `RaSlot.transport`: the result slot through the frame's writes.
 - `RaMode`: the sign flag `s8` and `rscale` against `Num.raise`.
+- `ra_zero`/`ra_err`/`ra_one`: a zero exponent; `ra_body`/`ra_rscale`/`ra_go`:
+  a nonzero one; `ra_num`, `ra_warn` and `bc_raise_spec`: the entry.
 -/
 
 namespace Dc.Mach
@@ -764,5 +766,103 @@ theorem ra_num {live : Nat → Prop} {S : Nat → Prop}
       (by rw [hkk.get 20 (by decide)]; exact h20) (by rw [hkk.get 21 (by decide)]; exact h21)
       (by rw [hkk.get 24 (by decide)]; exact h24) hb (by rw [hkk.get 18 (by decide)]; exact h18)
       (by rw [hkk.get 22 (by decide)]; exact h22) h10 hnz
+
+set_option maxRecDepth 100000 in
+/-- "non-zero scale in exponent". -/
+theorem raScaleMsg : RtMsg 0x80007e60 26 :=
+  ⟨by decide, by decide, by decide, by decide, by decide⟩
+
+/-- **"non-zero scale in exponent"** at `0x8000687c`, then `ra_num`. -/
+theorem ra_warn {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H H0 : Heap}
+    {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
+    (cx : RaCtx S R0 sp W q)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
+    (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
+    (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
+    (hb : BcHeap S M H F (A ++ x1 :: B))
+    (h8 : R 8 = BitVec.ofNat 64 x2.rep.p) (h18 : R 18 = BitVec.ofNat 64 x1.rep.p)
+    (h22 : R 22 = BitVec.ofNat 64 k) :
+    DW live S (DQ live S Q t) 0x8000687c#64 R M := by
+  ra_facts cx
+  have hsf := cx.frame
+  have hfar := cx.far
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have h2 := ra.r2
+  bc_run hlive hS [h2] at 0x80002c50
+  refine rt_warn_spec hlive raScaleMsg (by decide)
+    ((hsf.shrink (m := 96 + 416) (by omega)).sub (by decide)) (by omega) (ha.fdAt cx ra.out) _
+    (by bsimp [h2]) (by bsimp []) (by bsimp []; try decide) fun R1 M1 hk1 ho1 => ?_
+  bsimp [hk1.get 1]
+  have hkc : Keeps raCallClob R1 R := (hk1.mono (ks' := raCallClob) (by decide)).trans
+    (by keeps_tac Keeps.refl _ _)
+  have hag : ∀ a, (a < sp - W ∨ sp - 96 ≤ a) → imgM M1 a = imgM M a :=
+    fun a h => ho1 a (by omega)
+  bc_run hlive hS [] at 0x8000663c
+  exact ra_num hlive cx hK ha hs0 hb0 hr1 (ra.below cx hkc hag)
+    (by rw [hkc.get 9 (by decide)]; exact h9) (by rw [hkc.get 20 (by decide)]; exact h20)
+    (by rw [hkc.get 21 (by decide)]; exact h21) (by rw [hkc.get 24 (by decide)]; exact h24)
+    (hb.out_frame (P := fun a => sp - W ≤ a ∧ a < sp - 96) (fun a h => hag a (by omega))
+      fun a h => by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+    (by rw [hkc.get 8 (by decide)]; exact h8) (by rw [hkc.get 18 (by decide)]; exact h18)
+    (by rw [hkc.get 22 (by decide)]; exact h22)
+
+/-- The prologue's five saved registers. -/
+abbrev raPro (M : Mem) (sp : Nat) (R : Nat → BitVec 64) : Mem :=
+  writeLog (writeLog (writeLog (writeLog (writeLog M
+    [(sp - 96 + 80, 8, R 8)]) [(sp - 96 + 64, 8, R 18)]) [(sp - 96 + 32, 8, R 22)])
+    [(sp - 96 + 24, 8, R 23)]) [(sp - 96 + 88, 8, R 1)]
+
+theorem raPro_saved (M : Mem) (sp : Nat) (R : Nat → BitVec 64) :
+    SavedWords (raPro M sp R) (sp - 96) raSlots0 R := fun p hp =>
+  (((((SavedWords.nil M (sp - 96) R).store 8 80).store 18 64).store 22 32).store 23 24 |>.store
+    1 88) p (by
+      simp only [raSlots0, List.mem_cons, List.not_mem_nil, or_false] at hp ⊢
+      rcases hp with rfl | rfl | rfl | rfl | rfl <;> simp)
+
+theorem raPro_frame {M : Mem} {sp : Nat} (R : Nat → BitVec 64) (hsp : 96 ≤ sp) :
+    MemOnly (frameIn sp 96) (raPro M sp R) M := fun a ha => by
+  simp only [frameIn] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
+
+/-- **`bc_raise (num1, num2, result, scale)`** at `0x8000660c`: the result
+`Num.raise`'s first component in the slot (`RaK.ret`), or `out_of_memory`
+(`RaK.oom`). The runtime warning and error go to stderr only. -/
+theorem bc_raise_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x1 x2 z o xr : NumObj}
+    (cx : RaCtx S R0 sp W q) (ha : RaArgs S Mt0 L x1 x2 z o k) (hs0 : RaSlot Mt0 L x1 x2 z o xr q)
+    (hb : BcHeap S Mt0 H F L) (hr1 : 1 ≤ x1.rep.refs)
+    (hK : RaK live S Q t R0 Mt0 L xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
+    (h12 : R0 12 = BitVec.ofNat 64 q) (h13 : R0 13 = BitVec.ofNat 64 k) :
+    DWO live S Q t 0x8000660c#64 R0 Mt0 := by
+  obtain ⟨A, B, rfl⟩ := List.append_of_mem ha.m1
+  ra_facts cx
+  have hsf := cx.frame
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hx2n := hb.nums x2 ha.m2
+  num_facts hx2n
+  have hm := raPro_frame (M := Mt0) (sp := sp) R0 (by omega)
+  have hfz : ∀ a, ¬ frameIn sp W a → imgM (raPro Mt0 sp R0) a = imgM Mt0 a := fun a hf =>
+    hm a fun h => hf (by simp only [frameIn] at h ⊢; omega)
+  have hb' := hb.out_frame hm fun a ha' => by
+    simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha' ⊢; omega
+  bc_run hlive hS [cx.sp0, h11, hx2n.scale, word_sub96] at 0x8000663c 0x8000687c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | skip
+  all_goals intro _
+  · exact ra_warn hlive cx hK ha hs0 hb hr1 ⟨by bsimp [], raPro_saved Mt0 sp R0,
+      by keeps_tac Keeps.refl _ _, by bsimp [h12], fun a _ hf => hfz a hf⟩
+      (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) hb' (by bsimp [h11])
+      (by bsimp [h10]) (by bsimp [h13])
+  · exact ra_num hlive cx hK ha hs0 hb hr1 ⟨by bsimp [], raPro_saved Mt0 sp R0,
+      by keeps_tac Keeps.refl _ _, by bsimp [h12], fun a _ hf => hfz a hf⟩
+      (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) hb' (by bsimp [h11])
+      (by bsimp [h10]) (by bsimp [h13])
 
 end Dc.Mach

@@ -402,12 +402,12 @@ theorem dvs_alloc {live : Nat → Prop} {S : Nat → Prop}
 `memset`, `malloc(L + 1)`, then the sign and the frees from `0x80005a90`. -/
 theorem dvz_zero {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
-    {xr x1 x2 z : NumObj} {D : DvData} {H : Heap} {F : List Blk} {n : Option Num}
-    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (hn : n = some ⟨false, 0, k⟩) (bf : DvBufs S Mt0 M R0 sp W D H F (L1 ++ xr :: L2))
-    (hr0 : ResSlot Mt0 L1 xr q) (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2)
-    (hz : z ∈ L1 ++ xr :: L2) (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
+    {x1 x2 z : NumObj} {D : DvData} {H : Heap} {F : List Blk} {n : Option Num}
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (hn : n = some ⟨false, 0, k⟩) (bf : DvBufs S Mt0 M R0 sp W D H F L0)
+    (hr0 : QSlot Mt0 q L0 Fr) (hx1 : x1 ∈ L0) (hx2 : x2 ∈ L0)
+    (hz : z ∈ L0) (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p)
     (hks : k + 1 < 2 ^ 30) (hLs : D.L < 2 ^ 30)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
     (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h12 : R 12 = BitVec.ofNat 64 (k + 1))
@@ -491,7 +491,8 @@ theorem dvz_zero {live : Nat → Prop} {S : Nat → Prop}
           (by simp only [frameIn, zeroAddr, widthOfM] at hj ⊢; omega)]
         exact hzg
       have hy0 : dval y.rep.ds = 0 := by rw [dn.rep]; exact dval_replicate_zero _
-      refine dvt_sign hlive cx hk hn ⟨bs.saved, by rw [bs.s8], ⟨hr0.refs, ?_, hr0.noView⟩,
+      refine dvt_sign hlive cx hk hn ⟨bs.saved, by rw [bs.s8], hr0.transport fun a ha => bs.out _ (cx.slotOut _ ha)
+            (by simp only [frameIn, slotBytes] at ha ⊢; omega),
           fun a ha _ hf => bs.out a ha hf, by bsimp [q3], by bsimp [hk3.get 22, hk2.get 22, hk1.get 22, h22],
           by bsimp [hk3.get 18, hk2.get 18, hk1.get 18, h18, bf.pPay],
           by bsimp [hk3.get 19, hk2.get 19, hk1.get 19, h19], ?_⟩
@@ -500,9 +501,6 @@ theorem dvz_zero {live : Nat → Prop} {S : Nat → Prop}
         (fun h => absurd hy0 h) (fun _ => by rw [NumRep.num]; simp only [dn.rep, zeroRep, dval_replicate_zero])
         (by rw [dn.rep]; exact Nat.le_refl 1) (by rw [dn.rep]; rfl) bs.owns
         ⟨bs.b1l, bs.b2l, bs.b3l, bs.b1n, bs.b2n, bs.b3n, bs.b12, bs.b13, bs.b23⟩
-      · rw [ldv_congr .ld fun j hj => bs.out _ (cx.slotOut _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩)
-          (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
-        exact hr0.word
       · have K1 : Keeps divAll R1 R0 := (hk1.mono (by decide)).trans (by keeps_tac hkp)
         keeps_tac ((hk3.mono (by decide) : Keeps divAll R3 _).trans (by
           keeps_tac ((hk2.mono (by decide) : Keeps divAll R2 _).trans
@@ -518,11 +516,11 @@ quotient's allocation, the normalisation, the loop. `D` carries the
 normalised digits (`hX`, `hV`) of the raw buffers `xs0`, `vs0`. -/
 theorem dvs_main {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
-    {xr x1 x2 z : NumObj} {D : DvData} {H : Heap} {F : List Blk} {n : Option Num} {m : Num}
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
+    {x1 x2 z : NumObj} {D : DvData} {H : Heap} {F : List Blk} {n : Option Num} {m : Num}
     {len1 k : Nat} {xs0 vs0 : List Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
-    (bf : DvBufs S Mt0 M R0 sp W D H F (L1 ++ xr :: L2)) (hs : DvShape D)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n) (hn : n = some m)
+    (bf : DvBufs S Mt0 M R0 sp W D H F L0) (hs : DvShape D)
     (hx0l : xs0.length = D.xs.length) (hx0d : IsDigits xs0) (hx2 : 2 ≤ xs0.length)
     (hx00 : xs0.getD 0 0 = 0) (hx0z : xs0.getD (xs0.length - 1) 0 = 0)
     (hv0l : vs0.length = D.L) (hv0d : IsDigits vs0) (hv00 : 0 < vs0.getD 0 0)
@@ -535,8 +533,8 @@ theorem dvs_main {live : Nat → Prop} {S : Nat → Prop}
     (hsz : len1 + k < 2 ^ 29)
     (hm : m = ⟨if D.pre (D.Kb + 1) / D.V = 0 then false else x1.rep.neg != x2.rep.neg,
       D.pre (D.Kb + 1) / D.V, k⟩)
-    (hr0 : ResSlot Mt0 L1 xr q) (hn1 : D.n1p = x1.rep.p) (hn2 : D.n2p = x2.rep.p) (hrs : D.rs = q)
-    (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2' : x2 ∈ L1 ++ xr :: L2) (hz : z ∈ L1 ++ xr :: L2)
+    (hr0 : QSlot Mt0 q L0 Fr) (hn1 : D.n1p = x1.rep.p) (hn2 : D.n2p = x2.rep.p) (hrs : D.rs = q)
+    (hx1 : x1 ∈ L0) (hx2' : x2 ∈ L0) (hz : z ∈ L0)
     (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 D.n1p)
     (h9 : R 9 = BitVec.ofNat 64 D.n2p) (h12 : R 12 = BitVec.ofNat 64 (k + 1))
@@ -557,7 +555,7 @@ theorem dvs_main {live : Nat → Prop} {S : Nat → Prop}
     (hkeep _ (.inr (bf.nIn i (by omega)))).trans (hv i hi)
   have hsent' : imgM M1 (D.N + D.L) = 0#8 := (hkeep _ (.inr (bf.nIn _ (Nat.le_refl _)))).trans hsent
   let D' : DvData := { D with b3 := b, Bm := b.pay, qv := y.sb.pay }
-  have bs' : DvBase S Mt0 M1 R0 sp W D' H1 F1 (L1 ++ xr :: L2) y := { bs with }
+  have bs' : DvBase S Mt0 M1 R0 sp W D' H1 F1 L0 y := { bs with }
   have hs' : DvShape D' := { hs with }
   have hyq : y.rep.len + y.rep.scale = dvQlen len1 D.L + k := by rw [hy]; rfl
   refine dvs_norm (D := D') hlive cx.dv bs' hx0l hx0d hx2 hx00 hx0z hv0l hv0d hv00 hX hV hl1

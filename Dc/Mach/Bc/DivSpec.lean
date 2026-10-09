@@ -7,8 +7,9 @@ import Dc.Mach.Bc.DivOne
 - `dv_scan`: from `n2`'s zero test (`0x80005914`) to the first nonzero digit
   (`dv_found`, the detour `dv_one`) or the `-1` return.
 - `dv_pro`: the prologue (`0x800058a8`).
-- `bc_divide_spec`: `bc_divide (n1, n2, quot, scale)` at `0x8000589c`
-  against `Num.div`.
+- `bc_divide_specF`: `bc_divide (n1, n2, quot, scale)` at `0x8000589c`
+  against `Num.div`, for a slot holding a number or `NULL` (`QSlot`);
+  `bc_divide_spec` and `bc_divide_null_spec` the two cases.
 -/
 
 namespace Dc.Mach
@@ -64,12 +65,12 @@ set_option maxRecDepth 8000
 nonzero digit (`dv_found`, with the detour `dv_one`), or all zero and `-1`. -/
 theorem dv_scan {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
-    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (ha : DivArgs Mt0 L1 L2 xr x1 x2 z n k) (core : DvCore S Mt0 M R0 sp W H F (L1 ++ xr :: L2))
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
+    {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (ha : DivArgsF Mt0 L0 Fr x1 x2 z n k) (core : DvCore S Mt0 M R0 sp W H F L0)
     (hfr : ∀ a, ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hr0 : ResSlot Mt0 L1 xr q) (hpos : 0 < x2.rep.len + x2.rep.scale)
+    (hr0 : QSlot Mt0 q L0 Fr) (hpos : 0 < x2.rep.len + x2.rep.scale)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
     (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.len)
     (h13 : R 13 = BitVec.ofNat 64 (x2.rep.len + x2.rep.scale))
@@ -143,11 +144,11 @@ saved registers, then `n2` with digits to the zero test, `n2` without to the
 `-1` return. -/
 theorem dv_pro2 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
-    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (ha : DivArgs Mt0 L1 L2 xr x1 x2 z n k) (hb : BcHeap S Mt0 H F (L1 ++ xr :: L2))
-    (hr0 : ResSlot Mt0 L1 xr q) (sv : SavedWords M (sp - 208) divSlots1 R0)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
+    {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (ha : DivArgsF Mt0 L0 Fr x1 x2 z n k) (hb : BcHeap S Mt0 H F L0)
+    (hr0 : QSlot Mt0 q L0 Fr) (sv : SavedWords M (sp - 208) divSlots1 R0)
     (hm : MemOnly (frameIn sp 208) M Mt0)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h10 : R 10 = BitVec.ofNat 64 x1.rep.p)
     (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.len)
@@ -178,7 +179,7 @@ theorem dv_pro2 {live : Nat → Prop} {S : Nat → Prop}
     simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha ⊢; omega
   have hfr : ∀ a, ¬ frameIn sp W a → imgM (divPro2 M sp R0) a = imgM Mt0 a := fun a hf =>
     hpro a fun h => hf (by simp only [frameIn] at h ⊢; omega)
-  have core : DvCore S Mt0 (divPro2 M sp R0) R0 sp W H F (L1 ++ xr :: L2) :=
+  have core : DvCore S Mt0 (divPro2 M sp R0) R0 sp W H F L0 :=
     ⟨divPro2_saved sv, hb', fun a _ hf => hfr a hf⟩
   bc_run hlive hS [h2, h1, h18, h20, h23, h24, h25, h26, h27, h16, t1, z0] at 0x80005914 0x80005fac
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
@@ -202,11 +203,11 @@ theorem dv_pro2 {live : Nat → Prop} {S : Nat → Prop}
 `dv_pro2`. -/
 theorem dv_pro1 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
-    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (ha : DivArgs Mt0 L1 L2 xr x1 x2 z n k) (hb : BcHeap S Mt0 H F (L1 ++ xr :: L2))
-    (hr0 : ResSlot Mt0 L1 xr q) (hkp0 : Keeps [15] R R0)
+    {Mt0 : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
+    {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (ha : DivArgsF Mt0 L0 Fr x1 x2 z n k) (hb : BcHeap S Mt0 H F L0)
+    (hr0 : QSlot Mt0 q L0 Fr) (hkp0 : Keeps [15] R R0)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 q) (h13 : R 13 = BitVec.ofNat 64 k) :
     DW live S Q 0x800058a8#64 R Mt0 := by
@@ -250,13 +251,13 @@ positive integer length) and `n2` of the heap, the slot `q` holding `xr`,
 `_zero_` (`z`, magnitude zero) in the heap: `Num.div n1 n2 scale`'s number in
 the slot and `0` (`DivKW.ret`), `-1` for a zero divisor with only the stack
 window changed (`DivKW.zero`), or `out_of_memory` (`DivKW.oomW`). -/
-theorem bc_divide_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem bc_divide_specF {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
-    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (ha : DivArgs Mt0 L1 L2 xr x1 x2 z n k) (hzm : z.rep.num.mag = 0)
-    (hb : BcHeap S Mt0 H F (L1 ++ xr :: L2)) (hr0 : ResSlot Mt0 L1 xr q)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
+    {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (ha : DivArgsF Mt0 L0 Fr x1 x2 z n k) (hzm : z.rep.num.mag = 0)
+    (hb : BcHeap S Mt0 H F L0) (hr0 : QSlot Mt0 q L0 Fr)
     (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R0 12 = BitVec.ofNat 64 q) (h13 : R0 13 = BitVec.ofNat 64 k) :
     DW live S Q 0x8000589c#64 R0 Mt0 := by
@@ -284,6 +285,39 @@ theorem bc_divide_spec {live : Nat → Prop} {S : Nat → Prop}
     exact dv_pro1 hlive cx hk ha hb hr0 (by keeps_tac Keeps.refl _ _) (by bsimp [h10]) (by bsimp [h11])
       (by bsimp [h12]) (by bsimp [h13])
 
+
+/-- **`bc_divide (n1, n2, quot, scale)`** at `0x8000589c`, for `n1` (a
+positive integer length) and `n2` of the heap, the slot `q` holding `xr`,
+`_zero_` (`z`, magnitude zero) in the heap: `Num.div n1 n2 scale`'s number in
+the slot and `0` (`DivKW.ret`), `-1` for a zero divisor with only the stack
+window changed (`DivKW.zero`), or `out_of_memory` (`DivKW.oomW`). -/
+theorem bc_divide_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (ha : DivArgs Mt0 L1 L2 xr x1 x2 z n k) (hzm : z.rep.num.mag = 0)
+    (hb : BcHeap S Mt0 H F (L1 ++ xr :: L2)) (hr0 : ResSlot Mt0 L1 xr q)
+    (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
+    (h12 : R0 12 = BitVec.ofNat 64 q) (h13 : R0 13 = BitVec.ofNat 64 k) :
+    DW live S Q 0x8000589c#64 R0 Mt0 :=
+  bc_divide_specF hlive cx hk.toF ha.toF hzm hb (.num hr0) h10 h11 h12 h13
+
+/-- **`bc_divide` into a `NULL` slot** (`bc_sqrt`'s final truncation, after
+`bc_free_num (num)`): the quotient heads the heap `L` and is in the slot. -/
+theorem bc_divide_null_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp q W : Nat} {L : List NumObj}
+    {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 (· = L) q sp W n)
+    (hd : n = Num.div x1.rep.num x2.rep.num k) (h1 : x1 ∈ L) (h2 : x2 ∈ L) (hz : z ∈ L)
+    (hsz : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27)
+    (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p) (hl1 : 1 ≤ x1.rep.len)
+    (hzm : z.rep.num.mag = 0) (hb : BcHeap S Mt0 H F L) (h0 : ldv .ld Mt0 q = 0#64)
+    (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
+    (h12 : R0 12 = BitVec.ofNat 64 q) (h13 : R0 13 = BitVec.ofNat 64 k) :
+    DW live S Q 0x8000589c#64 R0 Mt0 :=
+  bc_divide_specF hlive cx hk (DivArgsF.null hd h1 h2 hz hsz hzg hl1) hzm hb (.null h0) h10 h11 h12 h13
 end
 
 end Dc.Mach

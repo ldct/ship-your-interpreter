@@ -21,9 +21,9 @@ set_option maxRecDepth 8000
 /-- The `-1` return's second half from `0x80005b5c`: `s7`–`s11` back, `ret`. -/
 theorem dvt_neg2 {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
-    {xr : NumObj} {n : Option Num}
-    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = none)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {Fr : List NumObj → Prop}
+    {n : Option Num}
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n) (hn : n = none)
     (sv : SavedWords M (sp - 208) divSlots R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 208))
     (h1 : R 1 = R0 1) (h8 : R 8 = R0 8) (h9 : R 9 = R0 9) (h18 : R 18 = R0 18)
     (h19 : R 19 = R0 19) (h20 : R 20 = R0 20) (h21 : R 21 = R0 21) (h22 : R 22 = R0 22)
@@ -52,9 +52,9 @@ theorem dvt_neg2 {live : Nat → Prop} {S : Nat → Prop}
 `ret`, only the frame changed. -/
 theorem dvt_neg {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
-    {xr : NumObj} {n : Option Num}
-    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = none)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {Fr : List NumObj → Prop}
+    {n : Option Num}
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n) (hn : n = none)
     (sv : SavedWords M (sp - 208) divSlots R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 208))
     (h10 : R 10 = 0xffffffffffffffff#64) (hkp : Keeps divAll R R0) (hS : HeapOwn S)
     (hfr : ∀ a, ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :

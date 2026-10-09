@@ -1,5 +1,5 @@
 import Dc.Machine
-import Dc.Mach.Bc.Heap
+import Dc.Mach.Bc.RawCells
 
 /-!
 # The dc state in memory (M9)
@@ -354,54 +354,126 @@ theorem StrAt.frame {Mt Mt' : Mem} {bs : List Blk} {o : StrObj} (hh : o.hb ∈ b
   · rw [hag _ ⟨o.tb, ht, by simp only [Blk.In, Blk.pay, Blk.fin]; omega⟩]; exact h.bytes i hi
   · rw [hag _ ⟨o.tb, ht, by simp only [Blk.In, Blk.pay, Blk.fin]; omega⟩]; exact h.nul
 
+/-- The stack's chain word and the register words. -/
+def ChainWords (a : Nat) : Prop :=
+  (dcStackAddr ≤ a ∧ a < dcStackAddr + 8) ∨ (dcRegAddr ≤ a ∧ a < dcRegAddr + 2048)
+
+/-- A stack chain through a memory agreeing on its blocks and first word. -/
+theorem stkChain_frame {Mt Mt' : Mem} {a : Nat} {l : List (Blk × GV)}
+    (h : LChain Mt 24 (SNodeAt Mt) a l) (ha : ldv .ld Mt' a = ldv .ld Mt a)
+    (hb : ∀ bg ∈ l, ∀ x, bg.1.In x → imgM Mt' x = imgM Mt x) :
+    LChain Mt' 24 (SNodeAt Mt') a l := by
+  refine h.frame ha fun bg hm hp => ?_
+  have hb' : ∀ x, InBlocks [bg.1] x → imgM Mt' x = imgM Mt x := fun x ⟨c, hc, hcx⟩ => by
+    rw [List.mem_singleton.mp hc] at hcx; exact hb bg hm x hcx
+  have hbm : bg.1 ∈ [bg.1] := List.mem_singleton_self _
+  have hsz := hp.sz
+  exact ⟨⟨by simpa using DatAt.frame (o := 0) hbm hb' (by omega) (by simpa using hp.dat),
+    (ldv_blk hbm hb' .ld (by simp only [widthOfM]; omega)).trans hp.arr, hsz⟩,
+    ldv_blk hbm hb' .ld (by simp only [widthOfM]; omega)⟩
+
+/-- A level's blocks. -/
+theorem RLev.mem_blocks_arr {be : Blk × RLev} {bn : Blk × ANode} (hn : bn ∈ be.2.arr) :
+    bn.1 ∈ RLev.blocks be := by
+  simp only [RLev.blocks]; exact List.mem_cons_of_mem _ (List.mem_map.mpr ⟨bn, hn, rfl⟩)
+
+/-- A register chain through a memory agreeing on its levels' blocks and first word. -/
+theorem regChain_frame {Mt Mt' : Mem} {a : Nat} {l : List (Blk × RLev)}
+    (h : LChain Mt 24 (RLevAt Mt) a l) (ha : ldv .ld Mt' a = ldv .ld Mt a)
+    (hb : ∀ be ∈ l, ∀ c ∈ RLev.blocks be, ∀ x, c.In x → imgM Mt' x = imgM Mt x) :
+    LChain Mt' 24 (RLevAt Mt') a l := by
+  refine h.frame ha fun be hm hp => ?_
+  have hb' : ∀ x, InBlocks (RLev.blocks be) x → imgM Mt' x = imgM Mt x :=
+    fun x ⟨c, hc, hcx⟩ => hb be hm c hc x hcx
+  have hbm : be.1 ∈ RLev.blocks be := List.mem_cons_self
+  have hsz := hp.sz
+  refine ⟨⟨?_, hp.arr.frame (ldv_blk hbm hb' .ld (by simp only [widthOfM]; omega))
+    fun bn hn hq => ?_, hsz⟩, ldv_blk hbm hb' .ld (by simp only [widthOfM]; omega)⟩
+  · have hd := hp.dat
+    revert hd
+    cases be.2.v with
+    | some g => exact fun hd => by simpa using DatAt.frame (o := 0) hbm hb' (by omega) (by simpa using hd)
+    | none =>
+      exact fun hd => by
+        have := ldv_blk (o := 0) hbm hb' .lw (by simp only [widthOfM]; omega)
+        simp only [Nat.add_zero] at this; rw [this]; exact hd
+  · have hcm := RLev.mem_blocks_arr hn
+    have hcs := hq.sz
+    refine ⟨⟨?_, hq.idxLt, DatAt.frame hcm hb' (by omega) hq.dat, hcs⟩,
+      ldv_blk hcm hb' .ld (by simp only [widthOfM]; omega)⟩
+    have := ldv_blk (o := 0) hcm hb' .lw (by simp only [widthOfM]; omega)
+    simp only [Nat.add_zero] at this; rw [this]; exact hq.idx
+
+/-- **The view with new chains**: the strings and the globals other than the
+chain words read the same, the stack and register chains are given at `Mt'`. -/
+theorem DcView.withChains {Mt Mt' : Mem} {G G' : DcG} {C : BcConsts} {st st' : St}
+    (h : DcView Mt G C st) (hstr : G'.strs = G.strs) (hlb : G'.lbuf = G.lbuf)
+    (hst : st'.ibase = st.ibase ∧ st'.obase = st.obase ∧ st'.scale = st.scale ∧
+      st'.unwind = st.unwind ∧ st'.noexit = st.noexit)
+    (hb : ∀ o ∈ G.strs, ∀ x, (o.hb.In x ∨ o.tb.In x) → imgM Mt' x = imgM Mt x)
+    (hg : ∀ a, DcGlob a → ¬ ChainWords a → imgM Mt' a = imgM Mt a)
+    (hs : LChain Mt' 24 (SNodeAt Mt') dcStackAddr G'.stk)
+    (hr : ∀ r, r < 256 → LChain Mt' 24 (RLevAt Mt') (regAddr r) (G'.regs r)) :
+    DcView Mt' G' C st' := by
+  obtain ⟨e1, e2, e3, e4, e5⟩ := hst
+  have gw : ∀ (k : MKind) a, (∀ j, j < widthOfM k → DcGlob (a + j) ∧ ¬ ChainWords (a + j)) →
+      ldv k Mt' a = ldv k Mt a := fun k a ha =>
+    ldv_congr k fun j hj => hg _ (ha j hj).1 (ha j hj).2
+  refine
+    { stk := hs
+      regs := hr
+      strs := fun o ho => by
+        rw [hstr] at ho
+        exact (h.strs o ho).frame (bs := [o.hb, o.tb]) (by simp) (by simp) fun x ⟨c, hc, hcx⟩ => by
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
+          rcases hc with rfl | rfl
+          · exact hb o ho x (.inl hcx)
+          · exact hb o ho x (.inr hcx)
+      zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.zw
+      ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.ow
+      tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.tw
+      ibase := by
+        rw [e1]; exact (gw .lw _ fun j hj => by
+          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.ibase
+      obase := by
+        rw [e2]; exact (gw .lw _ fun j hj => by
+          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.obase
+      scale := by
+        rw [e3]; exact (gw .lw _ fun j hj => by
+          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.scale
+      unwind := by
+        rw [e4]; exact (gw .lw _ fun j hj => by
+          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.unwind
+      noexit := by
+        rw [e5]; exact (gw .lw _ fun j hj => by
+          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.noexit
+      lineMax := by
+        rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega]
+        exact h.lineMax
+      lbuf := by
+        rw [hlb]; exact (gw .ld _ fun j hj => by
+          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.lbuf
+      lbufLen := fun b e => (gw .ld _ fun j hj => by
+        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans
+          (h.lbufLen b (hlb ▸ e)) }
+
 /-- **The view reads only the ghost's blocks and dc's globals.** -/
 theorem DcView.frame {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} (h : DcView Mt G C st)
     (hb : ∀ a, InBlocks G.blocks a → imgM Mt' a = imgM Mt a)
-    (hg : ∀ a, DcGlob a → imgM Mt' a = imgM Mt a) : DcView Mt' G C st := by
-  have gw : ∀ (k : MKind) a, (∀ j, j < widthOfM k → DcGlob (a + j)) → ldv k Mt' a = ldv k Mt a :=
-    fun k a ha => ldv_glob hg k ha
-  refine
-    { stk := h.stk.frame (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega)
-        fun bg hm hp => ?_
-      regs := fun r hr => (h.regs r hr).frame
-        (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega)
-        fun be hm hp => ?_
-      strs := fun o ho => (h.strs o ho).frame (G.str_mem ho).1 (G.str_mem ho).2 hb
-      zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.zw
-      ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.ow
-      tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.tw
-      ibase := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.ibase
-      obase := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.obase
-      scale := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.scale
-      unwind := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.unwind
-      noexit := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.noexit
-      lineMax := by
-        rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega]; exact h.lineMax
-      lbuf := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans h.lbuf
-      lbufLen := fun b e => (gw .ld _ fun j hj => by
-        simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega).trans (h.lbufLen b e) }
-  · have hbm := G.stk_mem hm
-    have hsz := hp.sz
-    refine ⟨⟨by simpa using DatAt.frame (o := 0) hbm hb (by omega) (by simpa using hp.dat),
-      (ldv_blk hbm hb .ld (by simp only [widthOfM]; omega)).trans hp.arr, hsz⟩,
-      ldv_blk hbm hb .ld (by simp only [widthOfM]; omega)⟩
-  · have hbm := G.reg_mem hr hm
-    have hsz := hp.sz
-    refine ⟨⟨?_, hp.arr.frame (ldv_blk hbm hb .ld (by simp only [widthOfM]; omega))
-      fun bn hn hq => ?_, hsz⟩, ldv_blk hbm hb .ld (by simp only [widthOfM]; omega)⟩
-    · have hd := hp.dat
-      revert hd
-      cases be.2.v with
-      | some g => exact fun hd => by simpa using DatAt.frame (o := 0) hbm hb (by omega) (by simpa using hd)
-      | none =>
-        exact fun hd => by
-          have := ldv_blk (o := 0) hbm hb .lw (by simp only [widthOfM]; omega)
-          simp only [Nat.add_zero] at this; rw [this]; exact hd
-    · have hcm := G.arr_mem hr hm hn
-      have hcs := hq.sz
-      refine ⟨⟨?_, hq.idxLt, DatAt.frame hcm hb (by omega) hq.dat, hcs⟩,
-        ldv_blk hcm hb .ld (by simp only [widthOfM]; omega)⟩
-      have := ldv_blk (o := 0) hcm hb .lw (by simp only [widthOfM]; omega)
-      simp only [Nat.add_zero] at this; rw [this]; exact hq.idx
+    (hg : ∀ a, DcGlob a → imgM Mt' a = imgM Mt a) : DcView Mt' G C st :=
+  h.withChains rfl rfl ⟨rfl, rfl, rfl, rfl, rfl⟩
+    (fun o ho x hx => hx.elim (fun hx => hb x ⟨o.hb, (G.str_mem ho).1, hx⟩)
+      fun hx => hb x ⟨o.tb, (G.str_mem ho).2, hx⟩)
+    (fun a ha _ => hg a ha)
+    (stkChain_frame h.stk
+      (ldv_glob hg .ld fun j hj => by simp only [widthOfM, DcGlob, dc_addrs] at hj ⊢; omega)
+      fun bg hm x hx => hb x ⟨bg.1, G.stk_mem hm, hx⟩)
+    fun r hr => regChain_frame (h.regs r hr)
+      (ldv_glob hg .ld fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega)
+      fun be hm c hc x hx => hb x ⟨c, by
+        rcases List.mem_cons.mp hc with rfl | hc
+        · exact G.reg_mem hr hm
+        · obtain ⟨bn, hn, rfl⟩ := List.mem_map.mp hc
+          exact G.arr_mem hr hm hn, hx⟩
 
 end Dc.Mach

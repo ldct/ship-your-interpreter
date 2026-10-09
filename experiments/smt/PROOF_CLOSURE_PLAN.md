@@ -5195,3 +5195,25 @@ Premises the callers supply in `OnArgs`: `num` normalized with a digit,
 number of `L`, `_zero_` and `_one_` at their globals, the multiplication
 base word, and `2 ≤ o_base < 2^31`. The axioms are `propext`,
 `Classical.choice` and `Quot.sound`. M8 is closed.
+
+### M9 dc runtime state (in progress)
+
+`DcAt S Mt H F L C G hs st` (`Dc/Mach/State.lean`) relates the machine to
+the model state `st`. The ghost `G : DcG` lists the stack nodes, the
+register levels with their array chains, the string objects and the line
+buffer. `DcAt` holds the bc heap over `G`'s blocks as raw blocks
+(`BcHeap S (G.raws Mt)`), the memory view `DcView` (the chains and the
+globals), and the denotation `DcDen` (values, normalized numbers, and
+exact reference counts over state references, caller handles `hs` and the
+constants `_zero_`/`_one_`/`_two_`). `DcView.withChains`/`.frame` move the
+view across stores off its blocks and globals.
+
+Checked so far:
+
+- `dc_malloc_spec` (`DcAlloc.lean`): a fresh block or `dc_memfail`.
+- `StateOps.lean`: `DcAt.malloc` (a fresh block outside the ghost, `DcFresh`),
+  `.rawWrite`, `.outWrite`, `.pushNode`, `.stkAcc`.
+- `dc_push_spec` (`DcStack.lean`, with `push_tail`/`push_post`).
+
+Open premise: reference counts below `2^31` for `bc_copy_num` must come
+from counting live blocks (heap below `2^27` bytes).

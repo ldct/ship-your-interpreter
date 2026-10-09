@@ -14,6 +14,8 @@ reads `_bc_Free_list` through `auipc` instead of a saved base register:
 
 - `FreeK cl`: the continuation, `KFreeK` with the clobbered registers `cl`
   (the site may interleave a register write, e.g. `li s4,0` in `bc_divmod`).
+- `FreeKL cl r w`: the continuation of a push that reloads `r` from the
+  frame (`bc_out_num`'s last free), told `r` holds `w`.
 
 The per-site lemmas are generated (`scripts/dc/gen_bc_free.py` →
 `FreeSites.lean`): `ffree_<P0>` takes one continuation per route (the
@@ -43,5 +45,13 @@ theorem FreeK.mono {cl cl' : List Nat} {live S : Nat → Prop} {X : Raws}
     {L1 L2 : List NumObj} {x : NumObj} (hk : FreeK cl' live S X Q pc R0 M0 fr H F L1 L2 x)
     (hs : ∀ z ∈ cl, z ∈ cl') : FreeK cl live S X Q pc R0 M0 fr H F L1 L2 x :=
   fun R' M' H' F' L' hkp => hk R' M' H' F' L' (hkp.mono hs)
+
+/-- The continuation after a free whose push reloaded `r` with `w`. -/
+def FreeKL (cl : List Nat) (r : Nat) (w : BitVec 64) (live S : Nat → Prop) (X : Raws)
+    (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (pc : BitVec 64) (R0 : Nat → BitVec 64) (M0 : Mem) (fr : Nat → Prop) (H : Heap)
+    (F : List Blk) (L1 L2 : List NumObj) (x : NumObj) : Prop :=
+  ∀ R' M' H' F' L', Keeps cl R' R0 → R' r = w → KFreed H F L1 L2 x H' F' L' →
+    BcHeap S X M' H' F' L' → OutFrame fr M' M0 → DW live S Q pc R' M'
 
 end Dc.Mach

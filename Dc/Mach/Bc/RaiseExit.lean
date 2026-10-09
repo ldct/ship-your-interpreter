@@ -564,7 +564,8 @@ theorem ra_pos2 {live : Nat → Prop} {S : Nat → Prop}
 `w` (`w` kept, any number in its place dropped the same way), or at `w`'s. -/
 theorem FreedRest.around {L1 L2 A B L' : List NumObj} {x w : NumObj} (h : FreedRest L1 L2 x L')
     (he : L1 ++ x :: L2 = A ++ w :: B) :
-    (∃ A' B', L' = A' ++ w :: B' ∧ ∀ w2, DropAt (A ++ w2 :: B) x.rep.p (A' ++ w2 :: B')) ∨
+    (∃ A' B', L' = A' ++ w :: B' ∧ (∀ w2, DropAt (A ++ w2 :: B) x.rep.p (A' ++ w2 :: B')) ∧
+      DropAt (A ++ B) x.rep.p (A' ++ B')) ∨
     (x = w ∧ L1 = A ∧ L2 = B) := by
   rcases List.append_eq_append_iff.mp he with ⟨a', rfl, h2⟩ | ⟨c', rfl, h2⟩
   · cases a' with
@@ -579,10 +580,12 @@ theorem FreedRest.around {L1 L2 A B L' : List NumObj} {x w : NumObj} (h : FreedR
       cases h with
       | dec h3 =>
         exact ⟨L1 ++ x.decRef :: a'', B, by simp, fun w2 =>
-          ⟨L1, a'' ++ w2 :: B, x, by simp, rfl, by rw [List.append_assoc]; exact .dec h3⟩⟩
+          ⟨L1, a'' ++ w2 :: B, x, by simp, rfl, by rw [List.append_assoc]; exact .dec h3⟩,
+          ⟨L1, a'' ++ B, x, by simp, rfl, by rw [List.append_assoc]; exact .dec h3⟩⟩
       | rel h3 =>
         exact ⟨L1 ++ a'', B, by simp, fun w2 =>
-          ⟨L1, a'' ++ w2 :: B, x, by simp, rfl, by rw [List.append_assoc]; exact .rel h3⟩⟩
+          ⟨L1, a'' ++ w2 :: B, x, by simp, rfl, by rw [List.append_assoc]; exact .rel h3⟩,
+          ⟨L1, a'' ++ B, x, by simp, rfl, by rw [List.append_assoc]; exact .rel h3⟩⟩
   · cases c' with
     | nil =>
       simp only [List.nil_append, List.cons.injEq] at h2
@@ -597,12 +600,23 @@ theorem FreedRest.around {L1 L2 A B L' : List NumObj} {x w : NumObj} (h : FreedR
         exact ⟨A, c'' ++ x.decRef :: L2, by simp, fun w2 =>
           ⟨A ++ w2 :: c'', L2, x, by simp, rfl, by
             rw [show A ++ w2 :: (c'' ++ x.decRef :: L2) = (A ++ w2 :: c'') ++ x.decRef :: L2 by simp]
+            exact .dec h3⟩,
+          ⟨A ++ c'', L2, x, by simp, rfl, by
+            rw [show A ++ (c'' ++ x.decRef :: L2) = (A ++ c'') ++ x.decRef :: L2 by simp]
             exact .dec h3⟩⟩
       | rel h3 =>
         exact ⟨A, c'' ++ L2, by simp, fun w2 =>
           ⟨A ++ w2 :: c'', L2, x, by simp, rfl, by
             rw [show A ++ w2 :: (c'' ++ L2) = (A ++ w2 :: c'') ++ L2 by simp]
+            exact .rel h3⟩,
+          ⟨A ++ c'', L2, x, by simp, rfl, by
+            rw [show A ++ (c'' ++ L2) = (A ++ c'') ++ L2 by simp]
             exact .rel h3⟩⟩
+
+theorem DropAt.cons {L L' : List NumObj} {p : Nat} (y : NumObj) (h : DropAt L p L') :
+    DropAt (y :: L) p (y :: L') := by
+  obtain ⟨L1, L2, x, rfl, hp, hf⟩ := h
+  exact ⟨y :: L1, L2, x, rfl, hp, hf.pre [y]⟩
 
 theorem NumObj.cutTo_withRefs (k j : Nat) (y : NumObj) :
     (y.withRefs j).cutTo k = (y.cutTo k).withRefs j := by
@@ -679,7 +693,7 @@ theorem ra_posPow2 {live : Nat → Prop} {S : Nat → Prop}
       ldv .ld M3 q = BitVec.ofNat 64 ((w.cutTo k).withRefs (w.rep.refs - 1)).rep.p :=
     fun hq2 ho3 => by
       rw [ldv_congr .ld fun j hj => ho3 _ (hsl.out _ (by simp only [widthOfM] at hj; omega)), hq2, hyp]
-  rcases hfr.around he with ⟨A', B', rfl, hdrop⟩ | ⟨rfl, rfl, rfl⟩
+  rcases hfr.around he with ⟨A', B', rfl, hdrop, -⟩ | ⟨rfl, rfl, rfl⟩
   · refine ra_store hlive cx (Ya := A') (y := w) (Yb := B') (pw := BitVec.ofNat 64 w.rep.p) hb1 hk31
       (by rw [hk1.get 2]; bsimp [h2]) (by rw [hk1.get 20]; bsimp [h20])
       (by rw [hk1.get 22]; bsimp [h22]) (by rw [hk1.get 23]; bsimp [ra.r23]) hwP1 ?_
@@ -740,5 +754,206 @@ theorem ra_posPow2 {live : Nat → Prop} {S : Nat → Prop}
         refine hK.ret R3 M3 _ _ _ _ hk3 ⟨hb3, ⟨_, hadd, L1, L2, _, rfl, hyp.trans hxp,
           .dec (by simp only [NumObj.withRefs]; omega)⟩, hyn, hyN, hyl, hyo,
           hslot (by rw [hq2]; rfl) ho3, hout ho2 ho3⟩
+
+/-- **`temp`'s reference dropped** at `0x800068ec` (`temp` = `power` = `v` in
+`s2`, two references or more), then `bc_free_num (&power)`. -/
+theorem ra_negDec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
+    {P1 P2 : List NumObj} {v : NumObj} (cx : RaCtx S R0 sp W q)
+    (hb : BcHeap S M H F (P1 ++ v :: P2)) (ho : v.Owns) (hnv : ∀ y ∈ P1, y.db ≠ v.db)
+    (hr : 2 ≤ v.rep.refs) (ra : RaAt S M M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
+    (h18 : R 18 = BitVec.ofNat 64 v.rep.p) (hk : RaFreeK live S Q R0 M H F P1 P2 v.decRef) :
+    DW live S Q 0x800068ec#64 R M := by
+  ra_facts cx
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn := hb.nums v (List.mem_append_right _ List.mem_cons_self)
+  num_facts hn
+  have hrf := hn.refs
+  have hpr : BitVec.ofNat 64 v.rep.refs + 18446744073709551615#64 =
+      BitVec.ofNat 64 (v.rep.refs - 1) := word_pred (by omega)
+  have hsx : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (v.rep.refs - 1))) =
+      BitVec.ofNat 64 (v.rep.refs - 1) := sxw_ofNat (by omega)
+  bc_run hlive hS [h18, hrf, hpr, hsx] at 0x8000679c 0x800068fc
+  all_goals try (intro hc; first
+    | exact absurd ((ofNat_eq_iff (x := v.rep.refs - 1) (y := 0) (by omega) (by omega)).mp hc) (by omega)
+    | exact absurd ((ofNat_eq_iff (x := v.rep.refs - 1) (y := 0) (by omega) (by omega)).mp
+        (Classical.not_not.mp hc)) (by omega))
+  intro _
+  refine ra_freePow hlive cx (x := v.decRef) (hb.setRefs (toNat_ofNat_mod32 (by omega)) (by omega))
+    ho hnv (by simp only [NumObj.decRef]; omega)
+    ((ra.regs (by keeps_tac Keeps.refl _ _)).heapStore (a := v.rep.p + 12) (w := 4)
+      (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega) (by simp only [heapEnd]; omega))
+    (by bsimp [h21]) (by bsimp [h18]; rfl) fun R' M' H' F' L' hk' hf hb' ho' => ?_
+  exact hk R' M' H' F' L' hk' hf hb' fun a ha => (ho' a ha).trans (imgM_store_miss _ _ (by
+    simp only [OutHeap, heapStart, heapEnd] at ha; omega))
+
+/-- **The negative tail with `temp` = `power`** (`w`, two references more
+than in the caller's `L0`, or fresh with two) from `0x800068d4`:
+`bc_divide (_one_, w, result, rscale)` (`o'`, `z'` the current `_one_`,
+`_zero_`), then both references of `w` dropped. -/
+theorem ra_negPow2 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L0 A B L1 L2 : List NumObj} {w xs xr o' z' : NumObj} {n : Num}
+    (cx : RaCtx S R0 sp W q) (hK : RaK live S Q t R0 Mt0 L0 xr q sp W n)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
+    (hb : BcHeap S M H F (A ++ w :: B)) (hown : ∀ y ∈ A ++ w :: B, y.Owns)
+    (he : L1 ++ xs :: L2 = A ++ w :: B) (hxr : 1 ≤ xs.rep.refs) (hxp : xs.rep.p = xr.rep.p)
+    (hwq : ldv .ld M q = BitVec.ofNat 64 xr.rep.p)
+    (hmr : xr ∈ L0) (hrr : 1 ≤ xr.rep.refs) (hxro : xr.Owns)
+    (hzr : w.rep.num.mag = 0 → xr.rep.num = Num.zero 0 ∧ xr.rep.Norm ∧ 1 ≤ xr.rep.len)
+    (ho1 : o' ∈ A ++ w :: B) (hon : o'.rep.num = Num.one) (hol : 1 ≤ o'.rep.len)
+    (hone : ldv .ld M oneAddr = BitVec.ofNat 64 o'.rep.p)
+    (hz1 : z' ∈ A ++ w :: B) (hzm : z'.rep.num.mag = 0)
+    (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z'.rep.p)
+    (hapart : xs.rep.refs = 1 → o' ≠ xs ∧ z' ≠ xs)
+    (hsz : o'.rep.len + o'.rep.scale + k + w.rep.len + w.rep.scale < 2 ^ 27)
+    (hw2 : 2 ≤ w.rep.refs) (hsame : xs = w → 3 ≤ w.rep.refs)
+    (hL0 : (3 ≤ w.rep.refs ∧ L0 = A ++ w.withRefs (w.rep.refs - 2) :: B) ∨
+      (w.rep.refs = 2 ∧ L0 = A ++ B))
+    (hn : n = (Num.div Num.one w.rep.num k).getD (Num.zero 0))
+    (h18 : R 18 = BitVec.ofNat 64 w.rep.p) (h22 : R 22 = BitVec.ofNat 64 k) :
+    DW live S (DQ live S Q t) 0x800068d4#64 R M := by
+  ra_facts cx
+  have hsf := cx.frame
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  have hap := hsl.apart
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hcst : ∀ b ∈ accAddrs oneAddr 8, S b := fun b hb' => by
+    have := of_mem_accAddrs hb'
+    exact cx.consts b (by simp only [constBytes, twoAddr, zeroAddr, oneAddr] at *; omega)
+  have h2 := ra.r2
+  have hb0 : BcHeap S M H F (L1 ++ xs :: L2) := he ▸ hb
+  have hown0 : ∀ y ∈ L1 ++ xs :: L2, y.Owns := he ▸ hown
+  have hm : ∀ {y}, y ∈ A ++ w :: B → y ∈ L1 ++ xs :: L2 := fun h => he ▸ h
+  have hwm : w ∈ A ++ w :: B := List.mem_append_right _ List.mem_cons_self
+  have hwo := hown w hwm
+  bc_run hlive hS [h2, h18, h22, ra.r23, hone] at 0x8000589c
+  all_goals first | exact hcst | skip
+  refine ra_divCall (L1 := L1) (L2 := L2) (x1 := o') (x2 := w) (z := z') (k := k)
+    (n := Num.div o'.rep.num w.rep.num k) hlive cx hK.oom ra.out
+    ⟨rfl, hm ho1, hm hwm, hm hz1,
+      fun h1 => ⟨(hapart h1).1, fun e => by rw [← e] at h1; omega, (hapart h1).2⟩, hsz, hzg, hol⟩
+    hzm hb0 ⟨hxr, by rw [hwq, hxp], fun _ hxo y hy =>
+      hb0.owner_db_ne hxo hy (hown0 y (List.mem_append_left _ hy))⟩
+    (by bsimp [h2]) (by bsimp []; try decide) (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
+    ?_ ?_
+  · intro m hm' R1 M1 H1 F1 L' y hk1 hp
+    have hb1 := hp.heap
+    have hyp : y.rep.p = y.sb.pay := (hb1.blocks y List.mem_cons_self).sPay
+    have hyo := hp.owns
+    have raN : RaAt S M1 M1 R0 R1 sp W q raSlots1 :=
+      ⟨by rw [hk1.get 2]; bsimp [h2],
+        ra.saved.transport (lo := 16) (top := 96) (hag := fun a h1 h2 => hp.out a
+          (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+          (by simp only [slotBytes]; omega) (by simp only [frameIn]; omega)),
+        (hk1.mono (ks' := raAll) (by decide)).trans (by keeps_tac ra.keep),
+        by rw [hk1.get 23]; bsimp [ra.r23], fun _ _ _ => rfl⟩
+    have h21' : R1 21 = R0 21 := by rw [hk1.get 21]; bsimp [h21]
+    have h18' : R1 18 = BitVec.ofNat 64 w.rep.p := by rw [hk1.get 18]; bsimp [h18]
+    have hpost : ∀ {R3 M3 H3 F3 Lf}, Keeps binClob R3 R0 → BcHeap S M3 H3 F3 (y :: Lf) →
+        DropAt (y :: L0) xr.rep.p (y :: Lf) → (∀ a, OutHeap a → imgM M3 a = imgM M1 a) →
+        DW live S (DQ live S Q t) (R0 1) R3 M3 := fun hk3 hb3 hd ho3 =>
+      hK.ret _ _ _ _ _ y hk3 ⟨hb3, ⟨_, .fresh hp.refs, hd⟩,
+        by rw [hp.num, hn, ← hon, hm']; rfl, hp.norm, hp.pos, hyo,
+        by rw [ldv_congr .ld fun j hj => ho3 _ (hsl.out _ (by simp only [widthOfM] at hj; omega)),
+          hp.slot, hyp],
+        fun a h1 h2' h3 => by
+          rw [ho3 a h1, hp.out a h1 h2' (fun h => h3 (by simp only [frameIn] at h ⊢; omega))]
+          exact ra.out a h1 h3⟩
+    bsimp []
+    rcases hp.rest.around he with ⟨A', B', rfl, hdrop, hdrop2⟩ | ⟨rfl, rfl, rfl⟩
+    · have hown1 : ∀ y' ∈ y :: A', y'.Owns := by
+        intro y' hy'
+        rcases List.mem_cons.mp hy' with rfl | hy'
+        · exact hyo
+        · exact hp.rest.owns hown0 y' (List.mem_append_left _ hy')
+      refine ra_negDec hlive cx (P1 := y :: A') (v := w) (P2 := B') hb1 hwo
+        (fun y' hy' => hb1.owner_db_ne (P := y :: A') hwo hy' (hown1 y' hy')) hw2 raN h21' h18' ?_
+      intro R3 M3 H3 F3 L3 hk3 hkf hb3 ho3
+      cases hkf with
+      | dec h =>
+        rcases hL0 with ⟨_, rfl⟩ | ⟨h2', _⟩
+        · have e : w.decRef.decRef = w.withRefs (w.rep.refs - 2) := by
+            simp only [NumObj.decRef_eq, NumObj.withRefs_withRefs]
+            simp only [NumObj.withRefs, Nat.sub_sub]
+          rw [e] at hb3
+          exact hpost hk3 hb3 (hxp ▸ (hdrop _).cons y) ho3
+        · simp only [NumObj.decRef] at h; omega
+      | rel h =>
+        rcases hL0 with ⟨h3, _⟩ | ⟨_, rfl⟩
+        · simp only [NumObj.decRef] at h; omega
+        · exact hpost hk3 hb3 (hxp ▸ hdrop2.cons y) ho3
+    · have hfr := hp.rest
+      have hw3 := hsame rfl
+      cases hfr with
+      | rel h => omega
+      | dec _ =>
+        have hown1 : ∀ y' ∈ y :: L1, y'.Owns := by
+          intro y' hy'
+          rcases List.mem_cons.mp hy' with rfl | hy'
+          · exact hyo
+          · exact hown0 y' (List.mem_append_left _ hy')
+        rcases hL0 with ⟨_, rfl⟩ | ⟨h2', _⟩
+        · refine ra_negDec hlive cx (P1 := y :: L1) (v := xs.decRef) (P2 := L2) hb1 hwo
+            (fun y' hy' => hb1.owner_db_ne (P := y :: L1) hwo hy' (hown1 y' hy'))
+            (by simp only [NumObj.decRef]; omega) raN h21' h18' ?_
+          intro R3 M3 H3 F3 L3 hk3 hkf hb3 ho3
+          have e : xs.decRef.decRef = xs.withRefs (xs.rep.refs - 2) := by
+            simp only [NumObj.decRef_eq, NumObj.withRefs_withRefs]
+            simp only [NumObj.withRefs, Nat.sub_sub]
+          cases hkf with
+          | dec h =>
+            rw [e] at hb3 h
+            exact hpost hk3 hb3 ⟨y :: L1, L2, _, rfl, hxp, .dec h⟩ ho3
+          | rel h =>
+            rw [e] at h
+            exact hpost hk3 hb3 ⟨y :: L1, L2, _, rfl, hxp, .rel h⟩ ho3
+        · omega
+  · intro hn0 R1 M1 hk1 hf1
+    have hw0 : w.rep.num.mag = 0 := by
+      unfold Num.div at hn0
+      split at hn0
+      · rename_i h0; simpa using h0
+      · simp at hn0
+    obtain ⟨hxn, hxN, hxl⟩ := hzr hw0
+    have raN : RaAt S M1 M1 R0 R1 sp W q raSlots1 :=
+      ⟨by rw [hk1.get 2]; bsimp [h2],
+        ra.saved.transport (lo := 16) (top := 96) (hag := fun a h1 h2 => hf1 a
+          (by simp only [frameIn]; omega)),
+        (hk1.mono (ks' := raAll) (by decide)).trans (by keeps_tac ra.keep),
+        by rw [hk1.get 23]; bsimp [ra.r23], fun _ _ _ => rfl⟩
+    have hb1 := hb.out_frame (P := frameIn (sp - 96) (W - 96)) hf1 fun a ha => by
+      simp only [frameIn] at ha; simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+    bsimp []
+    refine ra_negDec hlive cx (P1 := A) (v := w) (P2 := B) hb1 hwo
+      (fun y' hy' => hb1.owner_db_ne hwo hy' (hown y' (List.mem_append_left _ hy'))) hw2 raN
+      (by rw [hk1.get 21]; bsimp [h21]) (by rw [hk1.get 18]; bsimp [h18]) ?_
+    intro R3 M3 H3 F3 L3 hk3 hkf hb3 ho3
+    have hfin : BcHeap S M3 H3 F3 L0 := by
+      cases hkf with
+      | dec h =>
+        rcases hL0 with ⟨_, rfl⟩ | ⟨h2', _⟩
+        · have e : w.decRef.decRef = w.withRefs (w.rep.refs - 2) := by
+            simp only [NumObj.decRef_eq, NumObj.withRefs_withRefs]
+            simp only [NumObj.withRefs, Nat.sub_sub]
+          rwa [e] at hb3
+        · simp only [NumObj.decRef] at h; omega
+      | rel h =>
+        rcases hL0 with ⟨h3, _⟩ | ⟨_, rfl⟩
+        · simp only [NumObj.decRef] at h; omega
+        · exact hb3
+    refine hK.ret R3 M3 _ _ _ _ hk3 (raPost_keep hfin hmr hrr ?_ hxN hxl hxro ?_ ?_)
+    · rw [hn, ← hon, hn0]; exact hxn
+    · rw [ldv_congr .ld fun j hj => (ho3 _ (hsl.out _ (by simp only [widthOfM] at hj; omega))).trans
+        (hf1 _ (by simp only [frameIn, widthOfM] at hj ⊢; omega))]
+      exact hwq
+    · intro a h1 h2' h3
+      rw [ho3 a h1, hf1 a (fun h => h3 (by simp only [frameIn] at h ⊢; omega))]
+      exact ra.out a h1 h3
 
 end Dc.Mach

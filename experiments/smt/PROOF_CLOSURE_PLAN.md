@@ -5224,6 +5224,7 @@ Checked so far:
 - `dc_int2data_spec` (`DcInt.lean`): `dc_init_num_spec` (one more `_zero_` reference held by the slot), then `dc_int2num_spec`, whose post is `DcAt.newNum` (the freed handle replaced by the fresh number's).
 - `dc_show_id_spec` (`DcShowId.lean`): both format routes to any stream (`show_br` decides the `isgraph` test).
 - `dc_register_get_spec` (`DcRegGet.lean`): `regGet st r` into the slot through `reg_get_dup` (`dc_dup`), `reg_get_zero` (`dc_int2data(0)`, may reach `out_of_memory`), or `reg_get_err` (both `stderr` messages, status 2); frame `GetOut`.
+- `dc_register_set_spec` (`DcRegSet.lean`): `regSet st r v`. An empty register gets a fresh level (`reg_set_new`, `DcAt.newLevel`, may reach `out_of_memory`); otherwise the head datum is freed in place (`reg_set_num`/`reg_set_str`) and replaced (`DcAt.setHead`). The in-place free runs from a pending view `Pend G E W Φ` (`DcPend.lean`): the state is held at the memory with the new datum stored, which differs from the machine memory only on the datum window; `dc_free_num_specP`/`dc_free_str_specP` take it, the plain specs are the instances at `Pend.id`.
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come
 from counting live blocks (heap below `2^27` bytes).

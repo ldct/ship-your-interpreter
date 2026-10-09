@@ -85,4 +85,10 @@ import Dc.Mach.Bc.RaiseExit
 import Dc.Mach.Bc.RaiseLoop
 import Dc.Mach.Bc.RaiseSquare
 import Dc.Mach.Bc.RaiseEntry
+import Dc.Mach.Bc.ZeroScanSites
+import Dc.Mach.Bc.RaiseModBase
+import Dc.Mach.Bc.RaiseModHeap
+import Dc.Mach.Bc.RaiseModLoop
+import Dc.Mach.Bc.RaiseModExit
+import Dc.Mach.Bc.RaiseModEntry
 import Dc.Mach.RtMsgSites

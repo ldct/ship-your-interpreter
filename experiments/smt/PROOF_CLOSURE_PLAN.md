@@ -5045,3 +5045,40 @@ it is `_one_` or `_zero_`), `1 ≤ x1.refs`, and the size bound
 (`raScaleMsg`, `raExpMsg`) leave the console unchanged, so the error flag of
 `Num.raise` does not appear in the machine contract. The axioms are
 `propext`, `Classical.choice` and `Quot.sound`.
+
+### M8 `bc_raisemod` (checked)
+
+`bc_raisemod_spec` (`Dc/Mach/Bc/RaiseModEntry.lean`) proves `bc_raisemod` at
+`0x800061c4` against `Num.raisemod base expo mod k` in `DWO`: `RxK.ret`
+receives the result in the slot (`RxPost`: one reference added to the leaked
+`parity` and one to the result, then the old slot number dropped),
+`RxK.fail` receives `-1` with only the frame changed (a zero modulus, by
+pointer or by digits, or a negative exponent), and `RxK.oom` receives
+`out_of_memory`. The model side is `raisemod_eq` (`Dc/BcModel/RaiseMod.lean`):
+for a nonzero modulus and a non-negative exponent `Num.raisemod` is
+`Num.raisemodLoop` from `expo`'s integer part. The files:
+
+- `RaiseModBase.lean`: the contract (`RxCtx`, `RxArgs`, `RxSlot`, `RxPost`,
+  `RxK`), the frame state `RxAt`, the callees on handles (`rx_mulH`,
+  `rx_modH`, `rx_halveH`, `rx_divH`).
+- `RaiseModHeap.lean`: the handle heap `RList hs L` (an owned number or one
+  more reference to a caller's number per slot).
+- `RaiseModLoop.lean`: one iteration (`rx_body`) and the loop (`rx_loop`)
+  against `Num.raisemodLoop`, values carried by `RxNum` with `RxM.nT`/`.nE`
+  keeping `temp` and `exponent` normalized.
+- `RaiseModExit.lean`: the epilogues (`rx_epi`, `rx_epi0`), the handle
+  releases and `bc_free_num (result)` (`rx_exit`, `rx_fin`).
+- `RaiseModEntry.lean`: the four reference bumps (`RxU`, `rx_bumps`), the
+  three scale warnings and `exponent / 1` (`rx_wbase`, `rx_wexp`, `rx_divx`),
+  the zero exponent (`rx_one`), `rx_start`/`rx_go`, the sign split, the
+  generated zero scan `zscan_80006220` (`rx_scan`) and the prologue
+  (`rx_modz`, `bc_raisemod_spec`).
+
+Premises the callers supply: `RxArgs.size`
+(`8 (len_b + scale_b + len_m + scale_m + k + 1) + len_e + scale_e < 2^24`),
+`RxArgs.refs` (room for four more references to every number of `L`),
+`1 ≤ refs` for `base`, `expo` and `_one_`, `expo` and `mod` normalized,
+`_zero_`/`_one_`/`_two_` at their globals, the stderr stream (`RxArgs.fd`),
+and `RxCtx.far` (`stderr` below the frame). The scale warnings leave the
+console unchanged. The axioms are `propext`, `Classical.choice` and
+`Quot.sound`.

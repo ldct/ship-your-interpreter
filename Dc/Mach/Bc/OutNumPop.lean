@@ -164,8 +164,8 @@ theorem OgSt.freeCell {live S : Nat → Prop} {X0 : Raws} {G : Nat → Prop}
     exact hk R' M' _ hk' (st'.regs hk') sk'
 
 /-- The registers the pop loops and the fraction keep: `s2` the number, `s3`
-`base`, `s7` the base, `s8` `max_o_digit`, `s10` `cur_dig`, `s11` `&_one_`. -/
-structure OgPopRegs (R : Nat → BitVec 64) (x : NumObj) (ob : Nat) (bs mx : NumObj) (cur : RH) :
+`base`, `s6` `frac_part`, `s7` the base, `s8` `max_o_digit`, `s10` `cur_dig`, `s11` `&_one_`. -/
+structure OgPopRegs (R : Nat → BitVec 64) (x : NumObj) (ob : Nat) (fr bs mx : NumObj) (cur : RH) :
     Prop where
   r18 : R 18 = BitVec.ofNat 64 x.rep.p
   r19 : R 19 = BitVec.ofNat 64 bs.rep.p
@@ -173,17 +173,19 @@ structure OgPopRegs (R : Nat → BitVec 64) (x : NumObj) (ob : Nat) (bs mx : Num
   r24 : R 24 = BitVec.ofNat 64 mx.rep.p
   r26 : R 26 = BitVec.ofNat 64 cur.p
   r27 : R 27 = BitVec.ofNat 64 oneAddr
+  r22 : R 22 = BitVec.ofNat 64 fr.rep.p
 
-theorem OgPopRegs.keep {R R' : Nat → BitVec 64} {x : NumObj} {ob : Nat} {bs mx : NumObj}
-    {cur : RH} (h : OgPopRegs R x ob bs mx cur) {ks : List Nat} (hk : Keeps ks R' R)
-    (hks : ∀ z ∈ ks, z ≠ 18 ∧ z ≠ 19 ∧ z ≠ 23 ∧ z ≠ 24 ∧ z ≠ 26 ∧ z ≠ 27 := by decide) :
-    OgPopRegs R' x ob bs mx cur :=
-  ⟨by rw [hk.get 18 fun h => (hks 18 h).1 rfl]; exact h.r18,
-    by rw [hk.get 19 fun h => (hks 19 h).2.1 rfl]; exact h.r19,
-    by rw [hk.get 23 fun h => (hks 23 h).2.2.1 rfl]; exact h.r23,
-    by rw [hk.get 24 fun h => (hks 24 h).2.2.2.1 rfl]; exact h.r24,
-    by rw [hk.get 26 fun h => (hks 26 h).2.2.2.2.1 rfl]; exact h.r26,
-    by rw [hk.get 27 fun h => (hks 27 h).2.2.2.2.2 rfl]; exact h.r27⟩
+theorem OgPopRegs.keep {R R' : Nat → BitVec 64} {x : NumObj} {ob : Nat} {fr bs mx : NumObj}
+    {cur : RH} (h : OgPopRegs R x ob fr bs mx cur) {ks : List Nat} (hk : Keeps ks R' R)
+    (hks : ∀ z ∈ ks, z ∉ [18, 19, 22, 23, 24, 26, 27] := by decide) :
+    OgPopRegs R' x ob fr bs mx cur :=
+  ⟨by rw [hk.get 18 fun h => hks 18 h (by decide)]; exact h.r18,
+    by rw [hk.get 19 fun h => hks 19 h (by decide)]; exact h.r19,
+    by rw [hk.get 23 fun h => hks 23 h (by decide)]; exact h.r23,
+    by rw [hk.get 24 fun h => hks 24 h (by decide)]; exact h.r24,
+    by rw [hk.get 26 fun h => hks 26 h (by decide)]; exact h.r26,
+    by rw [hk.get 27 fun h => hks 27 h (by decide)]; exact h.r27,
+    by rw [hk.get 22 fun h => hks 22 h (by decide)]; exact h.r22⟩
 
 /-- After the integer digits (`0x8000721c`): the stack empty, `int_part`
 zero, the integer part's characters sent. -/
@@ -195,7 +197,7 @@ def OgK6 (live S : Nat → Prop) (X0 : Raws) (Q : String → (Nat → BitVec 64)
     (cur : RH),
     OgSt S X0 G I Mt0 M R0 R sp W H F L [.own ip, .own fr, cur, .own bs, .own mx]
       [16, 24, 40, 32, 56] (ogIntOut x ob cs) t →
-    RHOK L cur → NewNum ⟨false, 0, 0⟩ ip → OgPopRegs R x ob bs mx cur →
+    RHOK L cur → NewNum ⟨false, 0, 0⟩ ip → OgPopRegs R x ob fr bs mx cur →
     DWO live S Q t 0x8000721c#64 R M
 
 /-- **The pop loops' state**: the stack from `p` holds `ds`, whose characters
@@ -213,7 +215,7 @@ structure OgPH (S : Nat → Prop) (X0 : Raws) (G : Nat → Prop) (I : List Nat �
   p64 : p < 2 ^ 64
   tgt : sent ++ ds.flatMap (ogDigI ob) = ogIntOut x ob cs
   dlt : ∀ d ∈ ds, d < ob
-  regs : OgPopRegs R x ob bs mx cur
+  regs : OgPopRegs R x ob fr bs mx cur
 
 /-- Through register changes off the kept ones. -/
 theorem OgPH.keep {S : Nat → Prop} {X0 : Raws} {G : Nat → Prop}
@@ -224,7 +226,7 @@ theorem OgPH.keep {S : Nat → Prop} {X0 : Raws} {G : Nat → Prop}
     (ph : OgPH S X0 G I Mt0 M R0 R sp W H F L x ob cs sent t ip fr bs mx cur cells ds Mc p)
     {ks : List Nat} (hk : Keeps ks R' R)
     (hks : ∀ z ∈ ks, z ∈ onAll ∧ z ≠ 2 ∧ z ≠ 9 := by decide)
-    (hks' : ∀ z ∈ ks, z ≠ 18 ∧ z ≠ 19 ∧ z ≠ 23 ∧ z ≠ 24 ∧ z ≠ 26 ∧ z ≠ 27 := by decide) :
+    (hks' : ∀ z ∈ ks, z ∉ [18, 19, 22, 23, 24, 26, 27] := by decide) :
     OgPH S X0 G I Mt0 M R0 R' sp W H F L x ob cs sent t ip fr bs mx cur cells ds Mc p :=
   { ph with st := ph.st.regs hk hks, regs := ph.regs.keep hk hks' }
 
@@ -564,7 +566,8 @@ theorem og_s6 {live S : Nat → Prop} {X0 : Raws}
           by rw [hk.get 19 (by decide)]; exact lh.r19,
           by rw [hk.get 23 (by decide)]; exact lh.regs.r23,
           by rw [hk.get 24 (by decide)]; exact lh.r24, h26,
-          by rw [hk.get 27 (by decide)]; exact lh.regs.r27⟩ }
+          by rw [hk.get 27 (by decide)]; exact lh.regs.r27,
+          by rw [hk.get 22 (by decide)]; exact lh.r22⟩ }
   have h21 := lh.r21
   bc_run hlive hS [h2, hw40, h21] at 0x8000721c 0x80007460
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip

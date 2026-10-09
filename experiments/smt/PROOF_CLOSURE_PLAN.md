@@ -4937,3 +4937,29 @@ integer digits, scale `mulScale`) and shows its value is `Num.mul`; the trim
 reuses the generated `ktrimLoop_8000580c`; a zero product is made positive.
 `BinPostW`/`BinKW` (`AddSub.lean`) generalize `BinPost`/`BinK` to a window
 parameter. M6 is closed.
+
+### M7 `bc_divide` (checked)
+
+`bc_divide_spec` (`Dc/Mach/Bc/DivSpec.lean`): from `0x8000589c`, for operands
+`DivArgs` (`n1` with a positive integer length, `n2` and `_zero_` of the heap,
+none of them the slot's number when that has one reference) and `_zero_` of
+magnitude zero, the slot holds the number for `Num.div n1 n2 scale` and
+`a0 = 0` (`DivKW.ret`), `a0 = -1` for a zero divisor with only the window
+changed (`DivKW.zero`), or `out_of_memory` (`DivKW.oomW`). The axioms are
+`propext`, `Classical.choice` and `Quot.sound`. Routes:
+
+- `n2` is `_zero_` (`0x80005f78`): `BcHeap.eq_of_p` identifies `n2` with `_zero_`.
+- `n2` without digits, or all its digits zero: `dvt_neg`.
+- the general path: `dv_found` → `dv_body` (`DivLink.lean`) through the
+  normalisation, the quotient loop and the tail, with the value linked to
+  `Num.div` (`dv_quot`).
+- `n2 = 1` (`dv_one`, `DivOne.lean`): GNU bc 1.07 builds `n1` truncated to the
+  scale, stores it in the slot, and falls through into the general path,
+  which frees it and stores its own quotient. `DivKW.rebase` restates the
+  continuations with the detour's number as the slot's; `FreedRest.keep`
+  finds the operands again after the free.
+
+`DivCtx.slotZero` (the slot is apart from `_zero_`'s word) is a new context
+premise: the detour stores the slot before the general path reads `_zero_`.
+`NumAt.setDigits`/`BcHeap.setDigits` rewrite a whole digit buffer of the
+head number. `bc_divmod` and `bc_modulo` remain open.

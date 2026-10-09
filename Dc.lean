@@ -76,3 +76,4 @@ import Dc.Mach.Bc.KaraPopLast
 import Dc.Mach.Bc.KaraEntry
 import Dc.Mach.Bc.KaraZeroRef
 import Dc.Mach.Bc.SimpMul
+import Dc.Mach.Bc.DivSpec

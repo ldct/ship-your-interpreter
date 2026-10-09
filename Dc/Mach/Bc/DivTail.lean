@@ -1,6 +1,7 @@
 import Dc.Mach.Bc.DivMain
 import Dc.Mach.Bc.AddSub
 import Dc.Mach.Bc.Init
+import Dc.Mach.Bc.HeapNe
 
 /-!
 # `bc_divide`'s tail (`0x80005a90`)
@@ -663,6 +664,112 @@ theorem dvt_scan {live : Nat → Prop} {S : Nat → Prop}
     · intro h0
       bsimp [ofNat_eq_zero_iff (show o.ds.getD i 0 < 2 ^ 64 by omega)] at h0
       exact hnz _ (by keeps_tac kk) (hnz' i (by omega) h0)
+
+
+/-- The sign word `snez` leaves. -/
+theorem snezWord_toNat (c : Bool) :
+    (BitVec.ofNat 64 (if c = true then 1 else 0)).toNat % 2 ^ 32 = c.toNat := by
+  cases c <;> decide
+
+/-- The zero test from `0x80005ab4` (the quotient's sign stored): `bc_is_zero
+(qval)` from `a3 = n_value`; a zero made positive, then the trim. -/
+theorem dvt_test {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {m : Num} {b1 b2 b3 : Blk}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
+    (st : DvtAt S Mt0 M R0 R sp q W L1 xr b1 b2 b3)
+    (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (h21 : R 21 = BitVec.ofNat 64 y.sb.pay) (h15 : R 15 = BitVec.ofNat 64 y.rep.val)
+    (hnum : dval y.rep.ds ≠ 0 → y.rep.num = m)
+    (hnum0 : dval y.rep.ds = 0 → ({ y.rep with neg := false } : NumRep).num = m)
+    (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
+    (hraw : DvRaw H F (y :: (L1 ++ xr :: L2)) b1 b2 b3) :
+    DW live S Q 0x80005ab4#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hyn := hb.nums y List.mem_cons_self
+  num_facts hyn
+  have hyp := (hb.blocks y List.mem_cons_self).sPay
+  have hl : ldv .lw M (y.sb.pay + 4) = BitVec.ofNat 64 y.rep.len := by rw [← hyp]; exact hyn.len
+  have hs : ldv .lw M (y.sb.pay + 8) = BitVec.ofNat 64 y.rep.scale := by
+    rw [← hyp]; exact hyn.scale
+  have hdl := hyn.shape.dsLen
+  have yp1 := hyn.shape.pLo; have yp2 := hyn.shape.pHi; have yp3 := hyn.shape.pAl
+  rw [hyp] at yp1 yp2 yp3
+  simp only [heapStart, heapEnd] at yp1 yp2
+  bc_run hlive hS [h21, h15, hl, hs,
+    addw_ofNat (show y.rep.scale + y.rep.len < 2 ^ 31 by omega)] at 0x80005ad4 0x80005b88
+  all_goals try (exact acc_heap hS (by omega) (by omega))
+  · intro _
+    refine dvt_scan hlive hS hyn (fun R' kk hall => ?_) (fun R' kk hnz => ?_)
+      (y.rep.len + y.rep.scale - 1) 0 _ (by omega) (fun j hj => absurd hj (Nat.not_lt_zero _))
+      (Keeps.refl _ _) (by bsimp []; congr 1; omega) (by bsimp [])
+    · exact dvt_pos hlive cx hk hn (st.keeps ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
+        hb (hnum0 ((dval_eq_zero_iff _).2 fun j hj => hall j (by omega))) hpos hrefs hyo hraw
+        (by rw [kk.get 21 (by decide)]; bsimp [h21]) (by rw [kk.get 15 (by decide)]; bsimp [h15])
+    · exact dvt_trim hlive cx hk hn (st.keeps ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
+        hb (hnum hnz) hpos hrefs hyo hraw
+        (by rw [kk.get 21 (by decide)]; bsimp [h21]) (by rw [kk.get 15 (by decide)]; bsimp [h15])
+  · intro hc
+    exfalso
+    rw [toInt_ofNat_small (show y.rep.scale + y.rep.len < 2 ^ 63 by omega)] at hc
+    simp at hc
+    omega
+
+
+
+/-- **The sign** at `0x80005a90`: `n1.sign != n2.sign` into the quotient
+(not `_zero_`), then the zero test. -/
+theorem dvt_sign {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr y x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {m : Num} {b1 b2 b3 : Blk}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
+    (st : DvtAt S Mt0 M R0 R sp q W L1 xr b1 b2 b3)
+    (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2) (hz : z ∈ L1 ++ xr :: L2)
+    (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (h8 : R 8 = BitVec.ofNat 64 x1.rep.p) (h9 : R 9 = BitVec.ofNat 64 x2.rep.p)
+    (h21 : R 21 = BitVec.ofNat 64 y.sb.pay)
+    (hnum : dval y.rep.ds ≠ 0 → ({ y.rep with neg := x1.rep.neg != x2.rep.neg } : NumRep).num = m)
+    (hnum0 : dval y.rep.ds = 0 → ({ y.rep with neg := false } : NumRep).num = m)
+    (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
+    (hraw : DvRaw H F (y :: (L1 ++ xr :: L2)) b1 b2 b3) :
+    DW live S Q 0x80005a90#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn1 := hb.nums x1 (List.mem_cons_of_mem _ hx1)
+  num_facts hn1
+  have hn2 := hb.nums x2 (List.mem_cons_of_mem _ hx2)
+  num_facts hn2
+  have hyn := hb.nums y List.mem_cons_self
+  num_facts hyn
+  have hyp := (hb.blocks y List.mem_cons_self).sPay
+  have hzn := hb.nums z (List.mem_cons_of_mem _ hz)
+  num_facts hzn
+  have hne := hb.p_ne hz
+  rw [hyp] at hne
+  have hne' : ¬ BitVec.ofNat 64 z.rep.p = BitVec.ofNat 64 y.sb.pay := fun e =>
+    hne ((ofNat_eq_iff (by omega) (by omega)).mp e).symm
+  have hval : ldv .ld M (y.sb.pay + 32) = BitVec.ofNat 64 y.rep.val := by rw [← hyp]; exact hyn.value
+  have hzg' : ldv .ld M 2147601864 = BitVec.ofNat 64 z.rep.p := hzg
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hcst : ∀ b ∈ accAddrs 2147601864 8, S b := fun b hb' => by
+    have := of_mem_accAddrs hb'
+    exact cx.consts b (by simp only [constBytes, twoAddr, zeroAddr] at *; omega)
+  have yp1 := hyn.shape.pLo; have yp2 := hyn.shape.pHi; have yp3 := hyn.shape.pAl
+  rw [hyp] at yp1 yp2 yp3
+  simp only [heapStart, heapEnd] at yp1 yp2
+  bc_run hlive hS [h8, h9, h21, hn1.sign, hn2.sign, hzg', hval, snez_signs, hne'] at 0x80005ab4
+  all_goals try (exact hcst)
+  all_goals try (exact acc_heap hS (by omega) (by omega))
+  all_goals try (simp only [LdOK, StOK, StOKb, tohostAddr, zeroAddr] at *; omega)
+  have hb' := BcHeap.setSign (L1 := []) hb (x1.rep.neg != x2.rep.neg) (snezWord_toNat _)
+  rw [hyp] at hb'
+  simp only [List.nil_append] at hb'
+  exact dvt_test (y := { y with rep := { y.rep with neg := x1.rep.neg != x2.rep.neg } }) hlive cx hk hn
+    ((st.heap cx fun a ha => imgM_store_miss _ _ (by simp only [heapStart, heapEnd] at ha; omega)).keeps
+      (by keeps_tac Keeps.refl _ _))
+    hb' (by bsimp [h21]) (by bsimp []) hnum hnum0 hpos hrefs hyo (hraw.head rfl)
 
 end
 

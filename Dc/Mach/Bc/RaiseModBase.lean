@@ -59,7 +59,8 @@ macro "rx_facts " cx:term : tactic =>
 /-- The operands: `base` (`xb`), `expo` (`xe`) and `mod` (`xm`) of the
 caller's heap `L` of owners, `_zero_` (`z`), `_one_` (`o`) and `_two_` (`t`)
 in it at their globals, the numbers small enough for the callees, room for
-four more references to each number, the stderr stream. -/
+four more references to each number (the operands referenced), the stderr
+stream. -/
 structure RxArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (xb xe xm z o t : NumObj) (k : Nat) :
     Prop where
   mb : xb ∈ L
@@ -75,6 +76,9 @@ structure RxArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (xb xe xm z o t 
   size : 8 * (xb.rep.len + xb.rep.scale + xm.rep.len + xm.rep.scale + k + 1) +
     (xe.rep.len + xe.rep.scale) < 2 ^ 24
   refs : ∀ y ∈ L, y.rep.refs + 4 < 2 ^ 31
+  rb : 1 ≤ xb.rep.refs
+  re : 1 ≤ xe.rep.refs
+  ro : 1 ≤ o.rep.refs
   zero : KZero M z (2 ^ 30 + 4)
   one : ldv .ld M oneAddr = BitVec.ofNat 64 o.rep.p
   oneNum : o.rep.num = Num.one

@@ -2,6 +2,7 @@ import Dc.Refinement
 import Dc.BcModel.Add
 import Dc.BcModel.Karatsuba
 import Dc.BcModel.Raise
+import Dc.BcModel.RaiseMod
 import Dc.BcModel.Out
 import Dc.BcModel.Steps
 import Dc.BcModel.DivLoop

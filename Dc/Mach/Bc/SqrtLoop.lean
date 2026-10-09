@@ -459,4 +459,233 @@ theorem sq_div {live : Nat → Prop} {S : Nat → Prop}
       r18 := by rw [hk1.get 18 (by decide)]; bsimp [st.r18]
       r27 := by rw [hk1.get 27 (by decide)]; bsimp [st.r27] }
 
+/-- Through a callee on `guess`'s word: its new number `y'` in the word. -/
+theorem SqM.next {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H H' : Heap} {F F' : List Blk} {Lb : List NumObj} {x zb p5 : NumObj} {k rs cs : Nat}
+    {D G : RH} {y y' : NumObj} {g n : Num} (cx : SqCtx S R0 sp W q)
+    (st : SqM S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G y g) (hk : Keeps raCallClob R' R)
+    (hb : BcHeap S M' H' F' (RList [.own p5, D, .own y', G] Lb))
+    (hown : RHOwn [.own p5, D, .own y', G] Lb) (hres : MulRes M' (sp - 160 + 24) n y')
+    (hout : ∀ a, OutHeap a → ¬ slotBytes (sp - 160 + 24) a → ¬ frameIn (sp - 160) (W - 160) a →
+      imgM M' a = imgM M a) :
+    SqM S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs D G y' g :=
+  { st with
+    f := st.f.call cx (o := 24) (by omega) (by omega) hk hout
+    heap := hb
+    own := hown
+    oky := ⟨hres.refs, hres.owns⟩
+    ny := hres.norm
+    ly := hres.pos
+    w24 := hres.slot
+    w40 := by rw [sq_word2 cx (o' := 24) (by omega) (by omega) hout]; exact st.w40
+    r8 := by rw [hk.get 8 (by decide)]; exact st.r8
+    r18 := by rw [hk.get 18 (by decide)]; exact st.r18
+    r27 := by rw [hk.get 27 (by decide)]; exact st.r27 }
+
+/-- **`bc_add (guess, guess1, &guess, 0)`** from `0x80006bc0`. -/
+theorem sq_add {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb o p5 : NumObj} {k rs cs : Nat}
+    {D G : RH} {y : NumObj} {g : Num}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) (hoom : RaOom live S Q Mt0 sp W q)
+    (st : SqM S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G y g)
+    (hsy : y.rep.len + y.rep.scale ≤ sqB x k) (hsg : G.base.rep.len + G.base.rep.scale ≤ sqB x k)
+    (hnext : ∀ R' M' H' F' y', y'.rep.num = Num.add y.rep.num g 0 →
+      SqM S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs D G y' g →
+      DW live S Q 0x80006bd4#64 R' M') :
+    DW live S Q 0x80006bc0#64 R M := by
+  have cx := env.cx
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have ra := st.f.sa
+  have h2 := ra.r2
+  have objG : RH.obj [.own p5, D, .own y, G] G ∈ RList [.own p5, D, .own y, G] Lb :=
+    RH.obj_mem (by simp) st.okG
+  have objy : y ∈ RList [.own p5, D, .own y, G] Lb :=
+    RH.obj_mem (h := .own y) (by simp) st.oky
+  have hlen := RH.obj_len [.own p5, D, .own y, G] G
+  have hscl := RH.obj_scale [.own p5, D, .own y, G] G
+  have hbs := env.bsmall
+  have hly := st.ly; have hlG := st.lG
+  bc_run hlive hS [h2, st.r8, st.f.r9, st.w24] at 0x80005634
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine sq_addH hlive (hs1 := [.own p5, D]) (h := .own y) (hs2 := [G]) (o := 24) (k := 0)
+    (u1 := y) (u2 := RH.obj [.own p5, D, .own y, G] G) cx hoom (by omega) (by decide)
+    (fun a ha _ hf => ra.out a ha hf) hb st.own st.oky
+    { m1 := objy, m2 := objG, n1 := st.ny, n2 := (RH.obj_norm _ _).mpr st.nG
+      size := by rw [hlen, hscl]; omega
+      e1 := fun h => absurd h (by omega)
+      e2 := fun h => absurd h (by omega) }
+    hly (by rw [hlen]; exact hlG) st.w24 (by bsimp [h2]) (by bsimp []; try decide)
+    (by bsimp [st.w24]) (by bsimp [st.r8, RH.obj_p]) (by bsimp [st.f.r9]) (by bsimp []) ?_
+  intro R1 M1 H1 F1 y' hk1 hb1 hown1 hres hout1
+  bsimp []
+  refine hnext R1 M1 H1 F1 y' (by rw [hres.num, RH.obj_num, st.vG])
+    (st.next cx ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps raCallClob _ _))
+      hb1 hown1 hres hout1)
+
+/-- **`bc_multiply (guess, point5, &guess, cscale)`** from `0x80006bd4`. -/
+theorem sq_mul {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb o p5 : NumObj} {k rs cs : Nat}
+    {D G : RH} {y : NumObj} {g : Num}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) (hoom : RaOom live S Q Mt0 sp W q)
+    (st : SqM S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G y g)
+    (hsy : y.rep.len + y.rep.scale ≤ sqB x k)
+    (hnext : ∀ R' M' H' F' y', y'.rep.num = Num.mul y.rep.num Num.half cs →
+      SqM S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs D G y' g →
+      DW live S Q 0x80006be8#64 R' M') :
+    DW live S Q 0x80006bd4#64 R M := by
+  have cx := env.cx
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have ra := st.f.sa
+  have h2 := ra.r2
+  have hcs := env.cst.transport cx ra.out
+  have objy : y ∈ RList [.own p5, D, .own y, G] Lb :=
+    RH.obj_mem (h := .own y) (by simp) st.oky
+  have objp : p5 ∈ RList [.own p5, D, .own y, G] Lb :=
+    RH.obj_mem (h := .own p5) (by simp) env.p5ok
+  have hbs := env.bsmall
+  have hly := st.ly; have hcl := st.model.le
+  have hp5l := env.p5len; have hp5s := env.p5scale
+  bc_run hlive hS [h2, st.r27, st.f.r9, st.f.r20, st.w24] at 0x8000573c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine sq_mulH hlive (hs1 := [.own p5, D]) (h := .own y) (hs2 := [G]) (o := 24) (k := cs)
+    (u1 := y) (u2 := p5) (z := rBump [.own p5, D, .own y, G] zb) cx hoom (by omega) (by decide)
+    (fun a ha _ hf => ra.out a ha hf) hb st.own st.oky
+    { m1 := objy, m2 := objp, mz := RList.mem_caller _ env.mz
+      p1 := by omega
+      p2 := by omega
+      size := by omega
+      scale := by omega
+      zero := KZero.rBump _ (by simp) (hcs.zero.mono (by omega))
+      mulBase := hcs.mulBase }
+    st.w24 (by bsimp [h2]) (by bsimp []; try decide)
+    (by bsimp [st.w24]) (by bsimp [st.f.r20]) (by bsimp [st.f.r9]) (by bsimp [st.r27]) ?_
+  intro R1 M1 H1 F1 y' hk1 hb1 hown1 hres hout1
+  bsimp []
+  refine hnext R1 M1 H1 F1 y' (by rw [hres.num, env.p5num])
+    (st.next cx ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps raCallClob _ _))
+      hb1 hown1 hres hout1)
+
+/-- Through register changes off the state's. -/
+theorem SqM.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb p5 : NumObj} {k rs cs : Nat}
+    {D G : RH} {y : NumObj} {g : Num}
+    (h : SqM S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G y g) {ks : List Nat}
+    (hk : Keeps ks R' R)
+    (hks : ∀ z ∈ ks, z ∈ [1, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 25, 26, 28, 29, 30, 31] :=
+      by decide) :
+    SqM S Mt0 M R0 R' sp W q H F Lb x zb p5 k rs cs D G y g :=
+  { h with
+    f := h.f.regs hk fun z hz => by
+      have := hks z hz
+      simp only [sqFree, List.mem_cons, List.not_mem_nil, or_false] at this ⊢; omega
+    r8 := by rw [hk.get 8 fun hm => by have := hks 8 hm; simp at this]; exact h.r8
+    r18 := by rw [hk.get 18 fun hm => by have := hks 18 hm; simp at this]; exact h.r18
+    r27 := by rw [hk.get 27 fun hm => by have := hks 27 hm; simp at this]; exact h.r27 }
+
+/-- The state at the scan's exits: the handles `[point5, d, y, guess1]`, the
+difference `d` in `diff`'s word and `s10`, the new guess `y` in `guess`'s
+word and `s9`. -/
+structure SqN (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+    (H : Heap) (F : List Blk) (Lb : List NumObj) (x zb p5 : NumObj) (k rs cs : Nat)
+    (G : RH) (d y : NumObj) (g : Num) : Prop
+    extends SqM S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs (.own d) G y g where
+  r25 : R 25 = BitVec.ofNat 64 y.rep.p
+  r26 : R 26 = BitVec.ofNat 64 d.rep.p
+
+/-- **`bc_sub (guess, guess1, &diff, cscale + 1)` and the near-zero test**
+from `0x80006be8`. -/
+theorem sq_sub {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {Lb : List NumObj} {x zb o p5 : NumObj} {k rs cs : Nat}
+    {D G : RH} {y : NumObj} {g : Num}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) (hoom : RaOom live S Q Mt0 sp W q)
+    (st : SqM S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G y g)
+    (hsy : y.rep.len + y.rep.scale ≤ sqB x k) (hsg : G.base.rep.len + G.base.rep.scale ≤ sqB x k)
+    (hnear : ∀ R' M' H' F' d, d.rep.num = Num.sub y.rep.num g (cs + 1) →
+      SqN S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs G d y g →
+      d.rep.num.isNearZero cs = true → DW live S Q 0x80006d44#64 R' M')
+    (hfar : ∀ R' M' H' F' d, d.rep.num = Num.sub y.rep.num g (cs + 1) →
+      SqN S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs G d y g →
+      d.rep.num.isNearZero cs = false → DW live S Q 0x80006c44#64 R' M') :
+    DW live S Q 0x80006be8#64 R M := by
+  have cx := env.cx
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have ra := st.f.sa
+  have h2 := ra.r2
+  have objG : RH.obj [.own p5, D, .own y, G] G ∈ RList [.own p5, D, .own y, G] Lb :=
+    RH.obj_mem (by simp) st.okG
+  have objy : y ∈ RList [.own p5, D, .own y, G] Lb :=
+    RH.obj_mem (h := .own y) (by simp) st.oky
+  have hlen := RH.obj_len [.own p5, D, .own y, G] G
+  have hscl := RH.obj_scale [.own p5, D, .own y, G] G
+  have hbs := env.bsmall
+  have hly := st.ly; have hlG := st.lG; have hcl := st.model.le
+  bc_run hlive hS [h2, st.r8, st.r18, st.w24] at 0x80004ac4
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine sq_subH hlive (hs1 := [.own p5]) (h := D) (hs2 := [.own y, G]) (o := 40) (k := cs + 1)
+    (u1 := y) (u2 := RH.obj [.own p5, D, .own y, G] G) cx hoom (by omega) (by decide)
+    (fun a ha _ hf => ra.out a ha hf) hb st.own st.okD
+    { m1 := objy, m2 := objG, n1 := st.ny, n2 := (RH.obj_norm _ _).mpr st.nG
+      size := by rw [hlen, hscl]; omega
+      e1 := fun h => absurd h (by omega)
+      e2 := fun h => absurd h (by omega) }
+    hly (by rw [hlen]; exact hlG) st.w40 (by bsimp [h2]) (by bsimp []; try decide)
+    (by bsimp [st.w24]) (by bsimp [st.r8, RH.obj_p]) (by bsimp [h2]) (by bsimp [st.r18]) ?_
+  intro R1 M1 H1 F1 d hk1 hb1 hown1 hres hout1
+  bsimp []
+  have hk1' : Keeps raCallClob R1 (upd R 25 (BitVec.ofNat 64 y.rep.p)) :=
+    (hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps raCallClob _ _)
+  have m1 : SqM S Mt0 M1 R0 R1 sp W q H1 F1 Lb x zb p5 k rs cs (.own d) G y g :=
+    { st with
+      f := (st.f.regs (by keeps_tac Keeps.refl _ _ :
+          Keeps [25] (upd R 25 (BitVec.ofNat 64 y.rep.p)) R)).call cx (o := 40) (by omega) (by omega)
+        hk1' hout1
+      heap := hb1
+      own := hown1
+      okD := ⟨hres.refs, hres.owns⟩
+      w24 := by rw [sq_word2 cx (o' := 40) (by omega) (by omega) hout1]; exact st.w24
+      w40 := hres.slot
+      r8 := by rw [hk1'.get 8 (by decide)]; bsimp [st.r8]
+      r18 := by rw [hk1'.get 18 (by decide)]; bsimp [st.r18]
+      r27 := by rw [hk1'.get 27 (by decide)]; bsimp [st.r27] }
+  have h2' : R1 2 = BitVec.ofNat 64 (sp - 160) := m1.f.sa.r2
+  have h25 : R1 25 = BitVec.ofNat 64 y.rep.p := by rw [hk1'.get 25 (by decide)]; bsimp []
+  have objd : d ∈ RList [.own p5, .own d, .own y, G] Lb :=
+    RH.obj_mem (h := .own d) (by simp) ⟨hres.refs, hres.owns⟩
+  have hdn := hb1.nums _ objd
+  have hdl := hres.pos
+  have hS1 : HeapOwn S := fun a h1 h2 => hb1.heap.own a h1 h2
+  have hv : d.rep.num = Num.sub y.rep.num g (cs + 1) := by
+    rw [hres.num, RH.obj_num, st.vG]
+  bc_run hlive hS1 [h2', hres.slot] at 0x80006c04
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine sq_scan hlive hS1 hdn hdl (s := cs) (by omega) _ (by bsimp []) (by bsimp [m1.r27])
+    (by bsimp [m1.f.r21]) (fun R' hk hn => ?_) (fun R' hk hn => ?_)
+  · have hk' : Keeps [13, 14, 15, 26] R' R1 :=
+      (hk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
+    exact hnear R' M1 H1 F1 d hv
+      { toSqM := m1.regs hk'
+        r25 := by rw [hk'.get 25 (by decide)]; exact h25
+        r26 := by rw [hk.get 26 (by decide)]; bsimp [] } hn
+  · have hk' : Keeps [13, 14, 15, 26] R' R1 :=
+      (hk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
+    exact hfar R' M1 H1 F1 d hv
+      { toSqM := m1.regs hk'
+        r25 := by rw [hk'.get 25 (by decide)]; exact h25
+        r26 := by rw [hk.get 26 (by decide)]; bsimp [] } hn
+
 end Dc.Mach

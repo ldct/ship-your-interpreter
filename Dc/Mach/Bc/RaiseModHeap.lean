@@ -204,7 +204,8 @@ theorem BcHeap.perm {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List
   exact ⟨hb.heap, hb.dead, hb.deadLive, fun x hx => hb.nums x (hp.mem_iff.mpr hx),
     fun x hx => hb.blocks x (hp.mem_iff.mpr hx),
     (List.Perm.append_left F (hp.flatMap_right NumObj.blocks)).nodup_iff.mp hb.distinct, hv,
-    hb.globOwn⟩
+    hb.globOwn, hb.raw.relist fun c hc =>
+      (List.Perm.append_left F (hp.flatMap_right NumObj.blocks)).mem_iff.mpr hc⟩
 
 /-- Objects after `x` in the heap have other struct pointers. -/
 theorem BcHeap.p_ne_mid {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk}

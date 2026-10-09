@@ -64,7 +64,7 @@ theorem NewNumPost.raw {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H H' : Heap
     {L : List NumObj} (h : BcHeap S X Mt H F L)
     (p : NewNumPost S Mt Mt' H H' F F' fr len scale x) {b : Blk} (hb : b ∈ H.live)
     (hno : b ∉ F ++ objBlocks L ++ X.bs) :
-    b ∈ H'.live ∧ b ∉ F' ++ objBlocks (x :: L) ∧ ∀ a, b.In a → imgM Mt' a = imgM Mt a := by
+    b ∈ H'.live ∧ b ∉ F' ++ objBlocks (x :: L) ++ X.bs ∧ ∀ a, b.In a → imgM Mt' a = imgM Mt a := by
   have hnd := p.inv.live_nodup
   have hsb : b ≠ x.sb ∧ b ≠ x.db ∧ ∀ c, c ∈ F' → c ∈ F := by
     cases p.src with
@@ -80,14 +80,17 @@ theorem NewNumPost.raw {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H H' : Heap
         fun c hc => by rw [hf'] at hc; simp at hc⟩
   obtain ⟨h1, h2, h3⟩ := hsb
   refine ⟨p.src.live_mono hb, fun hm => ?_, fun a ha => p.live b hb h1 a ha⟩
+  rcases List.mem_append.mp hm with hm | hx
+  rotate_left
+  · exact hno (List.mem_append_right _ hx)
   rcases List.mem_append.mp hm with hf | ho
-  · exact hno (List.mem_append_left _ (h3 _ hf))
+  · exact hno (List.mem_append_left _ (List.mem_append_left _ (h3 _ hf)))
   · rw [objBlocks_cons, NumObj.blocks_own p.owns] at ho
     simp only [List.cons_append, List.mem_cons, List.nil_append] at ho
     rcases ho with e | e | e
     · exact h1 e
     · exact h2 e
-    · exact hno (List.mem_append_right _ e)
+    · exact hno (List.mem_append_left _ (List.mem_append_right _ e))
 
 /-- The registers `dvs_alloc` may change. -/
 abbrev allocClob : List Nat := [1, 10, 11, 12, 13, 14, 15, 16, 21]
@@ -112,8 +115,8 @@ structure DvNew (S : Nat → Prop) (X : Raws) (M M' : Mem) (sp : Nat) (D : DvDat
   owns : y.Owns
   b1l : D.b1 ∈ H'.live
   b2l : D.b2 ∈ H'.live
-  b1n : D.b1 ∉ F' ++ objBlocks (y :: Lh)
-  b2n : D.b2 ∉ F' ++ objBlocks (y :: Lh)
+  b1n : D.b1 ∉ F' ++ objBlocks (y :: Lh) ++ X.bs
+  b2n : D.b2 ∉ F' ++ objBlocks (y :: Lh) ++ X.bs
   keep : ∀ a, D.b1.In a ∨ D.b2.In a → imgM M' a = imgM M a
   out : ∀ a, OutHeap a → ¬ frameIn (sp - 208) 32 a → imgM M' a = imgM M a
 
@@ -145,8 +148,8 @@ theorem DvBufs.newNum {S : Nat → Prop} {X : Raws} {Mt0 M M1 M2 : Mem} {R0 : Na
   · exact .inl h
   refine .inr (Nat.le_of_not_lt fun h' => ?_)
   rcases ha with ha | ha
-  · exact live_apart hb1.heap r1l hyb.dLive (fun e => r1n (e ▸ hydm)) ha (hdb a h h')
-  · exact live_apart hb1.heap r2l hyb.dLive (fun e => r2n (e ▸ hydm)) ha (hdb a h h')
+  · exact live_apart hb1.heap r1l hyb.dLive (fun e => r1n (e ▸ List.mem_append_left _ hydm)) ha (hdb a h h')
+  · exact live_apart hb1.heap r2l hyb.dLive (fun e => r2n (e ▸ List.mem_append_left _ hydm)) ha (hdb a h h')
 
 /-- A byte at or above the heap's end is off the heap. -/
 theorem outHeap_of_ge {a : Nat} (h : heapEnd ≤ a) : OutHeap a := by

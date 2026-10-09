@@ -53,6 +53,7 @@ structure SqCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp W q : Nat) : Pro
   al : (R0 1).toNat % 4 = 0
   slot : DmSlot S sp W q
   slotZero : q + 8 ≤ zeroAddr ∨ zeroAddr + 8 ≤ q
+  slotOne : q + 8 ≤ oneAddr ∨ oneAddr + 8 ≤ q
 
 /-- The facts of `SqCtx` the steps use, as `omega` sees them. -/
 macro "sq_facts " cx:term : tactic =>
@@ -62,7 +63,8 @@ macro "sq_facts " cx:term : tactic =>
 
 /-- The operand `x` of the caller's heap `L` in the slot `q`, `_zero_` (`z`)
 and `_one_` (`o`) in `L` at their globals, sizes small enough for the
-callees, room for four more references to each number, the stderr stream. -/
+callees, room for sixteen more references to each number, the stderr stream;
+`x` at `_zero_` or `_one_` holds a second reference (the global's). -/
 structure SqArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (x z o : NumObj) (q k : Nat) :
     Prop where
   mx : x ∈ L
@@ -73,8 +75,8 @@ structure SqArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (x z o : NumObj)
   mz : z ∈ L
   mo : o ∈ L
   size : x.rep.len + x.rep.scale + k < 2 ^ 20
-  refs : ∀ y ∈ L, y.rep.refs + 4 < 2 ^ 31
-  zero : KZero M z (2 ^ 30 + 4)
+  refs : ∀ y ∈ L, y.rep.refs + 16 < 2 ^ 31
+  zero : KZero M z (2 ^ 30 + 8)
   one : ldv .ld M oneAddr = BitVec.ofNat 64 o.rep.p
   oneNum : o.rep.num = Num.one
   oneNorm : o.rep.Norm
@@ -82,6 +84,8 @@ structure SqArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (x z o : NumObj)
   mulBase : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80
   owns : ∀ y ∈ L, y.Owns
   fd : FdAt S M stderrAddr 2
+  zeroRef : x.rep.p = z.rep.p → 2 ≤ x.rep.refs
+  oneRef : x.rep.p = o.rep.p → 2 ≤ x.rep.refs
 
 /-- What `dc` takes `v` of `x` at scale `k` to: nothing for a negative `x`
 (`bc_sqrt` returns `0`), `0`, `1`, or the Newton iteration's result. -/

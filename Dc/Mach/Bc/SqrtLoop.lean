@@ -100,8 +100,6 @@ structure SqEnv (S : Nat → Prop) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q 
   oneSize : o.rep.len + o.rep.scale ≤ 2
   xo : x.rep.p ≠ o.rep.p
   xz : x.rep.p ≠ zb.rep.p
-  /-- the slot apart from `_one_`'s global -/
-  qone : q + 8 ≤ oneAddr ∨ oneAddr + 8 ≤ q
 
 /-! ## The frame of the loop -/
 

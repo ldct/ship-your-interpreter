@@ -290,7 +290,7 @@ theorem sq_exit {live : Nat → Prop} {S : Nat → Prop}
   have hM1 : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn (sp - 160) 32 a → ¬ frameIn sp W a →
       imgM M1 a = imgM Mt0 a := fun a h1 h3 h4 h5 => (ho1 a h1 h3 h4).trans (ra.out a h1 h5)
   have hone : ldv .ld M1 oneAddr = BitVec.ofNat 64 o.rep.p := by
-    have hq1 := env.qone
+    have hq1 := env.cx.slotOne
     rw [ldv_congr .ld fun j hj => hM1 _ (by simp only [OutHeap, heapStart, heapEnd, freeListAddr,
       bcFreeAddr, widthOfM, oneAddr] at hj ⊢; omega) (by simp only [slotBytes, widthOfM] at hj ⊢; omega)
       (by simp only [frameIn, widthOfM, oneAddr] at hj ⊢; omega)

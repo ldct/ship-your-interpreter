@@ -5,6 +5,7 @@ import Dc.BcModel.Raise
 import Dc.BcModel.Out
 import Dc.BcModel.Steps
 import Dc.BcModel.DivLoop
+import Dc.BcModel.DivStep
 import Dc.Mach.DecodeTable
 import Dc.Mach.Tac
 import Dc.Mach.Strlen

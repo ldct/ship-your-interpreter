@@ -527,4 +527,86 @@ theorem sq_setRefs {live : Nat → Prop} {S : Nat → Prop}
       hMc a ha' (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
     exact sa.out a ha' hf
 
+/-- The five stores of `s5`, `s6`, `s7`, `s9`, `s11` at `0x80006ed8`. -/
+abbrev sq5 (M : Mem) (sp : Nat) (R : Nat → BitVec 64) : Mem :=
+  writeLog (writeLog (writeLog (writeLog (writeLog M [(sp - 160 + 104, 8, R 21)])
+    [(sp - 160 + 96, 8, R 22)]) [(sp - 160 + 88, 8, R 23)]) [(sp - 160 + 72, 8, R 25)])
+    [(sp - 160 + 56, 8, R 27)]
+
+theorem sq5_frame (M : Mem) {sp : Nat} (R : Nat → BitVec 64) {a : Nat}
+    (ha : a < sp - 160 + 56 ∨ sp - 160 + 112 ≤ a) : imgM (sq5 M sp R) a = imgM M a := by
+  simp only [sq5]
+  repeat rw [imgM_store_miss _ _ (by omega)]
+
+/-- After the five stores: the frame with all thirteen saved registers. -/
+theorem SqE.saveAt {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {x z : NumObj} {k : Nat}
+    (st : SqE S Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q)
+    (hk : Keeps sqAll R' R0) (h2 : R' 2 = BitVec.ofNat 64 (sp - 160)) :
+    SqAt S Mt0 (sq5 M sp R) R0 R' sp W sqSlots1 := by
+  sq_facts cx
+  have e : sq5 M sp R = sq5 M sp R0 := by
+    simp only [sq5, st.cs 21 (by decide), st.cs 22 (by decide), st.cs 23 (by decide),
+      st.cs 25 (by decide), st.cs 27 (by decide)]
+  exact
+    { r2 := h2
+      saved := by
+        rw [e]
+        exact ((((st.sa.saved.store 21 104).store 22 96).store 23 88).store 25 72).store 27 56
+      keep := hk
+      out := fun a ha hf => by
+        rw [sq5_frame M R (by simp only [frameIn] at hf; omega)]
+        exact st.sa.out a ha hf }
+
+theorem SqE.saveHeap {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {x z : NumObj} {k : Nat}
+    (st : SqE S Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q) :
+    BcHeap S (sq5 M sp R) H F L := by
+  sq_facts cx
+  exact st.heap.out_frame (P := fun a => sp - 160 + 56 ≤ a ∧ a < sp - 160 + 112)
+    (fun a ha => sq5_frame M R (by omega)) fun a h => outHeap_of_ge (by simp only [heapEnd]; omega)
+
+/-- **The setup** from `0x80006ed8` (`x` neither `0` nor `1`): `s5`-`s11`
+saved, `rscale = max (scale, x.scale)`, then `sq_setRefs`. -/
+theorem sq_setup {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {r : Num}
+    (g : SqSet live S Q t Mt0 R0 sp W q k L x z o r) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr)
+    (h8 : R 8 = ordWord (Num.cmp x.rep.num Num.one)) :
+    DW live S (DQ live S Q t) 0x80006ed8#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have h2 := st.sa.r2
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hap := hsl.apart
+  have hql := hq.lo; have hqh := hq.hi
+  have hxn := hb.nums x ha.mx
+  num_facts hxn
+  have hsz := ha.size
+  have hsk := sxw_ofNat (k := k) (by omega)
+  have wq : ldv .ld M q = BitVec.ofNat 64 x.rep.p := by
+    rw [ldv_congr .ld fun j hj => st.sa.out _ (hsl.out _ (by simp only [widthOfM] at hj; omega))
+      (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+    exact ha.wx
+  bc_run hlive hS [h2, st.r9, st.r20, hxn.scale, sxw_ofNat, toInt_ofNat_small] at 0x80006efc
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals intro hks
+  all_goals try (bc_run hlive hS [st.r20, hsk] at 0x80006efc)
+  all_goals
+    refine sq_setRefs hlive g (st.saveAt cx (by keeps_tac st.sa.keep) (by bsimp [h2]))
+      (st.saveHeap cx) (by bsimp [h8]) (by bsimp [st.r19]) (by bsimp [st.r20]; congr 1; omega)
+      (by bsimp [st.r26]) ?_ ?_
+    all_goals
+      try simp only [sq5]
+      repeat rw [ldv_ld_miss _ _ (by omega)]
+      first | exact wq | exact w8
+
 end Dc.Mach

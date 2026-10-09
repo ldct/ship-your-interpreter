@@ -142,23 +142,28 @@ theorem dvOneDs_digits {ds : List Nat} (hd : Digits ds) (c t : Nat) : Digits (dv
   · exact hd e (List.mem_of_mem_take h)
   · rw [(List.mem_replicate.mp h).2]; omega
 
-/-- The divide-by-one detour's fixed facts: `n2 = 1` (scale zero), the
-operands and `_zero_` in the heap, none of them the slot's number when that
-has one reference, `_zero_`'s word. -/
-structure DvOne (Mt0 : Mem) (L1 L2 : List NumObj) (xr x1 x2 z : NumObj) (n : Option Num)
+/-- `bc_divide`'s operands: the dividend `x1` (a positive integer length),
+the divisor `x2` and `_zero_` (`z`, its word at `zeroAddr`) in the heap, none
+of them the slot's number when that has one reference, and the quotient `n`
+the model's. -/
+structure DivArgs (Mt0 : Mem) (L1 L2 : List NumObj) (xr x1 x2 z : NumObj) (n : Option Num)
     (k : Nat) : Prop where
   div : n = Num.div x1.rep.num x2.rep.num k
   m1 : x1 ∈ L1 ++ xr :: L2
   m2 : x2 ∈ L1 ++ xr :: L2
   mz : z ∈ L1 ++ xr :: L2
   apart : xr.rep.refs = 1 → x1 ≠ xr ∧ x2 ≠ xr ∧ z ≠ xr
-  len2 : x2.rep.len = 1
-  scale2 : x2.rep.scale = 0
-  dig2 : x2.rep.ds.getD 0 0 = 1
   size : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27
   zero : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p
   /-- `bc_new_num` takes a positive integer length -/
   len1 : 1 ≤ x1.rep.len
+
+/-- The divide-by-one detour's facts: `n2 = 1` (scale zero). -/
+structure DvOne (Mt0 : Mem) (L1 L2 : List NumObj) (xr x1 x2 z : NumObj) (n : Option Num)
+    (k : Nat) : Prop extends DivArgs Mt0 L1 L2 xr x1 x2 z n k where
+  len2 : x2.rep.len = 1
+  scale2 : x2.rep.scale = 0
+  dig2 : x2.rep.ds.getD 0 0 = 1
 
 /-- **Back into the general path** at `0x80005954`: the detour's quotient
 `y` in the slot, the operands found again in what freeing the old number

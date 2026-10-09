@@ -139,4 +139,51 @@ theorem dvalBE_drop_zeros {ds : List Nat} {z : Nat} (hz : ∀ i, i < z → ds.ge
   calc dvalBE ds = dvalBE (ds.take z ++ ds.drop z) := by rw [List.take_append_drop]
     _ = _ := by rw [hdr, dvalBE_zeros_append]
 
+/-- **The dividend buffer's prefix**: `0`, `ds` (`l + sa` digits), the zero
+padding; its first `l + s2 + k + 1` digits are `A · 10^(s2+k) / 10^sa`. -/
+theorem dvx_take_val {ds : List Nat} (hd : IsDigits ds) {l sa s2 k : Nat} (hl : ds.length = l + sa) :
+    dvalBE ((0 :: ds ++ List.replicate (k + s2 - sa + 1) 0).take (l + s2 + k + 1)) =
+      dvalBE ds * 10 ^ (s2 + k) / 10 ^ sa := by
+  rw [List.cons_append, List.take_succ_cons, dvalBE_cons, Nat.zero_mul, Nat.zero_add,
+    dvalBE_take_padded hd (by rw [hl]; omega), hl,
+    show l + s2 + k = l + (s2 + k) by omega, Nat.pow_add 10 l (s2 + k), Nat.pow_add 10 l sa,
+    show dvalBE ds * (10 ^ l * 10 ^ (s2 + k)) = 10 ^ l * (dvalBE ds * 10 ^ (s2 + k)) by ac_rfl,
+    Nat.mul_div_mul_left _ _ (Nat.pow_pos (by decide : 0 < 10))]
+
+/-- **The divisor's digits**: `ds` (`ln + sb` digits) zero past `ln + s2` and
+before `z0` is `dvalBE vs0 · 10^(sb - s2)` with `vs0` the digits between. -/
+theorem dv2_val {ds : List Nat} {ln sb s2 z0 : Nat} (hl : ds.length = ln + sb) (hs : s2 ≤ sb)
+    (htz : ∀ j, s2 ≤ j → j < sb → ds.getD (ln + j) 0 = 0) (hz : ∀ i, i < z0 → ds.getD i 0 = 0)
+    (hz0 : z0 ≤ ln + s2) :
+    dvalBE ds = dvalBE ((ds.take (ln + s2)).drop z0) * 10 ^ (sb - s2) := by
+  rw [dvalBE_take_zeros (n := ln + s2) (by omega) fun i h1 h2 => by
+    rw [show i = ln + (i - ln) by omega]; exact htz _ (by omega) (by omega)]
+  rw [hl, show ln + sb - (ln + s2) = sb - s2 by omega]
+  congr 1
+  refine dvalBE_drop_zeros (fun i hi => ?_) (by rw [List.length_take]; omega)
+  rw [List.getD_eq_getElem?_getD, List.getElem?_take, if_pos (by omega), ← List.getD_eq_getElem?_getD]
+  exact hz i hi
+
+/-- A digit list with a nonzero first digit is at least `10^(length - 1)`. -/
+theorem dvalBE_ge_of_first {vs : List Nat} (hl : 1 ≤ vs.length) (h0 : 0 < vs.getD 0 0) :
+    10 ^ (vs.length - 1) ≤ dvalBE vs := by
+  obtain ⟨v1, rest, rfl⟩ : ∃ v1 rest, vs = v1 :: rest := by
+    cases vs with
+    | nil => simp at hl
+    | cons a l => exact ⟨a, l, rfl⟩
+  simp only [List.getD_cons_zero, List.length_cons, Nat.add_sub_cancel] at h0 ⊢
+  rw [dvalBE_cons]
+  have := Nat.le_mul_of_pos_left (10 ^ rest.length) h0
+  omega
+
+/-- **A short dividend**: `A < 10^(l + sa)` with `l + s2 + k < L` over a
+divisor of `L` digits at least `10^(L-1)` has quotient zero. -/
+theorem dv_short_zero {A V l sa s2 k L : Nat} (hA : A < 10 ^ (l + sa)) (hL : l + s2 + k < L)
+    (hV : 10 ^ (L - 1) ≤ V) : A * 10 ^ (s2 + k) / 10 ^ sa / V = 0 := by
+  apply Nat.div_eq_of_lt
+  refine Nat.lt_of_lt_of_le ?_ (Nat.le_trans (Nat.pow_le_pow_right (by decide) (by omega : l + s2 + k ≤ L - 1)) hV)
+  rw [Nat.div_lt_iff_lt_mul (Nat.pow_pos (by decide : 0 < 10)), ← Nat.pow_add,
+    show l + s2 + k + sa = (l + sa) + (s2 + k) by omega, Nat.pow_add 10 (l + sa) (s2 + k)]
+  exact Nat.mul_lt_mul_of_pos_right hA (Nat.pow_pos (n := s2 + k) (by decide : 0 < 10))
+
 end Dc.BcModel

@@ -487,6 +487,183 @@ theorem dvtrim {live : Nat → Prop} {S : Nat → Prop}
       (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp [h15]) (by bsimp []) (by bsimp [])
       fun i hi => by rw [show i = 0 by omega]; exact he
 
+
+/-! ## From the sign store to `bc_free_num (quot)` -/
+
+/-- Inside `bc_divide`'s tail: `sp` lowered by 208, the saved registers and
+the product buffer's pointer in the frame, the slot holding the old result,
+off the heap only the slot and the window changed, the raw buffers' pointers
+in `s2`/`s3`, the slot pointer in `s6`. -/
+structure DvtAt (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp q W : Nat)
+    (L1 : List NumObj) (xr : NumObj) (b1 b2 b3 : Blk) : Prop where
+  saved : SavedWords M (sp - 208) divSlots R0
+  s8 : ldv .ld M (sp - 208 + 8) = BitVec.ofNat 64 b3.pay
+  slot : ResSlot M L1 xr q
+  out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a
+  r2 : R 2 = BitVec.ofNat 64 (sp - 208)
+  r22 : R 22 = BitVec.ofNat 64 q
+  r18 : R 18 = BitVec.ofNat 64 b1.pay
+  r19 : R 19 = BitVec.ofNat 64 b2.pay
+  regs : Keeps divAll R R0
+
+/-- `DvtAt` through changes of the argument registers. -/
+theorem DvtAt.keeps {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp q W : Nat}
+    {L1 : List NumObj} {xr : NumObj} {b1 b2 b3 : Blk}
+    (st : DvtAt S Mt0 M R0 R sp q W L1 xr b1 b2 b3) (hk : Keeps [10, 11, 12, 13, 14, 15] R' R) :
+    DvtAt S Mt0 M R0 R' sp q W L1 xr b1 b2 b3 :=
+  { st with
+    r2 := by rw [hk.get 2]; exact st.r2
+    r22 := by rw [hk.get 22]; exact st.r22
+    r18 := by rw [hk.get 18]; exact st.r18
+    r19 := by rw [hk.get 19]; exact st.r19
+    regs := (hk.mono (by decide)).trans st.regs }
+
+/-- `DvtAt` through changes on the heap. -/
+theorem DvtAt.heap {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat}
+    {L1 : List NumObj} {xr : NumObj} {b1 b2 b3 : Blk} (cx : DivCtx S R0 sp q W)
+    (st : DvtAt S Mt0 M R0 R sp q W L1 xr b1 b2 b3)
+    (hmo : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M) :
+    DvtAt S Mt0 M' R0 R sp q W L1 xr b1 b2 b3 := by
+  have hab := cx.above; have hW := cx.big
+  have hst : ∀ a, sp - 208 ≤ a → imgM M' a = imgM M a := fun a h => hmo a fun h' => by
+    simp only [heapStart, heapEnd] at h' hab; omega
+  have hq : ∀ a, slotBytes q a → imgM M' a = imgM M a := fun a h => hmo a (cx.slotOut a h).1
+  refine ⟨st.saved.transport (lo := 104) (top := 208) (hag := fun a h1 _ => hst a (by omega)),
+    ?_, ⟨st.slot.refs, ?_, st.slot.noView⟩, fun a ha h1 h2 => (hmo a ha.1).trans (st.out a ha h1 h2),
+    st.r2, st.r22, st.r18, st.r19, st.regs⟩
+  · rw [ldv_congr .ld fun j hj => hst _ (by omega)]; exact st.s8
+  · rw [ldv_congr .ld fun j hj => hq _ (by simp only [slotBytes, widthOfM] at hj ⊢; omega)]
+    exact st.slot.word
+
+/-- The raw buffers with the head relabelled on the same blocks. -/
+theorem DvRaw.head {H : Heap} {F : List Blk} {L : List NumObj} {y y' : NumObj} {b1 b2 b3 : Blk}
+    (h : DvRaw H F (y :: L) b1 b2 b3) (hx : y'.blocks = y.blocks) : DvRaw H F (y' :: L) b1 b2 b3 := by
+  have e : ∀ b, b ∉ F ++ objBlocks (y :: L) → b ∉ F ++ objBlocks (y' :: L) := fun b hb => by
+    simpa only [objBlocks_cons, hx] using hb
+  exact ⟨h.l1, h.l2, h.l3, e _ h.n1, e _ h.n2, e _ h.n3, h.d12, h.d13, h.d23⟩
+
+/-- After the trim, at `0x80005b14`: `j` leading zeros dropped. -/
+theorem dvt_trimmed {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W j : Nat} {L1 L2 : List NumObj}
+    {xr y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {m : Num} {b1 b2 b3 : Blk}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
+    (st : DvtAt S Mt0 M R0 R sp q W L1 xr b1 b2 b3)
+    (hb : BcHeap S M H F ({ y with rep := y.rep.drop j } :: (L1 ++ xr :: L2)))
+    (hj : lzCount (y.rep.len - 1) y.rep.ds = j) (hnum : y.rep.num = m)
+    (hdl : y.rep.ds.length = y.rep.len + y.rep.scale) (hpos : 1 ≤ y.rep.len)
+    (hrefs : y.rep.refs = 1) (hyo : y.Owns) (hraw : DvRaw H F (y :: (L1 ++ xr :: L2)) b1 b2 b3)
+    (h21 : R 21 = BitVec.ofNat 64 y.sb.pay) :
+    DW live S Q 0x80005b14#64 R M := by
+  obtain ⟨hn', hnorm, -, hpos'⟩ := NumRep.rmLeadingZeros_spec hdl hpos
+  have e : y.rep.rmLeadingZeros = y.rep.drop j := by rw [NumRep.rmLeadingZeros, hj]
+  rw [e] at hn' hnorm hpos'
+  exact dvt_freenum (y := { y with rep := y.rep.drop j }) hlive cx hk hn st.saved st.s8 hb st.slot
+    st.out (hn'.trans hnum) hnorm hpos' hrefs hyo (hraw.head rfl) st.r2 h21 st.r22 st.r18 st.r19
+    st.regs
+
+/-- The trim from `0x80005ae4`, then `bc_free_num (quot)`. -/
+theorem dvt_trim {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {m : Num} {b1 b2 b3 : Blk}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
+    (st : DvtAt S Mt0 M R0 R sp q W L1 xr b1 b2 b3)
+    (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2))) (hnum : y.rep.num = m)
+    (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
+    (hraw : DvRaw H F (y :: (L1 ++ xr :: L2)) b1 b2 b3)
+    (h21 : R 21 = BitVec.ofNat 64 y.sb.pay) (h15 : R 15 = BitVec.ofNat 64 y.rep.val) :
+    DW live S Q 0x80005ae4#64 R M := by
+  have hyp := (hb.blocks y List.mem_cons_self).sPay
+  have hdl := (hb.nums y List.mem_cons_self).shape.dsLen
+  have hb0 : BcHeap S M H F ([] ++ y :: (L1 ++ xr :: L2)) := hb
+  refine dvtrim hlive hb0 (by rw [h21, hyp]) h15 hpos fun R' M' j kk hb' hj hmo => ?_
+  have h21' : R' 21 = BitVec.ofNat 64 y.sb.pay := by rw [kk.get 21 (by decide)]; exact h21
+  exact dvt_trimmed hlive cx hk hn ((st.heap cx hmo).keeps (kk.mono (by decide))) hb' hj hnum hdl hpos
+    hrefs hyo hraw h21'
+
+
+/-- A zero quotient made positive at `0x80005b8c`, then the trim. -/
+theorem dvt_pos {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {m : Num} {b1 b2 b3 : Blk}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
+    (st : DvtAt S Mt0 M R0 R sp q W L1 xr b1 b2 b3)
+    (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (hnum : ({ y.rep with neg := false } : NumRep).num = m)
+    (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
+    (hraw : DvRaw H F (y :: (L1 ++ xr :: L2)) b1 b2 b3)
+    (h21 : R 21 = BitVec.ofNat 64 y.sb.pay) (h15 : R 15 = BitVec.ofNat 64 y.rep.val) :
+    DW live S Q 0x80005b8c#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hys := (hb.nums y List.mem_cons_self).shape
+  have yp1 := hys.pLo; have yp2 := hys.pHi; have yp3 := hys.pAl
+  have hyp := (hb.blocks y List.mem_cons_self).sPay
+  simp only [heapStart, heapEnd] at yp1 yp2
+  have hb' := BcHeap.setSign (L1 := []) hb (v := 0#64) false (by decide)
+  rw [hyp] at hb'
+  simp only [List.nil_append] at hb'
+  rw [hyp] at yp1 yp2 yp3
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h21] at 0x80005ae4
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  exact dvt_trim (y := { y with rep := { y.rep with neg := false } }) hlive cx hk hn
+    (st.heap cx fun a ha => imgM_store_miss _ _ (by simp only [heapStart, heapEnd] at ha; omega))
+    hb' hnum hpos hrefs hyo (hraw.head rfl) (by bsimp [h21]) (by bsimp [h15])
+
+/-- The inlined `bc_is_zero (qval)` scan at `0x80005ad4`: the first `i`
+digits zero, `k + 1` left, `a3` at digit `i`. All digits zero reach
+`0x80005b8c`; a nonzero digit `0x80005ae4`. -/
+theorem dvt_scan {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {o : NumRep} {Rb : Nat → BitVec 64} (hS : HeapOwn S) (hn : NumAt M o)
+    (hz : ∀ R', Keeps [12, 13, 14] R' Rb → (∀ j, j < o.len + o.scale → o.ds.getD j 0 = 0) →
+      DW live S Q 0x80005b8c#64 R' M)
+    (hnz : ∀ R', Keeps [12, 13, 14] R' Rb → dval o.ds ≠ 0 → DW live S Q 0x80005ae4#64 R' M) :
+    ∀ k i (R : Nat → BitVec 64), o.len + o.scale = i + k + 1 → (∀ j, j < i → o.ds.getD j 0 = 0) →
+      Keeps [12, 13, 14] R Rb → R 12 = BitVec.ofNat 64 (k + 1) →
+      R 13 = BitVec.ofNat 64 (o.val + i) → DW live S Q 0x80005ad4#64 R M := by
+  num_facts hn
+  have hdl := hn.shape.dsLen
+  have hnz' : ∀ i, i < o.len + o.scale → o.ds.getD i 0 ≠ 0 → dval o.ds ≠ 0 := fun i hi hne e =>
+    hne ((dval_eq_zero_iff _).1 e i (by omega))
+  intro k
+  induction k with
+  | zero =>
+    intro i R hi hz0 kk hc hp
+    have hl := hn.lbu (i := i) (by omega)
+    have hd := hn.getD_lt i
+    bc_run hlive hS [hc, hp, hl] at 0x80005ad0 0x80005ae4
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    · intro h0
+      bsimp [ofNat_eq_zero_iff (show o.ds.getD i 0 < 2 ^ 64 by omega)] at h0
+      bc_run hlive hS [hc, hp] at 0x80005b8c 0x80005ad4
+      exact hz _ (by keeps_tac kk) fun j hj => by
+        rcases Nat.lt_or_ge j i with h1 | h1
+        · exact hz0 j h1
+        · rw [show j = i by omega]; exact h0
+    · intro h0
+      bsimp [ofNat_eq_zero_iff (show o.ds.getD i 0 < 2 ^ 64 by omega)] at h0
+      exact hnz _ (by keeps_tac kk) (hnz' i (by omega) h0)
+  | succ k ih =>
+    intro i R hi hz0 kk hc hp
+    have hl := hn.lbu (i := i) (by omega)
+    have hd := hn.getD_lt i
+    bc_run hlive hS [hc, hp, hl] at 0x80005ad0 0x80005ae4
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    · intro h0
+      bsimp [ofNat_eq_zero_iff (show o.ds.getD i 0 < 2 ^ 64 by omega)] at h0
+      bc_run hlive hS [hc, hp] at 0x80005b8c 0x80005ad4
+      refine ih (i + 1) _ (by omega) (fun j hj => ?_) (by keeps_tac kk)
+        (by bsimp [show k + 1 + 1 - 1 = k + 1 by omega]) (by bsimp [Nat.add_assoc])
+      rcases Nat.lt_or_ge j i with h1 | h1
+      · exact hz0 j h1
+      · rw [show j = i by omega]; exact h0
+    · intro h0
+      bsimp [ofNat_eq_zero_iff (show o.ds.getD i 0 < 2 ^ 64 by omega)] at h0
+      exact hnz _ (by keeps_tac kk) (hnz' i (by omega) h0)
+
 end
 
 end Dc.Mach

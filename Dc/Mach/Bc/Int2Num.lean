@@ -391,6 +391,7 @@ structure I2NPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : L
   num : y.rep.num = Num.ofInt v
   norm : y.rep.Norm
   refs : y.rep.refs = 1
+  pos : 1 ≤ y.rep.len
   owns : y.Owns
   slot : ldv .ld Mt q = BitVec.ofNat 64 y.sb.pay
   out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 128 a → imgM Mt a = imgM Mt0 a
@@ -579,6 +580,9 @@ theorem i2n_fill {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
         · exact .inl (by simp only [withDs]; rw [e1, h]; try omega)
         · exact .inr h
       refs := by simp only [withDs]; rw [hy]; rfl
+      pos := by
+        have e1 : y.rep.len = (i2nBuf v.natAbs).length := by rw [hy]; rfl
+        simp only [withDs]; rw [e1]; exact hlen
       owns := hyo
       slot := by
         rw [ldv_congr .ld fun j hj => hout _ (hq _ (by simp only [widthOfM] at hj; omega))]

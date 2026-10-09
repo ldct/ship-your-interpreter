@@ -83,6 +83,65 @@ structure SameRep (y x : NumObj) : Prop where
 theorem SameRep.of_eq {y x : NumObj} {r : Nat} (h : y.rep = { x.rep with refs := r }) :
     SameRep y x := ⟨by rw [h]; rfl, by rw [h], by rw [h], by rw [h], by rw [h]⟩
 
+/-! ## Whole digit buffers rewritten -/
+
+/-- **Every digit byte rewritten**: memory changed only in the digit range,
+holding the digits `ds`. -/
+theorem NumAt.setDigits {Mt Mt' : Mem} {o : NumRep} (h : NumAt Mt o) {ds : List Nat}
+    (hl : ds.length = o.len + o.scale) (hd : Digits ds)
+    (hfr : MemOnly (fun a => o.val ≤ a ∧ a < o.val + o.len + o.scale) Mt' Mt)
+    (hb : ∀ i, i < o.len + o.scale → imgM Mt' (o.val + i) = BitVec.ofNat 8 (ds.getD i 0)) :
+    NumAt Mt' { o with ds := ds } := by
+  have hs := h.shape
+  have hsep := hs.sep
+  have hshape : NumShape { o with ds := ds } := { hs with dsLen := hl, dig := hd }
+  refine ⟨hshape, ?_, ?_, ?_, ?_, ?_, ?_, fun j hj => hb j hj⟩
+  all_goals dsimp only
+  · rw [ldv_congr .lw fun j hj => hfr _ fun hc => by simp only [widthOfM] at hj; obtain ⟨c1, c2⟩ := hc; omega]; exact h.sign
+  · rw [ldv_congr .lw fun j hj => hfr _ fun hc => by simp only [widthOfM] at hj; obtain ⟨c1, c2⟩ := hc; omega]; exact h.len
+  · rw [ldv_congr .lw fun j hj => hfr _ fun hc => by simp only [widthOfM] at hj; obtain ⟨c1, c2⟩ := hc; omega]; exact h.scale
+  · rw [ldv_congr .lw fun j hj => hfr _ fun hc => by simp only [widthOfM] at hj; obtain ⟨c1, c2⟩ := hc; omega]; exact h.refs
+  · rw [ldv_congr .ld fun j hj => hfr _ fun hc => by simp only [widthOfM] at hj; obtain ⟨c1, c2⟩ := hc; omega]; exact h.ptr
+  · rw [ldv_congr .ld fun j hj => hfr _ fun hc => by simp only [widthOfM] at hj; obtain ⟨c1, c2⟩ := hc; omega]; exact h.value
+
+/-- **The head object's digits rewritten** (it owns its buffer): the heap
+holds it with the digits `ds`. -/
+theorem BcHeap.setDigits {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (x :: L)) (ho : x.Owns) {ds : List Nat}
+    (hl : ds.length = x.rep.len + x.rep.scale) (hd : Digits ds)
+    (hfr : MemOnly (fun a => x.rep.val ≤ a ∧ a < x.rep.val + x.rep.len + x.rep.scale) Mt' Mt)
+    (hb : ∀ i, i < x.rep.len + x.rep.scale → imgM Mt' (x.rep.val + i) = BitVec.ofNat 8 (ds.getD i 0)) :
+    BcHeap S Mt' H F (withDs x ds :: L) := by
+  have hn := h.nums x List.mem_cons_self
+  have hxb := h.blocks x List.mem_cons_self
+  have hdf := hxb.dFit; have hdl := hxb.dLo
+  have hfin : x.db.fin = x.db.pay + x.db.sz := rfl
+  exact BcHeap.update (L1 := []) h rfl rfl rfl
+    ⟨hxb.sLive, hxb.dLive, hxb.sPay, hxb.sSz, hxb.dPay, hxb.dLo, hxb.dFit⟩
+    (hn.setDigits hl hd hfr hb) hfr
+    fun a ha => h.db_writeOK (L1 := []) ho (h.head_noView ho) (by obtain ⟨c1, c2⟩ := ha; exact ⟨by omega, by omega⟩)
+
+/-- The detour's quotient digits: `n1`'s first `c` digits, then zeros. -/
+abbrev dvOneDs (ds : List Nat) (c t : Nat) : List Nat := ds.take c ++ List.replicate (t - c) 0
+
+theorem dvOneDs_getD {ds : List Nat} {c t i : Nat} (hc : c ≤ ds.length) (hct : c ≤ t) :
+    (dvOneDs ds c t).getD i 0 = if i < c then ds.getD i 0 else 0 := by
+  simp only [dvOneDs, List.getD_eq_getElem?_getD]
+  by_cases h : i < c
+  · rw [if_pos h, List.getElem?_append_left (by simp; omega), List.getElem?_take_of_lt h]
+  · rw [if_neg h, List.getElem?_append_right (by simp; omega), List.getElem?_replicate]
+    split <;> rfl
+
+theorem dvOneDs_length {ds : List Nat} {c t : Nat} (hc : c ≤ ds.length) (hct : c ≤ t) :
+    (dvOneDs ds c t).length = t := by
+  simp only [dvOneDs, List.length_append, List.length_take, List.length_replicate]; omega
+
+theorem dvOneDs_digits {ds : List Nat} (hd : Digits ds) (c t : Nat) : Digits (dvOneDs ds c t) := by
+  intro e he
+  rcases List.mem_append.mp he with h | h
+  · exact hd e (List.mem_of_mem_take h)
+  · rw [(List.mem_replicate.mp h).2]; omega
+
 /-- The divide-by-one detour's fixed facts: `n2 = 1` (scale zero), the
 operands and `_zero_` in the heap, none of them the slot's number when that
 has one reference, `_zero_`'s word. -/
@@ -278,6 +337,85 @@ theorem dvone_free {live : Nat → Prop} {S : Nat → Prop}
       (by rw [hk1.get 9]; bsimp [h9]) (by rw [hk1.get 18]; bsimp [h18])
       (by rw [hk1.get 21]; bsimp [h21]) (by rw [hk1.get 22]; bsimp [h22])
       ((hk1.mono (by decide)).trans (by keeps_tac hkp))
+
+
+/-- **The detour's `memcpy`** from `0x80005ea0` (`a4 = min (scale1, k)`):
+`n1`'s first `len1 + a4` digits into the quotient, then `dvone_free`. -/
+theorem dvone_copy {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (one : DvOne Mt0 L1 L2 xr x1 x2 z n k)
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (hr : ResSlot M L1 xr q) (hyr : y.rep.refs = 1) (hyo : y.Owns)
+    (hyl : y.rep.len = x1.rep.len) (hys : y.rep.scale = k)
+    (hyz : y.rep.ds = List.replicate (x1.rep.len + k) 0)
+    (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h14 : R 14 = BitVec.ofNat 64 (min x1.rep.scale k))
+    (h18 : R 18 = BitVec.ofNat 64 y.sb.pay)
+    (h21 : R 21 = BitVec.ofNat 64 k) (h22 : R 22 = BitVec.ofNat 64 q) (hkp : Keeps divAll R R0) :
+    DW live S Q 0x80005ea0#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have hap := cx.slotApart
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hx1 := one.m1
+  have hsz := one.size
+  have hm1 : x1 ∈ y :: (L1 ++ xr :: L2) := List.mem_cons_of_mem _ hx1
+  have hn1 := hb.nums x1 hm1
+  num_facts hn1
+  have hyn := hb.nums y List.mem_cons_self
+  num_facts hyn
+  have hyp := (hb.blocks y List.mem_cons_self).sPay
+  have hval : ldv .ld M (y.sb.pay + 32) = BitVec.ofNat 64 y.rep.val := by rw [← hyp]; exact hyn.value
+  have yp1 := hyn.shape.pLo; have yp2 := hyn.shape.pHi; have yp3 := hyn.shape.pAl
+  rw [hyp] at yp1 yp2 yp3
+  simp only [heapStart, heapEnd] at yp1 yp2
+  have hdl1 := hn1.shape.dsLen
+  have ea := addw_ofNat (a := min x1.rep.scale k) (b := x1.rep.len) (by omega)
+  bc_run hlive hS [h8, h14, h18, hn1.len, hn1.value, hval, ea] at 0x8000086c
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  have hne : y ≠ x1 := fun e => hb.p_ne hx1 (by rw [e])
+  have hdb : y.db ≠ x1.db := hb.head_noView hyo x1 hx1 |>.symm
+  have hfa : ∀ a, y.rep.Foot a → x1.rep.Foot a → False := fun a ha hb' =>
+    hb.foot_disjoint List.mem_cons_self hm1 hne hdb ha hb'
+  have hca : CopyArgs S y.rep.val x1.rep.val (min x1.rep.scale k + x1.rep.len) :=
+    ⟨⟨fun i hi => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+        by omega⟩,
+      ⟨fun i hi => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+        by omega⟩,
+      range_apart fun a h1 h2 h3 h4 => hfa a (.inr ⟨h3, by omega⟩) (.inr ⟨h1, by omega⟩)⟩
+  refine memcpy_spec hlive hca _ (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
+    fun R3 M3 hk3 hf3 => ?_
+  bsimp []
+  have hdg := dvOneDs_digits (hn1.shape.dig : Digits x1.rep.ds) (x1.rep.len + min x1.rep.scale k)
+    (x1.rep.len + k)
+  have hm3 : MemOnly (fun a => y.rep.val ≤ a ∧ a < y.rep.val + y.rep.len + y.rep.scale) M3 M :=
+    fun a ha => hf3.rest a (by simp only [not_and, Nat.not_lt] at ha; omega)
+  have hb3 := hb.setDigits hyo (ds := dvOneDs x1.rep.ds (x1.rep.len + min x1.rep.scale k)
+      (x1.rep.len + k)) (by rw [dvOneDs_length (by omega) (by omega)]; omega) hdg hm3
+    fun i hi => by
+      rw [dvOneDs_getD (by omega) (by omega)]
+      by_cases h : i < x1.rep.len + min x1.rep.scale k
+      · rw [if_pos h, hf3.fill i (by omega)]
+        exact hn1.digit i (by omega)
+      · rw [if_neg h, hf3.rest _ (by omega), hyn.digit i hi, hyz, List.getD_eq_getElem?_getD, List.getElem?_replicate]
+        split <;> rfl
+  have hag : ∀ a, OutHeap a → imgM M3 a = imgM M a := fun a ha => hm3 a fun h =>
+    ha.1 ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega⟩
+  exact dvone_free hlive cx hk one
+    (sv.transport (lo := 104) (top := 208) (hag := fun a h1 h2' => hag a (cx.stack_out (by omega))))
+    hb3 ⟨hr.refs, by
+      rw [ldv_congr .ld fun j hj => hag _ (cx.slotOut _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩)]
+      exact hr.word, hr.noView⟩ hyr hyo (fun a ha hs hf => (hag a ha).trans (hout a ha hs hf))
+    (by rw [hk3.get 2]; bsimp [h2]) (by rw [hk3.get 8]; bsimp [h8]) (by rw [hk3.get 9]; bsimp [h9])
+    (by rw [hk3.get 18]; bsimp [h18]) (by rw [hk3.get 21]; bsimp [h21]) (by rw [hk3.get 22]; bsimp [h22])
+    ((hk3.mono (by decide)).trans (by keeps_tac hkp))
 
 end
 

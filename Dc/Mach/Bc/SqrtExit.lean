@@ -131,7 +131,7 @@ theorem SqFr.step {live : Nat → Prop} {S : Nat → Prop}
     (site : ∀ L1 L2 x, BcHeap S M H F (L1 ++ x :: L2) → 1 ≤ x.rep.refs →
       (x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db) → x.rep.p = h.p →
       FreeK [1, 10, 14, 15] live S Q pc' R M (fun _ => False) H F L1 L2 x → DW live S Q pc R M)
-    (hk : ∀ R' M' H' F', Keeps [1, 10, 14, 15] R' R →
+    (hk : ∀ R' M' H' F', Keeps [1, 10, 14, 15] R' R → (∀ a, OutHeap a → imgM M' a = imgM M a) →
       SqFr S Mx M' R0 R' sp W H' F' L (hs1 ++ hs2) → DW live S Q pc' R' M') :
     DW live S Q pc R M := by
   obtain ⟨L1, L2, x, e, hp, hr, hnv, _, _, hfr⟩ :=
@@ -141,7 +141,7 @@ theorem SqFr.step {live : Nat → Prop} {S : Nat → Prop}
   have hL : L' = RList (hs1 ++ hs2) L := hfr L' hkf.rest
   subst hL
   have hag : ∀ a, OutHeap a → imgM M' a = imgM M a := fun a ha => hof a ha id
-  exact hk R' M' H' F' hk'
+  exact hk R' M' H' F' hk' hag
     { sa := (st.sa.heap cx (hag := hag)).regs hk'
       heap := hb1
       own := st.own.drop
@@ -171,20 +171,20 @@ theorem sq_tail {live : Nat → Prop} {S : Nat → Prop}
     DW live S Q 0x80006d88#64 R M := by
   refine SqFr.step (hs1 := [.own p5, .own d]) (hs2 := [G, .own y']) cx st
     (fun L1 L2 x hb hr hnv hp k => ffree_80006d88 hlive hb hr hnv (by rw [hp]; exact h25) k k k)
-    fun R1 M1 H1 F1 hk1 st1 => ?_
+    fun R1 M1 H1 F1 hk1 _ st1 => ?_
   refine SqFr.step (hs1 := [.own p5, .own d]) (hs2 := [.own y']) cx st1
     (fun L1 L2 x hb hr hnv hp k => ffree_80006dbc hlive hb hr hnv
       (by rw [hp, hk1.get 8 (by decide)]; exact h8) k k k)
-    fun R2 M2 H2 F2 hk2 st2 => ?_
+    fun R2 M2 H2 F2 hk2 _ st2 => ?_
   refine SqFr.step (hs1 := []) (hs2 := [.own d, .own y']) cx st2
     (fun L1 L2 x hb hr hnv hp k => ffree_80006dec hlive hb hr hnv
       (by rw [hp, hk2.get 20 (by decide), hk1.get 20 (by decide)]; exact h20) k k k)
-    fun R3 M3 H3 F3 hk3 st3 => ?_
+    fun R3 M3 H3 F3 hk3 _ st3 => ?_
   refine SqFr.step (hs1 := []) (hs2 := [.own y']) cx st3
     (fun L1 L2 x hb hr hnv hp k => ffree_80006e1c hlive hb hr hnv
       (by rw [hp, hk3.get 26 (by decide), hk2.get 26 (by decide), hk1.get 26 (by decide)]
           exact h26) k k k)
-    fun R4 M4 H4 F4 _ st4 => ?_
+    fun R4 M4 H4 F4 _ _ st4 => ?_
   have hb4 := st4.heap
   rw [show ([] ++ [RH.own y'] : List RH) = [.own y'] from rfl, RList.own1] at hb4
   exact sq_ret hlive cx (fun a h1 h2 => hb4.heap.own a h1 h2) st4.sa fun R' hk' h10 =>

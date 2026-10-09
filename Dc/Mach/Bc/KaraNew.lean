@@ -63,7 +63,8 @@ theorem BcHeap.kperm {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : Lis
   refine ⟨hb.heap, hb.dead, hb.deadLive, fun x hx => hb.nums x (hL.mem_iff.mpr hx),
     fun x hx => hb.blocks x (hL.mem_iff.mpr hx),
     (List.Perm.append_left F (hL.flatMap_right NumObj.blocks)).nodup_iff.mp hb.distinct, ?_,
-    hb.globOwn⟩
+    hb.globOwn, hb.raw.relist fun c hc =>
+      (List.Perm.append_left F (hL.flatMap_right NumObj.blocks)).mem_iff.mpr hc⟩
   simp only [KList, List.append_assoc]
   refine ViewsOwned.prefix (ViewsOwned.prefix hT ?_) fun y hy => .inl (hP y hy)
   · intro x hx

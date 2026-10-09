@@ -81,6 +81,7 @@ structure SqArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (x z o : NumObj)
   oneNum : o.rep.num = Num.one
   oneNorm : o.rep.Norm
   oneLen : 1 ≤ o.rep.len
+  oneRefs : 1 ≤ o.rep.refs
   mulBase : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80
   owns : ∀ y ∈ L, y.Owns
   fd : FdAt S M stderrAddr 2

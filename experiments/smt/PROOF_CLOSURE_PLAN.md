@@ -5225,6 +5225,7 @@ Checked so far:
 - `dc_show_id_spec` (`DcShowId.lean`): both format routes to any stream (`show_br` decides the `isgraph` test).
 - `dc_register_get_spec` (`DcRegGet.lean`): `regGet st r` into the slot through `reg_get_dup` (`dc_dup`), `reg_get_zero` (`dc_int2data(0)`, may reach `out_of_memory`), or `reg_get_err` (both `stderr` messages, status 2); frame `GetOut`.
 - `dc_register_set_spec` (`DcRegSet.lean`): `regSet st r v`. An empty register gets a fresh level (`reg_set_new`, `DcAt.newLevel`, may reach `out_of_memory`); otherwise the head datum is freed in place (`reg_set_num`/`reg_set_str`) and replaced (`DcAt.setHead`). The in-place free runs from a pending view `Pend G E W Φ` (`DcPend.lean`): the state is held at the memory with the new datum stored, which differs from the machine memory only on the datum window; `dc_free_num_specP`/`dc_free_str_specP` take it, the plain specs are the instances at `Pend.id`.
+- `dc_array_free_spec` (`DcArrFree.lean`): a chain of array nodes off the state (`AfNodes`: fresh nodes over a pointer chain `PChain`, data held as caller handles) freed node by node (`af_body`/`af_num`/`af_str`, induction `af_loop`); post `AfPost` (same nodes, bytes off the heap, other fresh blocks kept). The free specs accept a slot inside a fresh block (`SlotPlace.fresh`) and keep every fresh block.
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come
 from counting live blocks (heap below `2^27` bytes).

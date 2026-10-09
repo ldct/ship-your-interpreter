@@ -117,3 +117,4 @@ import Dc.Mach.DcShowId
 import Dc.Mach.DcPend
 import Dc.Mach.DcRegGet
 import Dc.Mach.DcRegSet
+import Dc.Mach.DcArrFree

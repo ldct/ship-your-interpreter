@@ -242,6 +242,118 @@ theorem dvt_frees {live : Nat → Prop} {S : Nat → Prop}
     ((hk3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac
       ((hk1.mono (by decide)).trans (by keeps_tac hkp)))))) hS3 hp3
 
+/-- A block outside `L1 ++ x :: L2`'s objects is outside `L1 ++ x' :: L2`'s
+when `x'` has `x`'s blocks, and outside `L1 ++ L2`'s. -/
+theorem not_objBlocks_mid {L1 L2 : List NumObj} {x x' : NumObj} {F : List Blk} {b : Blk}
+    (hx : x'.blocks = x.blocks) (h : b ∉ F ++ objBlocks (L1 ++ x :: L2)) :
+    b ∉ F ++ objBlocks (L1 ++ x' :: L2) := by
+  simp only [objBlocks_append, objBlocks_cons, hx] at h ⊢; exact h
+
+theorem not_objBlocks_drop {L1 L2 : List NumObj} {x : NumObj} {F : List Blk} {b : Blk}
+    (h : b ∉ F ++ objBlocks (L1 ++ x :: L2)) : b ∉ x.sb :: F ++ objBlocks (L1 ++ L2) := by
+  intro hb
+  apply h
+  simp only [objBlocks_append, objBlocks_cons, List.mem_append, List.mem_cons] at hb ⊢
+  rcases hb with (hb | hb) | hb | hb
+  · exact .inr (.inr (.inl (by rw [hb]; exact x.sb_mem_blocks)))
+  · exact .inl hb
+  · exact .inr (.inl hb)
+  · exact .inr (.inr (.inr hb))
+
+/-- The raw buffers after `bc_free_num` lowered `x`'s count. -/
+theorem DvRaw.dec {H : Heap} {F : List Blk} {L1 L2 : List NumObj} {x y : NumObj} {b1 b2 b3 : Blk}
+    (h : DvRaw H F (y :: (L1 ++ x :: L2)) b1 b2 b3) :
+    DvRaw H F (y :: (L1 ++ x.decRef :: L2)) b1 b2 b3 := by
+  have e : ∀ b, b ∉ F ++ objBlocks (y :: (L1 ++ x :: L2)) →
+      b ∉ F ++ objBlocks (y :: (L1 ++ x.decRef :: L2)) := fun b hb => by
+    rw [← List.cons_append] at hb ⊢; exact not_objBlocks_mid (x := x) (x' := x.decRef) rfl hb
+  exact ⟨h.l1, h.l2, h.l3, e _ h.n1, e _ h.n2, e _ h.n3, h.d12, h.d13, h.d23⟩
+
+/-- The raw buffers after `bc_free_num` released `x`. -/
+theorem DvRaw.rel {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x y : NumObj} {q sp : Nat} {b1 b2 b3 : Blk}
+    (h : DvRaw H F (y :: (L1 ++ x :: L2)) b1 b2 b3)
+    (hrp : ReleasePost S Mt Mt' H H' F (y :: L1) L2 x q sp) :
+    DvRaw H' (x.sb :: F) (y :: (L1 ++ L2)) b1 b2 b3 := by
+  have hl : ∀ b, b ∈ H.live → b ∉ F ++ objBlocks (y :: (L1 ++ x :: L2)) → b ∈ H'.live := by
+    intro b hb hn
+    by_cases ho : x.Owns
+    · refine ((hrp.owned ho).2.1 b).mpr ⟨hb, fun e => hn ?_⟩
+      rw [e]
+      exact List.mem_append_right _ (mem_objBlocks_db (L := y :: (L1 ++ x :: L2))
+        (List.mem_cons_of_mem _ (List.mem_append_right _ List.mem_cons_self)) ho)
+    · rw [hrp.view ho]; exact hb
+  have e : ∀ b, b ∉ F ++ objBlocks (y :: (L1 ++ x :: L2)) →
+      b ∉ x.sb :: F ++ objBlocks (y :: (L1 ++ L2)) := fun b hb => by
+    rw [← List.cons_append] at hb ⊢; exact not_objBlocks_drop hb
+  exact ⟨hl _ h.l1 h.n1, hl _ h.l2 h.n2, hl _ h.l3 h.n3, e _ h.n1, e _ h.n2, e _ h.n3,
+    h.d12, h.d13, h.d23⟩
+
+/-- **`bc_free_num (quot)`** at `0x80005b14`, then the frees. -/
+theorem dvt_freenum {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {m : Num} {b1 b2 b3 : Blk}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
+    (sv : SavedWords M (sp - 208) divSlots R0) (s8 : ldv .ld M (sp - 208 + 8) = BitVec.ofNat 64 b3.pay)
+    (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2))) (hr : ResSlot M L1 xr q)
+    (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (hnum : y.rep.num = m) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
+    (hyo : y.Owns) (hraw : DvRaw H F (y :: (L1 ++ xr :: L2)) b1 b2 b3)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h21 : R 21 = BitVec.ofNat 64 y.sb.pay)
+    (h22 : R 22 = BitVec.ofNat 64 q) (h18 : R 18 = BitVec.ofNat 64 b1.pay)
+    (h19 : R 19 = BitVec.ofNat 64 b2.pay) (hkp : Keeps divAll R R0) :
+    DW live S Q 0x80005b14#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have hap := cx.slotApart
+  have hq := cx.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hxn := hb.nums xr (List.mem_cons_of_mem _ (List.mem_append_right _ List.mem_cons_self))
+  have hxp : heapStart ≤ xr.rep.p ∧ xr.rep.p + 16 ≤ heapEnd :=
+    ⟨hxn.shape.pLo, by have := hxn.shape.pHi; omega⟩
+  bc_run hlive hS [h22, h2] at 0x800048c0
+  have hsf' : StackFrame S (sp - 208) 32 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  have e : FreeEntry S M H F (y :: L1) L2 xr q (sp - 208) :=
+    FreeEntry.of_slot hb hr (hr.noView_cons hb hyo) hq cx.slotOut hsf' (by simp only [heapEnd]; omega)
+      (by omega)
+  have hst : ∀ {M' : Mem}, (∀ a, sp - 208 ≤ a → a < sp → imgM M' a = imgM M a) →
+      SavedWords M' (sp - 208) divSlots R0 ∧ ldv .ld M' (sp - 208 + 8) = BitVec.ofNat 64 b3.pay :=
+    fun hag => ⟨sv.transport (lo := 104) (top := 208) (hag := fun a h1 h2' => hag a (by omega) (by omega)),
+      by rw [ldv_congr .ld fun j hj => hag _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact s8⟩
+  refine bc_free_num_spec hlive e _ (by bsimp [h22]) (by bsimp [h2]) (by bsimp [])
+    ⟨fun hx2 R1 Mt1 hk1 hb1 _ hmo => ?_, fun hx1 R1 Mt1 H1 hk1 hrp => ?_⟩
+  · bsimp []
+    obtain ⟨sv1, s81⟩ := hst (M' := Mt1) fun a h1 h2' => hmo a fun hc => by
+      rcases hc with hc | hc
+      · simp only [refsBytes, heapStart, heapEnd] at hc hxp; omega
+      · simp only [slotBytes] at hc; omega
+    exact dvt_frees hlive cx hk hn sv1 s81 (by rw [hk1.get 2]; bsimp [h2])
+      (by rw [hk1.get 21]; bsimp [h21]) (by rw [hk1.get 22]; bsimp [h22])
+      (by rw [hk1.get 18]; bsimp [h18]) (by rw [hk1.get 19]; bsimp [h19])
+      ((hk1.mono (by decide)).trans (by keeps_tac hkp)) hraw.dec
+      (binPost_dec cx.slotOut hout hb1 hmo hxp hnum hnorm hpos hrefs hyo hx2)
+  · bsimp []
+    obtain ⟨sv1, s81⟩ := hst (M' := Mt1) fun a h1 h2' => hrp.frame a fun hc => by
+      have hout' : OutHeap a := cx.stack_out (by omega)
+      rcases hc with hc | hc | hc | hc | hc
+      · exact OutHeap.not_alloc hb.heap hout' hc
+      · exact hout'.1 (live_in_heap hb.heap (hb.blocks xr (List.mem_cons_of_mem _
+          (List.mem_append_right _ List.mem_cons_self))).sLive hc)
+      · simp only [slotBytes] at hc; omega
+      · simp only [frameIn] at hc; omega
+      · exact hout'.2.2 hc
+    exact dvt_frees hlive cx hk hn sv1 s81 (by rw [hk1.get 2]; bsimp [h2])
+      (by rw [hk1.get 21]; bsimp [h21]) (by rw [hk1.get 22]; bsimp [h22])
+      (by rw [hk1.get 18]; bsimp [h18]) (by rw [hk1.get 19]; bsimp [h19])
+      ((hk1.mono (by decide)).trans (by keeps_tac hkp)) (hraw.rel hrp)
+      (binPost_rel cx.slotOut hout hb hrp cx.above ⟨by omega, by omega⟩ hnum hnorm hpos hrefs hyo hx1)
+
 end
 
 end Dc.Mach

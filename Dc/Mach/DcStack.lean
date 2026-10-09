@@ -98,8 +98,7 @@ theorem push_post {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : Li
       [(b.pay + 24, 8, ldv .ld (writeLog (writeLog (writeLog M [(b.pay, 4, 0#64)])
         [(b.pay + 16, 8, 0#64)]) [(b.pay + 24, 8, 0#64)]) dcStackAddr)]) [(b.pay + 8, 8, w1)]) b g :=
     { dat := { tag := by
-                rw [ldv_lw_miss _ _ (by omega), ldv_lw_miss _ _ (by omega),
-                  VsaIris.Interp.ldv_lw_store8 _ _ rfl (by omega), ht]
+                rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]; exact ht
                ptr := by rw [ldv_store_hit, hd.ptr] }
       arr := by
         rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),

@@ -19,7 +19,7 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 set_option linter.unusedSimpArgs false
 
-theorem DcGlob.lt {a : Nat} (h : DcGlob a) : 0x8001cd34 ≤ a ∧ a < heapStart := by
+theorem DcGlob.lt {a : Nat} (h : DcGlob a) : 0x8001ad14 ≤ a ∧ a < heapStart := by
   simp only [DcGlob, dc_addrs, heapStart] at h ⊢; omega
 
 theorem DcGlob.outHeap {a : Nat} (h : DcGlob a) : OutHeap a := by
@@ -171,7 +171,7 @@ theorem DcAt.pushNode {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L 
       glob := h.glob
       col := h.col }
   · refine .cons (ldv_store_hit _ _ _) ⟨?_, ?_, hsz⟩ ?_
-    · exact ⟨(ldv_congr .lw fun j hj => hcw 0 4 (by omega) j hj).trans hn.dat.tag,
+    · exact ⟨by rw [ldv_congr .ld fun j hj => hcw 0 8 (by omega) j hj]; exact hn.dat.tag,
         (ldv_congr .ld fun j hj => hcw 8 8 (by omega) j hj).trans hn.dat.ptr⟩
     · exact (ldv_congr .ld fun j hj => hcw 16 8 (by omega) j hj).trans hn.arr
     · refine stkChain_frame (h.view.stk.reword hl) (ldv_congr .ld fun j hj => hcw 24 8 (by omega) j hj)
@@ -193,6 +193,95 @@ theorem DcAt.pushNode {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L 
           rw [G.vals_pushStk, count_move]; exact hd.numRefs x hx
         strRefs := fun o ho => by
           rw [G.vals_pushStk, count_move]; exact hd.strRefs o ho }
+
+/-- **The top node popped**: `dc_stack` takes the node's link; the handle
+`g` (denoting `v`) passes to the caller, and the node `c` leaves the state
+(`DcFresh`, still live). -/
+theorem DcAt.popNode {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {c : Blk} {v : Val}
+    (h : DcAt S M H F L C { G with stk := (c, g) :: G.stk } hs (st.push v)) :
+    DcAt S (writeLog M [(dcStackAddr, 8, ldv .ld M (c.pay + 24))]) H F L C G (g :: hs) st ∧
+      DcFresh H F L G c ∧ SNodeAt M c g ∧ g.Den ⟨L, G.strs⟩ v := by
+  have hi := h.heap.heap
+  have hm : MemOnly StkWord (writeLog M [(dcStackAddr, 8, ldv .ld M (c.pay + 24))]) M :=
+    MemOnly.store M _ 8 _
+  have hcG : c ∈ ({ G with stk := (c, g) :: G.stk } : DcG).blocks := by
+    rw [G.blocks_pushStk]; exact List.mem_cons_self
+  have hnd := h.nodup
+  rw [G.blocks_pushStk] at hnd
+  have hnotG : c ∉ G.blocks := (List.nodup_cons.mp hnd).1
+  have hcl : c ∈ H.live := h.heap.raw.live c hcG
+  have hbG : ∀ b ∈ G.blocks, b ∈ ({ G with stk := (c, g) :: G.stk } : DcG).blocks := fun b hb => by
+    rw [G.blocks_pushStk]; exact List.mem_cons_of_mem _ hb
+  have hstk : ∀ a, StkWord a → OutHeap a ∧ ¬ InBlocks G.blocks a := fun a ha =>
+    ⟨DcGlob.outHeap (by simp only [StkWord, DcGlob, dc_addrs] at ha ⊢; omega), fun ⟨b, hb, hba⟩ => by
+      have hbl : b ∈ H.live := h.heap.raw.live b (hbG b hb)
+      have := live_in_heap hi hbl hba; simp only [StkWord, dc_addrs, heapStart] at ha this; omega⟩
+  have hcIn : ∀ a, c.In a → ¬ StkWord a := fun a hca hs => by
+    have := live_in_heap hi hcl hca; simp only [StkWord, dc_addrs, heapStart] at hs this; omega
+  have hblk : ∀ a, InBlocks G.blocks a →
+      imgM (writeLog M [(dcStackAddr, 8, ldv .ld M (c.pay + 24))]) a = imgM M a :=
+    fun a ha => hm a fun hs => (hstk a hs).2 ha
+  have hv0 := h.view.stk
+  cases hv0 with
+  | cons h0 hn hl =>
+  have hd := h.den
+  have hds := hd.stk
+  cases hds with
+  | cons hv hrest =>
+  have hb1 := h.heap.out_frame hm fun a ha => (hstk a ha).1
+  have hsz := hn.sz
+  refine ⟨
+    { heap := hb1.subRaw (fun b hb => hbG b hb)
+          fun b hb a ha => (hblk a ⟨b, hb, ha⟩).symm
+      nodup := (List.nodup_cons.mp hnd).2
+      view := h.view.withChains rfl rfl ⟨rfl, rfl, rfl, rfl, rfl⟩
+        (fun o ho x hx => hblk x (hx.elim (fun hx => ⟨o.hb, (G.str_mem ho).1, hx⟩)
+          fun hx => ⟨o.tb, (G.str_mem ho).2, hx⟩))
+        (fun a ha hc => hm a fun hs => hc (.inl hs)) ?_ fun r hr => ?_
+      den := ?_
+      glob := h.glob
+      col := h.col },
+    ⟨hcl, hnotG, h.heap.raw.out c hcG⟩, hn, hv⟩
+  · have hcw : ldv .ld (writeLog M [(dcStackAddr, 8, ldv .ld M (c.pay + 24))]) (c.pay + 24) =
+        ldv .ld M (c.pay + 24) :=
+      ldv_congr .ld fun j hj => hm _ (hcIn _ (by simp only [Blk.In, Blk.pay, Blk.fin, widthOfM] at hj ⊢; omega))
+    exact (stkChain_frame hl hcw fun bg hmm x hx => hblk x ⟨bg.1, G.stk_mem hmm, hx⟩).reword
+      ((ldv_store_hit _ _ _).trans hcw.symm)
+  · refine regChain_frame (h.view.regs r hr)
+      (ldv_congr .ld fun j hj => hm _ fun hs => by
+        simp only [StkWord, widthOfM, regAddr, dc_addrs] at hj hs; omega)
+      fun be hmm b hb x hx => hblk x ⟨b, by
+        rcases List.mem_cons.mp hb with rfl | hb
+        · exact G.reg_mem hr hmm
+        · obtain ⟨bn, hn, rfl⟩ := List.mem_map.mp hb
+          exact G.arr_mem hr hmm hn, hx⟩
+  · exact
+      { hd with
+        stk := hrest
+        hsDen := fun g' hg' => (List.mem_cons.mp hg').elim (fun e => e ▸ ⟨v, hv⟩)
+          fun hg' => hd.hsDen g' hg'
+        numRefs := fun x hx => by
+          have e := hd.numRefs x hx; rw [G.vals_pushStk] at e; rw [← count_move]; exact e
+        strRefs := fun o ho => by
+          have e := hd.strRefs o ho; rw [G.vals_pushStk] at e; rw [← count_move]; exact e }
+
+/-- **A block outside the state freed** (`free`'s `FreePost`). -/
+theorem DcAt.free {S : Nat → Prop} {M M' : Mem} {H H' : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {c : Blk} {lpre lpost : List Blk}
+    (h : DcAt S M H F L C G hs st) (hf : DcFresh H F L G c) (hl : H.live = lpre ++ c :: lpost)
+    (hp : FreePost S M M' H H' c lpre lpost) : DcAt S M' H' F L C G hs st := by
+  have hi := h.heap.heap
+  have hno : c ∉ F ++ objBlocks L ++ (G.raws M).bs := fun hc => by
+    rcases List.mem_append.mp hc with hc | hc
+    · exact hf.notNum hc
+    · exact hf.notG hc
+  have hblk : ∀ a, InBlocks G.blocks a → imgM M' a = imgM M a := fun a ha =>
+    hp.frame a (h.inBlocks_heap ha).2
+  have hb1 := h.heap.freeRaw hl hno hp
+  exact { h with
+    heap := hb1.subRaw (fun b hb => hb) fun b hb a ha => (hblk a ⟨b, hb, ha⟩).symm
+    view := h.view.frame hblk fun a ha => hp.frame a (OutHeap.not_alloc hi ha.outHeap) }
 
 /-- The `dc_stack` word is readable and writable under `S`. -/
 theorem DcAt.stkAcc {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk} {L : List NumObj}

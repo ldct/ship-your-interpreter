@@ -52,6 +52,12 @@ abbrev noexitAddr : Nat := 0x8001cd80
 abbrev lineMaxAddr : Nat := 0x8001cd3c
 /-- `out_col` (`out_char`) -/
 abbrev outColAddr : Nat := 0x8001cd90
+/-- `progname` -/
+abbrev prognameAddr : Nat := 0x8001cd60
+/-- The descriptor words of `stdout`'s and `stderr`'s `FILE`s (`.data`). -/
+abbrev stdFilesAddr : Nat := 0x8001ad14
+/-- The string `"dc"` in `.rodata`, `progname`'s value. -/
+abbrev dcNameAddr : Nat := 0x800079e0
 /-- `line_buf` (`dc_readstring`) -/
 abbrev lineBufAddr : Nat := 0x8001cda8
 /-- `buflen` (`dc_readstring`) -/
@@ -80,7 +86,7 @@ def GV.ptr : GV → Nat
 
 /-- `dc_data` at `a`: the type (an `int`) and the pointer. -/
 structure DatAt (Mt : Mem) (a : Nat) (g : GV) : Prop where
-  tag : ldv .lw Mt a = BitVec.ofNat 64 g.tag
+  tag : (ldv .ld Mt a).toNat % 2 ^ 32 = g.tag
   ptr : ldv .ld Mt (a + 8) = BitVec.ofNat 64 g.ptr
 
 /-- A string object: the header block `hb` and the text block `tb`. -/
@@ -199,11 +205,13 @@ structure RLev.Den (O : DObjs) (e : RLev) (v : Entry) : Prop where
   arr : List.Forall₂ (fun (be : Blk × ANode) (iv : Nat × Val) => be.2.idx = iv.1 ∧ be.2.v.Den O iv.2)
     e.arr v.arr
 
-/-- The global bytes dc's state reads: `dc_obase`, `dc_ibase`, `line_max`,
-`unwind_noexit`, `unwind_depth`, `dc_scale`, `dc_stack`, `buflen`,
-`line_buf`, `_two_`, `_one_`, `_zero_`, `dc_register`. -/
+/-- The global bytes dc's state reads: the descriptors of `stdout` and
+`stderr`, `dc_obase`, `dc_ibase`, `line_max`, `progname`, `unwind_noexit`,
+`unwind_depth`, `dc_scale`, `dc_stack`, `buflen`, `line_buf`, `_two_`,
+`_one_`, `_zero_`, `dc_register`. -/
 def DcGlob (a : Nat) : Prop :=
-  (obaseAddr ≤ a ∧ a < lineMaxAddr + 4) ∨ (noexitAddr ≤ a ∧ a < noexitAddr + 4) ∨
+  (stdFilesAddr ≤ a ∧ a < stdFilesAddr + 8) ∨ (obaseAddr ≤ a ∧ a < lineMaxAddr + 4) ∨
+    (prognameAddr ≤ a ∧ a < prognameAddr + 8) ∨ (noexitAddr ≤ a ∧ a < noexitAddr + 4) ∨
     (unwindAddr ≤ a ∧ a < scaleAddr + 4) ∨ (dcStackAddr ≤ a ∧ a < lineBufAddr + 8) ∨
     (twoAddr ≤ a ∧ a < dcRegAddr + 2048)
 
@@ -228,6 +236,9 @@ structure DcView (Mt : Mem) (G : DcG) (C : BcConsts) (st : St) : Prop where
     ldv .lw Mt lineMaxAddr = BitVec.ofNat 64 70
   lbuf : ldv .ld Mt lineBufAddr = BitVec.ofNat 64 (match G.lbuf with | some b => b.pay | none => 0)
   lbufLen : ∀ b, G.lbuf = some b → ldv .ld Mt bufLenAddr = BitVec.ofNat 64 2016
+  outFd : ldv .lw Mt stdFilesAddr = BitVec.ofNat 64 1
+  errFd : ldv .lw Mt (stdFilesAddr + 4) = BitVec.ofNat 64 2
+  prog : ldv .ld Mt prognameAddr = BitVec.ofNat 64 dcNameAddr
 
 /-- **The ghost side**: denotations, ranges, and exact reference counts over
 the state's references and the handles `hs`. -/
@@ -269,7 +280,8 @@ theorem dc_addrs : dcStackAddr = 0x8001cd98 ∧ dcRegAddr = 0x8001cdd0 ∧ ibase
     obaseAddr = 0x8001cd34 ∧ scaleAddr = 0x8001cd8c ∧ unwindAddr = 0x8001cd88 ∧
     noexitAddr = 0x8001cd80 ∧ lineMaxAddr = 0x8001cd3c ∧ outColAddr = 0x8001cd90 ∧
     lineBufAddr = 0x8001cda8 ∧ bufLenAddr = 0x8001cda0 ∧ zeroAddr = 0x8001cdc8 ∧
-    oneAddr = 0x8001cdc0 ∧ twoAddr = 0x8001cdb8 ∧ bcFreeAddr = 0x8001cdb0 := by
+    oneAddr = 0x8001cdc0 ∧ twoAddr = 0x8001cdb8 ∧ bcFreeAddr = 0x8001cdb0 ∧
+    prognameAddr = 0x8001cd60 ∧ stdFilesAddr = 0x8001ad14 ∧ dcNameAddr = 0x800079e0 := by
   decide
 
 /-! ## Frames -/
@@ -341,7 +353,7 @@ theorem DatAt.frame {Mt Mt' : Mem} {bs : List Blk} {b : Blk} (hb : b ∈ bs)
   by
     have e := ldv_blk (o := o + 8) hb hag .ld (by simp only [widthOfM]; omega)
     rw [← Nat.add_assoc] at e
-    exact ⟨(ldv_blk hb hag .lw (by simp only [widthOfM]; omega)).trans h.tag, e.trans h.ptr⟩
+    exact ⟨by rw [ldv_blk hb hag .ld (by simp only [widthOfM]; omega)]; exact h.tag, e.trans h.ptr⟩
 
 theorem StrAt.frame {Mt Mt' : Mem} {bs : List Blk} {o : StrObj} (hh : o.hb ∈ bs) (ht : o.tb ∈ bs)
     (hag : ∀ a, InBlocks bs a → imgM Mt' a = imgM Mt a) (h : StrAt Mt o) : StrAt Mt' o := by
@@ -455,7 +467,13 @@ theorem DcView.withChains {Mt Mt' : Mem} {G G' : DcG} {C : BcConsts} {st st' : S
           simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.lbuf
       lbufLen := fun b e => (gw .ld _ fun j hj => by
         simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans
-          (h.lbufLen b (hlb ▸ e)) }
+          (h.lbufLen b (hlb ▸ e))
+      outFd := (gw .lw _ fun j hj => by
+        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.outFd
+      errFd := (gw .lw _ fun j hj => by
+        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.errFd
+      prog := (gw .ld _ fun j hj => by
+        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.prog }
 
 /-- **The view reads only the ghost's blocks and dc's globals.** -/
 theorem DcView.frame {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} (h : DcView Mt G C st)

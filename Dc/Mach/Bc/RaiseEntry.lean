@@ -611,4 +611,102 @@ theorem ra_rscale {live : Nat → Prop} {S : Nat → Prop}
         hu0 (ra.regsA (ks := [10, 15, 22, 24]) (by keeps_tac Keeps.refl _ _)) (by bsimp [h21]) hb
         (by bsimp [h18]) (by bsimp [h9]) (by bsimp [h8]) (by bsimp []) (by bsimp [])
 
+/-- `neg` of a negative `long`. -/
+theorem neg_ofInt_natAbs {e : Int} (h : e < 0) (h2 : -2 ^ 63 < e) :
+    0#64 - BitVec.ofInt 64 e = BitVec.ofNat 64 e.natAbs := by
+  obtain ⟨u, rfl⟩ : ∃ u : Nat, e = -(u : Int) := ⟨e.natAbs, by omega⟩
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_ofInt]
+  omega
+
+/-- `s1`, `s4`, `s8` saved for a nonzero exponent (`0x80006648`). -/
+theorem RaAt.save1 {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    (cx : RaCtx S R0 sp W q) (h : RaAt S Mt0 M R0 R sp W q raSlots0) {v9 v20 v24 : BitVec 64}
+    (h9 : v9 = R0 9) (h20 : v20 = R0 20) (h24 : v24 = R0 24) :
+    RaAt S Mt0 (writeLog (writeLog (writeLog M [(sp - 96 + 72, 8, v9)]) [(sp - 96 + 48, 8, v20)])
+      [(sp - 96 + 16, 8, v24)]) R0 R sp W q raSlots1 := by
+  ra_facts cx
+  subst h9 h20 h24
+  exact { h with
+    saved := ((h.saved.store 9 72).store 20 48).store 24 16
+    out := fun a ha hf => by
+      simp only [frameIn] at hf
+      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+        imgM_store_miss _ _ (by omega)]
+      exact h.out a ha (by simp only [frameIn]; omega) }
+
+/-- **A nonzero exponent** from `0x80006648` (`a0` = `bc_num2long (num2)`):
+`s1`, `s4`, `s8` saved, `pwrscale = num1->n_scale`, then the negative
+exponent negated (`s8 = 1`, `rscale = scale`) or `ra_rscale` after
+`scale1 · exponent`. -/
+theorem ra_body {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H H0 : Heap}
+    {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
+    (cx : RaCtx S R0 sp W q)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
+    (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
+    (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
+    (hb : BcHeap S M H F (A ++ x1 :: B))
+    (h18 : R 18 = BitVec.ofNat 64 x1.rep.p) (h22 : R 22 = BitVec.ofNat 64 k)
+    (h10 : R 10 = BitVec.ofInt 64 (raExp x2)) (he : raExp x2 ≠ 0) :
+    DW live S (DQ live S Q t) 0x80006648#64 R M := by
+  ra_facts cx
+  have hsf := cx.frame
+  have hal := cx.al
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn1 := hb.nums x1 ha.m1
+  num_facts hn1
+  have hsc := hn1.scale
+  have hsz := ha.size
+  have ra1 := ra.save1 cx (v9 := R0 9) (v20 := R0 20) (v24 := R0 24) rfl rfl rfl
+  have hp8 : x1.rep.p + 8 + 4 ≤ sp - 96 := by omega
+  have hsc24 : x1.rep.scale < 2 ^ 24 := by
+    have := Nat.mul_le_mul (show 1 ≤ (raExp x2).natAbs + 1 by omega)
+      (show x1.rep.scale ≤ x1.rep.len + x1.rep.scale + 1 by omega)
+    omega
+  have hu24 : (raExp x2).natAbs < 2 ^ 24 := by
+    have := Nat.mul_le_mul (show (raExp x2).natAbs + 1 ≤ (raExp x2).natAbs + 1 by omega)
+      (show 1 ≤ x1.rep.len + x1.rep.scale + 1 by omega)
+    omega
+  have ht : (BitVec.ofInt 64 (raExp x2)).toInt = raExp x2 := toInt_ofInt64 (by omega) (by omega)
+  have hP : ∀ a, (sp - 96 + 72 ≤ a ∧ a < sp - 96 + 72 + 8) ∨ (sp - 96 + 48 ≤ a ∧ a < sp - 96 + 48 + 8) ∨
+      (sp - 96 + 16 ≤ a ∧ a < sp - 96 + 16 + 8) → OutHeap a := fun a h => by
+    simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+  have hbW : BcHeap S (writeLog (writeLog (writeLog M [(sp - 96 + 72, 8, R0 9)])
+      [(sp - 96 + 48, 8, R0 20)]) [(sp - 96 + 16, 8, R0 24)]) H F (A ++ x1 :: B) :=
+    ((hb.out_frame (MemOnly.store _ _ 8 _) (fun a h => hP a (.inl h))).out_frame
+      (MemOnly.store _ _ 8 _) (fun a h => hP a (.inr (.inl h)))).out_frame
+      (MemOnly.store _ _ 8 _) (fun a h => hP a (.inr (.inr h)))
+  bc_run hlive hS [ra.r2, h18, h10, h9, h20, h24, ht] at 0x80006684 0x8000666c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals rw [show ldv .lw (writeLog (writeLog (writeLog M [(sp - 96 + 72, 8, R0 9)])
+      [(sp - 96 + 48, 8, R0 20)]) [(sp - 96 + 16, 8, R0 24)]) (x1.rep.p + 8) =
+      BitVec.ofNat 64 x1.rep.scale by
+    rw [ldv_store_miss .lw _ _ (by simp only [widthOfM]; omega),
+      ldv_store_miss .lw _ _ (by simp only [widthOfM]; omega),
+      ldv_store_miss .lw _ _ (by simp only [widthOfM]; omega)]
+    exact hsc, BitVec.toInt_zero]
+  all_goals intro hc
+  · bc_run hlive hS [ra.r2, h18, h10] at 0x8000668c
+    have hng := neg_ofInt_natAbs hc (by omega)
+    exact ra_go hlive cx hK ha hs0 hb0 hr1 (rs := k) (nf := 1) ⟨rfl, .inr ⟨rfl, hc, rfl⟩⟩
+      (by omega) (ra1.regsA (ks := [8, 9, 24]) (by keeps_tac Keeps.refl _ _)) (by bsimp [h21]) hbW
+      (by bsimp [h18]) (by bsimp []) (by bsimp [hng]) (by bsimp [h22]) (by bsimp [])
+  · have hu : raExp x2 = ((raExp x2).natAbs : Int) := by omega
+    rw [hu, ofInt_natCast64] at h10
+    bc_run hlive hS [ra.r2, h18, h10] at 0x800078a4
+    refine muldi3_spec hlive _ (by bsimp []) fun R1 hk1 h10' => ?_
+    bsimp [hk1.get 1]
+    have hkk : Keeps [1, 8, 9, 10, 11, 12, 13] R1 R :=
+      (hk1.mono (ks' := [1, 8, 9, 10, 11, 12, 13]) (by decide)).trans (by keeps_tac Keeps.refl _ _)
+    exact ra_rscale hlive cx hK ha hs0 hb0 hr1 rfl (by omega) (ra1.regsA hkk)
+      (by rw [hkk.get 21 (by decide)]; exact h21) hbW
+      (by rw [hkk.get 18 (by decide)]; exact h18) (by rw [hk1.get 9 (by decide)]; bsimp [])
+      (by rw [hk1.get 8 (by decide)]; bsimp []) (by rw [hkk.get 22 (by decide)]; exact h22)
+      (by rw [h10']; bsimp [mul_ofNat])
+
 end Dc.Mach

@@ -33,6 +33,25 @@ theorem ld_lo32_sw (M : Mem) (a : Nat) (v : BitVec 64) :
 theorem word_succ (k : Nat) : BitVec.ofNat 64 k + 1#64 = BitVec.ofNat 64 (k + 1) := by
   rw [show (1#64) = BitVec.ofNat 64 1 from rfl, BitVec.ofNat_add_ofNat]
 
+/-- Objects with one number replaced by one of its pointer and value. -/
+theorem DObjs.sub_swapNum {L1 L2 : List NumObj} {x x' : NumObj} {ss : List StrObj}
+    (hp : x'.rep.p = x.rep.p) (hn : x'.rep.num = x.rep.num) :
+    DObjs.Sub ⟨L1 ++ x :: L2, ss⟩ ⟨L1 ++ x' :: L2, ss⟩ :=
+  ⟨fun y hy => by
+    rcases mem_split_cases hy with rfl | hy
+    · exact ⟨x', List.mem_append_right _ List.mem_cons_self, hp, hn⟩
+    · exact ⟨y, mem_split_of hy, rfl, rfl⟩,
+    fun o ho => ⟨o, ho, rfl, rfl⟩⟩
+
+/-- Objects with one string replaced by one of its pointer and text. -/
+theorem DObjs.sub_swapStr {L : List NumObj} {A B : List StrObj} {o o' : StrObj}
+    (hp : o'.hb.pay = o.hb.pay) (hs : o'.s = o.s) :
+    DObjs.Sub ⟨L, A ++ o :: B⟩ ⟨L, A ++ o' :: B⟩ :=
+  ⟨fun y hy => ⟨y, hy, rfl, rfl⟩, fun c hc => by
+    rcases mem_split_cases hc with rfl | hc
+    · exact ⟨o', List.mem_append_right _ List.mem_cons_self, hp, hs⟩
+    · exact ⟨c, mem_split_of hc, rfl, rfl⟩⟩
+
 /-- **`dc_dup_num (x)`** at `0x80002ba4`: `n_refs` incremented, `.num p`
 returned and added to the handles. -/
 theorem dc_dup_num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
@@ -174,7 +193,8 @@ theorem dc_dup_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (R : Nat → BitVec 64) (hd : DatRegs (R 10) (R 11) g) (h2 : R 2 = BitVec.ofNat 64 sp)
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' L' C' G', Keeps dupClob R' R → DatRegs (R' 10) (R' 11) g → SameNodes G G' →
-      DcAt S M' H F L' C' G' (g :: hs) st → StkOut sp 16 M' M → DW live S Q (R 1) R' M') :
+      DcAt S M' H F L' C' G' (g :: hs) st → g.Den ⟨L', G'.strs⟩ v → StkOut sp 16 M' M →
+      DW live S Q (R 1) R' M') :
     DW live S Q 0x800020a0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   simp only [heapEnd] at hab
@@ -204,7 +224,8 @@ theorem dc_dup_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     · bsimp [h2]
     · bsimp []; exact hal
     subst e1
-    exact hk R' M' _ _ G (hk1.trans (by keeps_tac Keeps.refl _ _)) hd' ⟨rfl, rfl, rfl⟩ h' hfr
+    exact hk R' M' _ _ G (hk1.trans (by keeps_tac Keeps.refl _ _)) hd' ⟨rfl, rfl, rfl⟩ h'
+      (hv.relist (DObjs.sub_swapNum (x := x) (x' := x.withRefs (x.rep.refs + 1)) rfl rfl)) hfr
   | str p =>
     obtain ⟨o, ho, e1⟩ : ∃ o ∈ G.strs, o.hb.pay = p := by
       cases v with
@@ -227,6 +248,8 @@ theorem dc_dup_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     · bsimp [h2]
     · bsimp []; exact hal
     subst e1
-    exact hk R' M' _ _ (G.withStr A B (o.withRefs (o.refs + 1))) (hk1.trans (by keeps_tac Keeps.refl _ _)) hd' ⟨rfl, rfl, rfl⟩ h' hfr
+    rw [he] at hv
+    exact hk R' M' _ _ (G.withStr A B (o.withRefs (o.refs + 1))) (hk1.trans (by keeps_tac Keeps.refl _ _))
+      hd' ⟨rfl, rfl, rfl⟩ h' (hv.relist (DObjs.sub_swapStr (o := o) (o' := o.withRefs (o.refs + 1)) rfl rfl)) hfr
 
 end Dc.Mach

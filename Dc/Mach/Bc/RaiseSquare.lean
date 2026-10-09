@@ -379,4 +379,262 @@ theorem ra_p2_loop {live : Nat → Prop} {S : Nat → Prop}
     exact ih (e / 2) (by omega) (2 * P) T2 st2 h18' hinv he2 (by omega)
       (by rw [hT2e]; split <;> omega)
 
+/-- **The second loop from any handles** whose squaring leaves `[temp]`
+(the first iteration, `temp` and `power` one object). -/
+theorem ra_p2_first {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u P T e rs nf : Nat} {H : Heap}
+    {F : List Blk} {A B : List NumObj} {x1 z o : NumObj} {hs1 hs2 : List Hd} {hW hT : Hd}
+    (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots2)
+    (hb : BcHeap S M H F (KList [] (hs1 ++ hW :: hs2) A B x1))
+    (hown : ∀ x, some x ∈ hs1 ++ hW :: hs2 → x.Owns)
+    (hzc : zeroCount (hs1 ++ hW :: hs2) ≤ 2)
+    (hd : hs1 ++ Hd.drop hW ++ hs2 = [hT]) (hh : ∀ x, hW = some x → 1 ≤ x.rep.refs)
+    (hpw : RaPow x1.rep.num P (Hd.objIn (hs1 ++ hW :: hs2) x1 hW))
+    (htm : RaPow x1.rep.num T (Hd.objIn [hT] x1 hT)) (ht1 : ∀ x, hT = some x → x.rep.refs = 1)
+    (hu : u = T + 2 * P * e) (he1 : 1 ≤ e) (hP1 : 1 ≤ P) (hT1 : 1 ≤ T)
+    (h18 : R 18 = BitVec.ofNat 64 (Hd.p x1 hW)) (h9 : R 9 = BitVec.ofNat 64 (x1.rep.scale * P))
+    (h8 : R 8 = BitVec.ofNat 64 e) (h20 : R 20 = BitVec.ofNat 64 (Hd.p x1 hT))
+    (h21 : R 21 = BitVec.ofNat 64 (x1.rep.scale * T))
+    (h22 : R 22 = BitVec.ofNat 64 rs) (h24 : R 24 = BitVec.ofNat 64 nf)
+    (hw8 : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 (Hd.p x1 hW))
+    (hw0 : ldv .ld M (sp - 96) = BitVec.ofNat 64 (Hd.p x1 hT))
+    (hexit : ∀ R' M' H' F' Pw' hT' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P' u 0 rs nf →
+      DW live S Q 0x80006740#64 R' M') :
+    DW live S Q 0x800066f0#64 R M := by
+  have hPu : 2 * P ≤ u := by
+    have : P ≤ P * e := Nat.le_mul_of_pos_right P he1
+    rw [Nat.mul_assoc] at hu; omega
+  refine ra_p2_sq hlive env hoom ra hb hown hzc hd hh hpw htm ht1 hP1 hPu h18 h9 h8 h20 h21 h22 h24
+    hw8 hw0 ?_
+  intro R1 M1 H1 F1 Pw1 st1
+  refine ra_p2_tail hlive env hoom st1 (by rw [hu, Nat.mul_assoc]) he1 (by omega) hT1 ?_
+    (fun R' M' H' F' Pw' hT' st' => hexit R' M' H' F' Pw' hT' _ st')
+  intro R2 M2 H2 F2 Pw2 hT2 T2 st2 h18' hT2e he2
+  have hinv := (Dc.BcModel.RaiseInv.step (u := u) (T := T) (P := P) (e := e) ⟨hu⟩).total
+  rw [← hT2e] at hinv
+  exact ra_p2_loop hlive env hoom hexit (e / 2) (2 * P) T2 st2 h18' hinv he2 (by omega)
+    (by rw [hT2e]; split <;> omega)
+
+/-- The frame through a store below the saved words (`power`, `temp`). -/
+theorem RaAt.lowStore {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q a : Nat}
+    {slots : List (Nat × Nat)} (cx : RaCtx S R0 sp W q) (h : RaAt S Mt0 M R0 R sp W q slots)
+    (ha1 : sp - 96 ≤ a) (ha2 : a + 8 ≤ sp - 80) (v : BitVec 64)
+    (hlo : ∀ p ∈ slots, 16 ≤ p.2 := by decide) :
+    RaAt S Mt0 (writeLog M [(a, 8, v)]) R0 R sp W q slots := by
+  ra_facts cx
+  exact { h with
+    saved := fun p hp => by
+      rw [ldv_ld_miss _ _ (by have := hlo p hp; omega)]; exact h.saved p hp
+    out := fun b hb hf => by
+      rw [imgM_store_miss _ _ (by simp only [frameIn] at hf; omega)]; exact h.out b hb hf }
+
+/-- `s5` saved at the second loop's entry. -/
+theorem RaAt.saveS5 {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    (cx : RaCtx S R0 sp W q) (h : RaAt S Mt0 M R0 R sp W q raSlots1) {v : BitVec 64}
+    (hv : v = R0 21) :
+    RaAt S Mt0 (writeLog M [(sp - 96 + 40, 8, v)]) R0 R sp W q raSlots2 := by
+  ra_facts cx
+  exact { h with
+    saved := by rw [hv]; exact h.saved.store 21 40
+    out := fun a ha hf => by
+      rw [imgM_store_miss _ _ (by simp only [frameIn] at hf; omega)]; exact h.out a ha hf }
+
+theorem RaPow.withRefs {a : Num} {m : Nat} {y : NumObj} (h : RaPow a m y) (k : Nat) :
+    RaPow a m (y.withRefs k) :=
+  ⟨h.num, h.norm, h.len, h.owns⟩
+
+@[simp] theorem NumObj.withRefs_refs (x : NumObj) (k : Nat) : (x.withRefs k).rep.refs = k := rfl
+
+@[simp] theorem NumObj.withRefs_p (x : NumObj) (k : Nat) : (x.withRefs k).rep.p = x.rep.p := rfl
+
+/-- `temp = power` names the power object twice: one more reference. -/
+def Hd.cp : Hd → List Hd
+  | some P => [some (P.withRefs 2)]
+  | none => [none, none]
+
+/-- `power`'s handle among `Hd.cp`. -/
+def Hd.cpW : Hd → Hd
+  | some P => some (P.withRefs 2)
+  | none => none
+
+/-- The handles after `power`'s. -/
+def Hd.cpRest : Hd → List Hd
+  | some _ => []
+  | none => [none]
+
+theorem Hd.cp_eq (h : Hd) : Hd.cp h = [] ++ Hd.cpW h :: Hd.cpRest h := by cases h <;> rfl
+
+theorem Hd.cp_drop {h : Hd} (hf : ∀ P, h = some P → P.rep.refs = 1) :
+    [] ++ Hd.drop (Hd.cpW h) ++ Hd.cpRest h = [h] := by
+  cases h with
+  | none => rfl
+  | some P =>
+    simp only [Hd.cpW, Hd.cpRest, Hd.drop, NumObj.withRefs, List.nil_append, List.append_nil]
+    rw [if_neg (by decide)]
+    exact congrArg (fun x => [some x]) (NumObj.withRefs2_decRef (hf P rfl))
+
+theorem Hd.cpW_p (x1 : NumObj) (h : Hd) : Hd.p x1 (Hd.cpW h) = Hd.p x1 h := by cases h <;> rfl
+
+theorem Hd.cp_zero (h : Hd) : zeroCount (Hd.cp h) ≤ 2 := by cases h <;> simp [Hd.cp]
+
+theorem RaPow.cp {a : Num} {m : Nat} {x1 : NumObj} {h : Hd} (hp : RaPow a m (Hd.objIn [h] x1 h)) :
+    RaPow a m (Hd.objIn (Hd.cp h) x1 (Hd.cpW h)) := by
+  cases h with
+  | none => exact hp.withRefs _
+  | some P => exact hp.withRefs _
+
+theorem Hd.cp_owns {x1 : NumObj} {h : Hd} (hp : (Hd.objIn [h] x1 h).Owns) :
+    ∀ x, some x ∈ Hd.cp h → x.Owns := by
+  cases h with
+  | none => intro x hx; simp [Hd.cp] at hx
+  | some P => intro x hx; simp only [Hd.cp, List.mem_singleton, Option.some.injEq] at hx; subst hx; exact hp
+
+theorem Hd.cpW_refs {h : Hd} : ∀ x, Hd.cpW h = some x → 1 ≤ x.rep.refs := by
+  cases h with
+  | none => intro x hx; cases hx
+  | some P => intro x hx; cases hx; simp [NumObj.withRefs]
+
+/-- The power object's extra reference among the handles. -/
+theorem BcHeap.cpRefs {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {A B : List NumObj}
+    {x1 : NumObj} {h : Hd} (hb : BcHeap S M H F (KList [] [h] A B x1))
+    (hf : ∀ P, h = some P → P.rep.refs = 1) (hr : x1.rep.refs + 2 < 2 ^ 31) :
+    BcHeap S (writeLog M [((Hd.objIn [h] x1 h).rep.p + 12, 4,
+      BitVec.ofNat 64 ((Hd.objIn [h] x1 h).rep.refs + 1))]) H F (KList [] (Hd.cp h) A B x1) := by
+  cases h with
+  | none =>
+    rw [show [none] = ([] : List Hd) ++ none :: [] from rfl, KList.split_none] at hb
+    have := hb.setRefs (k := (x1.withRefs (x1.rep.refs + 1)).rep.refs + 1)
+      (toNat_ofNat_mod32 (by simp only [NumObj.withRefs]; omega))
+      (by simp only [NumObj.withRefs]; omega)
+    rw [show Hd.cp none = ([] : List Hd) ++ none :: [none] from rfl, KList.split_none]
+    simpa [zeroCount, NumObj.withRefs_withRefs, NumObj.withRefs_refs, Hd.objIn, temps,
+      Nat.add_assoc] using this
+  | some P =>
+    rw [show [some P] = ([] : List Hd) ++ some P :: [] from rfl, KList.split_some] at hb
+    have := hb.setRefs (k := P.rep.refs + 1) (toNat_ofNat_mod32 (by rw [hf P rfl]; omega))
+      (by rw [hf P rfl]; omega)
+    simp only [Hd.objIn]
+    rw [hf P rfl] at this ⊢
+    rw [show Hd.cp (some P) = ([] : List Hd) ++ some (P.withRefs 2) :: [] from rfl, KList.split_some]
+    simpa [zeroCount, Hd.objIn, temps] using this
+
+/-- The state at `0x800068cc` (the exponent was `2^i`): `temp` and `power`
+both the power object. -/
+structure RaC (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat) (H : Heap)
+    (F : List Blk) (A B : List NumObj) (x1 : NumObj) (hP : Hd) (i rs nf : Nat) : Prop where
+  ra : RaAt S Mt0 M R0 R sp W q raSlots1
+  r21 : R 21 = R0 21
+  heap : BcHeap S M H F (KList [] (Hd.cp hP) A B x1)
+  pow : RaPow x1.rep.num (2 ^ i) (Hd.objIn [hP] x1 hP)
+  fresh : ∀ P, hP = some P → P.rep.refs = 1
+  base : hP = none → i = 0
+  r18 : R 18 = BitVec.ofNat 64 (Hd.p x1 hP)
+  r22 : R 22 = BitVec.ofNat 64 rs
+  r24 : R 24 = BitVec.ofNat 64 nf
+  w8 : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 (Hd.p x1 hP)
+
+/-- **`temp = power`** from `0x800066d0` (the first loop's odd exponent `e`,
+`a5` the power's reference count): `e = 1` ends at `0x800068cc`; otherwise
+the second loop to `0x80006740`. -/
+theorem ra_copy {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u i e rs nf : Nat} {H : Heap}
+    {F : List Blk} {A B : List NumObj} {x1 z o : NumObj} {hP : Hd}
+    (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
+    (st : RaP1 S Mt0 M R0 R sp W q H F A B x1 hP i e rs nf) (hu : u = 2 ^ i * e)
+    (he : e % 2 = 1) (h15 : R 15 = BitVec.ofNat 64 (Hd.objIn [hP] x1 hP).rep.refs)
+    (hpow2 : ∀ R' M' H' F', RaC S Mt0 M' R0 R' sp W q H' F' A B x1 hP i rs nf → e = 1 →
+      DW live S Q 0x800068cc#64 R' M')
+    (hexit : ∀ R' M' H' F' Pw' hT' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P' u 0 rs nf →
+      DW live S Q 0x80006740#64 R' M') :
+    DW live S Q 0x800066d0#64 R M := by
+  have cx := env.cx
+  ra_facts cx
+  have hsf := cx.frame
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have ra := st.ra
+  have h2 := ra.r2
+  have hym := Hd.objIn_mem (hs := [hP]) (List.mem_singleton_self hP) [] A B x1
+  have h18 : R 18 = BitVec.ofNat 64 (Hd.objIn [hP] x1 hP).rep.p := by
+    rw [Hd.objIn_p]; exact st.r18
+  have hrc : (Hd.objIn [hP] x1 hP).rep.refs + 1 < 2 ^ 31 := by
+    cases hP with
+    | some P => simp only [Hd.objIn, st.fresh P rfl]; omega
+    | none => have := env.refs1; simp only [Hd.objIn, NumObj.withRefs, zeroCount]; omega
+  generalize hyd : Hd.objIn [hP] x1 hP = y at hym h18 h15 hrc
+  have hn := hb.nums y hym
+  num_facts hn
+  have he64 : e < 2 ^ 64 := by
+    have : u ≤ u * (x1.rep.len + x1.rep.scale + 1) := Nat.le_mul_of_pos_right u (by omega)
+    have : e ≤ u := hu ▸ Nat.le_mul_of_pos_left e (Nat.two_pow_pos i)
+    have := env.size
+    have : u * (x1.rep.len + x1.rep.scale + 1) < 2 ^ 24 :=
+      Nat.lt_of_le_of_lt (Nat.mul_le_mul_right _ (Nat.le_succ u)) env.size
+    omega
+  have hsr : e % 2 ^ 64 / 2 ^ 1 = e / 2 := by rw [Nat.mod_eq_of_lt he64, Nat.pow_one]
+  have hsx : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (y.rep.refs + 1))) =
+      BitVec.ofNat 64 (y.rep.refs + 1) := sxw_ofNat hrc
+  have hr2 : x1.rep.refs + 2 < 2 ^ 31 := env.refs1
+  have hb2 := hb.cpRefs st.fresh hr2
+  rw [hyd] at hb2
+  have hyp : y.rep.p = Hd.p x1 hP := by rw [← hyd, Hd.objIn_p]
+  have hb3 := hb2.out_frame (MemOnly.store _ (sp - 96) 8 (BitVec.ofNat 64 y.rep.p))
+    (fun a ha => outHeap_of_ge (by simp only [heapEnd] at *; omega))
+  have ra3 := ((ra.heapStore (a := y.rep.p + 12) (w := 4)
+    (v := BitVec.ofNat 64 (y.rep.refs + 1)) (by have := hn.shape.pLo; omega)
+    (by have := hn.shape.pHi; omega) (by simp only [heapEnd]; omega)).lowStore
+    cx (a := sp - 96) (by omega) (by omega) (BitVec.ofNat 64 y.rep.p)).regsA
+    (ks := [15, 8]) (R' := upd (upd R 15 (BitVec.ofNat 64 (y.rep.refs + 1))) 8 (BitVec.ofNat 64 (e / 2)))
+    (by keeps_tac Keeps.refl _ _)
+  have hpH : y.rep.p + 16 ≤ sp - 96 := by
+    have := hn.shape.pHi; simp only [heapEnd] at this; omega
+  bc_run hlive hS [h2, h15, h18, st.r8, hsx, shr_ofNat, hsr] at 0x800066f0 0x800068cc
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals intro hz
+  · have he1 : e = 1 := by
+      have : e / 2 = 0 := by
+        have := congrArg BitVec.toNat hz
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)] at this; simpa using this
+      omega
+    refine hpow2 _ _ H F
+      { ra := ra3
+        r21 := by bsimp [st.r21]
+        heap := hb3
+        pow := st.pow
+        fresh := st.fresh
+        base := st.base
+        r18 := by bsimp [st.r18]
+        r22 := by bsimp [st.r22]
+        r24 := by bsimp [st.r24]
+        w8 := by rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]; exact st.w8 } he1
+  · have he2 : 1 ≤ e / 2 := by
+      rcases Nat.eq_zero_or_pos (e / 2) with h | h
+      · exact absurd (by rw [h]) hz
+      · exact h
+    have h2' : (upd (upd R 15 (BitVec.ofNat 64 (y.rep.refs + 1))) 8 (BitVec.ofNat 64 (e / 2))) 2 =
+        BitVec.ofNat 64 (sp - 96) := by bsimp [h2]
+    bc_run hlive hS [h2'] at 0x800066f0
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    have hb4 := hb3.out_frame (MemOnly.store _ (sp - 96 + 40) 8 (R 21))
+      (fun a ha => outHeap_of_ge (by simp only [heapEnd] at *; omega))
+    rw [Hd.cp_eq] at hb4
+    have ra4 := (ra3.saveS5 cx st.r21).regsA (ks := [20, 21])
+      (R' := upd (upd (upd (upd R 15 (BitVec.ofNat 64 (y.rep.refs + 1))) 8 (BitVec.ofNat 64 (e / 2)))
+        20 (R 18)) 21 (R 9)) (by keeps_tac Keeps.refl _ _)
+    have hinv := (Dc.BcModel.RaiseInv.init (u := u) (i := i) (e := e / 2) (by
+      rw [hu]; congr 1; omega)).total
+    have hp1 : 1 ≤ 2 ^ i := Nat.one_le_two_pow
+    refine ra_p2_first (hs1 := []) (hW := Hd.cpW hP) (hs2 := Hd.cpRest hP) (hT := hP) hlive env hoom
+      ra4 hb4 (by rw [← Hd.cp_eq]; exact Hd.cp_owns st.pow.owns)
+      (by rw [← Hd.cp_eq]; exact Hd.cp_zero hP) (Hd.cp_drop st.fresh) Hd.cpW_refs
+      (by rw [← Hd.cp_eq]; exact st.pow.cp) st.pow st.fresh hinv he2 hp1 hp1
+      (by bsimp [st.r18, Hd.cpW_p]) (by bsimp [st.r9]) (by bsimp []) (by bsimp [st.r18])
+      (by bsimp [st.r9]) (by bsimp [st.r22]) (by bsimp [st.r24])
+      (by rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+        Hd.cpW_p]; exact st.w8)
+      (by rw [ldv_ld_miss _ _ (by omega), ldv_store_hit, hyp]) hexit
+
 end Dc.Mach

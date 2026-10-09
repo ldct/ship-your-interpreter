@@ -43,6 +43,23 @@ theorem RList.refsAt {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {hs 
     ldv .lw M (y.rep.p + 12) = BitVec.ofNat 64 (y.rep.refs + rCnt hs y.rep.p) :=
   (hb.nums _ (RList.mem_caller hs hy)).refs
 
+/-- `RList.bump` with the count `bc_raisemod` stores, for at most three
+handles before it. -/
+theorem RList.bump1 {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {hs : List RH}
+    {L : List NumObj} {y : NumObj} (hb : BcHeap S M H F (RList hs L)) (hy : y ∈ L)
+    (hroom : y.rep.refs + 4 < 2 ^ 31) (hl : hs.length ≤ 3) :
+    BcHeap S (writeLog M [(y.rep.p + 12, 4, BitVec.ofNat 64 (y.rep.refs + rCnt hs y.rep.p + 1))])
+      H F (RList (hs ++ [.ref y]) L) := by
+  have := rCnt_le hs y.rep.p
+  exact RList.bump hb hy (toNat_ofNat_mod32 (by omega)) (by omega)
+
+/-- `addiw a5, a5, 1` of a small count. -/
+theorem addiw1_ofNat {c : Nat} (hc : c + 1 < 2 ^ 31) :
+    BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 c + 1#64)) =
+      BitVec.ofNat 64 (c + 1) := by
+  rw [show BitVec.ofNat 64 c + 1#64 = BitVec.ofNat 64 (c + 1) by bv_omega]
+  exact sxw_ofNat hc
+
 /-- `_two_` has one digit. -/
 theorem two_size {o : NumRep} (hs : NumShape o) (hn : o.Norm) (h2 : o.num = ⟨false, 2, 0⟩) :
     o.len + o.scale = 1 := by
@@ -721,5 +738,299 @@ theorem rx_wbase {live : Nat → Prop} {S : Nat → Prop}
       exact rx_divx hlive g (st1.regs (ks := [15]) (by keeps_tac Keeps.refl _ _))
   · intro _
     exact rx_wexp hlive g st
+
+/-! ## The references -/
+
+/-- Through a store into the heap. -/
+theorem RxAt.heapStore {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {slots : List (Nat × Nat)} (h : RxAt S Mt0 M R0 R sp W slots) (cx : RxCtx S R0 sp W q)
+    {a0 w : Nat} (v : BitVec 64) (hlo : heapStart ≤ a0) (hhi : a0 + w ≤ heapEnd) :
+    RxAt S Mt0 (writeLog M [(a0, w, v)]) R0 R sp W slots where
+  r2 := h.r2
+  saved := fun p hp => by
+    rx_facts cx
+    simp only [heapEnd] at hhi
+    rw [ldv_ld_miss _ _ (by omega)]; exact h.saved p hp
+  keep := h.keep
+  out := fun a ha hf => by
+    rw [imgM_store_miss _ _ (by simp only [OutHeap, heapStart, heapEnd] at ha hlo hhi; omega)]
+    exact h.out a ha hf
+
+/-- Through a store of a handle's word (below the saved registers). -/
+theorem RxAt.wordStore {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {slots : List (Nat × Nat)} (h : RxAt S Mt0 M R0 R sp W slots) (cx : RxCtx S R0 sp W q)
+    {a0 : Nat} (v : BitVec 64) (hlo : sp - 112 ≤ a0) (hhi : a0 + 8 ≤ sp - 80)
+    (hs : ∀ p ∈ slots, 32 ≤ p.2 := by decide) :
+    RxAt S Mt0 (writeLog M [(a0, 8, v)]) R0 R sp W slots where
+  r2 := h.r2
+  saved := fun p hp => by
+    have := hs p hp
+    rw [ldv_ld_miss _ _ (by omega)]; exact h.saved p hp
+  keep := h.keep
+  out := fun a ha hf => by
+    rx_facts cx
+    rw [imgM_store_miss _ _ (by simp only [frameIn] at hf; omega)]
+    exact h.out a ha hf
+
+/-- The state while `bc_raisemod` adds its references (`0x8000623c` to
+`0x80006298`): the heap with the reference handles `hs` added so far; `s0`
+`base`, `s8` `expo`, `s1` `&_zero_`, `a2` `mod`, `a3` the slot, `a6` `_zero_`. -/
+structure RxU (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+    (H : Heap) (F : List Blk) (L : List NumObj) (xb xe xm z : NumObj) (hs : List RH) : Prop where
+  ra : RxAt S Mt0 M R0 R sp W rxSlots1
+  r22 : R 22 = R0 22
+  heap : BcHeap S M H F (RList hs L)
+  r8 : R 8 = BitVec.ofNat 64 xb.rep.p
+  r24 : R 24 = BitVec.ofNat 64 xe.rep.p
+  r9 : R 9 = BitVec.ofNat 64 zeroAddr
+  r12 : R 12 = BitVec.ofNat 64 xm.rep.p
+  r13 : R 13 = BitVec.ofNat 64 q
+  r16 : R 16 = BitVec.ofNat 64 z.rep.p
+
+/-- A caller's number's struct in the heap. -/
+theorem RxU.ptr {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xe xm z : NumObj} {hs : List RH}
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z hs) {y : NumObj} (hy : y ∈ L) :
+    2147603920 ≤ y.rep.p ∧ y.rep.p + 40 ≤ 2273312768 ∧ y.rep.p % 8 = 0 := by
+  have hn := (st.heap.nums _ (RList.mem_caller hs hy)).shape
+  have h1 : heapStart ≤ y.rep.p := hn.pLo
+  have h2 : y.rep.p + 40 ≤ heapEnd := hn.pHi
+  have h3 : y.rep.p % 8 = 0 := hn.pAl
+  simp only [heapStart, heapEnd] at h1 h2
+  exact ⟨h1, h2, h3⟩
+
+/-- Through register changes off the state's. -/
+theorem RxU.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xe xm z : NumObj} {hs : List RH}
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z hs) {ks : List Nat} (hk : Keeps ks R' R)
+    (hks : ∀ z ∈ ks, z ∈ [1, 5, 6, 7, 10, 11, 14, 15, 17, 18, 19, 20, 21, 23, 28, 29, 30, 31] :=
+      by decide) :
+    RxU S Mt0 M R0 R' sp W q H F L xb xe xm z hs :=
+  { st with
+    ra := st.ra.regs hk fun z hz => by have := hks z hz; simp only [rxAll, List.mem_cons, List.not_mem_nil, or_false] at this ⊢; omega
+    r22 := by rw [hk.get 22 fun hm => by have := hks 22 hm; simp at this]; exact st.r22
+    r8 := by rw [hk.get 8 fun hm => by have := hks 8 hm; simp at this]; exact st.r8
+    r24 := by rw [hk.get 24 fun hm => by have := hks 24 hm; simp at this]; exact st.r24
+    r9 := by rw [hk.get 9 fun hm => by have := hks 9 hm; simp at this]; exact st.r9
+    r12 := by rw [hk.get 12 fun hm => by have := hks 12 hm; simp at this]; exact st.r12
+    r13 := by rw [hk.get 13 fun hm => by have := hks 13 hm; simp at this]; exact st.r13
+    r16 := by rw [hk.get 16 fun hm => by have := hks 16 hm; simp at this]; exact st.r16 }
+
+/-- Through a store of a handle's word. -/
+theorem RxU.word {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xe xm z : NumObj} {hs : List RH}
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z hs) (cx : RxCtx S R0 sp W q) {a0 : Nat}
+    (v : BitVec 64) (hlo : sp - 112 ≤ a0) (hhi : a0 + 8 ≤ sp - 80) :
+    RxU S Mt0 (writeLog M [(a0, 8, v)]) R0 R sp W q H F L xb xe xm z hs := by
+  rx_facts cx
+  exact
+    { st with
+      ra := st.ra.wordStore cx v hlo hhi
+      heap := st.heap.out_frame (MemOnly.store M a0 8 v) fun a h => by
+        simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega }
+
+/-- Through one more reference to the caller's `y`. -/
+theorem RxU.bump {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xe xm z : NumObj} {hs : List RH}
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z hs) (cx : RxCtx S R0 sp W q) {y : NumObj}
+    (hy : y ∈ L) (hroom : y.rep.refs + 4 < 2 ^ 31) (hl : hs.length ≤ 3) :
+    RxU S Mt0 (writeLog M [(y.rep.p + 12, 4, BitVec.ofNat 64 (y.rep.refs + rCnt hs y.rep.p + 1))])
+      R0 R sp W q H F L xb xe xm z (hs ++ [.ref y]) := by
+  obtain ⟨h1, h2, _⟩ := st.ptr hy
+  exact
+    { st with
+      ra := st.ra.heapStore cx _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+      heap := RList.bump1 st.heap hy hroom hl }
+
+/-- The state after the last reference (`_zero_`'s) and the handles' last
+two words: `RxB`. -/
+theorem RxU.fin {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t0 : String} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q k : Nat} {H : Heap}
+    {F : List Blk} {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z [.ref xb, .ref xe, .ref o])
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (hk : Keeps [15, 18, 23] R' R) (h19 : R' 19 = BitVec.ofNat 64 k)
+    (h20 : R' 20 = BitVec.ofNat 64 oneAddr) (h21 : R' 21 = BitVec.ofNat 64 o.rep.p)
+    (w0 : ldv .ld M (sp - 112) = BitVec.ofNat 64 xb.rep.p)
+    (w8 : ldv .ld M (sp - 112 + 8) = BitVec.ofNat 64 xe.rep.p)
+    (h18 : R' 18 = R 12) (h23 : R' 23 = R 13) :
+    RxB S Mt0 (writeLog (writeLog (writeLog M [(sp - 112 + 16, 8, BitVec.ofNat 64 z.rep.p)])
+        [(sp - 112 + 24, 8, BitVec.ofNat 64 o.rep.p)])
+        [(z.rep.p + 12, 4, BitVec.ofNat 64 (z.rep.refs + rCnt [.ref xb, .ref xe, .ref o] z.rep.p + 1))])
+      R0 R' sp W q H F L xb xm z o k (.ref xe) := by
+  have cx := g.cx
+  have ha := g.ha
+  rx_facts cx
+  obtain ⟨hz1, hz2, hz3⟩ := st.ptr ha.mz
+  have hrz := ha.refs z ha.mz
+  have c4 := rCnt_le [.ref xb, .ref xe, .ref o] z.rep.p
+  simp only [List.length_cons, List.length_nil] at c4
+  have hP : ∀ a, (sp - 112 + 16 ≤ a ∧ a < sp - 112 + 16 + 8) ∨
+      (sp - 112 + 24 ≤ a ∧ a < sp - 112 + 24 + 8) → OutHeap a := fun a h => by
+    simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+  have hb4 := RList.bump1 (((st.heap.out_frame
+    (MemOnly.store M (sp - 112 + 16) 8 (BitVec.ofNat 64 z.rep.p)) fun a h => hP a (.inl h)).out_frame
+    (MemOnly.store _ (sp - 112 + 24) 8 (BitVec.ofNat 64 o.rep.p)) fun a h => hP a (.inr h)))
+    ha.mz (by omega) (by simp)
+  have ra := ((st.ra.wordStore cx (a0 := sp - 112 + 16) (BitVec.ofNat 64 z.rep.p) (by omega)
+    (by omega)).wordStore cx (a0 := sp - 112 + 24) (BitVec.ofNat 64 o.rep.p) (by omega)
+    (by omega)).heapStore cx (a0 := z.rep.p + 12) (w := 4)
+    (BitVec.ofNat 64 (z.rep.refs + rCnt [.ref xb, .ref xe, .ref o] z.rep.p + 1))
+    (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  exact
+    { ra := ra.regs hk
+      r22 := by rw [hk.get 22 (by decide)]; exact st.r22
+      heap := hb4
+      own := ⟨fun y hy => by simp at hy, ha.owns⟩
+      okE := RHOK.ofMem ha.me ha.re
+      w0 := by
+        rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]
+        exact w0
+      w8 := by
+        rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]
+        exact w8
+      w16 := by
+        rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]
+        exact ldv_store_hit _ _ _
+      w24 := by
+        rw [ldv_ld_miss _ _ (by omega)]
+        exact ldv_store_hit _ _ _
+      r8 := by rw [hk.get 8 (by decide)]; exact st.r8
+      r24 := by rw [hk.get 24 (by decide)]; exact st.r24
+      r9 := by rw [hk.get 9 (by decide)]; exact st.r9
+      r18 := by rw [h18]; exact st.r12
+      r19 := h19
+      r20 := h20
+      r21 := h21
+      r23 := by rw [h23]; exact st.r13 }
+
+/-- **`_zero_`'s reference** from `0x8000627c` (`s5` `_one_`, `s3` scale,
+`a4` the base's scale, `power` and `exponent` stored), then `rx_wbase`. -/
+theorem rx_bump4 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z [.ref xb, .ref xe, .ref o])
+    (h19 : R 19 = BitVec.ofNat 64 k) (h20 : R 20 = BitVec.ofNat 64 oneAddr)
+    (h21 : R 21 = BitVec.ofNat 64 o.rep.p) (h14 : R 14 = BitVec.ofNat 64 xb.rep.scale)
+    (w0 : ldv .ld M (sp - 112) = BitVec.ofNat 64 xb.rep.p)
+    (w8 : ldv .ld M (sp - 112 + 8) = BitVec.ofNat 64 xe.rep.p) :
+    DW live S (DQ live S Q t0) 0x8000627c#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  rx_facts cx
+  have hsf := cx.frame
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  obtain ⟨hz1, hz2, hz3⟩ := st.ptr ha.mz
+  have hrz := ha.refs z ha.mz
+  have c4 := rCnt_le [.ref xb, .ref xe, .ref o] z.rep.p
+  simp only [List.length_cons, List.length_nil] at c4
+  have hr := RList.refsAt st.heap ha.mz
+  have hx := sxw_ofNat (k := z.rep.refs + rCnt [.ref xb, .ref xe, .ref o] z.rep.p + 1) (by omega)
+  have h2 := st.ra.r2
+  bc_run hlive hS [st.r16, hr, hx, h2, h21] at 0x80006298
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+  exact rx_wbase hlive g (st.fin g (by keeps_tac Keeps.refl _ _) (by bsimp [h19]) (by bsimp [h20])
+    (by bsimp [h21]) w0 w8 (by bsimp []) (by bsimp [])) (by bsimp [h14])
+
+
+/-- **`_one_`'s reference** from `0x80006268` (`power` and `exponent`
+stored), then `rx_bump4`. -/
+theorem rx_bump3 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z [.ref xb, .ref xe])
+    (h19 : R 19 = BitVec.ofNat 64 k) (h20 : R 20 = BitVec.ofNat 64 oneAddr)
+    (h21 : R 21 = BitVec.ofNat 64 o.rep.p) (h14 : R 14 = BitVec.ofNat 64 xb.rep.scale) :
+    DW live S (DQ live S Q t0) 0x80006268#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  rx_facts cx
+  have hsf := cx.frame
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  obtain ⟨ho1, ho2, ho3⟩ := st.ptr ha.mo
+  have hro := ha.refs o ha.mo
+  have c3 := rCnt_le [.ref xb, .ref xe] o.rep.p
+  simp only [List.length_cons, List.length_nil] at c3
+  have hr := RList.refsAt st.heap ha.mo
+  have hx := sxw_ofNat (k := o.rep.refs + rCnt [.ref xb, .ref xe] o.rep.p + 1) (by omega)
+  have h2 := st.ra.r2
+  bc_run hlive hS [h21, hr, hx, h2, st.r8, st.r24] at 0x8000627c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+  exact rx_bump4 hlive g
+    ((((st.word cx (a0 := sp - 112) _ (by omega) (by omega)).word cx (a0 := sp - 112 + 8) _
+      (by omega) (by omega)).bump cx ha.mo (by omega) (by simp)).regs
+      (ks := [15]) (by keeps_tac Keeps.refl _ _))
+    (by bsimp [h19]) (by bsimp [h20]) (by bsimp [h21]) (by bsimp [h14])
+    (by rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _)
+    (by rw [ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _)
+
+/-- **`expo`'s reference** from `0x80006254` (`s3 = scale`, `a4` the base's
+scale), then `rx_bump3`. -/
+theorem rx_bump2 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z [.ref xb])
+    (h20 : R 20 = BitVec.ofNat 64 oneAddr) (h21 : R 21 = BitVec.ofNat 64 o.rep.p)
+    (h14 : R 14 = BitVec.ofNat 64 k) :
+    DW live S (DQ live S Q t0) 0x80006254#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  rx_facts cx
+  have hsf := cx.frame
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  obtain ⟨he1, he2, he3⟩ := st.ptr ha.me
+  obtain ⟨hb1, hb2, hb3⟩ := st.ptr ha.mb
+  have hre := ha.refs xe ha.me
+  have c2 := rCnt_le [.ref xb] xe.rep.p
+  simp only [List.length_cons, List.length_nil] at c2
+  have hr := RList.refsAt st.heap ha.me
+  have hs : ldv .lw M (xb.rep.p + 8) = BitVec.ofNat 64 xb.rep.scale :=
+    (st.heap.nums _ (RList.mem_caller _ ha.mb)).scale
+  have hx := sxw_ofNat (k := xe.rep.refs + rCnt [.ref xb] xe.rep.p + 1) (by omega)
+  bc_run hlive hS [st.r24, hr, hx, st.r8, hs, h14] at 0x80006268
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+  exact rx_bump3 hlive g ((st.bump cx ha.me (by omega) (by simp)).regs
+      (ks := [14, 15, 19]) (by keeps_tac Keeps.refl _ _))
+    (by bsimp [h14]) (by bsimp [h20]) (by bsimp [h21]) (by bsimp [])
+
+/-- **`base`'s reference** from `0x8000623c` (`s4 = &_one_`, `s5 =
+_one_`), then the other three (`rx_bump2`). -/
+theorem rx_bumps {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxU S Mt0 M R0 R sp W q H F L xb xe xm z []) (h14 : R 14 = BitVec.ofNat 64 k) :
+    DW live S (DQ live S Q t0) 0x8000623c#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  rx_facts cx
+  have hsf := cx.frame
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  obtain ⟨hb1, hb2, hb3⟩ := st.ptr ha.mb
+  have hrb := ha.refs xb ha.mb
+  have hcs := ha.cst.transport cx st.ra.out
+  have hto : (BitVec.ofNat 64 oneAddr).toNat = oneAddr := rfl
+  have hldo : LdOK oneAddr 8 := by simp only [LdOK, oneAddr, tohostAddr]; omega
+  have hcst : ∀ b ∈ accAddrs oneAddr 8, S b := fun b hb' => by
+    have := of_mem_accAddrs hb'
+    exact cx.consts b (by simp only [constBytes, twoAddr, zeroAddr, oneAddr] at *; omega)
+  have hr := RList.refsAt st.heap ha.mb
+  have hx := sxw_ofNat (k := xb.rep.refs + rCnt [] xb.rep.p + 1) (by simp [rCnt]; omega)
+  bc_run hlive hS [st.r8, hr, hx, hcs.one, hto] at 0x80006254
+  all_goals first | exact hldo | exact hcst | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+  exact rx_bump2 hlive g ((st.bump cx ha.mb (by omega) (by simp)).regs
+      (ks := [15, 20, 21]) (by keeps_tac Keeps.refl _ _))
+    (by bsimp []) (by bsimp []) (by bsimp [h14])
 
 end Dc.Mach

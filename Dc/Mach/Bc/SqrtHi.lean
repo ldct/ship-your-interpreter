@@ -1,0 +1,344 @@
+import Dc.Mach.Bc.SqrtInit
+
+/-!
+# `bc_sqrt`'s first guess above one (`0x80006ad4`)
+
+`guess = bc_int2num (10)`, `guess1 = bc_int2num (n_len)`, `guess1 *= 0.5`
+cut to scale `0`, `guess = bc_raise (guess, guess1)`, `guess1` freed: the
+guess `10 ^ (n_len / 2)` at `cscale = 3` (`Dc.BcModel.sqrtInit_hi`).
+
+The handles are `[point5, diff, guess, guess1]`; `diff` keeps its `_zero_`
+reference, so after `guess1` is freed they are the loop's `[point5, diff,
+guess]` with no `guess1` in `s10`.
+
+- `sq_i2nH`: `bc_int2num` on a handle's slot.
+- `SqGo`: the fixed facts of the path; `SqH`: the frame and the handles
+  between its calls (`SqH.call` through a callee).
+-/
+
+namespace Dc.Mach
+
+open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
+open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
+
+set_option linter.unusedSimpArgs false
+
+/-- **`bc_int2num (&h, v)`** on the handle `h` of `bc_sqrt` (its word at
+`sp - 160 + o`): the new number replaces it. -/
+theorem sq_i2nH {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o : Nat} {v : Int}
+    {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {H : Heap} {F : List Blk}
+    (cx : SqCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q) (ho : o + 8 ≤ 48) (ho8 : o % 8 = 0)
+    (houtM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (hb : BcHeap S M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
+    (hh : RHOK L h) (hw : ldv .ld M (sp - 160 + o) = BitVec.ofNat 64 h.p)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 160)) (hal : (R 1).toNat % 4 = 0)
+    (h10 : R 10 = BitVec.ofNat 64 (sp - 160 + o)) (h11 : R 11 = BitVec.ofInt 64 v)
+    (hvl : -2 ^ 31 < v) (hvh : v < 2 ^ 31)
+    (hret : ∀ R' M' H' F' y, Keeps i2nClob R' R →
+      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
+      y.rep.num = Num.ofInt v → y.rep.Norm → y.rep.refs = 1 →
+      ldv .ld M' (sp - 160 + o) = BitVec.ofNat 64 y.rep.p →
+      (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) 128 a →
+        imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
+    DW live S Q 0x8000690c#64 R M := by
+  sq_facts cx
+  have hsl := cx.fslot ho ho8
+  obtain ⟨L1, L2, x, e, hp, hr1, hnv, _, _, hfr⟩ := RList.slot hb hh hown
+  rw [e] at hb
+  have ic := cx.cc.i2n (F := 160) (v := v) (by omega) (by omega) hsl h2 hal hvl hvh
+  refine bc_int2num_spec hlive ic (FreeEntry.of_slot hb ⟨hr1, by rw [hw, hp], hnv⟩ hnv hsl.slot hsl.out
+    (StackFrame.sub (m := 96) (n := 32) ic.frame (by decide)) (by have := ic.above; omega)
+    (.inr (by omega))) h10 h11
+    ⟨fun R' M' H' F' L' y hk hp' => ?_, fun R' M' hr2 hout => ?_⟩
+  · have hyp : y.rep.p = y.sb.pay := (hp'.heap.blocks y List.mem_cons_self).sPay
+    exact hret R' M' H' F' y hk (RList.replace hown hp'.owns hp'.heap (hfr L' hp'.rest))
+      (hown.set hp'.owns) hp'.num hp'.norm hp'.refs (by rw [hp'.slot, hyp]) hp'.out
+  · refine hoom R' M' (sp - 160 - 128) (by omega) (by omega) hr2 fun a ha hs hf => ?_
+    rw [hout a ha (fun h' => hf (by simp only [slotBytes, frameIn] at h' ⊢; omega))
+      (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
+    exact houtM a ha hs hf
+
+/-- The fixed facts of the path above one: `x > 1` with the Newton loop
+from the first guess, and the continuations. -/
+structure SqGo (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (t : String) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q k : Nat) (L : List NumObj)
+    (x z o p5 : NumObj) (rs : Nat) (r : Num) : Prop where
+  cx : SqCtx S R0 sp W q
+  ha : SqArgs S Mt0 L x z o q k
+  oom : RaOom live S (DQ live S Q t) Mt0 sp W q
+  p5n : p5.rep.num = Num.half
+  p5l : p5.rep.len = 1
+  p5s : p5.rep.scale = 1
+  p5N : p5.rep.Norm
+  rsk : rs = max k x.rep.scale
+  xneg : x.rep.neg = false
+  gt : Num.cmp x.rep.num Num.one = .gt
+  xz : x.rep.p ≠ z.rep.p
+  xo : x.rep.p ≠ o.rep.p
+  oz : o.rep.p ≠ z.rep.p
+  loop : Dc.SqrtLoop x.rep.num rs ⟨false, 10 ^ (x.rep.len / 2), 0⟩ 3 r
+  ret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
+    SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
+
+/-- Between the calls: the frame, the handles `hs`, `s1 = &guess`, `num`,
+`point5`, `rscale`, `&_one_` and `diff = _zero_`. -/
+structure SqH (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+    (H : Heap) (F : List Blk) (L : List NumObj) (x z p5 : NumObj) (rs : Nat) (hs : List RH) :
+    Prop where
+  fr : SqFr S Mt0 M R0 R sp W H F L hs
+  r9 : R 9 = BitVec.ofNat 64 (sp - 160 + 24)
+  r19 : R 19 = BitVec.ofNat 64 q
+  r20 : R 20 = BitVec.ofNat 64 p5.rep.p
+  r24 : R 24 = BitVec.ofNat 64 rs
+  wq : ldv .ld M q = BitVec.ofNat 64 x.rep.p
+  w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr
+  w40 : ldv .ld M (sp - 160 + 40) = BitVec.ofNat 64 z.rep.p
+
+/-- Through a callee that changes the caller-saved registers, the frame word
+at `o` and the bytes below the frame, and the handles. -/
+theorem SqH.call {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H H' : Heap} {F F' : List Blk} {L : List NumObj} {x z p5 : NumObj} {rs o : Nat}
+    {hs hs' : List RH} (cx : SqCtx S R0 sp W q) (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs hs)
+    (ho : 16 ≤ o) (ho' : o + 8 ≤ 40) (hk : Keeps raCallClob R' R)
+    (hout : ∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
+      imgM M' a = imgM M a)
+    (hb : BcHeap S M' H' F' (RList hs' L)) (hown : RHOwn hs' L) (hok : ∀ h ∈ hs', RHOK L h) :
+    SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs hs' := by
+  sq_facts cx
+  have hsl := cx.slot
+  have hap := hsl.apart
+  have hag : ∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) →
+      ¬ frameIn (sp - 160) (W - 160) a → imgM M' a = imgM M a := fun a h1 h2 h3 =>
+    hout a h1 (by simp only [slotBytes]; omega) h3
+  exact
+    { fr :=
+        { sa := st.fr.sa.call (hsp := by omega) (hW := by omega) (hkp := hk) (hag := hag)
+            (hst := fun a h1 _ => outHeap_of_ge (by simp only [heapEnd]; omega))
+          heap := hb
+          own := hown
+          ok := hok }
+      r9 := by rw [hk.get 9 (by decide)]; exact st.r9
+      r19 := by rw [hk.get 19 (by decide)]; exact st.r19
+      r20 := by rw [hk.get 20 (by decide)]; exact st.r20
+      r24 := by rw [hk.get 24 (by decide)]; exact st.r24
+      wq := by
+        rw [ldv_congr .ld fun j hj => hout _ (hsl.out _ (by simp only [slotBytes, widthOfM] at hj ⊢; omega)) (by simp only [slotBytes, widthOfM] at hj ⊢; omega)
+          (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+        exact st.wq
+      w8 := by
+        rw [ldv_congr .ld fun j hj => hout _ (outHeap_of_ge (by simp only [heapEnd, widthOfM] at hj ⊢; omega)) (by simp only [slotBytes, widthOfM] at hj ⊢; omega)
+          (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+        exact st.w8
+      w40 := by rw [sq_word2 cx (o := 40) (o' := o) (by omega) (.inr ho') hout]; exact st.w40 }
+
+/-- `bc_int2num`'s out-of-frame agreement as a callee's of `bc_sqrt`'s frame. -/
+theorem sq_i2nOut {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp W q o : Nat} {M M' : Mem}
+    (cx : SqCtx S R0 sp W q)
+    (h : ∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) 128 a →
+      imgM M' a = imgM M a) :
+    ∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
+      imgM M' a = imgM M a := by
+  sq_facts cx
+  exact fun a h1 h2 h3 => h a h1 h2 fun h' => h3 (by simp only [frameIn] at h' ⊢; omega)
+
+/-- **`bc_int2num (&h, v)`** on a handle of the path's state (its word at
+`sp - 160 + o`): the state with the new number's handle. -/
+theorem sq_i2nS {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o rs : Nat} {v : Int}
+    {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {x z p5 : NumObj} {H : Heap} {F : List Blk}
+    (cx : SqCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q)
+    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs (hs1 ++ h :: hs2))
+    (ho : 16 ≤ o) (ho' : o + 8 ≤ 40) (ho8 : o % 8 = 0)
+    (hh : RHOK L h) (hw : ldv .ld M (sp - 160 + o) = BitVec.ofNat 64 h.p)
+    (hal : (R 1).toNat % 4 = 0)
+    (h10 : R 10 = BitVec.ofNat 64 (sp - 160 + o)) (h11 : R 11 = BitVec.ofInt 64 v)
+    (hvl : -2 ^ 31 < v) (hvh : v < 2 ^ 31)
+    (hnext : ∀ R' M' H' F' y, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs (hs1 ++ .own y :: hs2) →
+      y.rep.num = Num.ofInt v → y.rep.Norm → y.rep.refs = 1 →
+      ldv .ld M' (sp - 160 + o) = BitVec.ofNat 64 y.rep.p →
+      (∀ o', o' ≤ 40 → o' + 8 ≤ o ∨ o + 8 ≤ o' → ldv .ld M' (sp - 160 + o') = ldv .ld M (sp - 160 + o')) →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x8000690c#64 R M := by
+  sq_facts cx
+  refine sq_i2nH hlive (hs1 := hs1) (h := h) (hs2 := hs2) (o := o) (v := v) cx hoom (by omega) ho8
+    (fun a ha _ hf => st.fr.sa.out a ha hf) st.fr.heap st.fr.own hh hw st.fr.sa.r2 hal h10 h11 hvl hvh
+    fun R1 M1 H1 F1 y hk1 hb1 hown1 hn hN hr hw' hout => ?_
+  have hk' : Keeps raCallClob R1 R := (hk1.mono (by decide))
+  refine hnext R1 M1 H1 F1 y (SqH.call cx st ho ho' hk' (sq_i2nOut cx hout) hb1 hown1 ?_) hn hN hr hw'
+    fun o' h1 h2 => sq_word2 cx (by omega) h2 (sq_i2nOut cx hout)
+  intro h' hh'
+  rcases List.mem_append.mp hh' with h1 | h1
+  · exact st.fr.ok _ (List.mem_append_left _ h1)
+  · rcases List.mem_cons.mp h1 with rfl | h1
+    · exact ⟨hr, hown1.temps _ (List.mem_append_right _ List.mem_cons_self)⟩
+    · exact st.fr.ok _ (List.mem_append_right _ (List.mem_cons_of_mem _ h1))
+
+/-- **`guess = bc_int2num (10)`** from `0x80006ad4`, into the second `_zero_`
+handle. -/
+theorem sq_hiTen {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 : NumObj} {r : Num}
+    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqS S Mt0 M R0 R sp W q H F L x z p5 rs)
+    (hnext : ∀ R' M' H' F' gg, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+        [.own p5, .ref z, .own gg, .ref z] → gg.rep.num = Num.ofInt 10 → gg.rep.Norm →
+      gg.rep.refs = 1 → ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p →
+      ldv .ld M' (sp - 160 + 32) = BitVec.ofNat 64 z.rep.p →
+      DW live S (DQ live S Q t) 0x80006ae4#64 R' M') :
+    DW live S (DQ live S Q t) 0x80006ad4#64 R M := by
+  have cx := g.cx
+  sq_facts cx
+  have hb := st.fr.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have h2 := st.fr.sa.r2
+  bc_run hlive hS [h2] at 0x8000690c
+  refine sq_i2nS hlive (hs1 := [.own p5, .ref z]) (h := .ref z) (hs2 := [.ref z]) (o := 24)
+    (v := 10) (rs := rs) (x := x) (z := z) (p5 := p5) (H := H) (F := F) cx g.oom ?_ (by omega) (by omega) (by decide) (st.fr.ok _ (by simp)) st.w24
+    (by bsimp []; try decide) (by bsimp []) (by bsimp []; rfl) (by decide) (by decide)
+    fun R1 M1 H1 F1 y st1 hn hN hr hw hag => ?_
+  · exact { fr := { st.fr with sa := st.fr.sa.regs (ks := [1, 9, 10, 11]) (by keeps_tac Keeps.refl _ _) }
+            r9 := by bsimp [], r19 := by bsimp [st.r19], r20 := by bsimp [st.r20]
+            r24 := by bsimp [st.r24], wq := st.wq, w8 := st.w8, w40 := st.w40 }
+  · bsimp []
+    exact hnext R1 M1 H1 F1 y st1 hn hN hr hw
+      (by rw [hag 32 (by omega) (.inr (by omega))]; exact st.w32)
+
+@[simp] theorem NumObj.withRefs_len (x : NumObj) (k : Nat) :
+    (x.withRefs k).rep.len = x.rep.len := rfl
+
+/-- **`guess1 = bc_int2num (n_len)`** from `0x80006ae4`, into the last
+`_zero_` handle. -/
+theorem sq_hiLen {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 gg : NumObj} {r : Num}
+    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .ref z])
+    (w24 : ldv .ld M (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p)
+    (w32 : ldv .ld M (sp - 160 + 32) = BitVec.ofNat 64 z.rep.p)
+    (hnext : ∀ R' M' H' F' l, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+        [.own p5, .ref z, .own gg, .own l] → l.rep.num = Num.ofInt x.rep.len → l.rep.Norm →
+      l.rep.refs = 1 → ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p →
+      ldv .ld M' (sp - 160 + 32) = BitVec.ofNat 64 l.rep.p →
+      DW live S (DQ live S Q t) 0x80006af4#64 R' M') :
+    DW live S (DQ live S Q t) 0x80006ae4#64 R M := by
+  have cx := g.cx
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hb := st.fr.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hq := cx.slot.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  have hxn := hb.nums _ (RList.mem_caller _ g.ha.mx)
+  num_facts hxn
+  have hxl := hxn.len
+  simp only [rBump, NumObj.withRefs_p, NumObj.withRefs_len] at *
+  have hsz := g.ha.size
+  have hx := sxw_ofNat (show x.rep.len < 2 ^ 31 by omega)
+  have h2 := st.fr.sa.r2
+  bc_run hlive hS [h2, st.r19, st.wq, hxl, hx] at 0x8000690c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hq.acc | skip
+  refine sq_i2nS hlive (hs1 := [.own p5, .ref z, .own gg]) (h := .ref z) (hs2 := []) (o := 32)
+    (v := (x.rep.len : Int)) (rs := rs) (x := x) (z := z) (p5 := p5) (H := H) (F := F) cx g.oom ?_
+    (by omega) (by omega) (by decide) (st.fr.ok _ (by simp)) w32 (by bsimp []; try decide)
+    (by bsimp []) (by rw [BitVec.ofInt_natCast]; bsimp []) (by omega) (by omega)
+    fun R1 M1 H1 F1 y st1 hn hN hr hw hag => ?_
+  · exact { st with
+              fr := { st.fr with sa := st.fr.sa.regs (ks := [1, 10, 11, 15]) (by keeps_tac Keeps.refl _ _) }
+              r9 := by bsimp [st.r9], r19 := by bsimp [st.r19], r20 := by bsimp [st.r20]
+              r24 := by bsimp [st.r24] }
+  · bsimp []
+    exact hnext R1 M1 H1 F1 y st1 hn hN hr
+      (by rw [hag 24 (by omega) (.inl (by omega))]; exact w24) hw
+
+/-- A number of `n ≥ 1` without fraction digits has at least one integer
+digit, and at most `m` for `n < 10 ^ m`. -/
+theorem NumRep.len_of_int {o : NumRep} (hs : NumShape o) (hn : o.Norm) {m : Nat}
+    (hsc : o.scale = 0) (h1 : 1 ≤ dval o.ds) (hm : dval o.ds < 10 ^ m) (hm1 : 1 ≤ m) :
+    1 ≤ o.len ∧ o.len ≤ m := by
+  refine ⟨Nat.pos_of_ne_zero fun h0 => by rw [NumRep.mag_eq_zero hs h0] at h1; omega, ?_⟩
+  rcases Nat.lt_or_ge 1 o.len with h | h
+  · have := NumRep.mag_ge hs hn h
+    rw [hsc, Nat.add_zero] at this
+    have := Nat.pow_lt_pow_iff_right (a := 10) (by decide) |>.mp (Nat.lt_of_le_of_lt this hm)
+    omega
+  · omega
+
+/-- **`guess1 = guess1 * 0.5`** at scale `0` from `0x80006af4`. -/
+theorem sq_hiMul {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 gg l : NumObj} {r : Num}
+    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .own l])
+    (hln : l.rep.num = Num.ofInt x.rep.len) (hlN : l.rep.Norm) (hlr : l.rep.refs = 1)
+    (w24 : ldv .ld M (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p)
+    (w32 : ldv .ld M (sp - 160 + 32) = BitVec.ofNat 64 l.rep.p)
+    (hnext : ∀ R' M' H' F' m, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+        [.own p5, .ref z, .own gg, .own m] →
+      MulRes M' (sp - 160 + 32) (Num.mul (Num.ofInt x.rep.len) Num.half 0) m →
+      ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p →
+      DW live S (DQ live S Q t) 0x80006b08#64 R' M') :
+    DW live S (DQ live S Q t) 0x80006af4#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hb := st.fr.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have ra := st.fr.sa
+  have h2 := ra.r2
+  have hcs := (SqCst.mk (ha.zero.mono (by omega)) ha.one ha.mulBase).transport cx ra.out
+  have objl : l ∈ RList [.own p5, .ref z, .own gg, .own l] L :=
+    RH.obj_mem (h := .own l) (by simp) ⟨hlr, st.fr.own.temps _ (by simp)⟩
+  have objp : p5 ∈ RList [.own p5, .ref z, .own gg, .own l] L :=
+    RH.obj_mem (h := .own p5) (by simp) (st.fr.ok _ (by simp))
+  have hls := (hb.nums _ objl).shape
+  have hsz := ha.size; have hlx := ha.lenx
+  have hlv : dval l.rep.ds = x.rep.len := by
+    rw [← NumRep.num_mag, hln]; simp [Num.ofInt]
+  have hlsc : l.rep.scale = 0 := by rw [← NumRep.num_scale, hln]; rfl
+  obtain ⟨hl1, hl7⟩ := NumRep.len_of_int (m := 7) hls hlN hlsc (by omega) (by
+    rw [hlv]; exact Nat.lt_of_lt_of_le (by omega : x.rep.len < 2 ^ 20) (by decide)) (by decide)
+  have hp5l := g.p5l; have hp5s := g.p5s
+  bc_run hlive hS [h2, w32, st.r20] at 0x8000573c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine sq_mulH hlive (hs1 := [.own p5, .ref z, .own gg]) (h := .own l) (hs2 := []) (o := 32)
+    (k := 0) (u1 := l) (u2 := p5) (z := rBump [.own p5, .ref z, .own gg, .own l] z) cx g.oom
+    (by omega) (by decide) (fun a ha _ hf => ra.out a ha hf) hb st.fr.own (st.fr.ok _ (by simp))
+    { m1 := objl, m2 := objp, mz := RList.mem_caller _ ha.mz
+      p1 := by omega
+      p2 := by omega
+      size := by omega
+      scale := by decide
+      zero := KZero.rBump _ (by simp) (hcs.zero.mono (by omega))
+      mulBase := hcs.mulBase }
+    w32 (by bsimp [h2]) (by bsimp []; try decide) (by bsimp [w32]) (by bsimp [st.r20])
+    (by bsimp []) (by bsimp []) ?_
+  intro R1 M1 H1 F1 y hk1 hb1 hown1 hres hout1
+  have hk' := hk1.mono (ks' := raCallClob) (by decide)
+  bsimp []
+  refine hnext R1 M1 H1 F1 y (SqH.call (hs := [.own p5, .ref z, .own gg, .own l]) (H := H) (F := F) cx ?_
+    (o := 32) (by omega) (by omega) hk' hout1 hb1 hown1 ?_)
+    (by rw [hln, g.p5n] at hres; exact hres)
+    (by rw [sq_word2 cx (o := 24) (o' := 32) (by omega) (.inl (by omega)) hout1]; exact w24)
+  · exact { st with
+              fr := { st.fr with sa := st.fr.sa.regs (ks := [1, 10, 11, 12, 13]) (by keeps_tac Keeps.refl _ _) }
+              r9 := by bsimp [st.r9], r19 := by bsimp [st.r19], r20 := by bsimp [st.r20]
+              r24 := by bsimp [st.r24] }
+  · intro h hh
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hh
+    rcases hh with rfl | rfl | rfl | rfl
+    · exact st.fr.ok _ (by simp)
+    · exact st.fr.ok _ (by simp)
+    · exact st.fr.ok _ (by simp)
+    · exact ⟨hres.refs, hres.owns⟩
+
+end Dc.Mach

@@ -1067,4 +1067,213 @@ theorem DvShape.step {D : DvData} (hs : DvShape D) (k : Nat) :
     (by rw [hm, hv]) (by rw [hv]; exact hs.vpos) (by rw [hw, hv]; exact hlo)
     (by rw [hw, hv]; exact hhi)⟩
 
+/-- **The new window** from the step's digits at the window's low `L` bytes. -/
+theorem DvShape.win_of_step {D : DvData} {M : Mem} {k : Nat} (hs : DvShape D)
+    (hb : ∀ j, j < D.L → imgM M (D.P + k + D.L - j) =
+      BitVec.ofNat 8 ((stepWin (D.wL k) (D.mL k) D.vL).getD j 0)) :
+    ∀ i, i < D.L → imgM M (D.P + (k + 1) + i) =
+      BitVec.ofNat 8 (D.W k % D.V / 10 ^ (D.L - 1 - i) % 10) := by
+  obtain ⟨hw, hv, sr⟩ := hs.step k
+  intro i hi
+  have e := hb (D.L - 1 - i) (by omega)
+  rw [show D.P + k + D.L - (D.L - 1 - i) = D.P + (k + 1) + i by omega, dvalLE_getD sr.digits,
+    sr.val, hw, hv] at e
+  exact e
+
+/-- The digit iteration `k` stores. -/
+theorem DvShape.digit {D : DvData} (hs : DvShape D) {k : Nat} (hk : k ≤ D.Kb) :
+    D.pre (k + 1) / D.V % 10 = D.W k / D.V := by
+  have hd : D.W k / D.V < 10 :=
+    (Nat.div_lt_iff_lt_mul hs.vpos).mpr (by have := hs.W_lt k; omega)
+  rw [(hs.pre_succ_div hk).1, Nat.add_comm, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hd]
+
+/-- The state after the subtraction, at `0x80005e18`. -/
+structure DvSubd (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
+    (D : DvData) (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat)
+    (k : Nat) : Prop where
+  head : DvAt S Mt0 M0 R0 Rh sp W D H F Lh y ds k
+  g0 : 1 ≤ D.g k
+  touch : MemOnly (DvTouch sp W D k) M M0
+  sub : ∀ i, i ≤ D.L → imgM M (D.P + k + D.L - i) =
+    BitVec.ofNat 8 ((subLE (D.wL k) (D.mL k) 0).getD i 0)
+  r10 : R 10 = BitVec.ofNat 64 (subBorrow (D.wL k) (D.mL k) 0)
+  r22 : R 22 = BitVec.ofNat 64 (D.g k)
+  r25 : R 25 = BitVec.ofNat 64 (D.P + (k + D.L))
+  r2 : R 2 = BitVec.ofNat 64 (sp - 208)
+  r9 : R 9 = BitVec.ofNat 64 k
+  r21 : R 21 = BitVec.ofNat 64 (k + 1)
+  r18 : R 18 = BitVec.ofNat 64 D.P
+  r24 : R 24 = BitVec.ofNat 64 D.N
+  r27 : R 27 = BitVec.ofNat 64 (y.rep.val + D.off + k)
+  r26 : R 26 = BitVec.ofNat 64 D.Kb
+  regs : Keeps divAll R R0
+
+/-- The state after the add-back, at `0x80005f44`: the new window in place
+below its top byte, the digit `g - 1` in `s4`. -/
+structure DvAdded (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
+    (D : DvData) (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat)
+    (k : Nat) : Prop where
+  head : DvAt S Mt0 M0 R0 Rh sp W D H F Lh y ds k
+  touch : MemOnly (DvTouch sp W D k) M M0
+  win : ∀ i, i < D.L → imgM M (D.P + (k + 1) + i) =
+    BitVec.ofNat 8 (D.W k % D.V / 10 ^ (D.L - 1 - i) % 10)
+  r2 : R 2 = BitVec.ofNat 64 (sp - 208)
+  r9 : R 9 = BitVec.ofNat 64 k
+  r21 : R 21 = BitVec.ofNat 64 (k + 1)
+  r18 : R 18 = BitVec.ofNat 64 D.P
+  r24 : R 24 = BitVec.ofNat 64 D.N
+  r27 : R 27 = BitVec.ofNat 64 (y.rep.val + D.off + k)
+  r26 : R 26 = BitVec.ofNat 64 D.Kb
+  r25 : R 25 = BitVec.ofNat 64 (D.P + (k + D.L))
+  r20 : R 20 = BitVec.ofNat 64 (D.pre (k + 1) / D.V % 10)
+  regs : Keeps divAll R R0
+
+/-- **After the add-back**: the final carry bumps the window's top byte
+(mod 10), then the digit store. -/
+theorem dv_added {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M0 M2 : Mem} {R0 Rh R2 : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
+    {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
+    (cx : DvCtx S sp W) (hs : DvShape D)
+    (st : DvAdded S Mt0 M0 M2 R0 Rh R2 sp W D H F Lh y ds k)
+    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    DW live S Q 0x80005f44#64 R2 M2 := by
+  have hf2 := st.head.fix_touch hs cx st.touch
+  have hS := hf2.heapOwn
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hkb := st.head.kb
+  have hl1 := hs.l1; have hxl := hs.xl; have hsm := hs.small
+  have hi := hf2.heap.heap
+  have hp0 := live_in_heap hi hf2.b1l (hf2.pIn k (by omega))
+  have hpL := live_in_heap hi hf2.b1l (hf2.pIn (k + D.L) (by omega))
+  simp only [heapStart, heapEnd] at hp0 hpL
+  have hsp := cx.frame.lo; have hsp2 := cx.frame.hi; have hab := cx.above; have hW := cx.big
+  simp only [heapEnd, htx] at hab hsp
+  have touch2 := st.touch
+  have hwin := st.win
+  have q2 := st.r2; have q9 := st.r9; have q21 := st.r21; have q18 := st.r18; have q24 := st.r24
+  have q27 := st.r27; have q26 := st.r26; have q25 := st.r25; have q20 := st.r20
+  have qregs := st.regs
+  have t24 := hf2.s24
+  bc_run hlive hS [] at 0x80005d38 0x80005f6c
+  · intro _
+    exact dv_store hlive cx hs (DvMid.of_touch hs cx st.head touch2 hwin (by bsimp [q2])
+      (by bsimp [q9]) (by bsimp [q21]) (by bsimp [q18]) (by bsimp [q24]) (by bsimp [q27])
+      (by bsimp [q26]) (by keeps_tac qregs)) (by bsimp [q20]) hk
+  · intro _
+    bc_run hlive hS [q2, q25, t24, se12_fff, word_pred hl1, shl_shr32, sxw_ofNat,
+      sub_ofNat (show D.L - 1 ≤ D.P + (k + D.L) by omega) (by omega),
+      word_pred (show 1 ≤ D.P + (k + D.L) - (D.L - 1) by omega)] at 0x80005f6c
+    all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+    apply st_80005f6c hlive
+    refine moddi3_spec hlive _ (by bsimp []) fun R3 hk3 _ => ?_
+    bsimp []
+    have r25 : R3 25 = BitVec.ofNat 64 (D.P + (k + D.L) - (D.L - 1)) := by
+      rw [hk3.get 25]; bsimp []
+    bc_run hlive hS [r25, se12_fff, word_pred (show 1 ≤ D.P + (k + D.L) - (D.L - 1) by omega)]
+      at 0x80005d38
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    have touch3 := ((MemOnly.store M2 (D.P + (k + D.L) - (D.L - 1) - 1) 1 (R3 10)).mono
+      fun b hb => (show DvTouch sp W D k b from .inl ⟨by omega, by omega⟩)).trans touch2
+    exact dv_store hlive cx hs (DvMid.of_touch hs cx st.head touch3
+      (fun i hi => by rw [imgM_store_miss _ _ (by omega)]; exact hwin i hi)
+      (by rw [hk3.get 2]; bsimp [q2]) (by rw [hk3.get 9]; bsimp [q9])
+      (by rw [hk3.get 21]; bsimp [q21]) (by rw [hk3.get 18]; bsimp [q18])
+      (by rw [hk3.get 24]; bsimp [q24]) (by rw [hk3.get 27]; bsimp [q27])
+      (by rw [hk3.get 26]; bsimp [q26])
+      ((hk3.mono (by decide)).trans (by keeps_tac qregs)))
+      (by rw [hk3.get 20]; bsimp [q20]) hk
+
+/-- **After the subtraction**: store the guess, or add the divisor back and
+store one less. -/
+theorem dv_after_sub {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M0 M : Mem} {R0 Rh R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
+    {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
+    (cx : DvCtx S sp W) (hs : DvShape D)
+    (st : DvSubd S Mt0 M0 M R0 Rh R sp W D H F Lh y ds k)
+    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    DW live S Q 0x80005e18#64 R M := by
+  have hf := st.head.fix_touch hs cx st.touch
+  have hS := hf.heapOwn
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  obtain ⟨hw, hv, sr⟩ := hs.step k
+  have hb1 := subBorrow_le (D.wL k) (D.mL k) 0 (by decide)
+  have h10 := st.r10
+  have hkb := st.head.kb
+  bc_run hlive hS [h10] at 0x80005eec 0x80005e20
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro he
+    have h1 : subBorrow (D.wL k) (D.mL k) 0 = 1 := ofNat64_eq (by omega) (by decide) he
+    have hdig : D.g k - 1 = D.W k / D.V := by
+      have := sr.dig; rw [h1, hw, hv] at this; exact this
+    have hg1 := st.g0
+    have hl1 := hs.l1; have hxl := hs.xl; have hsm := hs.small
+    have hi := hf.heap.heap
+    have hp0 := live_in_heap hi hf.b1l (hf.pIn k (by omega))
+    have hpL := live_in_heap hi hf.b1l (hf.pIn (k + D.L) (by omega))
+    have hn0 := live_in_heap hi hf.b2l (hf.nIn 0 (Nat.zero_le _))
+    have hnL := live_in_heap hi hf.b2l (hf.nIn D.L (Nat.le_refl _))
+    simp only [heapStart, heapEnd] at hp0 hpL hn0 hnL
+    have hsp := cx.frame.lo; have hsp2 := cx.frame.hi; have hab := cx.above; have hW := cx.big
+    simp only [heapEnd, htx] at hab hsp
+    have h2 := st.r2; have h22 := st.r22; have h24 := st.r24; have h25 := st.r25
+    have s24 := hf.s24; have s16 := hf.s16
+    have hg9 := (hs.g_bounds k).2.2
+    bc_run hlive hS [h2, h22, h24, h25, s24, s16, se12_fff, word_pred hg1, word_pred hl1,
+      sxw_ofNat] at 0x80005f14
+    all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+    · intro h0; exact absurd (ofNat64_eq (by omega) (by decide) h0) (by omega)
+    intro _
+    bc_run hlive hS [h2, h24, h25, s16, se12_fff, word_pred hl1] at 0x80005f14
+    all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+    have hvl : D.vL.length = D.L := by simp only [DvData.vL, BcModel.digLE_length]
+    have hsl : (subLE (D.wL k) (D.mL k) 0).length = D.L + 1 := by
+      rw [subLE_length _ _ _ (by simp only [DvData.wL, DvData.mL, BcModel.digLE_length])]
+      simp only [DvData.wL, BcModel.digLE_length]
+    have hda : DaArgs M (D.P + k) D.N D.L (subLE (D.wL k) (D.mL k) 0) D.vL := by
+      refine ⟨hsl, hvl, subLE_digits _ _ _ (BcModel.digLE_digits _ _) (BcModel.digLE_digits _ _)
+        (by decide), BcModel.digLE_digits _ _, st.sub, fun j hj => ?_, by omega, by omega,
+        by omega, by omega, ?_, hl1⟩
+      · have hd := dvalBE_digit hs.vd (i := D.L - 1 - j) (by rw [hs.vl]; omega)
+        rw [hs.vl, show D.L - 1 - (D.L - 1 - j) = j by omega] at hd
+        rw [show D.N + D.L - 1 - j = D.N + (D.L - 1 - j) by omega, hf.div _ (by omega)]
+        simp only [DvData.vL]; rw [BcModel.digLE_getD _ _ _ hj, ← hd]
+      · rcases live_ranges_apart hi hf.b1l hf.b2l hf.b12 (x := D.P + k) (n := D.L) (y := D.N)
+          (m := D.L) (fun i hi => by rw [Nat.add_assoc]; exact hf.pIn _ (by omega)) hf.nIn with h | h
+        · exact .inl h
+        · exact .inr (by omega)
+    refine dadd_loop hlive hS hda (fun R2 M2 dp => ?_) _ 0 _ _ rfl
+      ⟨by bsimp []; congr 1; omega, by bsimp []; congr 1; omega, by bsimp [carryAt_zero],
+        by bsimp [], by bsimp [], by bsimp [h10, h1], Keeps.refl _ _, hl1,
+        fun i hi => absurd hi (Nat.not_lt_zero _), MemOnly.refl _ _⟩
+    have touch2 : MemOnly (DvTouch sp W D k) M2 M0 :=
+      (dp.only.mono fun a ha => .inl ⟨by omega, by omega⟩).trans st.touch
+    have hbw : stepWin (D.wL k) (D.mL k) D.vL = addBack (subLE (D.wL k) (D.mL k) 0) D.vL := by
+      unfold stepWin; rw [if_pos h1]
+    have hwin := hs.win_of_step (M := M2) fun j hj => by
+      rw [hbw, addBack_getD_lt (by rw [hsl, hvl]) (by rw [hvl]; exact hj), hvl]
+      exact dp.done j hj
+    exact dv_added hlive cx hs ⟨st.head, touch2, hwin, by rw [dp.regs.get 2]; bsimp [h2],
+      by rw [dp.regs.get 9]; bsimp [st.r9], by rw [dp.regs.get 21]; bsimp [st.r21],
+      by rw [dp.regs.get 18]; bsimp [st.r18], by rw [dp.regs.get 24]; bsimp [h24],
+      by rw [dp.regs.get 27]; bsimp [st.r27], by rw [dp.regs.get 26]; bsimp [st.r26],
+      by rw [dp.regs.get 25]; bsimp [h25],
+      by rw [dp.regs.get 20, hs.digit hkb, ← hdig]; bsimp [],
+      (dp.regs.mono (by decide)).trans (by keeps_tac st.regs)⟩ hk
+  · intro hne
+    have h0 : subBorrow (D.wL k) (D.mL k) 0 = 0 := by
+      rcases Nat.le_one_iff_eq_zero_or_eq_one.mp hb1 with h | h
+      · exact h
+      · exact absurd (by rw [h]) hne
+    have hsw : stepWin (D.wL k) (D.mL k) D.vL = subLE (D.wL k) (D.mL k) 0 := by
+      unfold stepWin; rw [if_neg (by omega)]
+    have hdig : D.g k = D.W k / D.V := by
+      have := sr.dig; rw [h0, Nat.sub_zero, hw, hv] at this; exact this
+    refine dv_store' hlive cx hs (DvMid.of_touch hs cx st.head st.touch
+      (hs.win_of_step fun j hj => by rw [hsw]; exact st.sub j (by omega))
+      (by bsimp [st.r2]) (by bsimp [st.r9]) (by bsimp [st.r21]) (by bsimp [st.r18])
+      (by bsimp [st.r24]) (by bsimp [st.r27]) (by bsimp [st.r26]) (by keeps_tac st.regs)) ?_ hk
+    bsimp [st.r22]; rw [hs.digit hkb, hdig]
+
 end Dc.Mach

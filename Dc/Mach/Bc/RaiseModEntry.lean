@@ -368,8 +368,9 @@ abbrev rxVal (xb xe xm : NumObj) (k : Nat) : Num :=
     ⟨false, xe.rep.num.intPart, 0⟩ xb.rep.num Num.one
 
 /-- The entry's fixed facts once the `-1` returns are past: the context, the
-operands, the result slot, `_one_` apart from `_zero_`, a nonzero modulus, an
-exponent at `_zero_`'s pointer of integer part `0`, and the continuations. -/
+operands, the result slot, `_one_` apart from `_zero_`, a nonzero modulus, a
+non-negative exponent, of integer part `0` at `_zero_`'s pointer, and the
+continuations. -/
 structure RxGo (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t0 : String) (R0 : Nat → BitVec 64) (Mt0 : Mem) (sp W q k : Nat) (L : List NumObj)
     (xb xe xm z o t xr : NumObj) : Prop where
@@ -378,6 +379,7 @@ structure RxGo (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (
   hs : RxSlot Mt0 L xr q
   oz : o.rep.p ≠ z.rep.p
   mag : xm.rep.num.mag ≠ 0
+  pos : xe.rep.num.neg = false
   zx : xe.rep.p = z.rep.p → xe.rep.num.intPart = 0
   oom : RaOom live S (DQ live S Q t0) Mt0 sp W q
   ret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
@@ -498,5 +500,226 @@ theorem rx_wmod {live : Nat → Prop} {S : Nat → Prop}
   · intro _
     exact rx_go hlive cx g.ha g.hs g.oz g.mag rfl g.oom.dm
       (st.regs (ks := [15]) (by keeps_tac Keeps.refl _ _)) hz g.ret
+
+/-- **"non-zero scale in exponent"** at `0x80006490`, then `exponent = expo /
+1` at scale 0 (`bc_divide`): a new number holding the integer part in the
+exponent's handle; then the modulus's scale at `0x800064b0`. -/
+theorem rx_divx {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxB S Mt0 M R0 R sp W q H F L xb xm z o k (.ref xe)) :
+    DW live S (DQ live S Q t0) 0x80006490#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  rx_facts cx
+  have hsf := cx.frame
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  have h2 := st.ra.r2
+  bc_run hlive hS [h2] at 0x80002c50
+  refine rx_warn hlive cx ha raScaleMsg (by decide) st.ra.out (by bsimp [h2]) (by bsimp [])
+    (by bsimp []; try decide) fun R1 M1 hk1 ho1 => ?_
+  bsimp []
+  have st1 := st.warn cx (hk1.trans (by keeps_tac Keeps.refl _ _)) ho1
+  have hb := st1.heap
+  have hcs := ha.cst.transport cx st1.ra.out
+  have hto : (BitVec.ofNat 64 oneAddr).toNat = oneAddr := rfl
+  have hldo : LdOK oneAddr 8 := by simp only [LdOK, oneAddr, tohostAddr]; omega
+  have hcst : ∀ b ∈ accAddrs oneAddr 8, S b := fun b hb' => by
+    have := of_mem_accAddrs hb'
+    exact cx.consts b (by simp only [constBytes, twoAddr, zeroAddr, oneAddr] at *; omega)
+  have h21 := st1.ra.r2
+  have hsz := ha.size
+  have hzk := ha.zero
+  have hxe := hb.nums _ (RH.obj_mem (hs := [.ref xb, .ref xe, .ref o, .ref z]) (by simp)
+    (RHOK.ofMem ha.me ha.re))
+  have hxeS := hxe.shape
+  have hos := one_size (o := (rBump [.ref xb, .ref xe, .ref o, .ref z] o).rep)
+    (hb.nums _ (RList.mem_caller _ ha.mo)).shape ha.oneNorm ha.oneNum
+  have hos' : o.rep.len + o.rep.scale ≤ 1 := hos
+  bc_run hlive hS [st1.r20, hto, hcs.one, st1.r24, h21] at 0x8000589c
+  all_goals first | exact hldo | exact hcst | skip
+  refine rx_divH (hs1 := [.ref xb]) (p := xe) (hs2 := [.ref o, .ref z]) (o := 8) (k := 0)
+    (u1 := RH.obj [.ref xb, .ref xe, .ref o, .ref z] (.ref xe))
+    (u2 := rBump [.ref xb, .ref xe, .ref o, .ref z] o)
+    (z := rBump [.ref xb, .ref xe, .ref o, .ref z] z)
+    hlive cx g.oom (by omega) rfl st1.ra.out hb st1.own (RHOK.ofMem ha.me ha.re)
+    (RH.obj_mem (by simp) (RHOK.ofMem ha.me ha.re)) (RList.mem_caller _ ha.mo)
+    (RList.mem_caller _ ha.mz)
+    (by show xe.rep.len + xe.rep.scale + 0 + o.rep.len + o.rep.scale < _; omega)
+    hcs.zero.glob (by show z.rep.num.mag = 0; rw [NumRep.num_mag, hzk.ds]; rfl)
+    ha.lene (by show o.rep.num.mag ≠ 0; rw [ha.oneNum]; decide) st1.w8
+    (by bsimp [h21]) (by bsimp []; try decide) (by bsimp [st1.r24]; rfl)
+    (by bsimp [hcs.one]; try rfl) (by bsimp [h21]) (by bsimp []) ?_
+  intro m' hm R2 M2 H2 F2 y hk2 _ hb2 hres hout2
+  bsimp []
+  have hm' : m' = ⟨false, xe.rep.num.intPart, 0⟩ := by
+    have e : Num.div xe.rep.num Num.one 0 = some m' := by rw [← ha.oneNum]; exact hm
+    rw [Dc.BcModel.div_one_int _ g.pos] at e
+    exact (Option.some.inj e).symm
+  subst hm'
+  have hb2' : BcHeap S M2 H2 F2 (RList [.ref xb, .own y, .ref o, .ref z] L) := hb2
+  have hmy : y ∈ RList [.ref xb, .own y, .ref o, .ref z] L :=
+    RH.obj_mem (h := .own y) (by simp) ⟨hres.refs, hres.owns⟩
+  have hyp : y.rep.p = y.sb.pay := (hb2'.blocks y hmy).sPay
+  have hw8 : ldv .ld M2 (sp - 112 + 8) = BitVec.ofNat 64 y.rep.p := by rw [hres.slot, hyp]
+  have hxn := hb2'.nums _ (RList.mem_caller [.ref xb, .own y, .ref o, .ref z] ha.mm)
+  have hms : ldv .lw M2 (xm.rep.p + 8) = BitVec.ofNat 64 xm.rep.scale := hxn.scale
+  have hpm : xm.rep.p + 40 ≤ heapEnd := hxn.shape.pHi
+  have hpm' : heapStart ≤ xm.rep.p := hxn.shape.pLo
+  simp only [heapEnd, heapStart] at hpm hpm'
+  have hx8 : (BitVec.ofNat 64 (xm.rep.p + 8)).toNat = xm.rep.p + 8 := by
+    simp only [BitVec.toNat_ofNat]; omega
+  have h18 : R2 18 = BitVec.ofNat 64 xm.rep.p := by rw [hk2.get 18 (by decide)]; bsimp [st1.r18]
+  have h22 : R2 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk2.get 2 (by decide)]; bsimp [h21]
+  have hkc : Keeps raCallClob R2 R1 :=
+    (hk2.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
+  have ra2 := st1.ra.call (hsp := by omega) (hW := by omega) (hkp := hkc)
+    (hag := fun a h1 h2' h3 => hout2 a h1 (by simp only [slotBytes]; omega) h3)
+    (hst := fun a h1 _ => outHeap_of_ge (by simp only [heapEnd]; omega))
+  have hw : ∀ o', o' ≤ 24 → o' ≠ 8 → o' % 8 = 0 →
+      ldv .ld M2 (sp - 112 + o') = ldv .ld M1 (sp - 112 + o') :=
+    fun o' ho hne h8 => rx_word cx ho fun a h1 h2' h3 => hout2 a h1
+      (by simp only [slotBytes]; omega) (by simp only [frameIn]; omega)
+  have shy := (hb2'.nums y hmy).shape
+  have hys : y.rep.scale = 0 := by rw [← NumRep.num_scale, hres.num]
+  have hlt : y.rep.num.mag < 10 ^ (xe.rep.len + xe.rep.scale) := by
+    rw [hres.num]
+    show xe.rep.num.mag / 10 ^ xe.rep.num.scale < _
+    exact Nat.lt_of_le_of_lt (Nat.div_le_self _ _)
+      (NumRep.mag_lt (o := (RH.obj [.ref xb, .ref xe, .ref o, .ref z] (.ref xe)).rep) hxeS)
+  have hysz := NumRep.size_le shy hres.norm hlt
+  have mk : ∀ R3 : Nat → BitVec 64, Keeps [15, 24] R3 R2 → R3 24 = BitVec.ofNat 64 y.rep.p →
+      RxW S Mt0 M2 R0 R3 sp W q H2 F2 L xb xm z o k (xe.rep.len + xe.rep.scale + 1) (.own y)
+        xe.rep.num.intPart := fun R3 hk3 h24 =>
+    { ra := ra2.regs hk3
+      r22 := by rw [hk3.get 22 (by decide), hkc.get 22 (by decide)]; exact st1.r22
+      heap := hb2'
+      own := (show RHOwn ([.ref xb] ++ .ref xe :: [.ref o, .ref z]) L from st1.own).set hres.owns
+      okE := ⟨hres.refs, hres.owns⟩
+      w0 := by rw [hw 0 (by omega) (by omega) rfl]; exact st1.w0
+      w8 := hw8
+      w16 := by rw [hw 16 (by omega) (by omega) rfl]; exact st1.w16
+      w24 := by rw [hw 24 (by omega) (by omega) rfl]; exact st1.w24
+      r8 := by rw [hk3.get 8 (by decide), hkc.get 8 (by decide)]; exact st1.r8
+      r24 := h24
+      r9 := by rw [hk3.get 9 (by decide), hkc.get 9 (by decide)]; exact st1.r9
+      r18 := by rw [hk3.get 18 (by decide), hkc.get 18 (by decide)]; exact st1.r18
+      r19 := by rw [hk3.get 19 (by decide), hkc.get 19 (by decide)]; exact st1.r19
+      r20 := by rw [hk3.get 20 (by decide), hkc.get 20 (by decide)]; exact st1.r20
+      r21 := by rw [hk3.get 21 (by decide), hkc.get 21 (by decide)]; exact st1.r21
+      r23 := by rw [hk3.get 23 (by decide), hkc.get 23 (by decide)]; exact st1.r23
+      vE := ⟨hres.num, hres.pos, by show y.rep.len + y.rep.scale ≤ _; omega,
+        by show y.rep.scale ≤ 0; omega⟩
+      nE := hres.norm }
+  have hz : (RH.own y).p = z.rep.p → xe.rep.num.intPart = 0 := fun e =>
+    absurd e (RList.own_ne_caller hb2'.pdist (by simp) ha.mz)
+  bc_run hlive hS [h18, hx8, hms, h22, hw8] at 0x800064bc 0x800062ac
+  all_goals first | exact acc_heap hS (by omega) (by omega) | (simp only [LdOK, tohostAddr]; omega) | exact frame_acc hsf (by omega) (by omega) | skip
+  · intro _
+    exact rx_go hlive cx ha g.hs g.oz g.mag rfl g.oom.dm
+      (mk _ (by keeps_tac Keeps.refl _ _) (by bsimp [])) hz g.ret
+  · intro _
+    exact rx_wm hlive g (mk _ (by keeps_tac Keeps.refl _ _) (by bsimp [])) hz
+
+/-- An exponent of scale `0`: the integer it holds. -/
+theorem RxB.exp0 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t0 : String} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap}
+    {F : List Blk} {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxB S Mt0 M R0 R sp W q H F L xb xm z o k (.ref xe)) (hsc : xe.rep.scale = 0) :
+    RxW S Mt0 M R0 R sp W q H F L xb xm z o k (xe.rep.len + xe.rep.scale + 1) (.ref xe)
+      xe.rep.num.intPart := by
+  have hnum : xe.rep.num = ⟨false, xe.rep.num.intPart, 0⟩ := by
+    have h1 := g.pos
+    have h2 : xe.rep.num.scale = 0 := by rw [NumRep.num_scale]; exact hsc
+    revert h1 h2
+    generalize xe.rep.num = e
+    rcases e with ⟨a, b, c⟩
+    rintro rfl rfl
+    simp [Num.intPart]
+  exact { st with
+    vE := ⟨hnum, g.ha.lene, by show xe.rep.len + xe.rep.scale ≤ _; omega,
+      by show xe.rep.scale ≤ 0; omega⟩
+    nE := g.ha.ne }
+
+/-- The exponent's scale `lw a5, 8(s8)` at the state. -/
+theorem RxB.expScale {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xe xm z o : NumObj}
+    (st : RxB S Mt0 M R0 R sp W q H F L xb xm z o k (.ref xe)) (hm : xe ∈ L) (hr : 1 ≤ xe.rep.refs) :
+    ldv .lw M (xe.rep.p + 8) = BitVec.ofNat 64 xe.rep.scale ∧
+      (BitVec.ofNat 64 (xe.rep.p + 8)).toNat = xe.rep.p + 8 ∧ heapStart ≤ xe.rep.p ∧
+      xe.rep.p + 40 ≤ heapEnd := by
+  have hn := st.heap.nums _ (RH.obj_mem (hs := [.ref xb, .ref xe, .ref o, .ref z]) (by simp)
+    (RHOK.ofMem hm hr))
+  have h1 : heapStart ≤ xe.rep.p := hn.shape.pLo
+  have h2 : xe.rep.p + 40 ≤ heapEnd := hn.shape.pHi
+  refine ⟨hn.scale, ?_, h1, h2⟩
+  simp only [heapStart, heapEnd] at h1 h2
+  simp only [BitVec.toNat_ofNat]; omega
+
+/-- **The exponent's scale** at `0x8000629c`: none (`rx_wmod`) or a warning
+and the division (`rx_divx`). -/
+theorem rx_wexp {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxB S Mt0 M R0 R sp W q H F L xb xm z o k (.ref xe)) :
+    DW live S (DQ live S Q t0) 0x8000629c#64 R M := by
+  have cx := g.cx
+  rx_facts cx
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  obtain ⟨hes, hx8, hp1, hp2⟩ := st.expScale g.ha.me g.ha.re
+  simp only [heapStart, heapEnd] at hp1 hp2
+  have hsz := g.ha.size
+  have hq := ofNat_eq_zero_iff (show xe.rep.scale < 2 ^ 64 by omega)
+  bc_run hlive hS [st.r24, RH.p, hx8, hes, hq] at 0x80006490 0x800062a4
+  all_goals first | exact acc_heap hS (by omega) (by omega) | (simp only [LdOK, tohostAddr]; omega) | skip
+  · intro _
+    exact rx_divx hlive g (st.regs (ks := [15]) (by keeps_tac Keeps.refl _ _))
+  · intro h0
+    exact rx_wmod hlive g ((st.regs (ks := [15]) (by keeps_tac Keeps.refl _ _)).exp0 g
+      (by first | exact h0 | exact hq.mp (Classical.not_not.mp h0))) g.zx
+
+/-- **The base's scale** at `0x80006298` (`a4`): a warning, then the
+exponent's scale (`0x80006488`), or straight to `rx_wexp`. -/
+theorem rx_wbase {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxB S Mt0 M R0 R sp W q H F L xb xm z o k (.ref xe))
+    (h14 : R 14 = BitVec.ofNat 64 xb.rep.scale) :
+    DW live S (DQ live S Q t0) 0x80006298#64 R M := by
+  have cx := g.cx
+  rx_facts cx
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  have hsz := g.ha.size
+  have hq := ofNat_eq_zero_iff (show xb.rep.scale < 2 ^ 64 by omega)
+  bc_run hlive hS [h14, hq] at 0x8000647c 0x8000629c
+  · intro _
+    have h2 := st.ra.r2
+    bc_run hlive hS [h2] at 0x80002c50
+    refine rx_warn hlive cx g.ha rxBaseMsg (by decide) st.ra.out (by bsimp [h2]) (by bsimp [])
+      (by bsimp []; try decide) fun R1 M1 hk1 ho1 => ?_
+    bsimp []
+    have st1 := st.warn cx (hk1.trans (by keeps_tac Keeps.refl _ _)) ho1
+    obtain ⟨hes, hx8, hp1, hp2⟩ := st1.expScale g.ha.me g.ha.re
+    simp only [heapStart, heapEnd] at hp1 hp2
+    have hq' := ofNat_eq_zero_iff (show xe.rep.scale < 2 ^ 64 by omega)
+    bc_run hlive hS [st1.r24, RH.p, hx8, hes, hq'] at 0x800062a4 0x80006490
+    all_goals first | exact acc_heap hS (by omega) (by omega) | (simp only [LdOK, tohostAddr]; omega) | skip
+    · intro h0
+      exact rx_wmod hlive g ((st1.regs (ks := [15]) (by keeps_tac Keeps.refl _ _)).exp0 g
+        (by first | exact h0 | exact hq'.mp h0)) g.zx
+    · intro _
+      exact rx_divx hlive g (st1.regs (ks := [15]) (by keeps_tac Keeps.refl _ _))
+  · intro _
+    exact rx_wexp hlive g st
 
 end Dc.Mach

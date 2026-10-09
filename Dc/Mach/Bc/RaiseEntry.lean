@@ -262,6 +262,32 @@ theorem ra_endC {live : Nat → Prop} {S : Nat → Prop}
 
 /-! ## A zero exponent -/
 
+/-- `_one_`'s global through writes off the heap's complement and the frame. -/
+theorem RaArgs.oneAt {S : Nat → Prop} {R0 : Nat → BitVec 64} {Mt0 M : Mem} {sp W q k : Nat}
+    {L : List NumObj} {x1 x2 z o : NumObj} (cx : RaCtx S R0 sp W q)
+    (ha : RaArgs S Mt0 L x1 x2 z o k)
+    (hout : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :
+    ldv .ld M oneAddr = BitVec.ofNat 64 o.rep.p := by
+  have hab := cx.above
+  simp only [heapEnd] at hab
+  rw [ldv_congr .ld fun j hj => hout _ (constBytes_out (by
+    simp only [widthOfM, constBytes, twoAddr, zeroAddr, oneAddr] at hj ⊢; omega))
+    (by simp only [frameIn, widthOfM, oneAddr, zeroAddr] at hj ⊢; omega)]
+  exact ha.one
+
+/-- The stderr stream through writes off the heap's complement and the frame. -/
+theorem RaArgs.fdAt {S : Nat → Prop} {R0 : Nat → BitVec 64} {Mt0 M : Mem} {sp W q k : Nat}
+    {L : List NumObj} {x1 x2 z o : NumObj} (cx : RaCtx S R0 sp W q)
+    (ha : RaArgs S Mt0 L x1 x2 z o k)
+    (hout : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :
+    FdAt S M stderrAddr 2 := by
+  have hfar := cx.far
+  simp only [stderrAddr] at hfar
+  exact ha.fd.transport fun j hj => hout _
+    (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, stderrAddr]; omega)
+    (by simp only [frameIn, stderrAddr]; omega)
+
+
 /-- The last restore of the zero exponent's epilogue (`0x80006870`). -/
 theorem ra_oneEpi {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
@@ -354,11 +380,13 @@ theorem ra_one {live : Nat → Prop} {S : Nat → Prop}
     (hK : RaK live S Q t R0 Mt0 L xr q sp W Num.one)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
     (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
-    (hb : BcHeap S M H F L) (hs : RaSlot M L x1 x2 z o xr q) (hown : ∀ y ∈ L, y.Owns)
-    (hom : o ∈ L) (hone : ldv .ld M oneAddr = BitVec.ofNat 64 o.rep.p)
-    (hon : o.rep.num = Num.one) (honz : o.rep.Norm) (hol : 1 ≤ o.rep.len)
-    (hor : o.rep.refs + 1 < 2 ^ 31) :
+    (hb : BcHeap S M H F L) {k : Nat} (ha : RaArgs S Mt0 L x1 x2 z o k)
+    (hs0 : RaSlot Mt0 L x1 x2 z o xr q) :
     DW live S (DQ live S Q t) 0x80006840#64 R M := by
+  have hs := hs0.transport cx ra.out
+  have hone := ha.oneAt cx ra.out
+  have hown := ha.owns; have hom := ha.mo; have hon := ha.oneNum; have honz := ha.oneNorm
+  have hol := ha.oneLen; have hor := ha.oneRefs
   ra_facts cx
   have hsf := cx.frame
   have hsl := cx.slot
@@ -418,5 +446,93 @@ theorem ra_one {live : Nat → Prop} {S : Nat → Prop}
           hK.ret R' M' H1 F1 (X1 ++ xr :: X2) (xr.withRefs (xr.rep.refs + 1)) hk' ?_
       rw [e] at hb'
       exact raPost_keep hb' hom hs.rr hon honz hol (hown _ hom) hq' (hout M' ho')
+
+set_option maxRecDepth 100000 in
+/-- "exponent too large in raise". -/
+theorem raExpMsg : RtMsg 0x80007ea8 27 :=
+  ⟨by decide, by decide, by decide, by decide, by decide⟩
+
+/-- Writes below the frame (a callee's) keep `bc_raise`'s state. -/
+theorem RaAt.below {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64}
+    {sp W q : Nat} {slots : List (Nat × Nat)} (h : RaAt S Mt0 M R0 R sp W q slots)
+    (cx : RaCtx S R0 sp W q) (hkp : Keeps raCallClob R' R)
+    (hag : ∀ a, (a < sp - W ∨ sp - 96 ≤ a) → imgM M' a = imgM M a) :
+    RaAt S Mt0 M' R0 R' sp W q slots where
+  r2 := by rw [hkp.get 2]; exact h.r2
+  saved := fun p hp => by
+    rw [ldv_congr .ld fun j hj => hag _ (.inr (by omega))]
+    exact h.saved p hp
+  keep := (hkp.mono (by decide)).trans h.keep
+  r23 := by rw [hkp.get 23]; exact h.r23
+  out := fun a ha hf => by
+    rw [hag a (by simp only [frameIn] at hf; omega)]
+    exact h.out a ha hf
+
+/-- **"exponent too large in raise"** at `0x80006834`, then the result
+`_one_` (`ra_one`). -/
+theorem ra_err {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x1 x2 z o xr : NumObj} (cx : RaCtx S R0 sp W q)
+    (hK : RaK live S Q t R0 Mt0 L xr q sp W Num.one)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
+    (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
+    (hb : BcHeap S M H F L) (ha : RaArgs S Mt0 L x1 x2 z o k)
+    (hs0 : RaSlot Mt0 L x1 x2 z o xr q) :
+    DW live S (DQ live S Q t) 0x80006834#64 R M := by
+  ra_facts cx
+  have hsf := cx.frame
+  have hfar := cx.far
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have h2 := ra.r2
+  bc_run hlive hS [h2] at 0x80002bd0
+  refine rt_error_spec hlive raExpMsg (by decide) ((hsf.shrink (m := 96 + 416) (by omega)).sub (by decide)) (by omega) (ha.fdAt cx ra.out) _ (by bsimp [h2])
+    (by bsimp []) (by bsimp []; try decide) fun R1 M1 hk1 ho1 => ?_
+  bsimp [hk1.get 1]
+  have hkc : Keeps raCallClob R1 R := (hk1.mono (ks' := raCallClob) (by decide)).trans
+    (by keeps_tac Keeps.refl _ _)
+  have hag : ∀ a, (a < sp - W ∨ sp - 96 ≤ a) → imgM M1 a = imgM M a :=
+    fun a h => ho1 a (by omega)
+  refine ra_one hlive cx hK (ra.below cx hkc hag) (by rw [hkc.get 9 (by decide)]; exact h9)
+    (by rw [hkc.get 20 (by decide)]; exact h20) (by rw [hkc.get 21 (by decide)]; exact h21)
+    (by rw [hkc.get 24 (by decide)]; exact h24)
+    (hb.out_frame (P := fun a => sp - W ≤ a ∧ a < sp - 96) (fun a h => hag a (by omega))
+      fun a h => by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+    ha hs0
+
+/-- **A zero exponent** at `0x8000681c` (`s0` = `num2`): "exponent too large
+in raise" when `num2`'s integer part is not `0`, then the result `_one_`. -/
+theorem ra_zero {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x1 x2 z o xr : NumObj} (cx : RaCtx S R0 sp W q)
+    (hK : RaK live S Q t R0 Mt0 L xr q sp W Num.one)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
+    (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
+    (hb : BcHeap S M H F L) (ha : RaArgs S Mt0 L x1 x2 z o k)
+    (hs0 : RaSlot Mt0 L x1 x2 z o xr q) (h8 : R 8 = BitVec.ofNat 64 x2.rep.p) :
+    DW live S (DQ live S Q t) 0x8000681c#64 R M := by
+  ra_facts cx
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn := hb.nums x2 ha.m2
+  num_facts hn
+  have hl2 := ha.len2
+  have hsz := hn.shape.size
+  have hl := hn.len
+  have hv := hn.value
+  bc_run hlive hS [h8, hl, hv] at 0x80006834 0x80006840
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  all_goals (try intro _)
+  · exact ra_err hlive cx hK (ra.regs (by keeps_tac Keeps.refl _ _)) (by bsimp [h9]) (by bsimp [h20])
+      (by bsimp [h21]) (by bsimp [h24]) hb ha hs0
+  bc_run hlive hS [h8, hv] at 0x80006834 0x80006840
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  all_goals (try intro _)
+  · exact ra_one hlive cx hK (ra.regs (by keeps_tac Keeps.refl _ _)) (by bsimp [h9]) (by bsimp [h20])
+      (by bsimp [h21]) (by bsimp [h24]) hb ha hs0
+  · exact ra_err hlive cx hK (ra.regs (by keeps_tac Keeps.refl _ _)) (by bsimp [h9]) (by bsimp [h20])
+      (by bsimp [h21]) (by bsimp [h24]) hb ha hs0
 
 end Dc.Mach

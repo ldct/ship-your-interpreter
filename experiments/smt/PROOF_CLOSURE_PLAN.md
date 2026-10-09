@@ -5158,3 +5158,40 @@ Status: landed. Every file from `Heap.lean` through `OutNumEntry.lean`
 compiles over `BcHeap S X`; the axioms of `on_entry`, `bc_divide_spec`,
 `bc_divmod_spec`, `bc_multiply_spec` and `rm_spec` are within
 {propext, Classical.choice, Quot.sound}.
+
+### M8 `bc_out_num` (checked)
+
+`bc_out_num_spec` (`Dc/Mach/Bc/OutNum.lean`) proves `bc_out_num (num,
+o_base, out_char, 0)` at `0x80006f3c` in `DWO`. `OnK.ret` receives the
+characters `cs ++ Num.outChars num o_base` sent through the callback, the
+caller's heap `L` and its raw blocks unchanged, and only the callback's
+bytes `G` and the window changed off the heap. `OnK.oom` receives
+`out_of_memory`. The callback is a `CharFn` (an invariant `I` on the
+characters sent, stable under stores off `G`); `dc`'s `out_char` with its
+line wrapping supplies it in M9. The files:
+
+- `OutNumEntry.lean`: the prologue, the sign, zero (`on_zero`) and the base
+  dispatch (`on_found`).
+- `OutNumDec.lean`: base 10.
+- `OutNumGo.lean`, `OutNumSetup.lean`: the state `OgSt` over handles
+  (`RList`, `HandleCall.lean`) and `int_part`/`frac_part`/`base`/
+  `max_o_digit` (`og_s1`–`og_s4`).
+- `OutNumStack.lean`, `OutNumInt.lean`: the digit stack of `malloc(16)`
+  cells held as raw blocks (`OgStk`, `OgSt.push`/`.pop`) and the push loop
+  (`og_loop`, `og_s5`).
+- `OutNumPop.lean`: the pop loops, hex (`og_hexNext`) and `bc_out_long`
+  (`og_longNext`), and `og_s6`.
+- `OutNumFrac.lean`: the fraction loop (`og_fcalc`, `og_fdig`, `og_ftail`,
+  `og_floop` by induction on `FracFuel`), its entry (`og_dot`, `og_s7`)
+  and the `t_num` free (`og_fexit`, generated `ffree_80007500`). The model
+  side splits `Num.outChars` along the loop (`og_target`, `ogFracOut_step`,
+  `ogFracOut_stop`, `Dc/BcModel/OutBase.lean`).
+- `OutNumExit.lean`: the five generated frees (`ffree_80007320` …
+  `ffree_800073f0`, the last with a frame reload `FreeKL`) and the
+  epilogue (`og_exit`).
+
+Premises the callers supply in `OnArgs`: `num` normalized with a digit,
+`num.len + num.scale < 2^20`, room for eight more references on every
+number of `L`, `_zero_` and `_one_` at their globals, the multiplication
+base word, and `2 ≤ o_base < 2^31`. The axioms are `propext`,
+`Classical.choice` and `Quot.sound`. M8 is closed.

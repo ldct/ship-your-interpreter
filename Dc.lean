@@ -9,6 +9,7 @@ import Dc.BcModel.DivLoop
 import Dc.BcModel.DivStep
 import Dc.BcModel.Sqrt
 import Dc.BcModel.SqrtInit
+import Dc.BcModel.OutBase
 import Dc.Mach.DecodeTable
 import Dc.Mach.Tac
 import Dc.Mach.Strlen
@@ -101,4 +102,5 @@ import Dc.Mach.Bc.SqrtExit
 import Dc.Mach.Bc.SqrtInit
 import Dc.Mach.Bc.SqrtHi
 import Dc.Mach.Bc.SqrtEntry
+import Dc.Mach.Bc.OutNum
 import Dc.Mach.RtMsgSites

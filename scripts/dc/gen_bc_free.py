@@ -36,6 +36,11 @@ SITES = [
     # `bc_raise`: `temp` after the negative exponent's `bc_divide` (`ld s5` interleaved)
     ("temp (`bc_raise`)", 0x80006760, 20, None, 0x80006764, 0x80006778, 0x80006780,
      0x80006784, 0x80006798, 0x80006784, 0x80006798, 0x80006798, [], False),
+    # `bc_raisemod`: `power` and `exponent` at the exit
+    ("power (`bc_raisemod`)", 0x800063b8, 8, 0x800063ec, 0x800063bc, 0x800063cc, 0x800063d4,
+     0x800063d8, 0x800063ec, 0x800063d8, 0x800063ec, 0x800063ec, [], True),
+    ("exponent (`bc_raisemod`)", 0x800063ec, 24, 0x80006420, 0x800063f0, 0x80006400, 0x80006408,
+     0x8000640c, 0x80006420, 0x8000640c, 0x80006420, 0x80006420, [], True),
 ]
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "Dc/Mach/Bc/FreeSites.lean"

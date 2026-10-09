@@ -74,6 +74,8 @@ for g in gen_kara_free gen_kara_shift gen_kara_scan gen_kara_subs gen_kara_trim 
 done
 python3 -B scripts/dc/gen_bc_free.py --check \
   || fail "stage a3: Dc/Mach/Bc/FreeSites.lean is stale (scripts/dc/gen_bc_free.py)"
+python3 -B scripts/dc/gen_zero_scan.py --check \
+  || fail "stage a3: Dc/Mach/Bc/ZeroScanSites.lean is stale (scripts/dc/gen_zero_scan.py)"
 python3 -B scripts/dc/gen_rt_msg.py --check \
   || fail "stage a3: Dc/Mach/RtMsgSites.lean is stale (scripts/dc/gen_rt_msg.py)"
 

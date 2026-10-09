@@ -577,4 +577,402 @@ theorem ffree_view_80006760 {live : Nat → Prop} {S : Nat → Prop}
     (by rw [ldv_ld_miss _ _ (by simp only [bcFreeAddr]; omega)]; exact h.dead.head) hS h.globOwn
     (by omega) (by omega) (by omega) (by keeps_tac hkp) (by bsimp [hx]) hk
 
+/-- The struct pushed on `_bc_Free_list` at `0x800063d8` (site `0x800063b8`). -/
+theorem fpush_800063b8_800063d8 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M0 M1 : Mem} {R0 R : Nat → BitVec 64} {H H' : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (hr1 : x.rep.refs = 1)
+    (hpost : BcHeap S (writeLog (writeLog M1 [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)])
+      [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))]) H' (x.sb :: F) (L1 ++ L2))
+    (hout : ∀ a, OutHeap a → imgM M1 a = imgM M0 a)
+    (wg : ldv .ld M1 bcFreeAddr = BitVec.ofNat 64 (deadHead F))
+    (hS : HeapOwn S) (hgl : ∀ a, bcFreeAddr ≤ a → a < bcFreeAddr + 8 → S a)
+    (hp : 2147603920 ≤ x.rep.p) (hp' : x.rep.p + 40 ≤ 2273312768) (hpa : x.rep.p % 8 = 0)
+    (hkp : Keeps [1, 10, 14, 15] R R0) (hx : R 8 = BitVec.ofNat 64 x.rep.p)
+    (hk : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R0 M0 fr H F L1 L2 x) :
+    DW live S Q 0x800063d8#64 R M1 := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hgl' : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hgl b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
+  simp only [bcFreeAddr] at wg hpost ⊢
+  bc_run hlive hS [hx] at 0x800063dc
+  apply st_800063dc hlive
+  · bsimp []; bc_addr
+  · bsimp []; exact hgl'
+  bsimp [wg]
+  bc_run hlive hS [hx] at 0x800063ec
+  all_goals first | exact hgl' | (simp only [StOK, and_true]; omega) | skip
+  refine hk _ _ _ _ _ (by keeps_tac hkp) (.rel hr1) hpost fun a ha _ => ?_
+  have ha' := ha
+  simp only [OutHeap, heapStart, heapEnd, bcFreeAddr] at ha'
+  rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), hout a ha]
+
+/-- An owner's buffer freed, from `0x800063cc` (`n_refs` now `0`). -/
+theorem ffree_owner_800063b8 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M M1 : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (ho : x.Owns)
+    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (hr1 : x.rep.refs = 1) {v : BitVec 64}
+    (hM1 : M1 = writeLog M [(x.rep.p + 12, 4, v)])
+    (hi1 : HeapInv S M1 H) (wg : ldv .ld M1 2147601840 = BitVec.ofNat 64 (deadHead F))
+    (hfr1 : ∀ a, OutHeap a → imgM M1 a = imgM M a) (hkp : Keeps [1, 10, 14, 15] R R0)
+    (hx : R 8 = BitVec.ofNat 64 x.rep.p)
+    (hk : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R0 M fr H F L1 L2 x) :
+    DW live S Q 0x800063cc#64 R M1 := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hxm : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hxm
+  have hxb := h.blocks x hxm
+  num_facts hn
+  have hpt : ldv .ld M1 (x.rep.p + 24) = BitVec.ofNat 64 x.rep.ptr := by
+    rw [hM1, ldv_ld_miss _ _ (by omega)]; exact hn.ptr
+  have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
+  have fbd := hi.blk (List.mem_append_right _ hxb.dLive)
+  have hd1 : 2147603920 ≤ x.db.h := fbd.lo
+  have hdph : x.db.pay = x.db.h + 16 := rfl
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [hx, hpt] at 0x800063d4 0x800063d8
+  all_goals try (intro hc; first
+    | exact absurd ((ofNat_eq_iff (x := x.rep.ptr) (y := 0) (by omega) (by omega)).mp hc) (by omega)
+    | exact absurd ((ofNat_eq_iff (x := x.rep.ptr) (y := 0) (by omega) (by omega)).mp
+        (Classical.not_not.mp hc)) (by omega))
+  intro _
+  obtain ⟨lpre, lpost, hl⟩ := List.append_of_mem hxb.dLive
+  apply st_800063d4 hlive
+  refine free_spec hlive hi1 hl _ (by bsimp [hdp]) (by bsimp []) ?_
+  intro R1 Mt3 hk1 hfp
+  bsimp []
+  have wg3 : ldv .ld Mt3 2147601840 = BitVec.ofNat 64 (deadHead F) := by
+    rw [ldv_congr .ld fun j hj => hfp.frame _ fun ha => by
+      rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
+        simp only [freeListAddr, heapStart, heapEnd, widthOfM] at h' hj <;> omega]
+    exact wg
+  subst hM1
+  exact fpush_800063b8_800063d8 hlive hr1 (h.freeOwner ho (hnv ho) hl hfp)
+    (fun a ha => (hfp.frame a (OutHeap.not_alloc hi ha)).trans (hfr1 a ha)) wg3 hS h.globOwn
+    (by omega) (by omega) (by omega) (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac hkp)))
+    (by rw [hk1.get 8]; bsimp [hx]) hk
+
+/-- A view's struct released, from `0x800063cc` (`n_refs` now `0`). -/
+theorem ffree_view_800063b8 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hv : ¬ x.Owns)
+    (hr1 : x.rep.refs = 1) (v : BitVec 64) (hkp : Keeps [1, 10, 14, 15] R R0)
+    (hx : R 8 = BitVec.ofNat 64 x.rep.p)
+    (hk : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R0 M fr H F L1 L2 x) :
+    DW live S Q 0x800063cc#64 R (writeLog M [(x.rep.p + 12, 4, v)]) := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hxm : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hxm
+  num_facts hn
+  have hv0 : x.rep.ptr = 0 := Classical.not_not.mp hv
+  have hpt : ldv .ld (writeLog M [(x.rep.p + 12, 4, v)]) (x.rep.p + 24) = 0#64 := by
+    rw [ldv_ld_miss _ _ (by omega), hn.ptr, hv0]
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [hx, hpt] at 0x800063d4 0x800063d8
+  all_goals try (intro hc; rw [ldv_ld_miss _ _ (by omega), hn.ptr, hv0] at hc; exact absurd rfl hc)
+  intro _
+  exact fpush_800063b8_800063d8 hlive hr1 (h.freeView hv v)
+    (fun a ha => by simp only [OutHeap, heapStart, heapEnd] at ha; exact imgM_store_miss _ _ (by omega))
+    (by rw [ldv_ld_miss _ _ (by simp only [bcFreeAddr]; omega)]; exact h.dead.head) hS h.globOwn
+    (by omega) (by omega) (by omega) (by keeps_tac hkp) (by bsimp [hx]) hk
+
+/-- The last reference dropped at `0x800063bc`. -/
+theorem ffree_rel_800063b8 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr1 : x.rep.refs = 1)
+    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (hx : R 8 = BitVec.ofNat 64 x.rep.p)
+    (hko : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R M fr H F L1 L2 x)
+    (hkv : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R M fr H F L1 L2 x) :
+    DW live S Q 0x800063bc#64 R M := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hxm : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hxm
+  have hxb := h.blocks x hxm
+  num_facts hn
+  have hrf := hn.refs
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have h0 : BitVec.ofNat 64 1 + 18446744073709551615#64 = 0#64 := by decide
+  bc_run hlive hS [hx, hrf, hr1, h0] at 0x800063ec 0x800063cc
+  by_cases ho : x.Owns
+  · have hpp : x.rep.p = x.sb.pay := hxb.sPay
+    have hsz := hxb.sSz
+    have hsph : x.sb.pay = x.sb.h + 16 := rfl
+    exact ffree_owner_800063b8 hlive h ho hnv hr1 rfl
+      (hi.transport fun a ha => by
+        have hn := live_not_alloc hi hxb.sLive (a := a)
+        refine imgM_store_miss _ _ (Classical.byContradiction fun hc => hn ⟨by omega, ?_⟩ ha)
+        simp only [Blk.fin] at hc ⊢; omega)
+      (by rw [ldv_ld_miss _ _ (by omega)]; exact h.dead.head)
+      (fun a ha => by simp only [OutHeap, heapStart, heapEnd] at ha; exact imgM_store_miss _ _ (by omega))
+      (by keeps_tac Keeps.refl _ _) (by bsimp [hx]) hko
+  · exact ffree_view_800063b8 hlive h ho hr1 _ (by keeps_tac Keeps.refl _ _) (by bsimp [hx]) hkv
+
+/-- One reference fewer at `0x800063bc`. -/
+theorem ffree_dec_800063b8 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr2 : 2 ≤ x.rep.refs)
+    (hx : R 8 = BitVec.ofNat 64 x.rep.p)
+    (hk : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R M fr H F L1 L2 x) :
+    DW live S Q 0x800063bc#64 R M := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hxm : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hxm
+  num_facts hn
+  have hrf := hn.refs
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hpr : BitVec.ofNat 64 x.rep.refs + 18446744073709551615#64 =
+      BitVec.ofNat 64 (x.rep.refs - 1) := word_pred (by omega)
+  have hsx : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (x.rep.refs - 1))) =
+      BitVec.ofNat 64 (x.rep.refs - 1) := sxw_ofNat (by omega)
+  bc_run hlive hS [hx, hrf, hpr, hsx] at 0x800063ec 0x800063cc
+  all_goals try (intro hc; exact absurd ((ofNat_eq_iff (x := x.rep.refs - 1) (y := 0)
+    (by omega) (by omega)).mp (Classical.not_not.mp hc)) (by omega))
+  intro _
+  refine hk _ _ H F _ (by keeps_tac Keeps.refl _ _) (.dec hr2)
+    (h.setRefs (toNat_ofNat_mod32 (by omega)) (by omega)) fun a ha _ => ?_
+  simp only [OutHeap, heapStart, heapEnd] at ha
+  exact imgM_store_miss _ _ (by omega)
+
+/-- **The free of power (`bc_raisemod`)** (`x8`) at `0x800063b8`: one continuation per route. -/
+theorem ffree_800063b8 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
+    (hx : R 8 = BitVec.ofNat 64 x.rep.p)
+    (hkd : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R M fr H F L1 L2 x)
+    (hko : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R M fr H F L1 L2 x)
+    (hkv : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R M fr H F L1 L2 x) :
+    DW live S Q 0x800063b8#64 R M := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hn := h.nums x (List.mem_append_right _ List.mem_cons_self)
+  num_facts hn
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [hx] at 0x800063bc
+  all_goals try (intro hc; exact absurd ((ofNat_eq_iff (x := x.rep.p) (y := 0)
+    (by omega) (by omega)).mp hc) (by omega))
+  intro _
+  rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
+  · exact ffree_rel_800063b8 hlive h hr1 (hnv hr1) hx hko hkv
+  · exact ffree_dec_800063b8 hlive h hr2 hx hkd
+
+/-- No number to free at `0x800063b8` (`x8 = NULL`). -/
+theorem fnull_800063b8 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} (hS : HeapOwn S) (h0 : R 8 = 0#64)
+    (hk : DW live S Q 0x800063ec#64 R M) :
+    DW live S Q 0x800063b8#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h0] at 0x800063ec
+  all_goals first | exact hk | (intro hc; exact absurd rfl hc)
+
+/-- The struct pushed on `_bc_Free_list` at `0x8000640c` (site `0x800063ec`). -/
+theorem fpush_800063ec_8000640c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M0 M1 : Mem} {R0 R : Nat → BitVec 64} {H H' : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (hr1 : x.rep.refs = 1)
+    (hpost : BcHeap S (writeLog (writeLog M1 [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)])
+      [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))]) H' (x.sb :: F) (L1 ++ L2))
+    (hout : ∀ a, OutHeap a → imgM M1 a = imgM M0 a)
+    (wg : ldv .ld M1 bcFreeAddr = BitVec.ofNat 64 (deadHead F))
+    (hS : HeapOwn S) (hgl : ∀ a, bcFreeAddr ≤ a → a < bcFreeAddr + 8 → S a)
+    (hp : 2147603920 ≤ x.rep.p) (hp' : x.rep.p + 40 ≤ 2273312768) (hpa : x.rep.p % 8 = 0)
+    (hkp : Keeps [1, 10, 14, 15] R R0) (hx : R 24 = BitVec.ofNat 64 x.rep.p)
+    (hk : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R0 M0 fr H F L1 L2 x) :
+    DW live S Q 0x8000640c#64 R M1 := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hgl' : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hgl b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
+  simp only [bcFreeAddr] at wg hpost ⊢
+  bc_run hlive hS [hx] at 0x80006410
+  apply st_80006410 hlive
+  · bsimp []; bc_addr
+  · bsimp []; exact hgl'
+  bsimp [wg]
+  bc_run hlive hS [hx] at 0x80006420
+  all_goals first | exact hgl' | (simp only [StOK, and_true]; omega) | skip
+  refine hk _ _ _ _ _ (by keeps_tac hkp) (.rel hr1) hpost fun a ha _ => ?_
+  have ha' := ha
+  simp only [OutHeap, heapStart, heapEnd, bcFreeAddr] at ha'
+  rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), hout a ha]
+
+/-- An owner's buffer freed, from `0x80006400` (`n_refs` now `0`). -/
+theorem ffree_owner_800063ec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M M1 : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (ho : x.Owns)
+    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (hr1 : x.rep.refs = 1) {v : BitVec 64}
+    (hM1 : M1 = writeLog M [(x.rep.p + 12, 4, v)])
+    (hi1 : HeapInv S M1 H) (wg : ldv .ld M1 2147601840 = BitVec.ofNat 64 (deadHead F))
+    (hfr1 : ∀ a, OutHeap a → imgM M1 a = imgM M a) (hkp : Keeps [1, 10, 14, 15] R R0)
+    (hx : R 24 = BitVec.ofNat 64 x.rep.p)
+    (hk : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R0 M fr H F L1 L2 x) :
+    DW live S Q 0x80006400#64 R M1 := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hxm : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hxm
+  have hxb := h.blocks x hxm
+  num_facts hn
+  have hpt : ldv .ld M1 (x.rep.p + 24) = BitVec.ofNat 64 x.rep.ptr := by
+    rw [hM1, ldv_ld_miss _ _ (by omega)]; exact hn.ptr
+  have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
+  have fbd := hi.blk (List.mem_append_right _ hxb.dLive)
+  have hd1 : 2147603920 ≤ x.db.h := fbd.lo
+  have hdph : x.db.pay = x.db.h + 16 := rfl
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [hx, hpt] at 0x80006408 0x8000640c
+  all_goals try (intro hc; first
+    | exact absurd ((ofNat_eq_iff (x := x.rep.ptr) (y := 0) (by omega) (by omega)).mp hc) (by omega)
+    | exact absurd ((ofNat_eq_iff (x := x.rep.ptr) (y := 0) (by omega) (by omega)).mp
+        (Classical.not_not.mp hc)) (by omega))
+  intro _
+  obtain ⟨lpre, lpost, hl⟩ := List.append_of_mem hxb.dLive
+  apply st_80006408 hlive
+  refine free_spec hlive hi1 hl _ (by bsimp [hdp]) (by bsimp []) ?_
+  intro R1 Mt3 hk1 hfp
+  bsimp []
+  have wg3 : ldv .ld Mt3 2147601840 = BitVec.ofNat 64 (deadHead F) := by
+    rw [ldv_congr .ld fun j hj => hfp.frame _ fun ha => by
+      rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
+        simp only [freeListAddr, heapStart, heapEnd, widthOfM] at h' hj <;> omega]
+    exact wg
+  subst hM1
+  exact fpush_800063ec_8000640c hlive hr1 (h.freeOwner ho (hnv ho) hl hfp)
+    (fun a ha => (hfp.frame a (OutHeap.not_alloc hi ha)).trans (hfr1 a ha)) wg3 hS h.globOwn
+    (by omega) (by omega) (by omega) (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac hkp)))
+    (by rw [hk1.get 24]; bsimp [hx]) hk
+
+/-- A view's struct released, from `0x80006400` (`n_refs` now `0`). -/
+theorem ffree_view_800063ec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hv : ¬ x.Owns)
+    (hr1 : x.rep.refs = 1) (v : BitVec 64) (hkp : Keeps [1, 10, 14, 15] R R0)
+    (hx : R 24 = BitVec.ofNat 64 x.rep.p)
+    (hk : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R0 M fr H F L1 L2 x) :
+    DW live S Q 0x80006400#64 R (writeLog M [(x.rep.p + 12, 4, v)]) := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hxm : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hxm
+  num_facts hn
+  have hv0 : x.rep.ptr = 0 := Classical.not_not.mp hv
+  have hpt : ldv .ld (writeLog M [(x.rep.p + 12, 4, v)]) (x.rep.p + 24) = 0#64 := by
+    rw [ldv_ld_miss _ _ (by omega), hn.ptr, hv0]
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [hx, hpt] at 0x80006408 0x8000640c
+  all_goals try (intro hc; rw [ldv_ld_miss _ _ (by omega), hn.ptr, hv0] at hc; exact absurd rfl hc)
+  intro _
+  exact fpush_800063ec_8000640c hlive hr1 (h.freeView hv v)
+    (fun a ha => by simp only [OutHeap, heapStart, heapEnd] at ha; exact imgM_store_miss _ _ (by omega))
+    (by rw [ldv_ld_miss _ _ (by simp only [bcFreeAddr]; omega)]; exact h.dead.head) hS h.globOwn
+    (by omega) (by omega) (by omega) (by keeps_tac hkp) (by bsimp [hx]) hk
+
+/-- The last reference dropped at `0x800063f0`. -/
+theorem ffree_rel_800063ec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr1 : x.rep.refs = 1)
+    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (hx : R 24 = BitVec.ofNat 64 x.rep.p)
+    (hko : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R M fr H F L1 L2 x)
+    (hkv : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R M fr H F L1 L2 x) :
+    DW live S Q 0x800063f0#64 R M := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hxm : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hxm
+  have hxb := h.blocks x hxm
+  num_facts hn
+  have hrf := hn.refs
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have h0 : BitVec.ofNat 64 1 + 18446744073709551615#64 = 0#64 := by decide
+  bc_run hlive hS [hx, hrf, hr1, h0] at 0x80006420 0x80006400
+  by_cases ho : x.Owns
+  · have hpp : x.rep.p = x.sb.pay := hxb.sPay
+    have hsz := hxb.sSz
+    have hsph : x.sb.pay = x.sb.h + 16 := rfl
+    exact ffree_owner_800063ec hlive h ho hnv hr1 rfl
+      (hi.transport fun a ha => by
+        have hn := live_not_alloc hi hxb.sLive (a := a)
+        refine imgM_store_miss _ _ (Classical.byContradiction fun hc => hn ⟨by omega, ?_⟩ ha)
+        simp only [Blk.fin] at hc ⊢; omega)
+      (by rw [ldv_ld_miss _ _ (by omega)]; exact h.dead.head)
+      (fun a ha => by simp only [OutHeap, heapStart, heapEnd] at ha; exact imgM_store_miss _ _ (by omega))
+      (by keeps_tac Keeps.refl _ _) (by bsimp [hx]) hko
+  · exact ffree_view_800063ec hlive h ho hr1 _ (by keeps_tac Keeps.refl _ _) (by bsimp [hx]) hkv
+
+/-- One reference fewer at `0x800063f0`. -/
+theorem ffree_dec_800063ec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr2 : 2 ≤ x.rep.refs)
+    (hx : R 24 = BitVec.ofNat 64 x.rep.p)
+    (hk : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R M fr H F L1 L2 x) :
+    DW live S Q 0x800063f0#64 R M := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hxm : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hn := h.nums x hxm
+  num_facts hn
+  have hrf := hn.refs
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hpr : BitVec.ofNat 64 x.rep.refs + 18446744073709551615#64 =
+      BitVec.ofNat 64 (x.rep.refs - 1) := word_pred (by omega)
+  have hsx : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (x.rep.refs - 1))) =
+      BitVec.ofNat 64 (x.rep.refs - 1) := sxw_ofNat (by omega)
+  bc_run hlive hS [hx, hrf, hpr, hsx] at 0x80006420 0x80006400
+  all_goals try (intro hc; exact absurd ((ofNat_eq_iff (x := x.rep.refs - 1) (y := 0)
+    (by omega) (by omega)).mp (Classical.not_not.mp hc)) (by omega))
+  intro _
+  refine hk _ _ H F _ (by keeps_tac Keeps.refl _ _) (.dec hr2)
+    (h.setRefs (toNat_ofNat_mod32 (by omega)) (by omega)) fun a ha _ => ?_
+  simp only [OutHeap, heapStart, heapEnd] at ha
+  exact imgM_store_miss _ _ (by omega)
+
+/-- **The free of exponent (`bc_raisemod`)** (`x24`) at `0x800063ec`: one continuation per route. -/
+theorem ffree_800063ec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
+    (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
+    (hx : R 24 = BitVec.ofNat 64 x.rep.p)
+    (hkd : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R M fr H F L1 L2 x)
+    (hko : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R M fr H F L1 L2 x)
+    (hkv : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R M fr H F L1 L2 x) :
+    DW live S Q 0x800063ec#64 R M := by
+  have hi := h.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hn := h.nums x (List.mem_append_right _ List.mem_cons_self)
+  num_facts hn
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [hx] at 0x800063f0
+  all_goals try (intro hc; exact absurd ((ofNat_eq_iff (x := x.rep.p) (y := 0)
+    (by omega) (by omega)).mp hc) (by omega))
+  intro _
+  rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
+  · exact ffree_rel_800063ec hlive h hr1 (hnv hr1) hx hko hkv
+  · exact ffree_dec_800063ec hlive h hr2 hx hkd
+
+/-- No number to free at `0x800063ec` (`x24 = NULL`). -/
+theorem fnull_800063ec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} (hS : HeapOwn S) (h0 : R 24 = 0#64)
+    (hk : DW live S Q 0x80006420#64 R M) :
+    DW live S Q 0x800063ec#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h0] at 0x80006420
+  all_goals first | exact hk | (intro hc; exact absurd rfl hc)
+
 end Dc.Mach

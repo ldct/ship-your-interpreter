@@ -312,4 +312,121 @@ theorem DcAt.setHead {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L :
   exact hb1.ofMach hpd (fun c hc => by rw [List.mem_singleton.mp hc]; exact h.heap.raw.live b hbG)
     fun c hc => by rw [List.mem_singleton.mp hc]; exact h.heap.raw.out b hbG
 
+/-! ## A new level -/
+
+/-- The empty level. -/
+abbrev RLev.empty : RLev := ⟨none, []⟩
+
+theorem DcG.newLevel_perm {G : DcG} {r : Nat} (hr : r < 256) (hl : G.regs r = []) (c : Blk) :
+    (G.setReg r [(c, RLev.empty)]).blocks.Perm (c :: G.blocks) := by
+  obtain ⟨P, Q, -, hf, hf'⟩ := flatMap_range_upd (f := fun r' => (G.regs r').flatMap RLev.blocks)
+    (g := fun r' => ((G.setReg r [(c, RLev.empty)]).regs r').flatMap RLev.blocks) hr
+    fun r' hne => by simp [DcG.setReg, hne]
+  have e1 : (G.setReg r [(c, RLev.empty)]).blocks = G.stk.map (·.1) ++ (List.range 256).flatMap
+      (fun r' => ((G.setReg r [(c, RLev.empty)]).regs r').flatMap RLev.blocks) ++
+      G.strs.flatMap (fun o => [o.hb, o.tb]) ++ G.lbuf.toList := rfl
+  have e2 : G.blocks = G.stk.map (·.1) ++ (List.range 256).flatMap
+      (fun r' => (G.regs r').flatMap RLev.blocks) ++
+      G.strs.flatMap (fun o => [o.hb, o.tb]) ++ G.lbuf.toList := rfl
+  rw [List.perm_iff_count]
+  intro y
+  rw [e1, e2, hf, hf']
+  simp only [DcG.setReg, ite_true, hl, List.flatMap_cons, List.flatMap_nil, RLev.blocks,
+    List.count_append, List.count_cons, List.map_nil, List.count_nil, List.append_nil]
+  omega
+
+theorem DcG.newLevel_vals {G : DcG} {r : Nat} (hl : G.regs r = []) (c : Blk) :
+    (G.setReg r [(c, RLev.empty)]).vals = G.vals := by
+  have hf : (fun r' => ((G.setReg r [(c, RLev.empty)]).regs r').flatMap RLev.vals) =
+      fun r' => (G.regs r').flatMap RLev.vals := by
+    funext r'
+    simp only [DcG.setReg]
+    split
+    · subst_vars; rw [hl]; simp [RLev.vals]
+    · rfl
+  show G.stk.map (·.2) ++ (List.range 256).flatMap
+      (fun r' => ((G.setReg r [(c, RLev.empty)]).regs r').flatMap RLev.vals) = G.vals
+  rw [hf]; rfl
+
+/-- The bytes of register `r`'s word. -/
+abbrev RegWord (r a : Nat) : Prop := regAddr r ≤ a ∧ a < regAddr r + 8
+
+/-- **A new empty level**: register `r` (empty) now holds the fresh node `c`
+with type `0` and no array. -/
+theorem DcAt.newLevel {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {r : Nat} {c : Blk}
+    (h : DcAt S M H F L C G hs st) (hr : r < 256) (hl : G.regs r = []) (hf : DcFresh H F L G c)
+    (hm : MemOnly (fun a => c.In a ∨ RegWord r a) M' M)
+    (hw : ldv .ld M' (regAddr r) = BitVec.ofNat 64 c.pay) (h0 : ldv .lw M' c.pay = 0#64)
+    (h16 : ldv .ld M' (c.pay + 16) = 0#64) (h24 : ldv .ld M' (c.pay + 24) = 0#64)
+    (hsz : 32 ≤ c.sz) :
+    DcAt S M' H F L C (G.setReg r [(c, RLev.empty)]) hs (st.setReg r [⟨none, []⟩]) := by
+  have hi := h.heap.heap
+  have hperm := DcG.newLevel_perm hr hl c
+  have hcin := live_in_heap hi hf.live (show c.In c.pay by simp only [Blk.In, Blk.pay, Blk.fin]; omega)
+  have hrw : ∀ a, RegWord r a → OutHeap a ∧ DcGlob a := fun a ha => by
+    simp only [RegWord, regAddr, dc_addrs] at ha
+    exact ⟨DcGlob.outHeap (by simp only [DcGlob, dc_addrs]; omega),
+      by simp only [DcGlob, dc_addrs]; omega⟩
+  have hoff : ∀ c' ∈ H.live, c' ≠ c → ∀ a, c'.In a → imgM M' a = imgM M a := fun c' hc' hne a ha =>
+    hm a fun h' => h'.elim (fun hca => live_apart hi hc' hf.live hne ha hca)
+      fun hrg => (hrw a hrg).1.1 (live_in_heap hi hc' ha)
+  have hglob : ∀ a, DcGlob a → ¬ RegWord r a → imgM M' a = imgM M a := fun a ha hn =>
+    hm a fun h' => h'.elim (fun hca => by
+      have := live_in_heap hi hf.live hca; have := ha.lt; simp only [heapStart] at *; omega) hn
+  have hGoff : ∀ c' ∈ G.blocks, ∀ a, c'.In a → imgM M' a = imgM M a := fun c' hc' =>
+    hoff c' (h.heap.raw.live c' hc') fun e => hf.notG (e ▸ hc')
+  have hb1 : BcHeap S (G.raws M) M' H F L :=
+    h.heap.transportOwn (fun a ha => hm a fun h' => h'.elim
+        (fun hca => live_not_alloc hi hf.live hca ha) fun hrg => OutHeap.not_alloc hi (hrw a hrg).1 ha)
+      (fun c' hc' a ha => hoff c' (h.heap.owned_live hc') (fun e => by
+        rcases List.mem_append.mp hc' with hc' | hc'
+        · exact hf.notNum (e ▸ hc')
+        · exact hf.notG (e ▸ hc')) a ha)
+      fun j hj => hm _ fun h' => h'.elim (fun hca => by
+        have := live_in_heap hi hf.live hca; simp only [bcFreeAddr, heapStart] at *; omega)
+        fun hrg => by simp only [RegWord, regAddr, bcFreeAddr, dc_addrs] at hrg; omega
+  have hd := h.den
+  have hst : st.regs r = [] := by
+    have := hd.regs r hr; rw [hl] at this
+    revert this; generalize st.regs r = m; intro this; cases this; rfl
+  have hv := h.den
+  refine
+    { heap := (hb1.addRaw hf.live hf.notNum).subRaw (fun b hb => hperm.mem_iff.mp hb) fun _ _ _ _ => rfl
+      nodup := hperm.nodup_iff.mpr (List.nodup_cons.mpr ⟨hf.notG, h.nodup⟩)
+      view := h.view.withChains rfl rfl ⟨rfl, rfl, rfl, rfl, rfl⟩
+        (fun o ho x hx => hx.elim (fun hx => hGoff _ (G.str_mem ho).1 x hx)
+          fun hx => hGoff _ (G.str_mem ho).2 x hx)
+        (fun a ha hc => hglob a ha fun hrg => hc (.inr (by
+          simp only [RegWord, regAddr] at hrg; omega)))
+        (stkChain_frame h.view.stk (ldv_congr .ld fun j hj => hglob _ (by
+          simp only [widthOfM, DcGlob, dc_addrs] at hj ⊢; omega) (by
+          simp only [widthOfM, RegWord, regAddr, dc_addrs] at hj ⊢; omega))
+          fun bg hmm x hx => hGoff _ (G.stk_mem hmm) x hx) fun r' hr' => ?_
+      den := ?_
+      glob := h.glob
+      col := h.col }
+  · have e1 : (G.setReg r [(c, RLev.empty)]).regs r' = if r' = r then [(c, RLev.empty)] else G.regs r' :=
+      rfl
+    rw [e1]
+    split
+    · subst_vars
+      exact .cons hw ⟨h0, .nil h16, hsz⟩ (.nil h24)
+    · exact regChain_frame (h.view.regs r' hr') (ldv_congr .ld fun j hj => hglob _ (by
+        simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega) (by
+        simp only [widthOfM, RegWord, regAddr, dc_addrs] at hj ⊢; omega))
+        fun be hmm c' hc' x hx => hGoff c' (G.lev_mem hr' hmm hc') x hx
+  · have hvals := DcG.newLevel_vals hl c
+    refine { hd with
+      regs := fun r' hr' => ?_
+      regsHi := fun r' hr' => ?_
+      numRefs := fun x hx => by rw [hvals]; exact hd.numRefs x hx
+      strRefs := fun o ho => by rw [hvals]; exact hd.strRefs o ho }
+    · simp only [DcG.setReg, St.setReg]
+      split
+      · exact .cons ⟨.none, .nil⟩ .nil
+      · exact hd.regs r' hr'
+    · have hne : r' ≠ r := by omega
+      simp only [DcG.setReg, St.setReg, hne, ite_false]; exact hd.regsHi r' hr'
+
 end Dc.Mach

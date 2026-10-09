@@ -13,6 +13,8 @@ import Dc.Mach.Bc.DivMod
 - `DmAt68`: the state after `bc_divide` returns at `0x80006068`: the
   quotient `t` heads the heap, `_zero_` has its reference back.
 - `DmPreK`: the continuations of the entry: `DmAt68`, `-1`, out of memory.
+- `dm_q68` / `dm_r68`: the dispatch on `quot` into `dm_qmul` / `dm_rmul`.
+- `bc_divmod_spec`, `bc_divmod_rem_spec`, `bc_modulo_spec`: the contracts.
 -/
 
 namespace Dc.Mach
@@ -560,6 +562,87 @@ theorem dm_entry {live : Nat → Prop} {S : Nat → Prop}
     exact hk.zero hz _ _ (by keeps_tac Keeps.refl _ _) (by bsimp []) fun _ _ => rfl
   · intro _
     exact dm_pro hlive cx hk ha hb (by keeps_tac Keeps.refl _ _) (by bsimp []) h10 h11 h14
+
+theorem divmod_none {a b : Num} (k : Nat) (hb : b.mag = 0) : Num.divmod a b k = none := by
+  simp only [Num.divmod, num_div_none k hb]
+
+/-- **`bc_divmod (num1, num2, quot, rem, scale)`** at `0x80005fd0` with a
+quotient slot: `Num.divmod`'s quotient and remainder in the slots
+(`DmKQ.ret`), `-1` for a zero divisor (`DmKQ.zero`), or `out_of_memory`. -/
+theorem bc_divmod_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W k qq qr : Nat} {L : List NumObj}
+    {xq xr x1 x2 z : NumObj} {H : Heap} {F : List Blk}
+    (cx : DmCtx S R0 sp W) (ha : DmArgs Mt0 L x1 x2 z k)
+    (sl : DmQSlots S Mt0 L xq xr qq qr sp W) (hb : BcHeap S Mt0 H F L)
+    (hk : DmKQ live S Q R0 Mt0 L xq xr qq qr sp W (Num.divmod x1.rep.num x2.rep.num k))
+    (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
+    (h12 : R0 12 = BitVec.ofNat 64 qq) (h13 : R0 13 = BitVec.ofNat 64 qr)
+    (h14 : R0 14 = BitVec.ofNat 64 k) :
+    DW live S Q 0x80005fd0#64 R0 Mt0 :=
+  dm_entry hlive cx
+    ⟨fun _ hd _ _ _ _ _ st => dm_q68 hlive cx sl hk ha hd st h12 h13,
+      fun hz => hk.zero (divmod_none k hz), hk.oom⟩ ha hb h10 h11 h14
+
+/-- **`bc_divmod (num1, num2, NULL, rem, scale)`** at `0x80005fd0`:
+`Num.modulo`'s remainder in the slot (`DmKR.ret`), `-1` for a zero divisor,
+or `out_of_memory`. -/
+theorem bc_divmod_rem_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W k qr : Nat} {L : List NumObj}
+    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk}
+    (cx : DmCtx S R0 sp W) (ha : DmArgs Mt0 L x1 x2 z k)
+    (sr : DmSlot S sp W qr) (hmr : xr ∈ L) (hrr : 1 ≤ xr.rep.refs)
+    (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p) (hb : BcHeap S Mt0 H F L)
+    (hk : DmKR live S Q R0 Mt0 L xr qr sp W (Num.modulo x1.rep.num x2.rep.num k))
+    (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
+    (h12 : R0 12 = 0#64) (h13 : R0 13 = BitVec.ofNat 64 qr)
+    (h14 : R0 14 = BitVec.ofNat 64 k) :
+    DW live S Q 0x80005fd0#64 R0 Mt0 :=
+  dm_entry hlive cx
+    ⟨fun _ hd _ _ _ _ _ st => dm_r68 hlive cx sr hmr hrr hwr0 hk ha hd st h12 h13,
+      fun hz => hk.zero (by simp only [Num.modulo, divmod_none k hz, Option.map_none]),
+      hk.oom⟩ ha hb h10 h11 h14
+
+/-- `DmKR` for registers that differ from the caller's only in `binClob`. -/
+theorem DmKR.retarget {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {R0 R1 : Nat → BitVec 64} {Mt0 : Mem} {L : List NumObj} {xr : NumObj} {qr sp W : Nat}
+    {n : Option Num} (hk : DmKR live S Q R0 Mt0 L xr qr sp W n) (hkp : Keeps binClob R1 R0) :
+    DmKR live S Q R1 Mt0 L xr qr sp W n where
+  ret := fun r hr R' Mt' H F Lf yr kk h10 hp => by
+    rw [hkp.get 1]; exact hk.ret r hr R' Mt' H F Lf yr (kk.trans hkp) h10 hp
+  zero := fun hn R' Mt' kk h10 hf => by
+    rw [hkp.get 1]; exact hk.zero hn R' Mt' (kk.trans hkp) h10 hf
+  oom := hk.oom
+
+/-- `DmCtx` for registers that keep `sp` and `ra`. -/
+theorem DmCtx.retarget {S : Nat → Prop} {R0 R1 : Nat → BitVec 64} {sp W : Nat}
+    (cx : DmCtx S R0 sp W) (hkp : Keeps binClob R1 R0) : DmCtx S R1 sp W :=
+  { cx with
+    sp0 := by rw [hkp.get 2]; exact cx.sp0
+    al := by rw [hkp.get 1]; exact cx.al }
+
+/-- **`bc_modulo (num1, num2, result, scale)`** at `0x800061b4`
+(`bc_divmod (num1, num2, NULL, result, scale)`): `Num.modulo`'s remainder in
+the slot, `-1` for a zero divisor, or `out_of_memory`. -/
+theorem bc_modulo_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W k qr : Nat} {L : List NumObj}
+    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk}
+    (cx : DmCtx S R0 sp W) (ha : DmArgs Mt0 L x1 x2 z k)
+    (sr : DmSlot S sp W qr) (hmr : xr ∈ L) (hrr : 1 ≤ xr.rep.refs)
+    (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p) (hb : BcHeap S Mt0 H F L)
+    (hk : DmKR live S Q R0 Mt0 L xr qr sp W (Num.modulo x1.rep.num x2.rep.num k))
+    (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
+    (h12 : R0 12 = BitVec.ofNat 64 qr) (h13 : R0 13 = BitVec.ofNat 64 k) :
+    DW live S Q 0x800061b4#64 R0 Mt0 := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h12, h13] at 0x80005fd0
+  have kk : Keeps binClob (upd (upd (upd R0 14 (BitVec.ofNat 64 k)) 13 (BitVec.ofNat 64 qr)) 12
+      0#64) R0 := by keeps_tac Keeps.refl _ _
+  exact bc_divmod_rem_spec hlive (cx.retarget kk) ha sr hmr hrr hwr0 hb (hk.retarget kk)
+    (by bsimp [h10]) (by bsimp [h11]) (by bsimp []) (by bsimp []) (by bsimp [])
 
 end
 

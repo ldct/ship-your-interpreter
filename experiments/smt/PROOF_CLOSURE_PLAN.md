@@ -4962,4 +4962,33 @@ changed (`DivKW.zero`), or `out_of_memory` (`DivKW.oomW`). The axioms are
 `DivCtx.slotZero` (the slot is apart from `_zero_`'s word) is a new context
 premise: the detour stores the slot before the general path reads `_zero_`.
 `NumAt.setDigits`/`BcHeap.setDigits` rewrite a whole digit buffer of the
-head number. `bc_divmod` and `bc_modulo` remain open.
+head number.
+
+### M7 `bc_divmod`, `bc_modulo` (checked)
+
+`bc_divmod_spec` (`Dc/Mach/Bc/DivModEntry.lean`): from `0x80005fd0`, for
+operands `DmArgs` (`n1` with a positive integer length, `n2` and `_zero_` of
+the heap, every number an owner, sizes under `2^24` digits) and the quotient
+and remainder slots `DmQSlots`, the slots hold `Num.divmod n1 n2 scale`'s
+numbers and `a0 = 0` (`DmKQ.ret`, post `DmPostQ`: the old remainder, then the
+old quotient, dropped by `DropAt`), `a0 = -1` for a zero divisor
+(`DmKQ.zero`), or `out_of_memory`. `bc_divmod_rem_spec` is the `quot = NULL`
+route against `Num.modulo` (`DmKR`, `DmPostR`), and `bc_modulo_spec`
+(`0x800061b4`) reaches it by `DmKR.retarget`. The axioms are `propext`,
+`Classical.choice` and `Quot.sound`. Routes:
+
+- `n2` is `_zero_`, has no digits, or all its digits are zero: `-1`
+  (`dm_entry`, `dm_pro`, `dmz_scan`, `dm_neg`).
+- `rscale` (`dm_rscale`), `temp = _zero_` with one reference more and
+  `bc_divide` (`dm_divCall`; `dm_divRet` drops the reference again and lands
+  `DmAt68`).
+- with a quotient slot (`dm_q68`): the copy of `temp`, `bc_multiply`,
+  `bc_sub`, the generated free of `temp` (`ffree_800060a8`), `bc_free_num`
+  of the old quotient and the store (`dm_qmul` … `dm_qstore`).
+- without (`dm_r68`): `bc_multiply`, `bc_sub`, the generated free
+  (`ffree_80006168`) (`dm_rmul` … `dm_rend`).
+
+The inlined `bc_free_num` sites that read `_bc_Free_list` by `auipc` are
+generated (`scripts/dc/gen_bc_free.py` → `FreeSites.lean`, continuation
+`FreeK`). `div_size_le` and `mul_size_le` bound the intermediate numbers
+under the `2^27` digits `bc_multiply` and `bc_sub` require. M7 is closed.

@@ -77,3 +77,4 @@ import Dc.Mach.Bc.KaraEntry
 import Dc.Mach.Bc.KaraZeroRef
 import Dc.Mach.Bc.SimpMul
 import Dc.Mach.Bc.DivSpec
+import Dc.Mach.Bc.DivModEntry

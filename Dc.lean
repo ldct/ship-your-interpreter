@@ -91,4 +91,5 @@ import Dc.Mach.Bc.RaiseModHeap
 import Dc.Mach.Bc.RaiseModLoop
 import Dc.Mach.Bc.RaiseModExit
 import Dc.Mach.Bc.RaiseModEntry
+import Dc.Mach.Bc.CallFrame
 import Dc.Mach.RtMsgSites

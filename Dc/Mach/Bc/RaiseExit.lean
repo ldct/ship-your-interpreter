@@ -339,6 +339,46 @@ theorem ra_neg2 {live : Nat → Prop} {S : Nat → Prop}
 def NumObj.cutTo (k : Nat) (y : NumObj) : NumObj :=
   if k < y.rep.scale then { y with rep := y.rep.cutScale k } else y
 
+theorem NumObj.cutTo_p (k : Nat) (y : NumObj) : (y.cutTo k).rep.p = y.rep.p := by
+  unfold NumObj.cutTo; split <;> rfl
+
+theorem NumObj.cutTo_refs (k : Nat) (y : NumObj) : (y.cutTo k).rep.refs = y.rep.refs := by
+  unfold NumObj.cutTo; split <;> rfl
+
+theorem NumObj.cutTo_len (k : Nat) (y : NumObj) : (y.cutTo k).rep.len = y.rep.len := by
+  unfold NumObj.cutTo; split <;> rfl
+
+theorem NumObj.cutTo_owns {k : Nat} {y : NumObj} (h : y.Owns) : (y.cutTo k).Owns := by
+  unfold NumObj.cutTo; split
+  · exact h
+  · exact h
+
+/-- The cut number's value: the magnitude truncated to `k` places. -/
+theorem NumObj.cutTo_num {k : Nat} {y : NumObj} (hs : NumShape y.rep) (hk : k ≤ y.rep.scale) :
+    (y.cutTo k).rep.num = ⟨y.rep.num.neg, y.rep.num.mag / 10 ^ (y.rep.scale - k), k⟩ := by
+  unfold NumObj.cutTo; split
+  · exact NumRep.cutScale_num hs (by omega)
+  · have e : k = y.rep.scale := by omega
+    subst e
+    simp only [Nat.sub_self, Nat.pow_zero, Nat.div_one]
+    rfl
+
+theorem NumObj.cutTo_norm {k : Nat} {y : NumObj} (hn : y.rep.Norm) (hl : 1 ≤ y.rep.len) :
+    (y.cutTo k).rep.Norm := by
+  unfold NumObj.cutTo; split
+  · exact NumRep.cutScale_norm hn hl k
+  · exact hn
+
+/-- Every number of `T :: P :: X` owns its digits. -/
+theorem owns_cons2 {T P : NumObj} {X : List NumObj} (hT : T.Owns) (hP : P.Owns)
+    (h : ∀ y ∈ X, y.Owns) : ∀ y ∈ T :: P :: X, y.Owns := by
+  intro y hy
+  rcases List.mem_cons.mp hy with rfl | hy
+  · exact hT
+  rcases List.mem_cons.mp hy with rfl | hy
+  · exact hP
+  exact h y hy
+
 /-- **`*result = temp`, `temp` cut to `rscale`** from `0x80006898` (`temp`
 in `s4`, `rscale` in `s6`, the slot in `s7`); `power` reloaded into `s2`. -/
 theorem ra_store {live : Nat → Prop} {S : Nat → Prop}
@@ -392,5 +432,130 @@ theorem ra_store {live : Nat → Prop} {S : Nat → Prop}
     simp only [slotBytes] at hs
     simp only [OutHeap, heapStart, heapEnd] at ha
     rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
+
+/-- **`bc_free_num (result)`** from `0x80006890` (`s7` the slot). -/
+theorem ra_posFree {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {xr : NumObj} (cx : RaCtx S R0 sp W q)
+    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (h23 : R 23 = BitVec.ofNat 64 q)
+    (hk : ∀ R' M' H' F' L', Keeps [1, 10, 13, 14, 15] R' R → FreedRest L1 L2 xr L' →
+      BcHeap S M' H' F' L' →
+      (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn (sp - 96) 32 a → imgM M' a = imgM M a) →
+      DW live S Q 0x80006898#64 R' M') :
+    DW live S Q 0x80006890#64 R M := by
+  ra_facts cx
+  have hsf := cx.frame
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  have hap := hsl.apart
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hxm : xr ∈ L1 ++ xr :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hxn := hb.nums xr hxm
+  have hxp' : heapStart ≤ xr.rep.p ∧ xr.rep.p + 16 ≤ heapEnd :=
+    ⟨hxn.shape.pLo, by have := hxn.shape.pHi; omega⟩
+  bc_run hlive hS [h23, h2] at 0x800048c0
+  have hsf' : StackFrame S (sp - 96) 32 :=
+    ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
+  have e : FreeEntry S M H F L1 L2 xr q (sp - 96) :=
+    FreeEntry.of_slot hb hr hr.noView hq hsl.out hsf' (by simp only [heapEnd]; omega) (by omega)
+  refine bc_free_num_spec hlive e _ (by bsimp [h23]) (by bsimp [h2]) (by bsimp []; try decide)
+    ⟨fun hx2 R1 Mt1 hk1 hb1 _ hmo => ?_, fun hx1 R1 Mt1 H1 hk1 hrp => ?_⟩
+  · bsimp []
+    refine hk R1 Mt1 H F _ ((hk1.mono (ks' := [1, 10, 13, 14, 15]) (by decide)).trans
+      (by keeps_tac Keeps.refl _ _)) (.dec hx2) hb1 fun a ha hs _ => hmo a fun hc => ?_
+    rcases hc with hc | hc
+    · simp only [refsBytes, OutHeap, heapStart, heapEnd] at hc ha hxp'; omega
+    · exact hs hc
+  · bsimp []
+    refine hk R1 Mt1 H1 (xr.sb :: F) _ ((hk1.mono (ks' := [1, 10, 13, 14, 15]) (by decide)).trans
+      (by keeps_tac Keeps.refl _ _)) (.rel hx1) hrp.heap fun a ha hs hf => hrp.frame a fun hc => ?_
+    rcases hc with hc | hc | hc | hc | hc
+    · exact OutHeap.not_alloc hb.heap ha hc
+    · exact ha.1 (live_in_heap hb.heap (hb.blocks xr hxm).sLive hc)
+    · exact hs hc
+    · exact hf hc
+    · exact ha.2.2 hc
+
+/-- **The positive exponent's tail** from `0x8000688c`: `bc_free_num
+(result)`, `*result = temp` (`T`) cut to `rscale` (`k`), `power` (`P`)
+released; both fresh. -/
+theorem ra_pos2 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L0 : List NumObj} {x1 x2 z o xr T P : NumObj} {n : Num}
+    (cx : RaCtx S R0 sp W q) (hK : RaK live S Q t R0 Mt0 L0 xr q sp W n)
+    (hs : RaSlot M L0 x1 x2 z o xr q) (hown : ∀ y ∈ L0, y.Owns)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots2) (hb : BcHeap S M H F (T :: P :: L0))
+    (hT1 : T.rep.refs = 1) (hP1 : P.rep.refs = 1) (hTo : T.Owns) (hPo : P.Owns)
+    (hTN : T.rep.Norm) (hTl : 1 ≤ T.rep.len) (hkT : k ≤ T.rep.scale) (hk31 : k < 2 ^ 31)
+    (hn : n = ⟨T.rep.num.neg, T.rep.num.mag / 10 ^ (T.rep.scale - k), k⟩)
+    (h20 : R 20 = BitVec.ofNat 64 T.rep.p) (h22 : R 22 = BitVec.ofNat 64 k)
+    (hwP : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 P.rep.p) :
+    DW live S (DQ live S Q t) 0x8000688c#64 R M := by
+  ra_facts cx
+  have hsf := cx.frame
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  have hap := hsl.apart
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have sv := ra.saved
+  have hTs := (hb.nums T List.mem_cons_self).shape
+  obtain ⟨X1, X2, rfl⟩ := List.append_of_mem hs.mr
+  have h2 := ra.r2
+  bc_run hlive hS [h2, sv.get 21 40] at 0x80006890
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine ra_posFree hlive cx (L1 := T :: P :: X1) (L2 := X2) hb
+    ⟨hs.rr, hs.wr, fun _ hxo y hy => hb.owner_db_ne (P := T :: P :: X1) hxo hy
+      (owns_cons2 hTo hPo (fun y hy => hown y (List.mem_append_left _ hy)) y hy)⟩
+    (by bsimp [h2]) (by bsimp [ra.r23]) ?_
+  intro R1 M1 H1 F1 L1 hk1 hfr hb1 ho1
+  obtain ⟨L0', rfl, hfr'⟩ := FreedRest.unpre (P := [T, P]) (X1 := X1) hfr
+  refine ra_store hlive cx (Ya := []) (y := T) (Yb := P :: L0') (pw := BitVec.ofNat 64 P.rep.p) hb1 hk31
+    (by rw [hk1.get 2]; bsimp [h2]) (by rw [hk1.get 20]; bsimp [h20])
+    (by rw [hk1.get 22]; bsimp [h22]) (by rw [hk1.get 23]; bsimp [ra.r23])
+    (by rw [ldv_congr .ld fun j hj => ho1 _
+          (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+          (by simp only [slotBytes, widthOfM] at hj ⊢; omega)
+          (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+        exact hwP) ?_
+  intro R2 M2 hk2 h18 hb2 hq2 ho2
+  have sv2 : SavedWords M2 (sp - 96) raSlots1 R0 := fun p hp => by
+    have hb' := (show ∀ p ∈ raSlots1, 16 ≤ p.2 ∧ p.2 + 8 ≤ 96 by decide) p hp
+    have e : ∀ j, j < widthOfM .ld → imgM M2 (sp - 96 + p.2 + j) = imgM M (sp - 96 + p.2 + j) :=
+      fun j hj => by
+        simp only [widthOfM] at hj
+        exact (ho2 _ (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+          (by simp only [slotBytes]; omega)).trans
+          (ho1 _ (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+            (by simp only [slotBytes]; omega) (by simp only [frameIn]; omega))
+    rw [ldv_congr .ld e]
+    exact sv p (List.mem_cons_of_mem _ hp)
+  have hT' : (T.cutTo k).Owns := NumObj.cutTo_owns hTo
+  refine ra_freePow0 hlive cx (L1 := [T.cutTo k]) (x := P) (L2 := L0') hb2 hPo
+    (fun y hy => by
+      rw [List.mem_singleton.mp hy]
+      exact hb2.owner_db_ne (P := [T.cutTo k]) hPo List.mem_cons_self hT') (by omega)
+    ⟨by rw [hk2.get 2, hk1.get 2]; bsimp [h2], sv2,
+      (hk2.mono (ks' := raAll) (by decide)).trans ((hk1.mono (ks' := raAll) (by decide)).trans
+        (by keeps_tac ra.keep)),
+      by rw [hk2.get 23, hk1.get 23]; bsimp [ra.r23], fun _ _ _ => rfl⟩
+    (by rw [hk2.get 21, hk1.get 21]; bsimp []) h18 ?_
+  intro R3 M3 H3 F3 L3 hk3 hkf hb3 ho3
+  cases hkf with
+  | dec h => omega
+  | rel _ =>
+    refine hK.ret R3 M3 _ _ _ _ hk3 (raPost_fresh hb3 hfr' (by rw [NumObj.cutTo_refs]; exact hT1)
+      (by rw [NumObj.cutTo_num hTs hkT, hn]) (NumObj.cutTo_norm hTN hTl)
+      (by rw [NumObj.cutTo_len]; exact hTl) hT' ?_ ?_)
+    · rw [ldv_congr .ld fun j hj => ho3 _ (hsl.out _ (by simp only [widthOfM] at hj; omega)), hq2,
+        NumObj.cutTo_p]
+    · intro a h1 h2' h3
+      rw [ho3 a h1, ho2 a h1 h2', ho1 a h1 h2' (fun h => h3 (by simp only [frameIn] at h ⊢; omega))]
+      exact ra.out a h1 h3
 
 end Dc.Mach

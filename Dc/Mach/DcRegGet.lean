@@ -201,4 +201,76 @@ theorem reg_get_dup {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   rw [hMq x (by omega), hfr x ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))]
   exact hM1 x hf
 
+/-- `dc_register_get` on a register without levels (`0x80002fbc`, `sp`
+lowered by 32): a fresh zero into the slot `q`, or `out_of_memory`. -/
+theorem reg_get_zero {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    (h : DcAt S M H F L C G hs st) (hhs : hs.length ≤ 2 ^ 30) {sp q : Nat}
+    (hsf : StackFrame S sp 336) (hab : heapEnd + 336 ≤ sp) (hq : DatSlot S sp q)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 32)) (h11 : R 11 = BitVec.ofNat 64 q)
+    {ra : BitVec 64} (hra : ldv .ld M (sp - 32 + 24) = ra) (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C' g, Keeps (1 :: 2 :: popClob) R' R → R' 1 = ra →
+      R' 2 = BitVec.ofNat 64 sp → R' 10 = 0#64 → DcAt S M' H' F' L' C' G (g :: hs) st →
+      g.Den ⟨L', G.strs⟩ (.num (Num.zero 0)) → DatAt M' q g → GetOut sp q M' M →
+      DWO live S Q t ra R' M')
+    (hoom : ∀ R' M', GetOut sp q M' M → DWO live S Q t 0x80002bcc#64 R' M') :
+    DWO live S Q t 0x80002fbc#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hq1 := hq.lo; have hq2 := hq.hi; have hq3 := hq.al
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hP : ∀ x, frameIn sp 336 x → OutHeap x ∧ ¬ DcGlob x := fun x hx => by
+    simp only [frameIn] at hx
+    exact ⟨outHeap_of_ge (by simp only [heapEnd]; omega), fun hg => by
+      have := hg.lt; simp only [heapStart] at this; omega⟩
+  bc_run hlive hS [h2, h11] at 0x800026d8
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM1 : MemOnly (frameIn sp 336) (writeLog M [(sp - 32, 8, BitVec.ofNat 64 q)]) M :=
+    fun x hx => by simp only [frameIn] at hx; rw [imgM_store_miss _ _ (by omega)]
+  have h1 := h.outWrite hM1 hP
+  refine dc_int2data_spec hlive h1 hhs (v := 0)
+    (StackFrame.sub (m := 32) (n := 192) (hsf.shrink (m := 224) (by omega)) (by decide))
+    (by simp only [heapEnd]; omega) _ (by bsimp []; rfl) (by bsimp [h2]) (by bsimp []) (by decide)
+    (by decide) (fun R1 M2 H' F' L' C' g hk1 hd' hden h' hfr => ?_) (fun R1 M2 _ hfr => ?_)
+  rotate_left
+  · refine hoom R1 M2 fun x ho hg hf _ => ?_
+    rw [hfr x ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))]
+    exact hM1 x hf
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk1.get 2 (by decide)]; bsimp [h2]
+  have hfs : ∀ x, sp - 32 ≤ x → x < sp → imgM M2 x = imgM (writeLog M [(sp - 32, 8, BitVec.ofNat 64 q)]) x :=
+    fun x hx1 hx2 => by
+      have hin : frameIn sp 336 x := by simp only [frameIn]; omega
+      exact hfr x (hP x hin).1 (hP x hin).2 (by simp only [frameIn]; omega)
+  have hlq : ldv .ld M2 (sp - 32) = BitVec.ofNat 64 q := by
+    rw [ldv_congr .ld fun j hj => hfs _ (by simp only [widthOfM] at hj; omega)
+      (by simp only [widthOfM] at hj; omega)]
+    exact ldv_store_hit _ _ _
+  have hra2 : ldv .ld M2 (sp - 32 + 24) = ra := by
+    rw [ldv_congr .ld fun j hj => hfs _ (by simp only [widthOfM] at hj; omega)
+      (by simp only [widthOfM] at hj; omega)]
+    rw [ldv_ld_miss _ _ (by omega)]; exact hra
+  bsimp []
+  bc_run hlive hS [q2, hlq]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals first
+    | (intro b hb; have := of_mem_accAddrs hb; have := hq.own (b - q) (by omega)
+       rwa [Nat.add_sub_cancel' (by omega)] at this)
+    | (rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), hra2]; exact hal)
+    | skip
+  have e : ldv .ld (writeLog (writeLog M2 [(q, 8, R1 10)]) [(q + 8, 8, R1 11)]) (sp - 32 + 24) = ra := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), hra2]
+  rw [e]
+  have hMq : MemOnly (fun x => q ≤ x ∧ x < q + 16)
+      (writeLog (writeLog M2 [(q, 8, R1 10)]) [(q + 8, 8, R1 11)]) M2 := fun x hx => by
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
+  refine hk _ _ H' F' L' C' g (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
+    (by bsimp []) (by bsimp []; congr 1; omega) (by bsimp [])
+    (h'.outWrite hMq fun x hx => ⟨outHeap_of_ge (by simp only [heapEnd]; omega), fun hg => by
+      have := hg.lt; simp only [heapStart] at this; omega⟩) hden (slotMem_dat hd') ?_
+  intro x ho hg hf hqx
+  rw [hMq x (by omega), hfr x ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))]
+  exact hM1 x hf
+
 end Dc.Mach

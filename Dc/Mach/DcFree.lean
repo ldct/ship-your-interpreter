@@ -54,17 +54,201 @@ theorem RLev.Den.drop {L1 L2 : List NumObj} {x : NumObj} {ss : List StrObj} {e :
   | some r => exact .some (r.drop (hg' _ (by simp)))
 
 /-- The state's references to `x` after the handle left: none. -/
-theorem DcAt.vals_ne {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
-    {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
-    (h : DcAt S M H F (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st) (h1 : x.rep.refs = 1) :
+theorem DcDen.vals_ne {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
+    {st : St} (d : DcDen (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st) (h1 : x.rep.refs = 1) :
     (∀ g ∈ G.vals ++ hs, g ≠ .num x.rep.p) ∧ C.cnt x.rep.p = 0 := by
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
-  have e := h.den.numRefs x hx
+  have e := d.numRefs x hx
   rw [count_cons_self] at e
   refine ⟨fun g hg hgx => ?_, by omega⟩
   subst hgx
   have := List.count_pos_iff.mpr hg
   omega
+
+/-- **The last reference released**, on the ghost side. -/
+theorem DcDen.rel {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
+    {st : St} (d : DcDen (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st)
+    (hpn : ∀ y ∈ L1 ++ L2, y.rep.p ≠ x.rep.p) (h1 : x.rep.refs = 1) :
+    DcDen (L1 ++ L2) C G hs st := by
+  obtain ⟨hne, hc0⟩ := d.vals_ne h1
+  have hvs : ∀ g ∈ G.vals, g ≠ .num x.rep.p := fun g hg => hne g (List.mem_append_left _ hg)
+  have hcx : ∀ c ∈ [C.z, C.o, C.t], c ≠ x := fun c hc e => by
+    subst e
+    have : 0 < C.cnt c.rep.p := by
+      unfold BcConsts.cnt; exact List.countP_pos_iff.mpr ⟨c, hc, by simp⟩
+    omega
+  have hmem : ∀ c ∈ [C.z, C.o, C.t], c ∈ L1 ++ x :: L2 → c ∈ L1 ++ L2 := fun c hc hm => by
+    rcases mem_split_cases hm with e | hm
+    · exact absurd e (hcx c hc)
+    · exact hm
+  exact
+    { stk := forall₂_imp_mem (fun bg hbg v hh => hh.drop (hvs _ (by
+        unfold DcG.vals; exact List.mem_append_left _ (List.mem_map.mpr ⟨bg, hbg, rfl⟩)))) d.stk
+      regs := fun r hr => forall₂_imp_mem (fun be hbe v hh => hh.drop fun g hg => hvs g (by
+        unfold DcG.vals
+        exact List.mem_append_right _ (List.mem_flatMap.mpr ⟨r, List.mem_range.mpr hr,
+          List.mem_flatMap.mpr ⟨be, hbe, hg⟩⟩))) (d.regs r hr)
+      regsHi := d.regsHi
+      hsDen := fun g hg => by
+        obtain ⟨v, hv⟩ := d.hsDen g (List.mem_cons_of_mem _ hg)
+        exact ⟨v, hv.drop (hne g (List.mem_append_right _ hg))⟩
+      owns := fun y hy => d.owns y (mem_split_of hy)
+      norm := fun y hy => d.norm y (mem_split_of hy)
+      pos := fun y hy => d.pos y (mem_split_of hy)
+      numRefs := fun y hy => by
+        rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hpn y hy (GV.num.inj e).symm]
+      strRefs := fun o ho => by rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+      mz := hmem _ (by simp) d.mz
+      mo := hmem _ (by simp) d.mo
+      mt := hmem _ (by simp) d.mt
+      zv := d.zv
+      ov := d.ov
+      ibase := d.ibase
+      obase := d.obase
+      scale := d.scale
+      unwind := d.unwind
+      lbuf := d.lbuf }
+
+/-- **One reference fewer**, on the ghost side: the constants follow the
+decremented object. -/
+theorem DcDen.dec {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
+    {st : St} (d : DcDen (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st)
+    (hne : ∀ y ∈ L1 ++ L2, y.rep.p ≠ x.rep.p) :
+    DcDen (L1 ++ x.decRef :: L2) (C.subst x x.decRef) G hs st := by
+  classical
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hp' : x.decRef.rep.p = x.rep.p := rfl
+  have hn' : x.decRef.rep.num = x.rep.num := rfl
+  have hsub : ∀ ss : List StrObj, DObjs.Sub ⟨L1 ++ x :: L2, ss⟩ ⟨L1 ++ x.decRef :: L2, ss⟩ := fun ss =>
+    ⟨fun y hy => ⟨_, BcConsts.subst_mem (x' := x.decRef) hy, ite_rep hp' hn' y _⟩,
+      fun o ho => ⟨o, ho, rfl, rfl⟩⟩
+  have hcz : ∀ (y : NumObj) [Decidable (y = x)], y ∈ L1 ++ x :: L2 →
+      (if y = x then x.decRef else y) ∈ L1 ++ x.decRef :: L2 := fun y _ hy => BcConsts.subst_mem hy
+  refine { d with
+    stk := d.stk.imp fun hh => hh.relist (hsub _)
+    regs := fun r hr => (d.regs r hr).imp fun hh => hh.relist (hsub _)
+    hsDen := fun g hg => ?_
+    owns := fun y hy => ?_
+    norm := fun y hy => ?_
+    pos := fun y hy => ?_
+    numRefs := fun y hy => ?_
+    strRefs := fun o ho => ?_
+    mz := hcz _ d.mz
+    mo := hcz _ d.mo
+    mt := hcz _ d.mt
+    zv := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.zv
+    ov := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.ov }
+  · obtain ⟨w, hw⟩ := d.hsDen g (List.mem_cons_of_mem _ hg); exact ⟨w, hw.relist (hsub _)⟩
+  · rcases mem_split_cases hy with rfl | hy
+    · exact d.owns x hx
+    · exact d.owns y (mem_split_of hy)
+  · rcases mem_split_cases hy with rfl | hy
+    · exact d.norm x hx
+    · exact d.norm y (mem_split_of hy)
+  · rcases mem_split_cases hy with rfl | hy
+    · exact d.pos x hx
+    · exact d.pos y (mem_split_of hy)
+  · rw [BcConsts.subst_cnt C hp' hn']
+    rcases mem_split_cases hy with rfl | hy
+    · show x.rep.refs - 1 = (G.vals ++ hs).count (.num x.rep.p) + C.cnt x.rep.p
+      have := d.numRefs x hx; rw [count_cons_self] at this; omega
+    · rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hne y hy (GV.num.inj e).symm]
+  · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+
+/-- The constants' words read the same after a substitution keeping pointers. -/
+theorem DcView.subst {M : Mem} {G : DcG} {C : BcConsts} {st : St} (v : DcView M G C st)
+    {x x' : NumObj} (hp : x'.rep.p = x.rep.p) (hn : x'.rep.num = x.rep.num) :
+    DcView M G (C.subst x x') st := by
+  classical
+  refine { v with zw := ?_, ow := ?_, tw := ?_ }
+  · simp only [BcConsts.subst, (ite_rep hp hn _ _).1]; exact v.zw
+  · simp only [BcConsts.subst, (ite_rep hp hn _ _).1]; exact v.ow
+  · simp only [BcConsts.subst, (ite_rep hp hn _ _).1]; exact v.tw
+
+/-- A member of the left list of a pairwise relation has a partner. -/
+theorem forall₂_left {α β : Type} {P : α → β → Prop} :
+    ∀ {l : List α} {m : List β}, List.Forall₂ P l m → ∀ a ∈ l, ∃ b, P a b
+  | [], [], .nil, _, ha => absurd ha List.not_mem_nil
+  | _ :: _, _ :: _, .cons h t, a, ha => by
+    rcases List.mem_cons.mp ha with rfl | ha
+    · exact ⟨_, h⟩
+    · exact forall₂_left t a ha
+
+/-- Every reference of the state and of the handles denotes. -/
+theorem DcDen.vals_den {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    (d : DcDen L C G hs st) : ∀ g ∈ G.vals ++ hs, ∃ v, g.Den ⟨L, G.strs⟩ v := by
+  intro g hg
+  rcases List.mem_append.mp hg with hg | hg
+  · unfold DcG.vals at hg
+    rcases List.mem_append.mp hg with hg | hg
+    · obtain ⟨bg, hbg, rfl⟩ := List.mem_map.mp hg
+      exact forall₂_left d.stk bg hbg
+    · obtain ⟨r, hr, hg⟩ := List.mem_flatMap.mp hg
+      obtain ⟨be, hbe, hg⟩ := List.mem_flatMap.mp hg
+      have hr := List.mem_range.mp hr
+      obtain ⟨v, hv⟩ := forall₂_left (d.regs r hr) be hbe
+      unfold RLev.vals at hg
+      rcases List.mem_append.mp hg with hg | hg
+      · obtain ⟨g0, hg0, rfl⟩ : ∃ g0, be.2.v = some g0 ∧ g = g0 := by
+          cases e : be.2.v <;> simp_all [Option.toList]
+        have hvv := hv.val; rw [hg0] at hvv
+        match v.val, hvv with
+        | _, .some r => exact ⟨_, r⟩
+      · obtain ⟨bn, hbn, rfl⟩ := List.mem_map.mp hg
+        obtain ⟨iv, hiv⟩ := forall₂_left hv.arr bn hbn
+        exact ⟨_, hiv.2⟩
+  · exact d.hsDen g hg
+
+/-- **A fresh number with one reference** joins the heap with its handle. -/
+theorem DcDen.addNum {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    (d : DcDen L C G hs st) {y : NumObj} (hne : ∀ z ∈ L, z.rep.p ≠ y.rep.p)
+    (h1 : y.rep.refs = 1) (hno : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (how : y.Owns) :
+    DcDen (y :: L) C G (.num y.rep.p :: hs) st := by
+  have hsub : ∀ ss : List StrObj, DObjs.Sub ⟨L, ss⟩ ⟨y :: L, ss⟩ := fun ss =>
+    ⟨fun z hz => ⟨z, List.mem_cons_of_mem _ hz, rfl, rfl⟩, fun o ho => ⟨o, ho, rfl, rfl⟩⟩
+  have hvy : ∀ g ∈ G.vals ++ hs, g ≠ .num y.rep.p := fun g hg e => by
+    obtain ⟨v, hv⟩ := d.vals_den g hg
+    subst e
+    cases v with
+    | num n => obtain ⟨z, hz, e1, -⟩ := hv; exact hne z hz e1
+    | str s => exact hv
+  have hc0 : C.cnt y.rep.p = 0 := by
+    unfold BcConsts.cnt
+    refine List.countP_eq_zero.mpr fun c hc e => ?_
+    simp only [decide_eq_true_eq] at e
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
+    rcases hc with rfl | rfl | rfl
+    · exact hne _ d.mz e
+    · exact hne _ d.mo e
+    · exact hne _ d.mt e
+  refine { d with
+    stk := d.stk.imp fun hh => hh.relist (hsub _)
+    regs := fun r hr => (d.regs r hr).imp fun hh => hh.relist (hsub _)
+    hsDen := fun g hg => ?_
+    owns := fun z hz => ?_
+    norm := fun z hz => ?_
+    pos := fun z hz => ?_
+    numRefs := fun z hz => ?_
+    strRefs := fun o ho => ?_
+    mz := List.mem_cons_of_mem _ d.mz
+    mo := List.mem_cons_of_mem _ d.mo
+    mt := List.mem_cons_of_mem _ d.mt }
+  · rcases List.mem_cons.mp hg with rfl | hg
+    · exact ⟨.num y.rep.num, y, List.mem_cons_self, rfl, rfl⟩
+    · obtain ⟨w, hw⟩ := d.hsDen g hg; exact ⟨w, hw.relist (hsub _)⟩
+  · rcases List.mem_cons.mp hz with rfl | hz
+    · exact how
+    · exact d.owns z hz
+  · rcases List.mem_cons.mp hz with rfl | hz
+    · exact hno
+    · exact d.norm z hz
+  · rcases List.mem_cons.mp hz with rfl | hz
+    · exact hpos
+    · exact d.pos z hz
+  · rcases List.mem_cons.mp hz with rfl | hz
+    · rw [count_cons_self, List.count_eq_zero.mpr fun hm => hvy _ hm rfl, hc0, h1]
+    · rw [d.numRefs z hz, count_cons_ne _ _ fun e => hne z hz (GV.num.inj e).symm]
+  · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
 
 /-- **The last reference released**: the handle `.num p` leaves `hs`, the
 object leaves the number heap; the state's blocks and dc's globals keep
@@ -75,107 +259,21 @@ theorem DcAt.relNum {S : Nat → Prop} {M M' : Mem} {H H' : Heap} {F : List Blk}
     (hb : BcHeap S (G.raws M) M' H' (x.sb :: F) (L1 ++ L2))
     (hag : ∀ a, InBlocks G.blocks a → imgM M' a = imgM M a)
     (hgl : ∀ a, DcGlob a → imgM M' a = imgM M a) :
-    DcAt S M' H' (x.sb :: F) (L1 ++ L2) C G hs st := by
-  obtain ⟨hne, hc0⟩ := h.vals_ne h1
-  have hvs : ∀ g ∈ G.vals, g ≠ .num x.rep.p := fun g hg => hne g (List.mem_append_left _ hg)
-  have hpn := h.heap.p_ne_all
-  have d := h.den
-  have hcx : ∀ c ∈ [C.z, C.o, C.t], c ≠ x := fun c hc e => by
-    subst e
-    have : 0 < C.cnt c.rep.p := by
-      unfold BcConsts.cnt; exact List.countP_pos_iff.mpr ⟨c, hc, by simp⟩
-    omega
-  have hmem : ∀ c ∈ [C.z, C.o, C.t], c ∈ L1 ++ x :: L2 → c ∈ L1 ++ L2 := fun c hc hm => by
-    rcases mem_split_cases hm with e | hm
-    · exact absurd e (hcx c hc)
-    · exact hm
-  refine ⟨?_, h.nodup, h.view.frame hag hgl, ?_, h.glob, h.col⟩
-  · exact hb.subRaw (fun c hc => hc) fun c hc a ha => (hag a ⟨c, hc, ha⟩).symm
-  · refine
-      { stk := forall₂_imp_mem (fun bg hbg v hh => hh.drop (hvs _ (by
-          unfold DcG.vals; exact List.mem_append_left _ (List.mem_map.mpr ⟨bg, hbg, rfl⟩)))) d.stk
-        regs := fun r hr => forall₂_imp_mem (fun be hbe v hh => hh.drop fun g hg => hvs g (by
-          unfold DcG.vals
-          exact List.mem_append_right _ (List.mem_flatMap.mpr ⟨r, List.mem_range.mpr hr,
-            List.mem_flatMap.mpr ⟨be, hbe, hg⟩⟩))) (d.regs r hr)
-        regsHi := d.regsHi
-        hsDen := fun g hg => by
-          obtain ⟨v, hv⟩ := d.hsDen g (List.mem_cons_of_mem _ hg)
-          exact ⟨v, hv.drop (hne g (List.mem_append_right _ hg))⟩
-        owns := fun y hy => d.owns y (mem_split_of hy)
-        norm := fun y hy => d.norm y (mem_split_of hy)
-        pos := fun y hy => d.pos y (mem_split_of hy)
-        numRefs := fun y hy => by
-          rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hpn y hy (GV.num.inj e).symm]
-        strRefs := fun o ho => by rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
-        mz := hmem _ (by simp) d.mz
-        mo := hmem _ (by simp) d.mo
-        mt := hmem _ (by simp) d.mt
-        zv := d.zv
-        ov := d.ov
-        ibase := d.ibase
-        obase := d.obase
-        scale := d.scale
-        unwind := d.unwind
-        lbuf := d.lbuf }
+    DcAt S M' H' (x.sb :: F) (L1 ++ L2) C G hs st :=
+  ⟨hb.subRaw (fun c hc => hc) fun c hc a ha => (hag a ⟨c, hc, ha⟩).symm, h.nodup,
+    h.view.frame hag hgl, h.den.rel h.heap.p_ne_all h1, h.glob, h.col⟩
 
 /-- **One reference fewer**: the handle `.num p` leaves `hs`, `n_refs` one
 less; the state's blocks and dc's globals keep their bytes. -/
 theorem DcAt.decNum {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
-    (h : DcAt S M H F (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st) (h2 : 2 ≤ x.rep.refs)
+    (h : DcAt S M H F (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st) (_h2 : 2 ≤ x.rep.refs)
     (hb : BcHeap S (G.raws M) M' H F (L1 ++ x.decRef :: L2))
     (hag : ∀ a, InBlocks G.blocks a → imgM M' a = imgM M a)
     (hgl : ∀ a, DcGlob a → imgM M' a = imgM M a) :
-    DcAt S M' H F (L1 ++ x.decRef :: L2) (C.subst x x.decRef) G hs st := by
-  classical
-  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
-  have hp' : x.decRef.rep.p = x.rep.p := rfl
-  have hn' : x.decRef.rep.num = x.rep.num := rfl
-  have hsub : ∀ ss : List StrObj, DObjs.Sub ⟨L1 ++ x :: L2, ss⟩ ⟨L1 ++ x.decRef :: L2, ss⟩ := fun ss =>
-    ⟨fun y hy => ⟨_, BcConsts.subst_mem (x' := x.decRef) hy, ite_rep hp' hn' y _⟩,
-      fun o ho => ⟨o, ho, rfl, rfl⟩⟩
-  have hne := h.heap.p_ne_all
-  have hcz : ∀ (y : NumObj) [Decidable (y = x)], y ∈ L1 ++ x :: L2 →
-      (if y = x then x.decRef else y) ∈ L1 ++ x.decRef :: L2 := fun y _ hy => BcConsts.subst_mem hy
-  have hv0 := h.view.frame hag hgl
-  have d := h.den
-  refine ⟨?_, h.nodup, ?_, ?_, h.glob, h.col⟩
-  · exact hb.subRaw (fun c hc => hc) fun c hc a ha => (hag a ⟨c, hc, ha⟩).symm
-  · refine { hv0 with zw := ?_, ow := ?_, tw := ?_ }
-    · simp only [BcConsts.subst, (ite_rep hp' hn' _ _).1]; exact hv0.zw
-    · simp only [BcConsts.subst, (ite_rep hp' hn' _ _).1]; exact hv0.ow
-    · simp only [BcConsts.subst, (ite_rep hp' hn' _ _).1]; exact hv0.tw
-  · refine { d with
-      stk := d.stk.imp fun hh => hh.relist (hsub _)
-      regs := fun r hr => (d.regs r hr).imp fun hh => hh.relist (hsub _)
-      hsDen := fun g hg => ?_
-      owns := fun y hy => ?_
-      norm := fun y hy => ?_
-      pos := fun y hy => ?_
-      numRefs := fun y hy => ?_
-      strRefs := fun o ho => ?_
-      mz := hcz _ d.mz
-      mo := hcz _ d.mo
-      mt := hcz _ d.mt
-      zv := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.zv
-      ov := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.ov }
-    · obtain ⟨w, hw⟩ := d.hsDen g (List.mem_cons_of_mem _ hg); exact ⟨w, hw.relist (hsub _)⟩
-    · rcases mem_split_cases hy with rfl | hy
-      · exact d.owns x hx
-      · exact d.owns y (mem_split_of hy)
-    · rcases mem_split_cases hy with rfl | hy
-      · exact d.norm x hx
-      · exact d.norm y (mem_split_of hy)
-    · rcases mem_split_cases hy with rfl | hy
-      · exact d.pos x hx
-      · exact d.pos y (mem_split_of hy)
-    · rw [BcConsts.subst_cnt C hp' hn']
-      rcases mem_split_cases hy with rfl | hy
-      · show x.rep.refs - 1 = (G.vals ++ hs).count (.num x.rep.p) + C.cnt x.rep.p
-        have := d.numRefs x hx; rw [count_cons_self] at this; omega
-      · rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hne y hy (GV.num.inj e).symm]
-    · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+    DcAt S M' H F (L1 ++ x.decRef :: L2) (C.subst x x.decRef) G hs st :=
+  ⟨hb.subRaw (fun c hc => hc) fun c hc a ha => (hag a ⟨c, hc, ha⟩).symm, h.nodup,
+    (h.view.frame hag hgl).subst rfl rfl, h.den.dec h.heap.p_ne_all, h.glob, h.col⟩
 
 /-- Different owners of the heap have different digit buffers. -/
 theorem db_ne_of_owns {L1 L2 : List NumObj} {x y : NumObj} (hd : (objBlocks (L1 ++ x :: L2)).Nodup)
@@ -183,6 +281,50 @@ theorem db_ne_of_owns {L1 L2 : List NumObj} {x y : NumObj} (hd : (objBlocks (L1 
   rw [objBlocks_append] at hd
   refine nodup_app_ne hd (mem_objBlocks_db hy hoy) ?_
   rw [objBlocks_cons]; exact List.mem_append_left _ (by rw [NumObj.blocks_own hox]; simp)
+
+/-- A handle `.num p` names a number of the heap. -/
+theorem DcAt.handle_num {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat}
+    (h : DcAt S M H F L C G (.num p :: hs) st) :
+    ∃ L1 L2 x, L = L1 ++ x :: L2 ∧ x.rep.p = p := by
+  obtain ⟨v, hv⟩ := h.den.hsDen _ List.mem_cons_self
+  obtain ⟨x, hx, e1⟩ : ∃ x ∈ L, x.rep.p = p := by
+    cases v with
+    | num n => obtain ⟨x, hx, e1, -⟩ := hv; exact ⟨x, hx, e1⟩
+    | str s => exact hv.elim
+  obtain ⟨L1, L2, rfl⟩ := List.append_of_mem hx
+  exact ⟨L1, L2, x, rfl, e1⟩
+
+/-- **`bc_free_num`'s entry from a handle** `.num p` held in a stack slot `q`
+above the heap, apart from the callee's 32-byte frame. -/
+theorem DcAt.freeEntry {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    (h : DcAt S M H F (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st) {q sp : Nat} (hq : PtrSlot S q)
+    (hqh : heapEnd ≤ q) (hw : ldv .ld M q = BitVec.ofNat 64 x.rep.p) (hsf : StackFrame S sp 32)
+    (hab : heapEnd + 32 ≤ sp) (hqf : q + 8 ≤ sp - 32 ∨ sp ≤ q) :
+    FreeEntry S (G.raws M) M H F L1 L2 x q sp := by
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hi := h.heap.heap
+  simp only [heapEnd] at hqh hab
+  have hheap : ∀ b ∈ H.live, ∀ a, b.In a → ¬ slotBytes q a := fun b hb a ha hs =>
+    (outHeap_of_ge (a := a) (by simp only [heapEnd]; omega)).1 (live_in_heap hi hb ha)
+  have hrefs : 1 ≤ x.rep.refs := by
+    have := h.den.numRefs x hx; rw [count_cons_self] at this; omega
+  exact
+    { heap := h.heap
+      refs := hrefs
+      slot := hq
+      off :=
+        { alloc := fun a ha => OutHeap.not_alloc hi (outHeap_of_ge (by simp only [heapEnd]; omega))
+          blocks := fun b hb a ha hba => hheap b (h.heap.owned_live (List.mem_append_left _ hb)) a hba ha
+          glob := by simp only [bcFreeAddr]; omega
+          frame := hqf
+          raw := fun b hb a ha hba => hheap b (h.heap.raw.live b hb) a hba ha }
+      word := hw
+      stack := hsf
+      above := by simp only [heapEnd]; omega
+      noView := fun _ hox y hy => db_ne_of_owns (List.nodup_append.mp h.heap.distinct).2.1 hy
+        (h.den.owns y (List.mem_append_left _ hy)) hox }
 
 /-- **`dc_free_num (&a)`** at `0x80002ba0` on a handle `.num p` held in the
 stack slot `q`: one reference fewer, or the object released; the slot is
@@ -200,13 +342,8 @@ theorem dc_free_num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x80002ba0#64 R M := by
-  obtain ⟨v, hv⟩ := h.den.hsDen _ List.mem_cons_self
-  obtain ⟨x, hx, e1⟩ : ∃ x ∈ L, x.rep.p = p := by
-    cases v with
-    | num n => obtain ⟨x, hx, e1, -⟩ := hv; exact ⟨x, hx, e1⟩
-    | str s => exact hv.elim
-  obtain ⟨L1, L2, rfl⟩ := List.append_of_mem hx
-  subst e1
+  obtain ⟨L1, L2, x, rfl, rfl⟩ := h.handle_num
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have hi := h.heap.heap
   have hql := hq.lo
   simp only [heapEnd] at hqh hab
@@ -218,23 +355,7 @@ theorem dc_free_num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
       have := hg.lt; simp only [heapStart, frameIn] at this ha; omega⟩
   have hheap : ∀ b ∈ H.live, ∀ a, b.In a → ¬ slotBytes q a := fun b hb a ha hs =>
     (hsl a hs).1.1 (live_in_heap hi hb ha)
-  have hrefs : 1 ≤ x.rep.refs := by
-    have := h.den.numRefs x hx; rw [count_cons_self] at this; omega
-  have e : FreeEntry S (G.raws M) M H F L1 L2 x q sp :=
-    { heap := h.heap
-      refs := hrefs
-      slot := hq
-      off :=
-        { alloc := fun a ha => OutHeap.not_alloc hi (hsl a ha).1
-          blocks := fun b hb a ha hba => hheap b (h.heap.owned_live (List.mem_append_left _ hb)) a hba ha
-          glob := by simp only [bcFreeAddr]; omega
-          frame := hqf
-          raw := fun b hb a ha hba => hheap b (h.heap.raw.live b hb) a hba ha }
-      word := hw
-      stack := hsf
-      above := by simp only [heapEnd]; omega
-      noView := fun _ hox y hy => db_ne_of_owns (List.nodup_append.mp h.heap.distinct).2.1 hy
-        (h.den.owns y (List.mem_append_left _ hy)) hox }
+  have e := h.freeEntry hq (by simp only [heapEnd]; omega) hw hsf (by simp only [heapEnd]; omega) hqf
   have hGb : ∀ a, InBlocks G.blocks a → ¬ AllocByte H a ∧ ¬ x.sb.In a ∧ ¬ slotBytes q a ∧
       ¬ frameIn sp 32 a ∧ ¬ bcFreeBytes a := fun a ha => by
     obtain ⟨c, hc, hca⟩ := ha

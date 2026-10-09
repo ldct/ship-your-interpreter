@@ -91,13 +91,13 @@ abbrev hdVal (o : NumObj) : Nat := dvalBE (o.rep.ds.take o.rep.len)
 
 /-- After a call that wrote only heap bytes and kept the saved registers:
 the product's digits now `ds`, then the frees. -/
-theorem kara_ret_frees {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_ret_frees {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M M2 : Mem} {R0 R R2 : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
     {z : NumObj} {u v : NumRep} {y : NumObj} {ds : List Nat} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     (st : KAt S M0 M R0 R sp q W) {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
-    (hb2 : BcHeap S M2 H F
+    (hb2 : BcHeap S X M2 H F
       (withDs y ds :: KList [] [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] A B z))
     (hok : HdOK [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2]) (hz : 1 ≤ z.rep.refs)
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
@@ -125,13 +125,13 @@ theorem kara_ret_frees {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`m2` shifted in** at `0x8000519c` (added, or subtracted when `d1` and
 `d2` differ in sign), then the frees. -/
-theorem kara_m2 {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_m2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj} {z : NumObj}
     {u v : NumRep} {y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     (st : KAt S M0 M R0 R sp q W) {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
-    (hb : BcHeap S M H F (y :: KList [] [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] A B z))
+    (hb : BcHeap S X M H F (y :: KList [] [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] A B z))
     (hok : HdOK [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2]) (hz : 1 ≤ z.rep.refs)
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)

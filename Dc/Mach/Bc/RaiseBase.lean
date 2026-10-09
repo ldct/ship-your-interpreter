@@ -103,10 +103,10 @@ structure RaSlot (M : Mem) (L : List NumObj) (x1 x2 z o xr : NumObj) (q : Nat) :
 /-- The result `y` for `n` in the slot `q`: one reference added to it, then
 the old number `xr` dropped. Off the heap only the slot and the window
 changed. -/
-structure RaPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
+structure RaPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
     (xr : NumObj) (ps : List Nat) (q sp W : Nat) (n : Num) (Lf : List NumObj) (y : NumObj) :
     Prop where
-  heap : BcHeap S Mt H F Lf
+  heap : BcHeap S X Mt H F Lf
   mid : ∃ Lm, AddRef L y Lm ∧ DropAt Lm xr.rep.p Lf
   /-- the result is in the heap left (`mid` alone admits dropping a fresh
   `y` at `xr`'s address) -/
@@ -136,10 +136,10 @@ theorem RaOom.dm {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
 
 /-- `bc_raise`'s continuations: the result (`Num.raise …`.1), or
 `out_of_memory`. -/
-structure RaK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure RaK (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t : String) (R0 : Nat → BitVec 64) (Mt0 : Mem) (L : List NumObj) (xr : NumObj)
     (ps : List Nat) (q sp W : Nat) (n : Num) : Prop where
-  ret : ∀ R' Mt' H F Lf y, Keeps binClob R' R0 → RaPost S Mt0 Mt' H F L xr ps q sp W n Lf y →
+  ret : ∀ R' Mt' H F Lf y, Keeps binClob R' R0 → RaPost S X Mt0 Mt' H F L xr ps q sp W n Lf y →
     DWO live S Q t (R0 1) R' Mt'
   oom : RaOom live S (DQ live S Q t) Mt0 sp W q
 
@@ -229,10 +229,10 @@ theorem NumAt.setScale {Mt : Mem} {o : NumRep} (h : NumAt Mt o) {v : BitVec 64} 
       List.getD_eq_getElem?_getD, List.getElem?_take_of_lt hi]
 
 /-- **The scale of `x` of the heap lowered** to `s`. -/
-theorem BcHeap.setScale {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) {v : BitVec 64}
+theorem BcHeap.setScale {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2)) {v : BitVec 64}
     {s : Nat} (hv : v.toNat % 2 ^ 32 = s) (hs : s ≤ x.rep.scale) :
-    BcHeap S (writeLog Mt [(x.rep.p + 8, 4, v)]) H F
+    BcHeap S X (writeLog Mt [(x.rep.p + 8, 4, v)]) H F
       (L1 ++ { x with rep := x.rep.cutScale s } :: L2) := by
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have hn := h.nums x hx
@@ -325,19 +325,19 @@ def Hd.drop : Hd → List Hd
 
 /-- **A call of `bc_multiply`** from `bc_raise`'s frame (`sp - 96`) into the
 word at `sp - 96 + o`. -/
-theorem ra_mulCall {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_mulCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {L1 L2 : List NumObj} {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : RaCtx S R0 sp W q) (hoom : DmOom live S Q Mt0 sp W) (ho : o = 0 ∨ o = 8)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (ha : MulArgs M (L1 ++ xr :: L2) x1 x2 z k)
-    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr (sp - 96 + o))
+    (hb : BcHeap S X M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr (sp - 96 + o))
     (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 96 + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ R' M' H' F' L' y, Keeps binClob R' R →
-      BinPostW S M M' H' F' L1 L2 xr (sp - 96 + o) (sp - 96) (W - 96)
+      BinPostW S X M M' H' F' L1 L2 xr (sp - 96 + o) (sp - 96) (W - 96)
         (Num.mul x1.rep.num x2.rep.num k) L' y → DW live S Q (R 1) R' M') :
     DW live S Q 0x8000573c#64 R M := by
   have hsf := cx.frame
@@ -368,14 +368,14 @@ structure MulRes (M : Mem) (w : Nat) (n : Num) (y : NumObj) : Prop extends NewNu
 
 /-- **`bc_multiply (u1, u2, &h, k)`** on the handle `h` of `bc_raise`: the
 product heads the handles, `h`'s object is dropped once. -/
-theorem ra_mulK {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_mulK {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {hs1 hs2 : List Hd} {h : Hd} {A B : List NumObj} {x1 u1 u2 z : NumObj} {H : Heap}
     {F : List Blk}
     (cx : RaCtx S R0 sp W q) (hoom : DmOom live S Q Mt0 sp W) (ho : o = 0 ∨ o = 8)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (KList [] (hs1 ++ h :: hs2) A B x1))
+    (hb : BcHeap S X M H F (KList [] (hs1 ++ h :: hs2) A B x1))
     (hown : ∀ y ∈ KList [] (hs1 ++ h :: hs2) A B x1, y.Owns) (hz1 : 1 ≤ x1.rep.refs)
     (hh : ∀ x, h = some x → 1 ≤ x.rep.refs)
     (ha : MulArgs M (KList [] (hs1 ++ h :: hs2) A B x1) u1 u2 z k)
@@ -384,7 +384,7 @@ theorem ra_mulK {live : Nat → Prop} {S : Nat → Prop}
     (h10 : R 10 = BitVec.ofNat 64 u1.rep.p) (h11 : R 11 = BitVec.ofNat 64 u2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 96 + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
-      BcHeap S M' H' F' (KList [] (some y :: (hs1 ++ Hd.drop h ++ hs2)) A B x1) →
+      BcHeap S X M' H' F' (KList [] (some y :: (hs1 ++ Hd.drop h ++ hs2)) A B x1) →
       MulRes M' (sp - 96 + o) (Num.mul u1.rep.num u2.rep.num k) y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 96 + o) a → ¬ frameIn (sp - 96) (W - 96) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :

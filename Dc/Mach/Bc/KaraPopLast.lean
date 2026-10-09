@@ -21,10 +21,10 @@ set_option maxRecDepth 8000
 
 /-- **The struct of the last view at `0x80005400`** (`lb ≥ n`): the chain's
 head, or `malloc(40)`; the fresh route rejoins the site with `bnez`. -/
-theorem ksplit_800053f4 {live : Nat → Prop} {S : Nat → Prop}
+theorem ksplit_800053f4 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
-    (hb : BcHeap S Mt H F L) (hh : R 20 = BitVec.ofNat 64 (deadHead F))
+    (hb : BcHeap S X Mt H F L) (hh : R 20 = BitVec.ofNat 64 (deadHead F))
     (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hoom : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [1, 10, 12, 13, 14, 15, 20] R' R →
       (∀ a, ¬ AllocByte H a → imgM M' a = imgM Mt a) → DW live S Q 0x80002bcc#64 R' M')
@@ -103,10 +103,10 @@ theorem ksplit_800053f4 {live : Nat → Prop} {S : Nat → Prop}
 /-- **The struct of the last view at `0x80004e94`** (`lb < n`, the whole of
 `v`): the chain's head, or `malloc(40)`; both routes carry `_zero_`'s struct
 pointer into `a7`. -/
-theorem ksplit_80004e80 {live : Nat → Prop} {S : Nat → Prop}
+theorem ksplit_80004e80 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj} {zp : Nat}
-    (hb : BcHeap S Mt H F L) (hh : R 15 = BitVec.ofNat 64 (deadHead F))
+    (hb : BcHeap S X Mt H F L) (hh : R 15 = BitVec.ofNat 64 (deadHead F))
     (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr) (h18 : R 18 = BitVec.ofNat 64 zeroAddr)
     (h27 : R 27 = BitVec.ofNat 64 zp) (hzp : ldv .ld Mt zeroAddr = BitVec.ofNat 64 zp)
     (hzo : ∀ a, constBytes a → S a)

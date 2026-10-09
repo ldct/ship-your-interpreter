@@ -71,10 +71,10 @@ theorem KZero.num {M : Mem} {z : NumObj} {k : Nat} (h : KZero M z k) : z.rep.num
 
 /-- After the prologue: the eight registers saved, `s1 = x`, `s2 = &_zero_`,
 `s3 = num`, `s4 = scale`, `s10 = _zero_`, the heap. -/
-structure SqE (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+structure SqE (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
     (H : Heap) (F : List Blk) (L : List NumObj) (x z : NumObj) (k : Nat) : Prop where
   sa : SqAt S Mt0 M R0 R sp W sqSlots0
-  heap : BcHeap S M H F L
+  heap : BcHeap S X M H F L
   cs : ∀ r ∈ [21, 22, 23, 25, 27], R r = R0 r
   r9 : R 9 = BitVec.ofNat 64 x.rep.p
   r18 : R 18 = BitVec.ofNat 64 zeroAddr
@@ -85,20 +85,20 @@ structure SqE (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W 
 /-- **A global with one more reference** in `*num`, from `0x80006e84`
 (`_one_` through `sp + 8`) or `0x80006ebc` (`_zero_` through `s2`), then the
 epilogue with `a0 = 1`. -/
-theorem sq_globTail {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_globTail {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {A B : List NumObj} {y : NumObj} {pc : BitVec 64} {ga : Nat} (cx : SqCtx S R0 sp W q)
     (hpc : (pc = 0x80006e84#64 ∧ ga = oneAddr ∧
         ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr) ∨
       (pc = 0x80006ebc#64 ∧ ga = zeroAddr ∧ R 18 = BitVec.ofNat 64 zeroAddr))
-    (hb : BcHeap S M H F (A ++ y :: B)) (hga : ldv .ld M ga = BitVec.ofNat 64 y.rep.p)
+    (hb : BcHeap S X M H F (A ++ y :: B)) (hga : ldv .ld M ga = BitVec.ofNat 64 y.rep.p)
     (hr : y.rep.refs + 1 < 2 ^ 31)
     (sv : SavedWords M (sp - 160) sqSlots0 R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 160))
     (hkp : Keeps sqAll R R0) (hcs : ∀ r ∈ [21, 22, 23, 25, 27], R r = R0 r)
     (h19 : R 19 = BitVec.ofNat 64 q)
     (hk : ∀ R' M', Keeps binClob R' R0 → R' 10 = 1#64 →
-      BcHeap S M' H F (A ++ y.withRefs (y.rep.refs + 1) :: B) →
+      BcHeap S X M' H F (A ++ y.withRefs (y.rep.refs + 1) :: B) →
       ldv .ld M' q = BitVec.ofNat 64 y.rep.p →
       (∀ a, OutHeap a → ¬ slotBytes q a → imgM M' a = imgM M a) → DW live S Q (R0 1) R' M') :
     DW live S Q pc R M := by
@@ -162,19 +162,19 @@ theorem sq_globTail {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_free_num (num)`, then the global `g` with one more reference in
 `*num`** and `1`, from `0x80006e7c` (`_one_`) or `0x80006eb4` (`_zero_`). -/
-theorem sq_glob {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_glob {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o g : NumObj} {pc : BitVec 64} {ga : Nat}
     (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k)
-    (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (st : SqE S X Mt0 M R0 R sp W q H F L x z k)
     (hpc : (pc = 0x80006e7c#64 ∧ ga = oneAddr ∧
         ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr) ∨
       (pc = 0x80006eb4#64 ∧ ga = zeroAddr ∧ True))
     (hg : g ∈ L) (hgw : ldv .ld Mt0 ga = BitVec.ofNat 64 g.rep.p)
     (hgr : x.rep.p = g.rep.p → 2 ≤ x.rep.refs) (hgN : g.rep.Norm) (hgl : 1 ≤ g.rep.len)
     (hret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
-      SqPost S Mt0 M' H' F' L x z q sp W g.rep.num Lf y' → DW live S Q (R0 1) R' M') :
+      SqPost S X Mt0 M' H' F' L x z q sp W g.rep.num Lf y' → DW live S Q (R0 1) R' M') :
     DW live S Q pc R M := by
   sq_facts cx
   have hsf := cx.cc.frame
@@ -293,7 +293,7 @@ theorem RList.ref3 {A B : List NumObj} {z : NumObj} (hd : ∀ w ∈ A ++ B, w.re
 
 /-- The fixed facts of the route into the Newton loop: `x > 0`, `x ≠ 1`, the
 model's root `r`, the continuations. -/
-structure SqSet (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure SqSet (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t : String) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q k : Nat) (L : List NumObj)
     (x z o : NumObj) (r : Num) : Prop where
   cx : SqCtx S R0 sp W q
@@ -308,18 +308,18 @@ structure SqSet (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → 
   ilen : x.rep.num.intLen = x.rep.len
   sqrt : Sqrt x.rep.num k r
   ret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
-    SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
+    SqPost S X Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
 
 /-- **`point5 = 0.5`** from `0x80006f20` (`bc_new_num (1, 1)` returned
 `y`): its second digit `5`, then below one to `sq_lo`, above to `sq_hi`. -/
-theorem sq_setNew {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_setNew {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o y : NumObj} {r : Num}
-    (g : SqSet live S Q t Mt0 R0 sp W q k L x z o r)
+    (g : SqSet live S X Q t Mt0 R0 sp W q k L x z o r)
     (sa : SqAt S Mt0 M R0 R sp W sqSlots1)
-    (hb : BcHeap S M H F (y :: RList [.ref z, .ref z, .ref z] L))
+    (hb : BcHeap S X M H F (y :: RList [.ref z, .ref z, .ref z] L))
     (hy : y.rep = zeroRep y.sb.pay y.db.pay 1 1) (h10 : R 10 = BitVec.ofNat 64 y.sb.pay)
     (h8 : R 8 = ordWord (Num.cmp x.rep.num Num.one)) (h19 : R 19 = BitVec.ofNat 64 q)
     (h24 : R 24 = BitVec.ofNat 64 (max k x.rep.scale)) (h26 : R 26 = BitVec.ofNat 64 z.rep.p)
@@ -368,7 +368,7 @@ theorem sq_setNew {live : Nat → Prop} {S : Nat → Prop}
     show (⟨y.rep.neg, dval (y.rep.ds.set 1 5), y.rep.scale⟩ : Num) = Num.half
     rw [hyg, hyd, hys]; rfl
   obtain ⟨Az, Bz, eZ⟩ := List.append_of_mem ha.mz
-  have st : SqS S Mt0 (writeLog M [(y.rep.val + 1, 1, BitVec.ofNat 64 5)]) R0
+  have st : SqS S X Mt0 (writeLog M [(y.rep.val + 1, 1, BitVec.ofNat 64 5)]) R0
       (upd (upd (upd (upd R 14 (BitVec.ofNat 64 y.rep.val)) 13 5#64) 15 18446744073709551615#64) 20
         (BitVec.ofNat 64 y.rep.p)) sp W q H F L x z
       { y with rep := { y.rep with ds := y.rep.ds.set 1 5 } } (max k x.rep.scale) :=
@@ -427,13 +427,13 @@ theorem addiw_ofNat {c d : Nat} (hc : c + d < 2 ^ 31) :
 
 /-- **`_zero_`'s count raised by three** and stored as `guess`, `guess1`
 and `diff`, then `bc_new_num (1, 1)`, from `0x80006efc`. -/
-theorem sq_setRefs {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_setRefs {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {r : Num}
-    (g : SqSet live S Q t Mt0 R0 sp W q k L x z o r) (sa : SqAt S Mt0 M R0 R sp W sqSlots1)
-    (hb : BcHeap S M H F L)
+    (g : SqSet live S X Q t Mt0 R0 sp W q k L x z o r) (sa : SqAt S Mt0 M R0 R sp W sqSlots1)
+    (hb : BcHeap S X M H F L)
     (h8 : R 8 = ordWord (Num.cmp x.rep.num Num.one)) (h19 : R 19 = BitVec.ofNat 64 q)
     (h24 : R 24 = BitVec.ofNat 64 (max k x.rep.scale)) (h26 : R 26 = BitVec.ofNat 64 z.rep.p)
     (wq : ldv .ld M q = BitVec.ofNat 64 x.rep.p)
@@ -540,9 +540,9 @@ theorem sq5_frame (M : Mem) {sp : Nat} (R : Nat → BitVec 64) {a : Nat}
   repeat rw [imgM_store_miss _ _ (by omega)]
 
 /-- After the five stores: the frame with all thirteen saved registers. -/
-theorem SqE.saveAt {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+theorem SqE.saveAt {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z : NumObj} {k : Nat}
-    (st : SqE S Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q)
+    (st : SqE S X Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q)
     (hk : Keeps sqAll R' R0) (h2 : R' 2 = BitVec.ofNat 64 (sp - 160)) :
     SqAt S Mt0 (sq5 M sp R) R0 R' sp W sqSlots1 := by
   sq_facts cx
@@ -559,22 +559,22 @@ theorem SqE.saveAt {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64
         rw [sq5_frame M R (by simp only [frameIn] at hf; omega)]
         exact st.sa.out a ha hf }
 
-theorem SqE.saveHeap {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
+theorem SqE.saveHeap {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z : NumObj} {k : Nat}
-    (st : SqE S Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q) :
-    BcHeap S (sq5 M sp R) H F L := by
+    (st : SqE S X Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q) :
+    BcHeap S X (sq5 M sp R) H F L := by
   sq_facts cx
   exact st.heap.out_frame (P := fun a => sp - 160 + 56 ≤ a ∧ a < sp - 160 + 112)
     (fun a ha => sq5_frame M R (by omega)) fun a h => outHeap_of_ge (by simp only [heapEnd]; omega)
 
 /-- **The setup** from `0x80006ed8` (`x` neither `0` nor `1`): `s5`-`s11`
 saved, `rscale = max (scale, x.scale)`, then `sq_setRefs`. -/
-theorem sq_setup {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_setup {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {r : Num}
-    (g : SqSet live S Q t Mt0 R0 sp W q k L x z o r) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (g : SqSet live S X Q t Mt0 R0 sp W q k L x z o r) (st : SqE S X Mt0 M R0 R sp W q H F L x z k)
     (w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr)
     (h8 : R 8 = ordWord (Num.cmp x.rep.num Num.one)) :
     DW live S (DQ live S Q t) 0x80006ed8#64 R M := by
@@ -614,7 +614,7 @@ theorem sq_setup {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The fixed facts once `x` is known non-negative: the model's result `n`
 and the continuations. -/
-structure SqCmp (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure SqCmp (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t : String) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q k : Nat) (L : List NumObj)
     (x z o : NumObj) (n : Option Num) : Prop where
   cx : SqCtx S R0 sp W q
@@ -623,17 +623,17 @@ structure SqCmp (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → 
   xneg : x.rep.neg = false
   out : SqOut x.rep.num k n
   ret : ∀ r, n = some r → ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
-    SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
+    SqPost S X Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
 
 /-- `SqE` through a step that changes only registers outside it and the
 frame's first 48 bytes. -/
-theorem SqE.step {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+theorem SqE.step {S : Nat → Prop} {X : Raws} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z : NumObj} {k : Nat}
-    (st : SqE S Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q) {ks : List Nat}
+    (st : SqE S X Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q) {ks : List Nat}
     (hk : Keeps ks R' R)
     (hks : ∀ r ∈ ks, r ∈ sqAll ∧ r ∉ [2, 9, 18, 19, 20, 21, 22, 23, 25, 26, 27] := by decide)
     (hag : ∀ a, ¬ (sp - 160 ≤ a ∧ a < sp - 160 + 48) → imgM M' a = imgM M a) :
-    SqE S Mt0 M' R0 R' sp W q H F L x z k := by
+    SqE S X Mt0 M' R0 R' sp W q H F L x z k := by
   sq_facts cx
   have g : ∀ r, r ∈ [2, 9, 18, 19, 20, 21, 22, 23, 25, 26, 27] → R' r = R r := fun r hr =>
     hk.get r fun hm => (hks r hm).2 hr
@@ -658,12 +658,12 @@ theorem SqE.step {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 6
 
 /-- After `_bc_do_compare (x, _one_, 1)` returned to `0x80006e74`: equal
 returns `_one_` (`sq_glob`), otherwise the setup (`sq_setup`). -/
-theorem sq_cmpOneRes {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_cmpOneRes {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {n : Option Num}
-    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (c : SqCmp live S X Q t Mt0 R0 sp W q k L x z o n) (st : SqE S X Mt0 M R0 R sp W q H F L x z k)
     (hgt : Num.cmp x.rep.num (Num.zero 0) = .gt)
     (w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr)
     (h10 : R 10 = ordWord (Num.cmp x.rep.num Num.one)) :
@@ -714,12 +714,12 @@ theorem sq_cmpOneRes {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`_bc_do_compare (x, _one_, 1)`** at `0x80003fb0`, returning to
 `0x80006e74`. -/
-theorem sq_cmpOneCall {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_cmpOneCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {n : Option Num}
-    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (c : SqCmp live S X Q t Mt0 R0 sp W q k L x z o n) (st : SqE S X Mt0 M R0 R sp W q H F L x z k)
     (hgt : Num.cmp x.rep.num (Num.zero 0) = .gt)
     (w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr)
     (h10 : R 10 = BitVec.ofNat 64 x.rep.p) (h11 : R 11 = BitVec.ofNat 64 o.rep.p)
@@ -742,12 +742,12 @@ theorem sq_cmpOneCall {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`x` against `1`** from `0x80006c98` (`x > 0`): equal returns `_one_`
 (`sq_glob`), otherwise the setup (`sq_setup`). -/
-theorem sq_cmpOne {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_cmpOne {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {n : Option Num}
-    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (c : SqCmp live S X Q t Mt0 R0 sp W q k L x z o n) (st : SqE S X Mt0 M R0 R sp W q H F L x z k)
     (h8 : R 8 = 0#64) (hgt : Num.cmp x.rep.num (Num.zero 0) = .gt) :
     DW live S (DQ live S Q t) 0x80006c98#64 R M := by
   have cx := c.cx
@@ -802,12 +802,12 @@ theorem sq_cmpOne {live : Nat → Prop} {S : Nat → Prop}
 
 /-- After `_bc_do_compare (x, _zero_, 1)` returned to `0x80006c8c`: equal
 returns `_zero_` (`sq_glob`), greater compares with `1` (`sq_cmpOne`). -/
-theorem sq_cmpZeroRes {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_cmpZeroRes {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {n : Option Num}
-    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (c : SqCmp live S X Q t Mt0 R0 sp W q k L x z o n) (st : SqE S X Mt0 M R0 R sp W q H F L x z k)
     (h8 : R 8 = 0#64) (h10 : R 10 = ordWord (Num.cmp x.rep.num (Num.zero 0))) :
     DW live S (DQ live S Q t) 0x80006c8c#64 R M := by
   have cx := c.cx
@@ -839,12 +839,12 @@ theorem sq_cmpZeroRes {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`_bc_do_compare (x, _zero_, 1)`** from `0x80006c7c` (`x`'s sign that
 of `_zero_`). -/
-theorem sq_cmpZero {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_cmpZero {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {n : Option Num}
-    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (c : SqCmp live S X Q t Mt0 R0 sp W q k L x z o n) (st : SqE S X Mt0 M R0 R sp W q H F L x z k)
     (h8 : R 8 = 0#64) :
     DW live S (DQ live S Q t) 0x80006c7c#64 R M := by
   have ha := c.ha
@@ -893,13 +893,13 @@ theorem sqPro_frame {M : Mem} {sp : Nat} (R : Nat → BitVec 64) (hsp : 160 ≤ 
 /-- **The sign dispatch** from `0x80006a3c`, after the first three saves:
 the rest of the prologue, then `_bc_do_compare (x, _zero_)` for a
 non-negative `x` and the return of `0` for a negative one. -/
-theorem sq_sign {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_sign {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {n : Option Num}
-    (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hb : BcHeap S Mt0 H F L)
-    (hO : SqOut x.rep.num k n) (hK : SqK live S Q t R0 Mt0 L x z q sp W n)
+    (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hb : BcHeap S X Mt0 H F L)
+    (hO : SqOut x.rep.num k n) (hK : SqK live S X Q t R0 Mt0 L x z q sp W n)
     (hk : Keeps sqAll R R0) (hs : ∀ r ∈ [1, 8, 19, 20, 24, 21, 22, 23, 25, 27], R r = R0 r)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 160)) (h9 : R 9 = BitVec.ofNat 64 x.rep.p)
     (h18 : R 18 = BitVec.ofNat 64 zeroAddr) (h26 : R 26 = BitVec.ofNat 64 z.rep.p)
@@ -955,13 +955,13 @@ theorem sq_sign {live : Nat → Prop} {S : Nat → Prop}
 return of `0` with nothing changed but the window (`SqK.fail`); otherwise
 `SqOut`'s result in `*num` and the return of `1` (`SqK.ret`), or
 `out_of_memory` (`SqK.oom`). -/
-theorem bc_sqrt_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem bc_sqrt_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {x z o : NumObj} {n : Option Num}
-    (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hb : BcHeap S Mt0 H F L)
-    (hO : SqOut x.rep.num k n) (hK : SqK live S Q t R0 Mt0 L x z q sp W n)
+    (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hb : BcHeap S X Mt0 H F L)
+    (hO : SqOut x.rep.num k n) (hK : SqK live S X Q t R0 Mt0 L x z q sp W n)
     (h10 : R0 10 = BitVec.ofNat 64 q) (h11 : R0 11 = BitVec.ofNat 64 k) :
     DWO live S Q t 0x80006a1c#64 R0 Mt0 := by
   sq_facts cx

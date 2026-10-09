@@ -17,10 +17,10 @@ set_option maxRecDepth 8000
 
 /-- **The struct of the view at `0x80004e08`**: the head taken off `_bc_Free_list`,
 or `malloc(40)` with the chain empty (`out_of_memory` on failure). -/
-theorem ksplit_80004df8 {live : Nat → Prop} {S : Nat → Prop}
+theorem ksplit_80004df8 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
-    (hb : BcHeap S Mt H F L) (hh : R 14 = BitVec.ofNat 64 (deadHead F))
+    (hb : BcHeap S X Mt H F L) (hh : R 14 = BitVec.ofNat 64 (deadHead F))
     (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hoom : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [1, 10, 12, 13, 14, 15, 19, 24] R' R →
       (∀ a, ¬ AllocByte H a → imgM M' a = imgM Mt a) → DW live S Q 0x80002bcc#64 R' M')
@@ -115,10 +115,10 @@ theorem ksplit_80004df8 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The struct of the view at `0x80004e3c`**: the head taken off `_bc_Free_list`,
 or `malloc(40)` with the chain empty (`out_of_memory` on failure). -/
-theorem ksplit_80004e30 {live : Nat → Prop} {S : Nat → Prop}
+theorem ksplit_80004e30 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
-    (hb : BcHeap S Mt H F L) (hh : R 19 = BitVec.ofNat 64 (deadHead F))
+    (hb : BcHeap S X Mt H F L) (hh : R 19 = BitVec.ofNat 64 (deadHead F))
     (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hoom : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [1, 10, 12, 13, 14, 15, 19] R' R →
       (∀ a, ¬ AllocByte H a → imgM M' a = imgM Mt a) → DW live S Q 0x80002bcc#64 R' M')
@@ -213,10 +213,10 @@ theorem ksplit_80004e30 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The struct of the view at `0x8000539c`**: the head taken off `_bc_Free_list`,
 or `malloc(40)` with the chain empty (`out_of_memory` on failure). -/
-theorem ksplit_8000538c {live : Nat → Prop} {S : Nat → Prop}
+theorem ksplit_8000538c {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
-    (hb : BcHeap S Mt H F L) (hh : R 14 = BitVec.ofNat 64 (deadHead F))
+    (hb : BcHeap S X Mt H F L) (hh : R 14 = BitVec.ofNat 64 (deadHead F))
     (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hoom : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [1, 10, 12, 13, 14, 15, 19] R' R →
       (∀ a, ¬ AllocByte H a → imgM M' a = imgM Mt a) → DW live S Q 0x80002bcc#64 R' M')
@@ -311,10 +311,10 @@ theorem ksplit_8000538c {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The struct of the view at `0x800053d0`**: the head taken off `_bc_Free_list`,
 or `malloc(40)` with the chain empty (`out_of_memory` on failure). -/
-theorem ksplit_800053c0 {live : Nat → Prop} {S : Nat → Prop}
+theorem ksplit_800053c0 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
-    (hb : BcHeap S Mt H F L) (hh : R 15 = BitVec.ofNat 64 (deadHead F))
+    (hb : BcHeap S X Mt H F L) (hh : R 15 = BitVec.ofNat 64 (deadHead F))
     (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hoom : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [1, 10, 12, 13, 14, 15, 20, 27] R' R →
       (∀ a, ¬ AllocByte H a → imgM M' a = imgM Mt a) → DW live S Q 0x80002bcc#64 R' M')

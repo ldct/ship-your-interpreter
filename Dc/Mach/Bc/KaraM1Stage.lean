@@ -20,15 +20,15 @@ set_option maxRecDepth 8000
 /-- **The `m1` stage** from `0x80004f70`: `bc_is_zero (u1)`,
 `bc_is_zero (v1)`; both paths take the differences, then `m1` is
 `_bc_rec_mul (u1, v1)` or a copy of `_zero_`; then `m2`. -/
-theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {N : Nat} (ih : RmIH live S Q N)
+    {N : Nat} (ih : RmIH live S X Q N)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
     {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     {hu1 hu0 hv1 hv0 : Hd} {hs0 : List Hd}
     (pk : KM1 S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0)
-    (hb : BcHeap S M H F (KList [] hs0 A B z))
+    (hb : BcHeap S X M H F (KList [] hs0 A B z))
     (hp0 : hs0.Perm [hu1, hu0, hv1, hv0])
     (hown : HdOwned A B z hs0) (hok : HdOK hs0)
     (kz : KZero M z (zeroCount hs0 + 2 + (4 * (la + lb + 2 - n) + 8)))
@@ -41,7 +41,7 @@ theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop}
     (m1s : ∀ x1 x2, hu1 = some x1 → hv1 = some x2 → 1 ≤ x1.rep.len → 1 ≤ x2.rep.len →
       KM1Spec z hu1 hv1 n la lb N W) :
     DW live S Q 0x80004f70#64 R M := by
-  have hb' : BcHeap S M H F ((temps hs0 ++ A) ++
+  have hb' : BcHeap S X M H F ((temps hs0 ++ A) ++
       z.withRefs (z.rep.refs + zeroCount hs0) :: B) := by
     simpa only [KList, List.nil_append, List.append_assoc] using hb
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -59,7 +59,7 @@ theorem kara_m1 {live : Nat → Prop} {S : Nat → Prop}
   have hv0m : hv0 ∈ hs0 := hp0.mem_iff.mpr (by simp)
   have hzk : z.rep.refs + zeroCount hs0 + 2 < 2 ^ 31 := by have := kz.room; omega
   have zk : hdVal (Hd.o z hu1) * hdVal (Hd.o z hv1) = 0 →
-      KSubsK live S Q M0 M R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs0 A B 0x8000550c#64 := by
+      KSubsK live S X Q M0 M R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs0 A B 0x8000550c#64 := by
     intro hz0 R'' M'' H'' F'' y1 y2 ps hb2 hga
     exact kara_m1zero hlive ih cx hk ps hb2 hp0
       (((hown.cons (h3 := some y1) fun x e => by cases e; exact ps.d1.owns).cons

@@ -17,18 +17,18 @@ set_option maxRecDepth 8000
 
 /-- The trim loop at `0x80004ec4`: `j` leading zeros dropped from the object in
 `x24`, digit `j` zero too. -/
-theorem ktrimLoop_80004ec4 {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrimLoop_80004ec4 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {Rb : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (hS : HeapOwn S) (hr : Rb 24 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' Rb →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →
       DW live S Q 0x80004ee0#64 R' M') :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), x.rep.len - 1 - j = n → j < x.rep.len →
       Keeps [12, 13, 14, 15] R Rb →
-      BcHeap S M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M Mt →
       R 15 = BitVec.ofNat 64 (x.rep.val + j) → R 14 = BitVec.ofNat 64 (x.rep.len - j) →
       R 12 = BitVec.ofNat 64 1 → (∀ i, i ≤ j → x.rep.ds.getD i 0 = 0) →
@@ -110,18 +110,18 @@ theorem ktrimLoop_80004ec4 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The leading-zero trim at `0x80004eb0`** of the object in `x24`: `n_value`
 advanced past its leading zeros, `n_len` shrunk (`NumRep.rmLeadingZeros`). -/
-theorem ktrim_80004eb0 {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrim_80004eb0 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
-    {x : NumObj} (hb : BcHeap S M H F (L1 ++ x :: L2)) (hr : R 24 = BitVec.ofNat 64 x.rep.p)
+    {x : NumObj} (hb : BcHeap S X M H F (L1 ++ x :: L2)) (hr : R 24 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' R →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
       DW live S Q 0x80004ee0#64 R' M') :
     DW live S Q 0x80004eb0#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
-  have hb0 : BcHeap S M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
+  have hb0 : BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
     rw [NumRep.drop_zero]; exact hb
   have hn := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -165,18 +165,18 @@ theorem ktrim_80004eb0 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The trim loop at `0x80004ef4`: `j` leading zeros dropped from the object in
 `x19`, digit `j` zero too. -/
-theorem ktrimLoop_80004ef4 {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrimLoop_80004ef4 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {Rb : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (hS : HeapOwn S) (hr : Rb 19 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' Rb →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →
       DW live S Q 0x80004f10#64 R' M') :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), x.rep.len - 1 - j = n → j < x.rep.len →
       Keeps [12, 13, 14, 15] R Rb →
-      BcHeap S M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M Mt →
       R 15 = BitVec.ofNat 64 (x.rep.val + j) → R 14 = BitVec.ofNat 64 (x.rep.len - j) →
       R 12 = BitVec.ofNat 64 1 → (∀ i, i ≤ j → x.rep.ds.getD i 0 = 0) →
@@ -258,18 +258,18 @@ theorem ktrimLoop_80004ef4 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The leading-zero trim at `0x80004ee0`** of the object in `x19`: `n_value`
 advanced past its leading zeros, `n_len` shrunk (`NumRep.rmLeadingZeros`). -/
-theorem ktrim_80004ee0 {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrim_80004ee0 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
-    {x : NumObj} (hb : BcHeap S M H F (L1 ++ x :: L2)) (hr : R 19 = BitVec.ofNat 64 x.rep.p)
+    {x : NumObj} (hb : BcHeap S X M H F (L1 ++ x :: L2)) (hr : R 19 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' R →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
       DW live S Q 0x80004f10#64 R' M') :
     DW live S Q 0x80004ee0#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
-  have hb0 : BcHeap S M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
+  have hb0 : BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
     rw [NumRep.drop_zero]; exact hb
   have hn := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -313,18 +313,18 @@ theorem ktrim_80004ee0 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The trim loop at `0x80004f24`: `j` leading zeros dropped from the object in
 `x27`, digit `j` zero too. -/
-theorem ktrimLoop_80004f24 {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrimLoop_80004f24 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {Rb : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (hS : HeapOwn S) (hr : Rb 27 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' Rb →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →
       DW live S Q 0x80004f40#64 R' M') :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), x.rep.len - 1 - j = n → j < x.rep.len →
       Keeps [12, 13, 14, 15] R Rb →
-      BcHeap S M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M Mt →
       R 15 = BitVec.ofNat 64 (x.rep.val + j) → R 14 = BitVec.ofNat 64 (x.rep.len - j) →
       R 12 = BitVec.ofNat 64 1 → (∀ i, i ≤ j → x.rep.ds.getD i 0 = 0) →
@@ -406,18 +406,18 @@ theorem ktrimLoop_80004f24 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The leading-zero trim at `0x80004f10`** of the object in `x27`: `n_value`
 advanced past its leading zeros, `n_len` shrunk (`NumRep.rmLeadingZeros`). -/
-theorem ktrim_80004f10 {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrim_80004f10 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
-    {x : NumObj} (hb : BcHeap S M H F (L1 ++ x :: L2)) (hr : R 27 = BitVec.ofNat 64 x.rep.p)
+    {x : NumObj} (hb : BcHeap S X M H F (L1 ++ x :: L2)) (hr : R 27 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' R →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
       DW live S Q 0x80004f40#64 R' M') :
     DW live S Q 0x80004f10#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
-  have hb0 : BcHeap S M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
+  have hb0 : BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
     rw [NumRep.drop_zero]; exact hb
   have hn := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -461,18 +461,18 @@ theorem ktrim_80004f10 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The trim loop at `0x80004f54`: `j` leading zeros dropped from the object in
 `x20`, digit `j` zero too. -/
-theorem ktrimLoop_80004f54 {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrimLoop_80004f54 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {Rb : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (hS : HeapOwn S) (hr : Rb 20 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' Rb →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →
       DW live S Q 0x80004f70#64 R' M') :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), x.rep.len - 1 - j = n → j < x.rep.len →
       Keeps [12, 13, 14, 15] R Rb →
-      BcHeap S M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M Mt →
       R 15 = BitVec.ofNat 64 (x.rep.val + j) → R 14 = BitVec.ofNat 64 (x.rep.len - j) →
       R 12 = BitVec.ofNat 64 1 → (∀ i, i ≤ j → x.rep.ds.getD i 0 = 0) →
@@ -554,18 +554,18 @@ theorem ktrimLoop_80004f54 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The leading-zero trim at `0x80004f40`** of the object in `x20`: `n_value`
 advanced past its leading zeros, `n_len` shrunk (`NumRep.rmLeadingZeros`). -/
-theorem ktrim_80004f40 {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrim_80004f40 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
-    {x : NumObj} (hb : BcHeap S M H F (L1 ++ x :: L2)) (hr : R 20 = BitVec.ofNat 64 x.rep.p)
+    {x : NumObj} (hb : BcHeap S X M H F (L1 ++ x :: L2)) (hr : R 20 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' R →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
       DW live S Q 0x80004f70#64 R' M') :
     DW live S Q 0x80004f40#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
-  have hb0 : BcHeap S M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
+  have hb0 : BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
     rw [NumRep.drop_zero]; exact hb
   have hn := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -610,19 +610,19 @@ theorem ktrim_80004f40 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The trim loop at `0x8000580c`: `j` leading zeros dropped from the object in
 `x8`, digit `j` zero too. -/
-theorem ktrimLoop_8000580c {live : Nat → Prop} {S : Nat → Prop}
+theorem ktrimLoop_8000580c {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {Rb : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (hS : HeapOwn S) (hr : Rb 8 = BitVec.ofNat 64 x.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' Rb →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →
       R' 15 = BitVec.ofNat 64 (x.rep.val + j) →
       DW live S Q 0x80005828#64 R' M') :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), x.rep.len - 1 - j = n → j < x.rep.len →
       Keeps [12, 13, 14, 15] R Rb →
-      BcHeap S M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M Mt →
       R 15 = BitVec.ofNat 64 (x.rep.val + j) → R 14 = BitVec.ofNat 64 (x.rep.len - j) →
       R 12 = BitVec.ofNat 64 1 → (∀ i, i ≤ j → x.rep.ds.getD i 0 = 0) →

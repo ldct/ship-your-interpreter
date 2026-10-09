@@ -80,11 +80,11 @@ structure KEntry (S : Nat → Prop) (M0 M : Mem) (R0 R : Nat → BitVec 64)
 
 /-- **The half and the first length test at `0x80004dd0`**, both routes of
 `max la lb` joined. -/
-theorem kara_half {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_half {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (ka : KAt S M0 M R0 R sp q W) (hb : BcHeap S M H F L)
+    (cx : RmCtx S R0 sp q W) (ka : KAt S M0 M R0 R sp q W) (hb : BcHeap S X M H F L)
     (huL : uo ∈ L) (hN : la + lb < 2 ^ 30) (hla : 20 ≤ la) (hlb : 20 ≤ lb)
     (h15 : R 15 = BitVec.ofNat 64 (max la lb))
     (h0 : ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p)
@@ -181,12 +181,12 @@ theorem kSpillMem_saved {M : Mem} {R0 : Nat → BitVec 64} {fr : Nat}
 
 /-- **The step's entry at `0x80004db0`**: `s3` and `s7`–`s11` spilled
 (completing `KAt`), then `max la lb` and the half. -/
-theorem kara_entry {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_entry {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo : NumObj} {H : Heap} {F : List Blk}
     (cx : RmCtx S R0 sp q W) (st : RmAt S M0 M R0 R sp q W) (kp : RmKept R R0)
-    (hb : BcHeap S M H F L) (huL : uo ∈ L) (hN : la + lb < 2 ^ 30)
+    (hb : BcHeap S X M H F L) (huL : uo ∈ L) (hN : la + lb < 2 ^ 30)
     (hla : 20 ≤ la) (hlb : 20 ≤ lb)
     (h0 : ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p)
     (h22 : R 22 = BitVec.ofNat 64 (la + lb)) (h20 : R 20 = BitVec.ofNat 64 la)
@@ -194,11 +194,11 @@ theorem kara_entry {live : Nat → Prop} {S : Nat → Prop}
     (h9 : R 9 = BitVec.ofNat 64 q)
     (hlo : ∀ (R' : Nat → BitVec 64) (M' : Mem),
       KEntry S M0 M' R0 R' sp q W ((max la lb + 1) / 2) la lb uo vo F →
-      la < (max la lb + 1) / 2 → BcHeap S M' H F L → M' = kSpillMem M R0 (sp - 192) →
+      la < (max la lb + 1) / 2 → BcHeap S X M' H F L → M' = kSpillMem M R0 (sp - 192) →
       DW live S Q 0x80005378#64 R' M')
     (hhi : ∀ (R' : Nat → BitVec 64) (M' : Mem),
       KEntry S M0 M' R0 R' sp q W ((max la lb + 1) / 2) la lb uo vo F →
-      (max la lb + 1) / 2 ≤ la → BcHeap S M' H F L → M' = kSpillMem M R0 (sp - 192) →
+      (max la lb + 1) / 2 ≤ la → BcHeap S X M' H F L → M' = kSpillMem M R0 (sp - 192) →
       DW live S Q 0x80004df8#64 R' M') :
     DW live S Q 0x80004db0#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -212,7 +212,7 @@ theorem kara_entry {live : Nat → Prop} {S : Nat → Prop}
   have hk25 := kp.k25; have hk26 := kp.k26; have hk27 := kp.k27
   have hdis : ∀ p ∈ rmSlots, ∀ o ∈ kSpills, p.2 + 8 ≤ o ∨ o + 8 ≤ p.2 := by decide
   have half : ∀ (R' : Nat → BitVec 64) (M' : Mem), KAt S M0 M' R0 R sp q W → Keeps [15] R' R →
-      BcHeap S M' H F L → ldv .ld M' (sp - 192) = BitVec.ofNat 64 uo.rep.p →
+      BcHeap S X M' H F L → ldv .ld M' (sp - 192) = BitVec.ofNat 64 uo.rep.p →
       R' 15 = BitVec.ofNat 64 (max la lb) → M' = kSpillMem M R0 (sp - 192) →
       DW live S Q 0x80004dd0#64 R' M' := by
     intro R' M' ka0 kk hb' h0' h15 hM
@@ -224,7 +224,7 @@ theorem kara_entry {live : Nat → Prop} {S : Nat → Prop}
       ((kk.get 9 (by decide)).trans h9)
       (fun R'' M'' ke hlt he => hlo R'' M'' (he ▸ ke) hlt (he ▸ hb') (he.trans hM))
       (fun R'' M'' ke hge he => hhi R'' M'' (he ▸ ke) hge (he ▸ hb') (he.trans hM))
-  have hbS : BcHeap S (kSpillMem M R0 (sp - 192)) H F L :=
+  have hbS : BcHeap S X (kSpillMem M R0 (sp - 192)) H F L :=
     hb.out_frame (P := frameIn sp W) (fun a hp => kSpillMem_off M R0 (by
         rcases Nat.lt_or_ge a (sp - W) with h | h
         · omega

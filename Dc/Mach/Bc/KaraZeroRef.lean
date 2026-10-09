@@ -20,14 +20,14 @@ set_option maxRecDepth 8000
 
 /-- **`_zero_`'s count raised at `0x80005378`** (`u1` is a reference to
 `_zero_`), its struct left in `s8`. -/
-theorem kzeroref_80005378 {live : Nat → Prop} {S : Nat → Prop}
+theorem kzeroref_80005378 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {A B : List NumObj} {z : NumObj}
-    (hb : BcHeap S M H F (A ++ z :: B))
+    (hb : BcHeap S X M H F (A ++ z :: B))
     (hz : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hzo : ∀ a, constBytes a → S a)
     (hr : z.rep.refs + 1 < 2 ^ 31)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [15, 24] R' R →
-      BcHeap S M' H F (A ++ z.withRefs (z.rep.refs + 1) :: B) →
+      BcHeap S X M' H F (A ++ z.withRefs (z.rep.refs + 1) :: B) →
       R' 24 = BitVec.ofNat 64 z.rep.p →
       (∀ a, a < z.rep.p + 12 ∨ z.rep.p + 16 ≤ a → imgM M' a = imgM M a) →
       DW live S Q 0x8000538c#64 R' M') :
@@ -53,14 +53,14 @@ theorem kzeroref_80005378 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`_zero_`'s count raised at `0x80004e68`** (`v1` is a reference to
 `_zero_`), its struct left in `s11` and its address in `s2`. -/
-theorem kzeroref_80004e68 {live : Nat → Prop} {S : Nat → Prop}
+theorem kzeroref_80004e68 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {A B : List NumObj} {z : NumObj}
-    (hb : BcHeap S M H F (A ++ z :: B))
+    (hb : BcHeap S X M H F (A ++ z :: B))
     (hz : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hzo : ∀ a, constBytes a → S a)
     (hr : z.rep.refs + 1 < 2 ^ 31)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [14, 18, 27] R' R →
-      BcHeap S M' H F (A ++ z.withRefs (z.rep.refs + 1) :: B) →
+      BcHeap S X M' H F (A ++ z.withRefs (z.rep.refs + 1) :: B) →
       R' 27 = BitVec.ofNat 64 z.rep.p → R' 18 = BitVec.ofNat 64 zeroAddr →
       (∀ a, a < z.rep.p + 12 ∨ z.rep.p + 16 ≤ a → imgM M' a = imgM M a) →
       DW live S Q 0x80004e80#64 R' M') :

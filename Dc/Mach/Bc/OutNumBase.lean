@@ -136,10 +136,10 @@ structure OnArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (x z o : NumObj)
 sent and the caller's heap `L` as it was (its allocator and dead chain
 changed), off the heap only `G` and the window changed; or `out_of_memory`
 at any console. -/
-structure OnK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure OnK (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (I : List Nat → String → Mem → Prop) (G : Nat → Prop) (R0 : Nat → BitVec 64) (M0 : Mem)
     (L : List NumObj) (sp W : Nat) (target : List Nat) : Prop where
-  ret : ∀ R' M' t' H' F', Keeps cClob R' R0 → I target t' M' → BcHeap S M' H' F' L →
+  ret : ∀ R' M' t' H' F', Keeps cClob R' R0 → I target t' M' → BcHeap S X M' H' F' L →
     (∀ a, OutHeap a → ¬ G a → ¬ frameIn sp W a → imgM M' a = imgM M0 a) →
     DWO live S Q t' (R0 1) R' M'
   oom : ∀ t' R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
@@ -214,9 +214,9 @@ theorem OnAt.store {S G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
       rw [imgM_store_miss _ _ (by simp only [frameIn] at hf; omega)]; exact h.out a ha hg hf }
 
 /-- A store into the frame keeps the heap. -/
-theorem BcHeap.frameStore {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    (hb : BcHeap S M H F L) {sp o : Nat} (v : BitVec 64) (hsp : heapEnd + 176 ≤ sp)
-    (ho : o + 8 ≤ 176) : BcHeap S (writeLog M [(sp - 176 + o, 8, v)]) H F L :=
+theorem BcHeap.frameStore {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (hb : BcHeap S X M H F L) {sp o : Nat} (v : BitVec 64) (hsp : heapEnd + 176 ≤ sp)
+    (ho : o + 8 ≤ 176) : BcHeap S X (writeLog M [(sp - 176 + o, 8, v)]) H F L :=
   hb.out_frame (P := fun a => sp - 176 + o ≤ a ∧ a < sp - 176 + o + 8)
     (fun a hp => imgM_store_miss _ _ (by omega)) (fun a hp => outHeap_of_ge (by omega))
 
@@ -239,7 +239,7 @@ theorem OnCtx.cbFrame {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp W d : Nat}
 
 /-- **The callback from inside the frame**: `out_char (c)` with `sp` at the
 frame, the heap and the frame's words kept. -/
-theorem on_call {live S : Nat → Prop}
+theorem on_call {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {G : Nat → Prop} {I : List Nat → String → Mem → Prop} {Mt0 M : Mem}
     {R0 R : Nat → BitVec 64} {sp W d c : Nat} {slots : List (Nat × Nat)} {H : Heap}
@@ -247,10 +247,10 @@ theorem on_call {live S : Nat → Prop}
     (cb : CharFn live S Q (R0 12) d G I) (cx : OnCtx S R0 sp W d)
     (st : OnAt S G Mt0 M R0 R sp W slots)
     (hlo : ∀ p ∈ slots, 0 ≤ p.2 := by decide) (htop : ∀ p ∈ slots, p.2 + 8 ≤ 176 := by decide)
-    (hb : BcHeap S M H F L) (hI : I cs t M) (h10 : R 10 = BitVec.ofNat 64 c) (hc : c < 256)
+    (hb : BcHeap S X M H F L) (hI : I cs t M) (h10 : R 10 = BitVec.ofNat 64 c) (hc : c < 256)
     (h1 : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' t', Keeps cClob R' R → I (cs ++ [c]) t' M' → OnAt S G Mt0 M' R0 R' sp W slots →
-      BcHeap S M' H F L → (∀ a, ¬ G a → a < heapEnd → imgM M' a = imgM M a) →
+      BcHeap S X M' H F L → (∀ a, ¬ G a → a < heapEnd → imgM M' a = imgM M a) →
       DWO live S Q t' (R 1) R' M') :
     DWO live S Q t (R0 12) R M := by
   on_facts cx

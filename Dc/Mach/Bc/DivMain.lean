@@ -85,11 +85,11 @@ structure DvShape (D : DvData) : Prop where
 
 /-- **Scratch stores keep the number heap**: stores confined to two raw
 buffers and the stack above the heap. -/
-theorem BcHeap.scratch {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk}
-    {Lo : List NumObj} (h : BcHeap S M H F Lo) {b1 b3 : Blk} (hb1 : b1 ∈ H.live)
-    (hn1 : b1 ∉ F ++ objBlocks Lo) (hb3 : b3 ∈ H.live) (hn3 : b3 ∉ F ++ objBlocks Lo)
+theorem BcHeap.scratch {S : Nat → Prop} {X : Raws} {M M' : Mem} {H : Heap} {F : List Blk}
+    {Lo : List NumObj} (h : BcHeap S X M H F Lo) {b1 b3 : Blk} (hb1 : b1 ∈ H.live)
+    (hn1 : b1 ∉ F ++ objBlocks Lo ++ X.bs) (hb3 : b3 ∈ H.live) (hn3 : b3 ∉ F ++ objBlocks Lo ++ X.bs)
     (hm : ∀ a, ¬ (b1.In a ∨ b3.In a ∨ heapEnd ≤ a) → imgM M' a = imgM M a) :
-    BcHeap S M' H F Lo :=
+    BcHeap S X M' H F Lo :=
   h.transportOwn
     (fun a ha => hm a fun hc => by
       rcases hc with hi | hi | hi
@@ -112,7 +112,7 @@ theorem BcHeap.scratch {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk}
 /-- What the loop keeps: the saved registers and slots of the frame, the
 number heap with the quotient `y` (digits `ds`) at its head, the three raw
 buffers, the divisor, and every byte off the heap and the window. -/
-structure DvFix (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
+structure DvFix (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
     (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat) : Prop where
   saved : SavedWords M (sp - 208) divSlots R0
   s8 : ldv .ld M (sp - 208 + 8) = BitVec.ofNat 64 D.Bm
@@ -126,7 +126,7 @@ structure DvFix (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W 
   s72 : ldv .ld M (sp - 208 + 72) = BitVec.ofNat 64 D.n2p
   s80 : ldv .ld M (sp - 208 + 80) = BitVec.ofNat 64 D.n1p
   s88 : ldv .ld M (sp - 208 + 88) = BitVec.ofNat 64 D.rs
-  heap : BcHeap S M H F (withDs y ds :: Lh)
+  heap : BcHeap S X M H F (withDs y ds :: Lh)
   noView : ∀ z ∈ Lh, z.db ≠ y.db
   owns : y.Owns
   qlen : ds.length = y.rep.len + y.rep.scale
@@ -136,9 +136,9 @@ structure DvFix (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W 
   b1l : D.b1 ∈ H.live
   b2l : D.b2 ∈ H.live
   b3l : D.b3 ∈ H.live
-  b1n : D.b1 ∉ F ++ objBlocks (y :: Lh)
-  b2n : D.b2 ∉ F ++ objBlocks (y :: Lh)
-  b3n : D.b3 ∉ F ++ objBlocks (y :: Lh)
+  b1n : D.b1 ∉ F ++ objBlocks (y :: Lh) ++ X.bs
+  b2n : D.b2 ∉ F ++ objBlocks (y :: Lh) ++ X.bs
+  b3n : D.b3 ∉ F ++ objBlocks (y :: Lh) ++ X.bs
   b12 : D.b1 ≠ D.b2
   b13 : D.b1 ≠ D.b3
   b23 : D.b2 ≠ D.b3
@@ -158,9 +158,9 @@ structure DvWin (M : Mem) (D : DvData) (ds : List Nat) (k : Nat) : Prop where
   quot : ∀ j, j < k → ds.getD (D.off + j) 0 = D.pre k / D.V / 10 ^ (k - 1 - j) % 10
 
 /-- The loop head `0x80005d4c` at iteration `k`. -/
-structure DvAt (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat) (D : DvData)
+structure DvAt (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat) (D : DvData)
     (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat) (k : Nat) : Prop where
-  fix : DvFix S Mt0 M R0 sp W D H F Lh y ds
+  fix : DvFix S X Mt0 M R0 sp W D H F Lh y ds
   win : DvWin M D ds k
   r2 : R 2 = BitVec.ofNat 64 (sp - 208)
   r9 : R 9 = BitVec.ofNat 64 k
@@ -178,10 +178,10 @@ abbrev DvScratch (sp W : Nat) (D : DvData) (a : Nat) : Prop :=
   D.b1.In a ∨ D.b3.In a ∨ (sp - W ≤ a ∧ a < sp - 208)
 
 /-- `DvFix` through scratch stores. -/
-theorem DvFix.scratch {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
+theorem DvFix.scratch {S : Nat → Prop} {X : Raws} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat}
-    (hf : DvFix S Mt0 M R0 sp W D H F Lh y ds) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
-    (hm : MemOnly (DvScratch sp W D) M' M) : DvFix S Mt0 M' R0 sp W D H F Lh y ds := by
+    (hf : DvFix S X Mt0 M R0 sp W D H F Lh y ds) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
+    (hm : MemOnly (DvScratch sp W D) M' M) : DvFix S X Mt0 M' R0 sp W D H F Lh y ds := by
   have hi := hf.heap.heap
   have inH : ∀ b, b ∈ H.live → ∀ a, b.In a → a < heapEnd := fun b hb a ha =>
     (live_in_heap hi hb ha).2
@@ -225,12 +225,12 @@ theorem DvFix.scratch {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 6
         · exact hn ⟨by omega, by omega⟩).trans (hf.out a ho hn) }
 
 /-- `DvFix` through a store of the quotient digit `d` at position `i ≥ off`. -/
-theorem DvFix.setDigit {S : Nat → Prop} {Mt0 M : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
+theorem DvFix.setDigit {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat}
-    (hf : DvFix S Mt0 M R0 sp W D H F Lh y ds) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
+    (hf : DvFix S X Mt0 M R0 sp W D H F Lh y ds) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
     {i d : Nat} (hi1 : D.off ≤ i) (hi : i < y.rep.len + y.rep.scale) (hd : d < 10)
     {v : BitVec 64} (hv : sbData v = BitVec.ofNat 8 d) :
-    DvFix S Mt0 (writeLog M [(y.rep.val + i, 1, v)]) R0 sp W D H F Lh y (ds.set i d) := by
+    DvFix S X Mt0 (writeLog M [(y.rep.val + i, 1, v)]) R0 sp W D H F Lh y (ds.set i d) := by
   have hi' := hf.heap.heap
   have hy : withDs y ds ∈ withDs y ds :: Lh := List.mem_cons_self
   have hb := hf.heap.blocks _ hy
@@ -278,9 +278,9 @@ theorem DvFix.setDigit {S : Nat → Prop} {Mt0 M : Mem} {R0 : Nat → BitVec 64}
     out := fun a ho hn => (hm a fun e => ho.1 (e ▸ hH)).trans (hf.out a ho hn) }
 
 /-- After the last iteration, at `0x80005e2c`. -/
-structure DvExit (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat) (D : DvData)
+structure DvExit (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat) (D : DvData)
     (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat) : Prop where
-  fix : DvFix S Mt0 M R0 sp W D H F Lh y ds
+  fix : DvFix S X Mt0 M R0 sp W D H F Lh y ds
   win : DvWin M D ds (D.Kb + 1)
   r2 : R 2 = BitVec.ofNat 64 (sp - 208)
   r18 : R 18 = BitVec.ofNat 64 D.P
@@ -288,9 +288,9 @@ structure DvExit (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp
 
 /-- An iteration's digit computed, the window holding the new remainder:
 at `0x80005d38` (digit in `s4`) or `0x80005e20` (digit in `s6`). -/
-structure DvMid (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat) (D : DvData)
+structure DvMid (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat) (D : DvData)
     (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat) (k : Nat) : Prop where
-  fix : DvFix S Mt0 M R0 sp W D H F Lh y ds
+  fix : DvFix S X Mt0 M R0 sp W D H F Lh y ds
   win : ∀ i, i < D.L → imgM M (D.P + (k + 1) + i) =
     BitVec.ofNat 8 (D.pre (k + 1) % D.V / 10 ^ (D.L - 1 - i) % 10)
   rest : ∀ i, k + 1 + D.L ≤ i → i < D.xs.length → imgM M (D.P + i) = BitVec.ofNat 8 (D.xs.getD i 0)
@@ -306,11 +306,11 @@ structure DvMid (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp 
   kb : k ≤ D.Kb
 
 /-- The digit `q` stored: the window and quotient entering iteration `k + 1`. -/
-theorem DvMid.store {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
+theorem DvMid.store {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
-    (hs : DvShape D) (st : DvMid S Mt0 M R0 R sp W D H F Lh y ds k) (hab : heapEnd + W ≤ sp)
+    (hs : DvShape D) (st : DvMid S X Mt0 M R0 R sp W D H F Lh y ds k) (hab : heapEnd + W ≤ sp)
     (hW : 208 ≤ W) {v : BitVec 64} (hv : sbData v = BitVec.ofNat 8 (D.pre (k + 1) / D.V % 10)) :
-    DvFix S Mt0 (writeLog M [(y.rep.val + D.off + k, 1, v)]) R0 sp W D H F Lh y
+    DvFix S X Mt0 (writeLog M [(y.rep.val + D.off + k, 1, v)]) R0 sp W D H F Lh y
         (ds.set (D.off + k) (D.pre (k + 1) / D.V % 10)) ∧
       DvWin (writeLog M [(y.rep.val + D.off + k, 1, v)]) D
         (ds.set (D.off + k) (D.pre (k + 1) / D.V % 10)) (k + 1) := by
@@ -353,22 +353,22 @@ structure DvCtx (S : Nat → Prop) (sp W : Nat) : Prop where
   above : heapEnd + W ≤ sp
   big : 272 ≤ W
 
-theorem DvFix.heapOwn {S : Nat → Prop} {Mt0 M : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
+theorem DvFix.heapOwn {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat}
-    (hf : DvFix S Mt0 M R0 sp W D H F Lh y ds) : HeapOwn S :=
+    (hf : DvFix S X Mt0 M R0 sp W D H F Lh y ds) : HeapOwn S :=
   fun a h1 h2 => hf.heap.heap.own a h1 h2
 
 /-- On to the next iteration from `0x80005d40`. -/
-theorem dv_next {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_next {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
-    (hs : DvShape D) (hf : DvFix S Mt0 M R0 sp W D H F Lh y ds) (hw : DvWin M D ds (k + 1))
+    (hs : DvShape D) (hf : DvFix S X Mt0 M R0 sp W D H F Lh y ds) (hw : DvWin M D ds (k + 1))
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h21 : R 21 = BitVec.ofNat 64 (k + 1))
     (h18 : R 18 = BitVec.ofNat 64 D.P) (h24 : R 24 = BitVec.ofNat 64 D.N)
     (h27 : R 27 = BitVec.ofNat 64 (y.rep.val + D.off + k)) (h26 : R 26 = BitVec.ofNat 64 D.Kb)
     (hk : Keeps divAll R R0) (hk1 : k + 1 ≤ D.Kb)
-    (hnext : ∀ R' M' ds', DvAt S Mt0 M' R0 R' sp W D H F Lh y ds' (k + 1) →
+    (hnext : ∀ R' M' ds', DvAt S X Mt0 M' R0 R' sp W D H F Lh y ds' (k + 1) →
       DW live S Q 0x80005d4c#64 R' M') :
     DW live S Q 0x80005d40#64 R M := by
   have hS := hf.heapOwn
@@ -384,22 +384,22 @@ theorem dv_next {live : Nat → Prop} {S : Nat → Prop}
     by bsimp [], by bsimp [h27]; congr 1, by bsimp [h26], by keeps_tac hk, hk1⟩
 
 /-- The continuations of an iteration: the next one, or the loop's exit. -/
-structure DvK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure DvK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData) (H : Heap) (F : List Blk)
     (Lh : List NumObj) (y : NumObj) (k : Nat) : Prop where
-  next : k + 1 ≤ D.Kb → ∀ R' M' ds', DvAt S Mt0 M' R0 R' sp W D H F Lh y ds' (k + 1) →
+  next : k + 1 ≤ D.Kb → ∀ R' M' ds', DvAt S X Mt0 M' R0 R' sp W D H F Lh y ds' (k + 1) →
     DW live S Q 0x80005d4c#64 R' M'
-  exit : k = D.Kb → ∀ R' M' ds', DvExit S Mt0 M' R0 R' sp W D H F Lh y ds' →
+  exit : k = D.Kb → ∀ R' M' ds', DvExit S X Mt0 M' R0 R' sp W D H F Lh y ds' →
     DW live S Q 0x80005e2c#64 R' M'
 
 /-- The digit store at `0x80005d38` (digit in `s4`). -/
-theorem dv_store {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_store {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
-    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvMid S Mt0 M R0 R sp W D H F Lh y ds k)
+    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvMid S X Mt0 M R0 R sp W D H F Lh y ds k)
     (h20 : R 20 = BitVec.ofNat 64 (D.pre (k + 1) / D.V % 10))
-    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    (hk : DvK live S X Q Mt0 R0 sp W D H F Lh y k) :
     DW live S Q 0x80005d38#64 R M := by
   have hf := st.fix
   have hS := hf.heapOwn
@@ -429,13 +429,13 @@ theorem dv_store {live : Nat → Prop} {S : Nat → Prop}
       st.r18 st.r24 (by bsimp [h27]) (by bsimp [h26]) (by keeps_tac st.regs) hk1 (hk.next hk1)
 
 /-- The digit store at `0x80005e20` (digit in `s6`). -/
-theorem dv_store' {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_store' {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
-    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvMid S Mt0 M R0 R sp W D H F Lh y ds k)
+    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvMid S X Mt0 M R0 R sp W D H F Lh y ds k)
     (h22 : R 22 = BitVec.ofNat 64 (D.pre (k + 1) / D.V % 10))
-    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    (hk : DvK live S X Q Mt0 R0 sp W D H F Lh y k) :
     DW live S Q 0x80005e20#64 R M := by
   have hf := st.fix
   have hS := hf.heapOwn
@@ -705,9 +705,9 @@ theorem DvShape.vtop {D : DvData} (hs : DvShape D) :
   exact ⟨h0.symm, hlt, by omega⟩
 
 /-- **The guess's bytes** at the loop head, from the window. -/
-theorem GuessBytes.of_at {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
+theorem GuessBytes.of_at {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat}
-    {k : Nat} (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F Lh y ds k) :
+    {k : Nat} (hs : DvShape D) (st : DvAt S X Mt0 M R0 R sp W D H F Lh y ds k) :
     GuessBytes M D k := by
   obtain ⟨hv0, hV, hv1d⟩ := hs.vtop
   have hl1 := hs.l1
@@ -897,17 +897,17 @@ abbrev DvTouch (sp W : Nat) (D : DvData) (k a : Nat) : Prop :=
 
 /-- **An iteration's result**: the window replaced by the remainder `W k % V`
 (below its top byte), registers for the store. -/
-theorem DvMid.of_touch {S : Nat → Prop} {Mt0 M0 M : Mem} {R0 R R' : Nat → BitVec 64}
+theorem DvMid.of_touch {S : Nat → Prop} {X : Raws} {Mt0 M0 M : Mem} {R0 R R' : Nat → BitVec 64}
     {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
     {ds : List Nat} {k : Nat} (hs : DvShape D) (cx : DvCtx S sp W)
-    (st : DvAt S Mt0 M0 R0 R sp W D H F Lh y ds k) (hm : MemOnly (DvTouch sp W D k) M M0)
+    (st : DvAt S X Mt0 M0 R0 R sp W D H F Lh y ds k) (hm : MemOnly (DvTouch sp W D k) M M0)
     (hwin : ∀ i, i < D.L → imgM M (D.P + (k + 1) + i) =
       BitVec.ofNat 8 (D.W k % D.V / 10 ^ (D.L - 1 - i) % 10))
     (h2 : R' 2 = BitVec.ofNat 64 (sp - 208)) (h9 : R' 9 = BitVec.ofNat 64 k)
     (h21 : R' 21 = BitVec.ofNat 64 (k + 1)) (h18 : R' 18 = BitVec.ofNat 64 D.P)
     (h24 : R' 24 = BitVec.ofNat 64 D.N) (h27 : R' 27 = BitVec.ofNat 64 (y.rep.val + D.off + k))
     (h26 : R' 26 = BitVec.ofNat 64 D.Kb) (hk : Keeps divAll R' R0) :
-    DvMid S Mt0 M R0 R' sp W D H F Lh y ds k := by
+    DvMid S X Mt0 M R0 R' sp W D H F Lh y ds k := by
   have hkb := st.kb
   have hl := hs.xl
   obtain ⟨hq, hr⟩ := hs.pre_succ_div hkb
@@ -945,11 +945,11 @@ theorem DvShape.g_bounds {D : DvData} (hs : DvShape D) (k : Nat) :
   exact guess_window (b := D.xs.getD (k + 2) 0) hs.l1 hV1 hV (hs.W_lt k)
 
 /-- **The guess** at iteration `k`'s loop head. -/
-theorem dv_guess {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_guess {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
-    (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F Lh y ds k)
+    (hs : DvShape D) (st : DvAt S X Mt0 M R0 R sp W D H F Lh y ds k)
     (hc : DvGuessK live S Q M R k (D.g k)) :
     DW live S Q 0x80005d4c#64 R M := by
   have gb := GuessBytes.of_at hs st
@@ -969,12 +969,12 @@ theorem dv_guess {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **A zero digit**: the window already below the divisor; the remainder
 is the window, unchanged. -/
-theorem dv_zero {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_zero {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
     {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
-    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F Lh y ds k)
-    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) (hg : D.g k = 0)
+    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S X Mt0 M R0 R sp W D H F Lh y ds k)
+    (hk : DvK live S X Q Mt0 R0 sp W D H F Lh y k) (hg : D.g k = 0)
     (K : Keeps guessClob R' R) (h20 : R' 20 = 0#64) (h21 : R' 21 = BitVec.ofNat 64 (k + 1)) :
     DW live S Q 0x80005d38#64 R' M := by
   have hb := (hs.g_bounds k).1
@@ -1024,11 +1024,11 @@ theorem live_ranges_apart {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv
     exact live_apart hi hb hc hne e1 e2
 
 /-- The loop's state at a memory changed only on the iteration's scratch. -/
-theorem DvAt.fix_touch {S : Nat → Prop} {Mt0 M0 M : Mem} {R0 R : Nat → BitVec 64}
+theorem DvAt.fix_touch {S : Nat → Prop} {X : Raws} {Mt0 M0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
     {ds : List Nat} {k : Nat} (hs : DvShape D) (cx : DvCtx S sp W)
-    (st : DvAt S Mt0 M0 R0 R sp W D H F Lh y ds k) (hm : MemOnly (DvTouch sp W D k) M M0) :
-    DvFix S Mt0 M R0 sp W D H F Lh y ds := by
+    (st : DvAt S X Mt0 M0 R0 R sp W D H F Lh y ds k) (hm : MemOnly (DvTouch sp W D k) M M0) :
+    DvFix S X Mt0 M R0 sp W D H F Lh y ds := by
   have hkb := st.kb
   have hl := hs.xl
   refine st.fix.scratch cx.above (by have := cx.big; omega) (hm.mono fun a ha => ?_)
@@ -1088,10 +1088,10 @@ theorem DvShape.digit {D : DvData} (hs : DvShape D) {k : Nat} (hk : k ≤ D.Kb) 
   rw [(hs.pre_succ_div hk).1, Nat.add_comm, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hd]
 
 /-- The state after the subtraction, at `0x80005e18`. -/
-structure DvSubd (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
+structure DvSubd (S : Nat → Prop) (X : Raws) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
     (D : DvData) (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat)
     (k : Nat) : Prop where
-  head : DvAt S Mt0 M0 R0 Rh sp W D H F Lh y ds k
+  head : DvAt S X Mt0 M0 R0 Rh sp W D H F Lh y ds k
   g0 : 1 ≤ D.g k
   touch : MemOnly (DvTouch sp W D k) M M0
   sub : ∀ i, i ≤ D.L → imgM M (D.P + k + D.L - i) =
@@ -1110,10 +1110,10 @@ structure DvSubd (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 6
 
 /-- The state after the add-back, at `0x80005f44`: the new window in place
 below its top byte, the digit `g - 1` in `s4`. -/
-structure DvAdded (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
+structure DvAdded (S : Nat → Prop) (X : Raws) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
     (D : DvData) (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat)
     (k : Nat) : Prop where
-  head : DvAt S Mt0 M0 R0 Rh sp W D H F Lh y ds k
+  head : DvAt S X Mt0 M0 R0 Rh sp W D H F Lh y ds k
   touch : MemOnly (DvTouch sp W D k) M M0
   win : ∀ i, i < D.L → imgM M (D.P + (k + 1) + i) =
     BitVec.ofNat 8 (D.W k % D.V / 10 ^ (D.L - 1 - i) % 10)
@@ -1130,13 +1130,13 @@ structure DvAdded (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 
 
 /-- **After the add-back**: the final carry bumps the window's top byte
 (mod 10), then the digit store. -/
-theorem dv_added {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_added {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M0 M2 : Mem} {R0 Rh R2 : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
     {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
     (cx : DvCtx S sp W) (hs : DvShape D)
-    (st : DvAdded S Mt0 M0 M2 R0 Rh R2 sp W D H F Lh y ds k)
-    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    (st : DvAdded S X Mt0 M0 M2 R0 Rh R2 sp W D H F Lh y ds k)
+    (hk : DvK live S X Q Mt0 R0 sp W D H F Lh y k) :
     DW live S Q 0x80005f44#64 R2 M2 := by
   have hf2 := st.head.fix_touch hs cx st.touch
   have hS := hf2.heapOwn
@@ -1186,13 +1186,13 @@ theorem dv_added {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **After the subtraction**: store the guess, or add the divisor back and
 store one less. -/
-theorem dv_after_sub {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_after_sub {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M0 M : Mem} {R0 Rh R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
     {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
     (cx : DvCtx S sp W) (hs : DvShape D)
-    (st : DvSubd S Mt0 M0 M R0 Rh R sp W D H F Lh y ds k)
-    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    (st : DvSubd S X Mt0 M0 M R0 Rh R sp W D H F Lh y ds k)
+    (hk : DvK live S X Q Mt0 R0 sp W D H F Lh y k) :
     DW live S Q 0x80005e18#64 R M := by
   have hf := st.head.fix_touch hs cx st.touch
   have hS := hf.heapOwn
@@ -1291,10 +1291,10 @@ theorem dsub_start {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The state after `_one_mult`, at `0x80005db8`: the window untouched, the
 product `V g` in the `L + 1` bytes from `Bm`. -/
-structure DvMuld (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
+structure DvMuld (S : Nat → Prop) (X : Raws) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
     (D : DvData) (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat)
     (k : Nat) : Prop where
-  head : DvAt S Mt0 M0 R0 Rh sp W D H F Lh y ds k
+  head : DvAt S X Mt0 M0 R0 Rh sp W D H F Lh y ds k
   g0 : 1 ≤ D.g k
   touch : MemOnly (DvTouch sp W D k) M M0
   win : ∀ i, i ≤ D.L → imgM M (D.P + k + i) = imgM M0 (D.P + k + i)
@@ -1312,13 +1312,13 @@ structure DvMuld (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 6
 
 /-- **The subtraction** from `0x80005db8`: the window minus the product,
 with borrow, then its exits. -/
-theorem dv_sub {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_sub {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M0 M : Mem} {R0 Rh R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
     {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
     (cx : DvCtx S sp W) (hs : DvShape D)
-    (st : DvMuld S Mt0 M0 M R0 Rh R sp W D H F Lh y ds k)
-    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    (st : DvMuld S X Mt0 M0 M R0 Rh R sp W D H F Lh y ds k)
+    (hk : DvK live S X Q Mt0 R0 sp W D H F Lh y k) :
     DW live S Q 0x80005db8#64 R M := by
   have hf := st.head.fix_touch hs cx st.touch
   have hS := hf.heapOwn
@@ -1380,12 +1380,12 @@ theorem DvCtx.om {S : Nat → Prop} {sp W : Nat} (cx : DvCtx S sp W) (hS : HeapO
 
 /-- **The product** from `0x80005d9c`: `mval[0] = 0`, then
 `_one_mult(N, L, g, mval + 1)`, then the subtraction. -/
-theorem dv_mult {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_mult {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M0 : Mem} {R0 Rh R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
     {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
-    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S Mt0 M0 R0 Rh sp W D H F Lh y ds k)
-    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) (hg : D.g k ≠ 0)
+    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S X Mt0 M0 R0 Rh sp W D H F Lh y ds k)
+    (hk : DvK live S X Q Mt0 R0 sp W D H F Lh y k) (hg : D.g k ≠ 0)
     (K : Keeps guessClob R Rh) (h21 : R 21 = BitVec.ofNat 64 (k + 1))
     (h22 : R 22 = BitVec.ofNat 64 (D.g k)) (h25 : R 25 = BitVec.ofNat 64 k) :
     DW live S Q 0x80005d9c#64 R M0 := by
@@ -1472,26 +1472,26 @@ theorem dv_mult {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **One iteration** from the loop head: guess, multiply, subtract, add
 back, store. -/
-theorem dv_iter {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_iter {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
     {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
-    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F Lh y ds k)
-    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S X Mt0 M R0 R sp W D H F Lh y ds k)
+    (hk : DvK live S X Q Mt0 R0 sp W D H F Lh y k) :
     DW live S Q 0x80005d4c#64 R M :=
   dv_guess hlive hs st
     ⟨fun hg _ K h20 h21 _ _ => dv_zero hlive cx hs st hk hg K h20 h21,
      fun hg _ K h21 h22 h25 => dv_mult hlive cx hs st hk hg K h21 h22 h25⟩
 
 /-- **The digit loop** from iteration `k` to its exit. -/
-theorem dv_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
     {F : List Blk} {Lh : List NumObj} {y : NumObj}
     (cx : DvCtx S sp W) (hs : DvShape D)
-    (hexit : ∀ R' M' ds', DvExit S Mt0 M' R0 R' sp W D H F Lh y ds' →
+    (hexit : ∀ R' M' ds', DvExit S X Mt0 M' R0 R' sp W D H F Lh y ds' →
       DW live S Q 0x80005e2c#64 R' M') :
-    ∀ n k R M ds, D.Kb - k = n → DvAt S Mt0 M R0 R sp W D H F Lh y ds k →
+    ∀ n k R M ds, D.Kb - k = n → DvAt S X Mt0 M R0 R sp W D H F Lh y ds k →
       DW live S Q 0x80005d4c#64 R M := by
   intro n
   induction n with

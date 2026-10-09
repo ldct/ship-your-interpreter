@@ -28,9 +28,9 @@ theorem DvShape.pre_lt {D : DvData} (hs : DvShape D) :
     omega
 
 /-- **The quotient's value** at the loop's exit. -/
-theorem DvExit.value {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
+theorem DvExit.value {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat}
-    (hs : DvShape D) (ex : DvExit S Mt0 M R0 R sp W D H F Lh y ds) :
+    (hs : DvShape D) (ex : DvExit S X Mt0 M R0 R sp W D H F Lh y ds) :
     dval ds = D.pre (D.Kb + 1) / D.V := by
   have fx := ex.fix
   refine quot_digits_val (off := D.off) (K := D.Kb) (by rw [fx.qlen, ← fx.qend]) fx.qdig fx.qzero
@@ -39,13 +39,13 @@ theorem DvExit.value {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
 
 /-- **`bc_divide` from the loop head**: the loop, the exit, the sign, the
 trim, the frees and the epilogue. -/
-theorem dv_run {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_run {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {y x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {m : Num}
     {D : DvData} {ds : List Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n) (hn : n = some m)
-    (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F L0 y ds 0)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n) (hn : n = some m)
+    (hs : DvShape D) (st : DvAt S X Mt0 M R0 R sp W D H F L0 y ds 0)
     (hr0 : QSlot Mt0 q L0 Fr) (hqv : D.qv = y.sb.pay) (hn1 : D.n1p = x1.rep.p)
     (hn2 : D.n2p = x2.rep.p) (hrs : D.rs = q)
     (hx1 : x1 ∈ L0) (hx2 : x2 ∈ L0) (hz : z ∈ L0)

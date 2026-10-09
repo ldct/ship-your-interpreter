@@ -66,12 +66,12 @@ open Dc.BcModel
 set_option linter.unusedSimpArgs false
 
 /-- The restores at `0x8000535c` and the epilogue. -/
-theorem kara_ret {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_ret {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {u v : NumRep} {y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L u v la lb q sp W)
-    (st : KAt S M0 M R0 R sp q W) (hb : BcHeap S M H F (y :: L)) (hy : KProd u v la lb y)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L u v la lb q sp W)
+    (st : KAt S M0 M R0 R sp q W) (hb : BcHeap S X M H F (y :: L)) (hy : KProd u v la lb y)
     (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
     DW live S Q 0x8000535c#64 R M := by
   have hsf := cx.frame
@@ -94,13 +94,13 @@ theorem kara_ret {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The nine inlined frees** from `0x800051c4` (`u1`, `u0`, `v1`, `m1`, `v0`,
 `m2`, `m3`, `d1`, `d2`), then the return. -/
-theorem kara_frees {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_frees {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {A B : List NumObj} {z : NumObj}
     {u v : NumRep} {y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     (st : KAt S M0 M R0 R sp q W) {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
-    (hb : BcHeap S M H F (KList [y] [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] A B z))
+    (hb : BcHeap S X M H F (KList [y] [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2] A B z))
     (hok : HdOK [hu1, hu0, hv1, hm1, hv0, hm2, hm3, hd1, hd2]) (hz : 1 ≤ z.rep.refs)
     (hy : KProd u v la lb y) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay)
     (r24 : R 24 = BitVec.ofNat 64 (Hd.p z hu1)) (r19 : R 19 = BitVec.ofNat 64 (Hd.p z hu0))

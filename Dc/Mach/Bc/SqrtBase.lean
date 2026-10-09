@@ -105,9 +105,9 @@ def SqLeak (L : List NumObj) (z : NumObj) (L' : List NumObj) : Prop :=
 
 /-- The result `y` for `n` in the slot `q`: the leak, `x` dropped, a
 reference to `y` added. Off the heap only the slot and the window changed. -/
-structure SqPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
+structure SqPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
     (x z : NumObj) (q sp W : Nat) (n : Num) (Lf : List NumObj) (y : NumObj) : Prop where
-  heap : BcHeap S Mt H F Lf
+  heap : BcHeap S X Mt H F Lf
   mid : ∃ Lw Ld, SqLeak L z Lw ∧ DropAt Lw x.rep.p Ld ∧ AddRef Ld y Lf
   num : y.rep.num = n
   norm : y.rep.Norm
@@ -118,11 +118,11 @@ structure SqPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L 
 
 /-- `bc_sqrt`'s continuations: the result and `1`, `0` with nothing changed
 but the window (a negative `x`), or `out_of_memory`. -/
-structure SqK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure SqK (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t : String) (R0 : Nat → BitVec 64) (Mt0 : Mem) (L : List NumObj) (x z : NumObj)
     (q sp W : Nat) (n : Option Num) : Prop where
   ret : ∀ r, n = some r → ∀ R' Mt' H F Lf y, Keeps binClob R' R0 → R' 10 = 1#64 →
-    SqPost S Mt0 Mt' H F L x z q sp W r Lf y → DWO live S Q t (R0 1) R' Mt'
+    SqPost S X Mt0 Mt' H F L x z q sp W r Lf y → DWO live S Q t (R0 1) R' Mt'
   fail : n = none → ∀ R' Mt', Keeps binClob R' R0 → R' 10 = 0#64 →
     (∀ a, ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) → DWO live S Q t (R0 1) R' Mt'
   oom : RaOom live S (DQ live S Q t) Mt0 sp W q
@@ -239,12 +239,12 @@ theorem SqCtx.oom {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
 
 /-- **A callee's new number for a handle's slot**: the heap with the handle
 replaced, and the number in the slot. -/
-theorem RList.binPost {S : Nat → Prop} {Mt0 M : Mem} {H : Heap} {F : List Blk} {hs1 hs2 : List RH}
+theorem RList.binPost {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {H : Heap} {F : List Blk} {hs1 hs2 : List RH}
     {h : RH} {L L1 L2 L' : List NumObj} {x y : NumObj} {q sp W : Nat} {n : Num}
     (hown : RHOwn (hs1 ++ h :: hs2) L)
     (hfr : ∀ L', FreedRest L1 L2 x L' → L' = RList (hs1 ++ hs2) L)
-    (hp : BinPostW S Mt0 M H F L1 L2 x q sp W n L' y) :
-    BcHeap S M H F (RList (hs1 ++ .own y :: hs2) L) ∧ MulRes M q n y ∧
+    (hp : BinPostW S X Mt0 M H F L1 L2 x q sp W n L' y) :
+    BcHeap S X M H F (RList (hs1 ++ .own y :: hs2) L) ∧ MulRes M q n y ∧
       RHOwn (hs1 ++ .own y :: hs2) L := by
   have hyp : y.rep.p = y.sb.pay := (hp.heap.blocks y List.mem_cons_self).sPay
   exact ⟨RList.replace hown hp.owns hp.heap (hfr L' hp.rest),
@@ -252,21 +252,21 @@ theorem RList.binPost {S : Nat → Prop} {Mt0 M : Mem} {H : Heap} {F : List Blk}
 
 /-- **`bc_multiply (u1, u2, &h, k)`** on the handle `h` of `bc_sqrt` (its
 word at `sp - 160 + o`): the product replaces it. -/
-theorem sq_mulH {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_mulH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {u1 u2 z : NumObj} {H : Heap}
     {F : List Blk}
     (cx : SqCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q) (ho : o + 8 ≤ 48) (ho8 : o % 8 = 0)
     (houtM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
+    (hb : BcHeap S X M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
     (hh : RHOK L h) (ha : MulArgs M (RList (hs1 ++ h :: hs2) L) u1 u2 z k)
     (hw : ldv .ld M (sp - 160 + o) = BitVec.ofNat 64 h.p)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 160)) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 u1.rep.p) (h11 : R 11 = BitVec.ofNat 64 u2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 160 + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
-      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
+      BcHeap S X M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       MulRes M' (sp - 160 + o) (Num.mul u1.rep.num u2.rep.num k) y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
@@ -284,7 +284,7 @@ theorem sq_mulH {live : Nat → Prop} {S : Nat → Prop}
   exact hret R' M' H' F' y hk hb' hown' hres hp'.out
 
 /-- A `BinK` from a handle's slot (`bc_add`, `bc_sub`). -/
-theorem sq_binK {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_binK {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o : Nat}
     {hs1 hs2 : List RH} {h : RH} {L L1 L2 : List NumObj} {x : NumObj} {n : Num}
@@ -293,11 +293,11 @@ theorem sq_binK {live : Nat → Prop} {S : Nat → Prop}
     (hown : RHOwn (hs1 ++ h :: hs2) L)
     (hfr : ∀ L', FreedRest L1 L2 x L' → L' = RList (hs1 ++ hs2) L)
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
-      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
+      BcHeap S X M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       MulRes M' (sp - 160 + o) n y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
-    BinK live S Q R M L1 L2 x (sp - 160 + o) (sp - 160) n := by
+    BinK live S X Q R M L1 L2 x (sp - 160 + o) (sp - 160) n := by
   sq_facts cx
   refine ⟨fun R' M' H' F' L' y hk hp' => ?_, fun R' M' sp' h1 h2 hr2 hout =>
     cx.oom hoom houtM R' M' sp' (by omega) (by omega) hr2 fun a ha hf =>
@@ -308,14 +308,14 @@ theorem sq_binK {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_add (u1, u2, &h, k)`** on the handle `h` of `bc_sqrt`: the sum
 replaces it. -/
-theorem sq_addH {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_addH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {u1 u2 : NumObj} {H : Heap}
     {F : List Blk}
     (cx : SqCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q) (ho : o + 8 ≤ 48) (ho8 : o % 8 = 0)
     (houtM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
+    (hb : BcHeap S X M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
     (hh : RHOK L h) (ha : BinArgs (RList (hs1 ++ h :: hs2) L) u1 u2 k)
     (hl1 : 1 ≤ u1.rep.len) (hl2 : 1 ≤ u2.rep.len)
     (hw : ldv .ld M (sp - 160 + o) = BitVec.ofNat 64 h.p)
@@ -323,7 +323,7 @@ theorem sq_addH {live : Nat → Prop} {S : Nat → Prop}
     (h10 : R 10 = BitVec.ofNat 64 u1.rep.p) (h11 : R 11 = BitVec.ofNat 64 u2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 160 + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
-      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
+      BcHeap S X M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       MulRes M' (sp - 160 + o) (Num.add u1.rep.num u2.rep.num k) y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
@@ -337,14 +337,14 @@ theorem sq_addH {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_sub (u1, u2, &h, k)`** on the handle `h` of `bc_sqrt`: the
 difference replaces it. -/
-theorem sq_subH {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_subH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {u1 u2 : NumObj} {H : Heap}
     {F : List Blk}
     (cx : SqCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q) (ho : o + 8 ≤ 48) (ho8 : o % 8 = 0)
     (houtM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
+    (hb : BcHeap S X M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
     (hh : RHOK L h) (ha : BinArgs (RList (hs1 ++ h :: hs2) L) u1 u2 k)
     (hl1 : 1 ≤ u1.rep.len) (hl2 : 1 ≤ u2.rep.len)
     (hw : ldv .ld M (sp - 160 + o) = BitVec.ofNat 64 h.p)
@@ -352,7 +352,7 @@ theorem sq_subH {live : Nat → Prop} {S : Nat → Prop}
     (h10 : R 10 = BitVec.ofNat 64 u1.rep.p) (h11 : R 11 = BitVec.ofNat 64 u2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 160 + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
-      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
+      BcHeap S X M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       MulRes M' (sp - 160 + o) (Num.sub u1.rep.num u2.rep.num k) y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
@@ -378,13 +378,13 @@ the handles `[point5, diff, guess]` (`guess`'s word at `sp - 160 + 24`), a
 nonzero `guess`: the quotient becomes `guess` and the old `guess` is
 `guess1`, `[point5, diff, quotient, guess1]`. The memory `M` is `M0` with
 `guess`'s count raised. -/
-theorem sq_divH {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_divH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M0 : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat}
     {P D G : RH} {L : List NumObj} {u z : NumObj} {H : Heap} {F : List Blk}
     (cx : SqCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q)
     (houtM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M0 a = imgM Mt0 a)
-    (hb : BcHeap S M0 H F (RList [P, D, G] L)) (hown : RHOwn [P, D, G] L) (hG : RHOK L G)
+    (hb : BcHeap S X M0 H F (RList [P, D, G] L)) (hown : RHOwn [P, D, G] L) (hG : RHOK L G)
     (hroom : (RH.obj [P, D, G] G).rep.refs + 1 < 2 ^ 31)
     (hu : u ∈ RList [P, D, G] L) (huG : u.rep.p ≠ G.p) (hz : z ∈ RList [P, D, G] L)
     (hzG : z.rep.p ≠ G.p)
@@ -397,7 +397,7 @@ theorem sq_divH {live : Nat → Prop} {S : Nat → Prop}
     (h12 : R 12 = BitVec.ofNat 64 (sp - 160 + 24)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ m, Num.div u.rep.num G.base.rep.num k = some m → ∀ R' M' H' F' y,
       Keeps binClob R' R → R' 10 = 0#64 →
-      BcHeap S M' H' F' (RList [P, D, .own y, G] L) → RHOwn [P, D, .own y, G] L →
+      BcHeap S X M' H' F' (RList [P, D, .own y, G] L) → RHOwn [P, D, .own y, G] L →
       MulRes M' (sp - 160 + 24) m y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + 24) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M0 a) → DW live S Q (R 1) R' M') :
@@ -408,7 +408,7 @@ theorem sq_divH {live : Nat → Prop} {S : Nat → Prop}
   subst hxo
   have e' : RList [P, D, G] L = L1 ++ RH.obj [P, D, G] G :: L2 := e
   have hr1' : 1 ≤ (RH.obj [P, D, G] G).rep.refs := hr1
-  have hb0 : BcHeap S M0 H F (L1 ++ RH.obj [P, D, G] G :: L2) := by rw [← e']; exact hb
+  have hb0 : BcHeap S X M0 H F (L1 ++ RH.obj [P, D, G] G :: L2) := by rw [← e']; exact hb
   have hGn := hb0.nums _ (List.mem_append_right _ List.mem_cons_self)
   num_facts hGn
   have hGp : (RH.obj [P, D, G] G).rep.p = G.p := RH.obj_p _ _
@@ -451,7 +451,7 @@ theorem sq_divH {live : Nat → Prop} {S : Nat → Prop}
       cases hp'.rest with
       | dec _ => rw [NumObj.withRefs_succ_decRef]
       | rel h1 => simp only [NumObj.withRefs_refs] at h1; omega
-    have hb2 : BcHeap S M' H' F' (y :: RList ([P, D] ++ [G]) L) := by
+    have hb2 : BcHeap S X M' H' F' (y :: RList ([P, D] ++ [G]) L) := by
       have := hp'.heap; rw [hL, ← e'] at this; exact this
     have hown' : RHOwn ([P, D] ++ .own y :: [G]) L := ⟨fun w hw => by
         simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hw

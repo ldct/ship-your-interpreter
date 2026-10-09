@@ -180,12 +180,12 @@ structure SubRegs' (R : Nat → BitVec 64) (Pv Pa E c A3 A7 : Nat) : Prop where
   r17 : R 17 = BitVec.ofNat 64 A7
 
 /-- One digit stored into the accumulator at the head of the heap. -/
-theorem BcHeap.storeRev {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+theorem BcHeap.storeRev {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} (hyo : y.Owns) {xs D : List Nat} {a d : Nat}
-    (hb : BcHeap S M H F (withDs y ((a :: xs).reverse ++ D) :: L))
+    (hb : BcHeap S X M H F (withDs y ((a :: xs).reverse ++ D) :: L))
     (hN : xs.length < y.rep.len + y.rep.scale) (hd : d < 10) {v : BitVec 64}
     (hv : sbData v = BitVec.ofNat 8 d) :
-    BcHeap S (writeLog M [(y.rep.val + xs.length, 1, v)]) H F
+    BcHeap S X (writeLog M [(y.rep.val + xs.length, 1, v)]) H F
       (withDs y (xs.reverse ++ d :: D) :: L) := by
   have hst := BcHeap.setDigit (L1 := []) hb (hb.head_noView hyo) (i := xs.length) (d := d)
     (by simpa only [withDs] using hN) hd hv
@@ -207,24 +207,24 @@ theorem ShSt.regs {y : NumObj} {R0 R R' : Nat → BitVec 64} {M0 M : Mem} (st : 
 
 /-- One position of the subtract loop at `0x80004120`: accumulator digit `a`
 at `Pa`, `val`'s digit `v` at `Pv`, borrow `c` in. -/
-theorem sub_body {live : Nat → Prop} {S : Nat → Prop}
+theorem sub_body {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {xs D : List Nat} {a v c Pv Pa E A3 A7 : Nat}
     (hyo : y.Owns) (st : ShSt y R0 M0 R M)
-    (hb : BcHeap S M H F (withDs y ((a :: xs).reverse ++ D) :: L))
+    (hb : BcHeap S X M H F (withDs y ((a :: xs).reverse ++ D) :: L))
     (sr : SubRegs' R Pv Pa E c A3 A7) (hPa : Pa = y.rep.val + xs.length)
     (hN : xs.length < y.rep.len + y.rep.scale)
     (lv : sign_extend (m := 64) (imgM M Pv) = BitVec.ofNat 64 v)
     (hv : v < 10) (ha : a < 10) (hc : c ≤ 1)
     (p1 : 2147603920 ≤ Pv) (p2 : Pv < 2273312768) (hE : E ≤ Pv)
     (hnext : Pv - 1 ≠ E → ∀ (R' : Nat → BitVec 64) (M' : Mem), ShSt y R0 M0 R' M' →
-      BcHeap S M' H F (withDs y (xs.reverse ++
+      BcHeap S X M' H F (withDs y (xs.reverse ++
         (if a < v + c then a + 10 - v - c else a - v - c) :: D) :: L) →
       SubRegs' R' (Pv - 1) (Pa - 1) E (if a < v + c then 1 else 0) A3 A7 →
       DW live S Q 0x80004120#64 R' M')
     (hexit : Pv - 1 = E → ∀ (R' : Nat → BitVec 64) (M' : Mem), ShSt y R0 M0 R' M' →
-      BcHeap S M' H F (withDs y (xs.reverse ++
+      BcHeap S X M' H F (withDs y (xs.reverse ++
         (if a < v + c then a + 10 - v - c else a - v - c) :: D) :: L) →
       SubRegs' R' (Pv - 1) (Pa - 1) E (if a < v + c then 1 else 0) A3 A7 →
       DW live S Q 0x80004158#64 R' M') :
@@ -277,31 +277,31 @@ theorem sub_body {live : Nat → Prop} {S : Nat → Prop}
     · intro hneg; omega
 
 /-- A heap is a property of the memory image. -/
-theorem BcHeap.congr {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    (h : BcHeap S M H F L) (he : ∀ a, imgM M' a = imgM M a) : BcHeap S M' H F L :=
+theorem BcHeap.congr {S : Nat → Prop} {X : Raws} {M M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (h : BcHeap S X M H F L) (he : ∀ a, imgM M' a = imgM M a) : BcHeap S X M' H F L :=
   h.transport (fun a _ => he a) (fun _ _ a _ => he a) (fun j _ => he _)
 
 theorem se9 : BitVec.signExtend 64 (BitVec.extractLsb 31 0 9#64) = 9#64 := by decide
 
 /-- `_bc_shift_addsub`'s return: the accumulator's digits now `ds`. -/
-def ShRet (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+def ShRet (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (H : Heap) (F : List Blk) (L : List NumObj) (y : NumObj) (R0 : Nat → BitVec 64) (M0 : Mem)
     (ds : List Nat) : Prop :=
-  ∀ R' M', ShSt y R0 M0 R' M' → BcHeap S M' H F (withDs y ds :: L) → DW live S Q (R0 1) R' M'
+  ∀ R' M', ShSt y R0 M0 R' M' → BcHeap S X M' H F (withDs y ds :: L) → DW live S Q (R0 1) R' M'
 
 /-- The borrow ripple's loop at `0x8000417c`: digit `0` at `P` already
 stored as `-1` over the heap's image `M1`; `a4 = 0`, `a5 = P`. -/
-theorem sub_rip_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem sub_rip_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 : Mem} {R0 : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0) :
     ∀ (rest D : List Nat) (R : Nat → BitVec 64) (M M1 : Mem), ShSt y R0 M0 R M →
-      BcHeap S M1 H F (withDs y ((0 :: rest).reverse ++ D) :: L) →
+      BcHeap S X M1 H F (withDs y ((0 :: rest).reverse ++ D) :: L) →
       (∀ a, a ≠ y.rep.val + rest.length → imgM M a = imgM M1 a) →
       rest.length < y.rep.len + y.rep.scale →
       R 14 = BitVec.ofNat 64 0 → R 15 = BitVec.ofNat 64 (y.rep.val + rest.length) →
       subRipB rest [] 1 = 0 →
-      ShRet live S Q H F L y R0 M0 ((subRip (0 :: rest) [] 1).reverse ++ D) →
+      ShRet live S X Q H F L y R0 M0 ((subRip (0 :: rest) [] 1).reverse ++ D) →
       DW live S Q 0x8000417c#64 R M := by
   intro rest
   induction rest with
@@ -365,16 +365,16 @@ theorem subRip_nil_zero (xs : List Nat) : subRip xs [] 0 = xs := by
 /-- After the subtract loop at `0x80004158`: borrow `c` in `a6`, the
 accumulator's unprocessed digits `xs` (little-endian) below position
 `A3 - A7`. -/
-theorem sub_rip {live : Nat → Prop} {S : Nat → Prop}
+theorem sub_rip {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {xs D : List Nat} {c A3 A7 : Nat} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0)
-    (st : ShSt y R0 M0 R M) (hb : BcHeap S M H F (withDs y (xs.reverse ++ D) :: L))
+    (st : ShSt y R0 M0 R M) (hb : BcHeap S X M H F (withDs y (xs.reverse ++ D) :: L))
     (hN : xs.length ≤ y.rep.len + y.rep.scale) (hc : c ≤ 1)
     (h16 : R 16 = BitVec.ofNat 64 c) (h13 : R 13 = BitVec.ofNat 64 A3)
     (h17 : R 17 = BitVec.ofNat 64 A7) (hP : A3 = y.rep.val + xs.length + A7)
     (hA3 : A3 < 2 ^ 63) (hnc : subRipB xs [] c = 0)
-    (hk : ShRet live S Q H F L y R0 M0 ((subRip xs [] c).reverse ++ D)) :
+    (hk : ShRet live S X Q H F L y R0 M0 ((subRip xs [] c).reverse ++ D)) :
     DW live S Q 0x80004158#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -421,20 +421,20 @@ theorem sub_rip {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The subtract loop from `0x80004120`: `val`'s digits `V` from step `j`
 on, the accumulator's unprocessed digits `a :: xs`, borrow `c`. -/
-theorem sub_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem sub_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 : Mem} {R0 : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y w : NumObj} {E A3 A7 : Nat} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0) (hw : w ∈ L)
     (hA3 : A3 < 2 ^ 63) :
     ∀ (V : List Nat) (j a : Nat) (xs D : List Nat) (c : Nat) (R : Nat → BitVec 64) (M : Mem),
       (valLE w.rep).drop j = V → 0 < V.length → V.length ≤ xs.length + 1 →
-      ShSt y R0 M0 R M → BcHeap S M H F (withDs y ((a :: xs).reverse ++ D) :: L) →
+      ShSt y R0 M0 R M → BcHeap S X M H F (withDs y ((a :: xs).reverse ++ D) :: L) →
       SubRegs' R (w.rep.val + (w.rep.len - 1 - j)) (y.rep.val + xs.length) E c A3 A7 →
       E + V.length = w.rep.val + (w.rep.len - 1 - j) →
       A3 = y.rep.val + (xs.length + 1 - V.length) + A7 →
       xs.length < y.rep.len + y.rep.scale → c ≤ 1 →
       subRipB (a :: xs) V c = 0 →
-      ShRet live S Q H F L y R0 M0 ((subRip (a :: xs) V c).reverse ++ D) →
+      ShRet live S X Q H F L y R0 M0 ((subRip (a :: xs) V c).reverse ++ D) →
       DW live S Q 0x80004120#64 R M := by
   intro V
   induction V with
@@ -504,24 +504,24 @@ structure AddRegs' (R : Nat → BitVec 64) (Pv Pa E c A3 A7 : Nat) : Prop where
 
 /-- One position of the add loop at `0x800041c8`: accumulator digit `a` at
 `Pa`, `val`'s digit `v` at `Pv`, carry `c` in. -/
-theorem add_body {live : Nat → Prop} {S : Nat → Prop}
+theorem add_body {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {xs D : List Nat} {a v c Pv Pa E A3 A7 : Nat}
     (hyo : y.Owns) (st : ShSt y R0 M0 R M)
-    (hb : BcHeap S M H F (withDs y ((a :: xs).reverse ++ D) :: L))
+    (hb : BcHeap S X M H F (withDs y ((a :: xs).reverse ++ D) :: L))
     (sr : AddRegs' R Pv Pa E c A3 A7) (hPa : Pa = y.rep.val + xs.length)
     (hN : xs.length < y.rep.len + y.rep.scale)
     (lv : sign_extend (m := 64) (imgM M Pv) = BitVec.ofNat 64 v)
     (hv : v < 10) (ha : a < 10) (hc : c ≤ 1)
     (p1 : 2147603920 ≤ Pv) (p2 : Pv < 2273312768) (hE : E ≤ Pv)
     (hnext : Pv - 1 ≠ E → ∀ (R' : Nat → BitVec 64) (M' : Mem), ShSt y R0 M0 R' M' →
-      BcHeap S M' H F (withDs y (xs.reverse ++
+      BcHeap S X M' H F (withDs y (xs.reverse ++
         (if 9 < a + v + c then a + v + c - 10 else a + v + c) :: D) :: L) →
       AddRegs' R' (Pv - 1) (Pa - 1) E (if 9 < a + v + c then 1 else 0) A3 A7 →
       DW live S Q 0x800041c8#64 R' M')
     (hexit : Pv - 1 = E → ∀ (R' : Nat → BitVec 64) (M' : Mem), ShSt y R0 M0 R' M' →
-      BcHeap S M' H F (withDs y (xs.reverse ++
+      BcHeap S X M' H F (withDs y (xs.reverse ++
         (if 9 < a + v + c then a + v + c - 10 else a + v + c) :: D) :: L) →
       AddRegs' R' (Pv - 1) (Pa - 1) E (if 9 < a + v + c then 1 else 0) A3 A7 →
       DW live S Q 0x80004200#64 R' M') :
@@ -585,15 +585,15 @@ theorem word_sub9 {k : Nat} (h : 9 ≤ k) :
 
 /-- The carry ripple's head at `0x80004228` when the digit `b` absorbs the
 carry. -/
-theorem add_rip_done {live : Nat → Prop} {S : Nat → Prop}
+theorem add_rip_done {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {rest D : List Nat} {b : Nat} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0)
-    (st : ShSt y R0 M0 R M) (hb : BcHeap S M H F (withDs y ((b :: rest).reverse ++ D) :: L))
+    (st : ShSt y R0 M0 R M) (hb : BcHeap S X M H F (withDs y ((b :: rest).reverse ++ D) :: L))
     (hN : rest.length < y.rep.len + y.rep.scale) (hb8 : b + 1 ≤ 9)
     (h14 : R 14 = BitVec.ofNat 64 b) (h15 : R 15 = BitVec.ofNat 64 (y.rep.val + rest.length))
     (h12 : R 12 = BitVec.ofNat 64 9)
-    (hk : ShRet live S Q H F L y R0 M0 ((addRip (b :: rest) [] 1).reverse ++ D)) :
+    (hk : ShRet live S X Q H F L y R0 M0 ((addRip (b :: rest) [] 1).reverse ++ D)) :
     DW live S Q 0x80004228#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -614,16 +614,16 @@ theorem add_rip_done {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The carry ripple from `0x80004228`: digit `b` at `a5` loaded into `a4`,
 carry `1`. -/
-theorem add_rip_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem add_rip_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 : Mem} {R0 : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0) :
     ∀ (rest : List Nat) (b : Nat) (D : List Nat) (R : Nat → BitVec 64) (M : Mem),
-      ShSt y R0 M0 R M → BcHeap S M H F (withDs y ((b :: rest).reverse ++ D) :: L) →
+      ShSt y R0 M0 R M → BcHeap S X M H F (withDs y ((b :: rest).reverse ++ D) :: L) →
       rest.length < y.rep.len + y.rep.scale →
       R 14 = BitVec.ofNat 64 b → R 15 = BitVec.ofNat 64 (y.rep.val + rest.length) →
       R 12 = BitVec.ofNat 64 9 → addRipC (b :: rest) [] 1 = 0 →
-      ShRet live S Q H F L y R0 M0 ((addRip (b :: rest) [] 1).reverse ++ D) →
+      ShRet live S X Q H F L y R0 M0 ((addRip (b :: rest) [] 1).reverse ++ D) →
       DW live S Q 0x80004228#64 R M := by
   intro rest
   induction rest with
@@ -685,16 +685,16 @@ theorem addRip_nil_zero (xs : List Nat) : addRip xs [] 0 = xs := by
 /-- After the add loop at `0x80004200`: carry `c` in `a0`, the
 accumulator's unprocessed digits `xs` (little-endian) below position
 `A3 - A7`. -/
-theorem add_rip {live : Nat → Prop} {S : Nat → Prop}
+theorem add_rip {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {xs D : List Nat} {c A3 A7 : Nat} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0)
-    (st : ShSt y R0 M0 R M) (hb : BcHeap S M H F (withDs y (xs.reverse ++ D) :: L))
+    (st : ShSt y R0 M0 R M) (hb : BcHeap S X M H F (withDs y (xs.reverse ++ D) :: L))
     (hN : xs.length ≤ y.rep.len + y.rep.scale) (hc : c ≤ 1)
     (h10 : R 10 = BitVec.ofNat 64 c) (h13 : R 13 = BitVec.ofNat 64 A3)
     (h17 : R 17 = BitVec.ofNat 64 A7) (hP : A3 = y.rep.val + xs.length + A7)
     (hA3 : A3 < 2 ^ 63) (hnc : addRipC xs [] c = 0)
-    (hk : ShRet live S Q H F L y R0 M0 ((addRip xs [] c).reverse ++ D)) :
+    (hk : ShRet live S X Q H F L y R0 M0 ((addRip xs [] c).reverse ++ D)) :
     DW live S Q 0x80004200#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -721,20 +721,20 @@ theorem add_rip {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The add loop from `0x800041c8`: `val`'s digits `V` from step `j` on, the
 accumulator's unprocessed digits `a :: xs`, carry `c`. -/
-theorem add_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem add_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 : Mem} {R0 : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y w : NumObj} {E A3 A7 : Nat} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0) (hw : w ∈ L)
     (hA3 : A3 < 2 ^ 63) :
     ∀ (V : List Nat) (j a : Nat) (xs D : List Nat) (c : Nat) (R : Nat → BitVec 64) (M : Mem),
       (valLE w.rep).drop j = V → 0 < V.length → V.length ≤ xs.length + 1 →
-      ShSt y R0 M0 R M → BcHeap S M H F (withDs y ((a :: xs).reverse ++ D) :: L) →
+      ShSt y R0 M0 R M → BcHeap S X M H F (withDs y ((a :: xs).reverse ++ D) :: L) →
       AddRegs' R (w.rep.val + (w.rep.len - 1 - j)) (y.rep.val + xs.length) E c A3 A7 →
       E + V.length = w.rep.val + (w.rep.len - 1 - j) →
       A3 = y.rep.val + (xs.length + 1 - V.length) + A7 →
       xs.length < y.rep.len + y.rep.scale → c ≤ 1 →
       addRipC (a :: xs) V c = 0 →
-      ShRet live S Q H F L y R0 M0 ((addRip (a :: xs) V c).reverse ++ D) →
+      ShRet live S X Q H F L y R0 M0 ((addRip (a :: xs) V c).reverse ++ D) →
       DW live S Q 0x800041c8#64 R M := by
   intro V
   induction V with
@@ -815,17 +815,17 @@ theorem zext32_ofNat {k : Nat} (h : k < 2 ^ 32) :
 /-- The loops' dispatch at `0x800040fc` with `val`'s count `cnt ≥ 1` in
 `a7`, the accumulator's shifted last position in `a3`, `val`'s last integer
 digit in `a2`, the operation in `a4`. -/
-theorem sh_dispatch {live : Nat → Prop} {S : Nat → Prop}
+theorem sh_dispatch {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y w : NumObj} {shift : Nat} {sub : Bool} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0)
-    (ha : ShiftArgs L y w shift sub) (st : ShSt y R0 M0 R M) (hb : BcHeap S M H F (y :: L))
+    (ha : ShiftArgs L y w shift sub) (st : ShSt y R0 M0 R M) (hb : BcHeap S X M H F (y :: L))
     (hc : 1 ≤ valCount w.rep)
     (h17 : R 17 = BitVec.ofNat 64 (valCount w.rep))
     (h13 : R 13 = BitVec.ofNat 64 (y.rep.val + (y.rep.len + y.rep.scale - shift - 1)))
     (h12 : R 12 = BitVec.ofNat 64 (w.rep.val + (w.rep.len - 1)))
     (h14 : R 14 = BitVec.ofNat 64 (if sub then 1 else 0))
-    (hk : ShRet live S Q H F L y R0 M0 (shiftDs y.rep w.rep shift sub)) :
+    (hk : ShRet live S X Q H F L y R0 M0 (shiftDs y.rep w.rep shift sub)) :
     DW live S Q 0x800040fc#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -846,7 +846,7 @@ theorem sh_dispatch {live : Nat → Prop} {S : Nat → Prop}
   · simp only [List.length_nil] at hacl; omega
   simp only [List.length_cons] at hacl
   generalize y.rep.ds.drop (y.rep.len + y.rep.scale - shift) = D at hal' hk
-  have hb' : BcHeap S M H F (withDs y ((a :: xs).reverse ++ D) :: L) := by
+  have hb' : BcHeap S X M H F (withDs y ((a :: xs).reverse ++ D) :: L) := by
     rw [← hal']; exact hb
   have hP : y.rep.val + (y.rep.len + y.rep.scale - shift - 1) = y.rep.val + xs.length := by
     omega
@@ -890,17 +890,17 @@ theorem withDs_self (y : NumObj) : withDs y y.rep.ds = y := rfl
 
 /-- The dispatch at `0x800040fc` as the entry leaves it: `val`'s count in
 `a7`, `a3` computed from the accumulator's fields. -/
-theorem sh_mid {live : Nat → Prop} {S : Nat → Prop}
+theorem sh_mid {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y w : NumObj} {shift : Nat} {sub : Bool} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0)
-    (ha : ShiftArgs L y w shift sub) (st : ShSt y R0 M R M) (hb : BcHeap S M H F (y :: L))
+    (ha : ShiftArgs L y w shift sub) (st : ShSt y R0 M R M) (hb : BcHeap S X M H F (y :: L))
     (h17 : R 17 = BitVec.ofNat 64 (valCount w.rep))
     (h13 : R 13 = BitVec.ofNat 64 y.rep.val + (BitVec.ofNat 64 y.rep.len -
       BitVec.ofNat 64 shift + 18446744073709551615#64 + BitVec.ofNat 64 y.rep.scale))
     (h12 : R 12 = BitVec.ofNat 64 (w.rep.val + (w.rep.len - 1)))
     (h14 : R 14 = BitVec.ofNat 64 (if sub then 1 else 0))
-    (hk : ShRet live S Q H F L y R0 M (shiftDs y.rep w.rep shift sub)) :
+    (hk : ShRet live S X Q H F L y R0 M (shiftDs y.rep w.rep shift sub)) :
     DW live S Q 0x800040fc#64 R M := by
   have hfit := ha.fit
   have hn := hb.nums _ List.mem_cons_self
@@ -929,16 +929,16 @@ theorem sh_mid {live : Nat → Prop} {S : Nat → Prop}
     exact sh_dispatch hlive hyo hal ha st hb hc h17 h13 h12 h14 hk
 
 /-- `_bc_shift_addsub` at `0x800040cc`, `val`'s count in `a7`. -/
-theorem sh_head {live : Nat → Prop} {S : Nat → Prop}
+theorem sh_head {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y w : NumObj} {shift : Nat} {sub : Bool} (hyo : y.Owns) (hal : (R0 1).toNat % 4 = 0)
-    (ha : ShiftArgs L y w shift sub) (st : ShSt y R0 M R M) (hb : BcHeap S M H F (y :: L))
+    (ha : ShiftArgs L y w shift sub) (st : ShSt y R0 M R M) (hb : BcHeap S X M H F (y :: L))
     (h10 : R 10 = BitVec.ofNat 64 y.rep.p) (h11 : R 11 = BitVec.ofNat 64 w.rep.len)
     (h12 : R 12 = BitVec.ofNat 64 w.rep.val) (h13 : R 13 = BitVec.ofNat 64 shift)
     (h14 : R 14 = BitVec.ofNat 64 (if sub then 1 else 0))
     (h17 : R 17 = BitVec.ofNat 64 (valCount w.rep))
-    (hk : ShRet live S Q H F L y R0 M (shiftDs y.rep w.rep shift sub)) :
+    (hk : ShRet live S X Q H F L y R0 M (shiftDs y.rep w.rep shift sub)) :
     DW live S Q 0x800040cc#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -962,15 +962,15 @@ the heap, `a1`/`a2` `val`'s `n_len`/`n_value`, `a3` the shift, `a4` the
 operation. It adds (subtracts) `val`'s integer digits into `y`'s digits
 from `shift` positions below its last, rippling the carry (borrow), and
 returns with `y`'s digits `shiftDs`. -/
-theorem bc_shift_addsub_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem bc_shift_addsub_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
     {y w : NumObj} {shift : Nat} {sub : Bool} (hyo : y.Owns) (hal : (R 1).toNat % 4 = 0)
-    (ha : ShiftArgs L y w shift sub) (hb : BcHeap S M H F (y :: L))
+    (ha : ShiftArgs L y w shift sub) (hb : BcHeap S X M H F (y :: L))
     (h10 : R 10 = BitVec.ofNat 64 y.rep.p) (h11 : R 11 = BitVec.ofNat 64 w.rep.len)
     (h12 : R 12 = BitVec.ofNat 64 w.rep.val) (h13 : R 13 = BitVec.ofNat 64 shift)
     (h14 : R 14 = BitVec.ofNat 64 (if sub then 1 else 0))
-    (hk : ShRet live S Q H F L y R M (shiftDs y.rep w.rep shift sub)) :
+    (hk : ShRet live S X Q H F L y R M (shiftDs y.rep w.rep shift sub)) :
     DW live S Q 0x800040bc#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl

@@ -32,11 +32,11 @@ inductive KFreed (H : Heap) (F : List Blk) (L1 L2 : List NumObj) (x : NumObj) :
 /-- The continuation after an inlined free at `pc`: the heap freed, every
 byte off the heap and outside `fr` (the cleared pointer slot, if any)
 unchanged. -/
-def KFreeK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+def KFreeK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (pc : BitVec 64) (R0 : Nat → BitVec 64) (M0 : Mem) (fr : Nat → Prop) (H : Heap)
     (F : List Blk) (L1 L2 : List NumObj) (x : NumObj) : Prop :=
   ∀ R' M' H' F' L', Keeps [1, 10, 14, 15] R' R0 → KFreed H F L1 L2 x H' F' L' →
-    BcHeap S M' H' F' L' → OutFrame fr M' M0 → DW live S Q pc R' M'
+    BcHeap S X M' H' F' L' → OutFrame fr M' M0 → DW live S Q pc R' M'
 
 /-- A cleared pointer slot at `sa` (`bc_free_num (&m)` stores `NULL`): owned,
 off the heap, inside the continuation's frame `fr`. -/
@@ -65,11 +65,11 @@ structure SlotLoc (S fr : Nat → Prop) (sp o : Nat) (R : Nat → BitVec 64) (M 
 
 /-- **An inlined free site** from `pc` to `N`: any number `x` of the heap
 with a reference, found at `Loc`, is freed. -/
-def KSite (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+def KSite (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (pc N : BitVec 64) (fr : Nat → Prop)
     (Loc : (Nat → BitVec 64) → Mem → NumObj → Prop) : Prop :=
-  ∀ R M H F L1 L2 x, BcHeap S M H F (L1 ++ x :: L2) → 1 ≤ x.rep.refs →
-    (x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db) → Loc R M x → KFreeK live S Q N R M fr H F L1 L2 x →
+  ∀ R M H F L1 L2 x, BcHeap S X M H F (L1 ++ x :: L2) → 1 ≤ x.rep.refs →
+    (x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db) → Loc R M x → KFreeK live S X Q N R M fr H F L1 L2 x →
     DW live S Q pc R M
 
 end Dc.Mach

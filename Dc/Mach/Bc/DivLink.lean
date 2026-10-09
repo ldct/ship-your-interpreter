@@ -166,13 +166,13 @@ structure DvDivisor (x2 : NumObj) (s2 z0 : Nat) : Prop where
 
 /-- **`bc_divide` from `0x80005a50`** with both buffers in place: the length
 dispatch, then the quotient loop or the zero quotient. -/
-theorem dv_after {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_after {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z : NumObj} {D : DvData} {H : Heap} {F : List Blk} {n : Option Num} {s2 z0 k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
     (hn : n = Num.div x1.rep.num x2.rep.num k)
-    (bf : DvBufs S Mt0 M R0 sp W D H F L0)
+    (bf : DvBufs S X Mt0 M R0 sp W D H F L0)
     (hx1 : x1 ∈ L0) (hx2 : x2 ∈ L0) (hdv : DvDivisor x2 s2 z0)
     (hb : DvBuild D (dvXs0 x1.rep.ds (k + s2 - x1.rep.scale))
       (dvVs0 x2.rep.ds (x2.rep.len + s2) z0) (x1.rep.len + s2) k)
@@ -234,15 +234,15 @@ theorem dv_after {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_divide` from `0x800059d0`** with `num1` in place: `num2`
 (`dvn_setup`), then `dv_after` over the normalised buffers. -/
-theorem dv_num2 {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_num2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {s2 z0 k : Nat} {b1 : Blk}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
     (hn : n = Num.div x1.rep.num x2.rep.num k)
     (hb1 : ∀ D : DvData, D.b1 = b1 → D.P = b1.pay →
       D.xs.length = x1.rep.len + x1.rep.scale + (k + s2 - x1.rep.scale) + 2 →
-      DvBuf1 S Mt0 M R0 sp W D H F L0)
+      DvBuf1 S X Mt0 M R0 sp W D H F L0)
     (hdig : ∀ i, i < x1.rep.len + x1.rep.scale + (k + s2 - x1.rep.scale) + 2 → imgM M (b1.pay + i) =
       BitVec.ofNat 8 ((dvXs0 x1.rep.ds (k + s2 - x1.rep.scale)).getD i 0))
     (hx1 : x1 ∈ L0) (hx2 : x2 ∈ L0) (hdv : DvDivisor x2 s2 z0)
@@ -288,12 +288,12 @@ theorem dv_num2 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_divide` from `0x80005954`** (the trimmed scale `s2` in `s3`): `num1`
 (`dv1_setup`), then `dv_num2`. -/
-theorem dv_body {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_body {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {s2 z0 k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
-    (hn : n = Num.div x1.rep.num x2.rep.num k) (core : DvCore S Mt0 M R0 sp W H F L0)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
+    (hn : n = Num.div x1.rep.num x2.rep.num k) (core : DvCore S X Mt0 M R0 sp W H F L0)
     (hx1 : x1 ∈ L0) (hx2 : x2 ∈ L0) (hdv : DvDivisor x2 s2 z0)
     (hsz : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27)
     (hr0 : QSlot Mt0 q L0 Fr) (hz : z ∈ L0)
@@ -322,12 +322,12 @@ theorem pred_add_word {a b : Nat} (h : 1 ≤ a + b) (hb : a + b < 2 ^ 63) :
 /-- **`n2`'s first nonzero digit found** at `0x80005924` (`z0`): the
 trailing-zero trim (`dvz_trim`) or, at scale zero, the test for `n2 = 1`
 (`hone`, the divide-by-one detour at `0x80005e54`); then `dv_body`. -/
-theorem dv_found {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_found {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {z0 k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
-    (hn : n = Num.div x1.rep.num x2.rep.num k) (core : DvCore S Mt0 M R0 sp W H F L0)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
+    (hn : n = Num.div x1.rep.num x2.rep.num k) (core : DvCore S X Mt0 M R0 sp W H F L0)
     (hx1 : x1 ∈ L0) (hx2 : x2 ∈ L0)
     (hlz : ∀ i, i < z0 → x2.rep.ds.getD i 0 = 0) (hnz : x2.rep.ds.getD z0 0 ≠ 0)
     (hzl : z0 < x2.rep.len + x2.rep.scale)

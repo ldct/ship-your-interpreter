@@ -15,7 +15,7 @@ digits freed; `bc_new_num` reuses it.
   the digits lie in the buffer's block. An object owns its digit block
   (`Owns`: `n_ptr` its payload) or is a view (`new_sub_num`: `n_ptr = NULL`,
   the digits inside another object's block).
-- `BcHeap S Mt H F L`: the allocator invariant, the dead chain `F`, and the
+- `BcHeap S X Mt H F L`: the allocator invariant, the dead chain `F`, and the
   live number objects `L` (each `NumAt`), with every struct block and owned
   digit block of `F` and `L` distinct (`objBlocks`), and every view's digit
   block owned by a later object of `L` (`ViewsOwned`). Reference counts
@@ -169,9 +169,26 @@ theorem ViewsOwned.remove {x : NumObj} :
 /-- A byte of a block's payload. -/
 abbrev Blk.In (b : Blk) (a : Nat) : Prop := b.pay ≤ a ∧ a < b.fin
 
-/-- **The number heap.** -/
-structure BcHeap (S : Nat → Prop) (Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj) :
-    Prop where
+/-- A caller's raw blocks: live `malloc` blocks that hold no number object
+(`dc`'s stack nodes, strings, arrays; `bc_out_num`'s digit stack), with
+their payload bytes frozen at the image `img` while the library runs. -/
+structure Raws where
+  bs : List Blk
+  img : Mem
+
+/-- No raw blocks. -/
+def Raws.none : Raws := ⟨[], ∅⟩
+
+/-- The raw blocks `X` beside the heap `F`/`L`: live, none of the dead
+chain's or the objects' blocks, each payload byte its image's. -/
+structure RawOK (X : Raws) (Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj) : Prop where
+  live : ∀ b ∈ X.bs, b ∈ H.live
+  out : ∀ b ∈ X.bs, b ∉ F ++ objBlocks L
+  img : ∀ b ∈ X.bs, ∀ a, b.In a → imgM Mt a = imgM X.img a
+
+/-- **The number heap**, beside the caller's raw blocks `X`. -/
+structure BcHeap (S : Nat → Prop) (X : Raws) (Mt : Mem) (H : Heap) (F : List Blk)
+    (L : List NumObj) : Prop where
   heap : HeapInv S Mt H
   dead : DeadChain Mt bcFreeAddr F
   deadLive : ∀ b ∈ F, b ∈ H.live ∧ 40 ≤ b.sz
@@ -180,10 +197,11 @@ structure BcHeap (S : Nat → Prop) (Mt : Mem) (H : Heap) (F : List Blk) (L : Li
   distinct : (F ++ objBlocks L).Nodup
   views : ViewsOwned L
   globOwn : ∀ a, bcFreeAddr ≤ a → a < bcFreeAddr + 8 → S a
+  raw : RawOK X Mt H F L
 
 /-- Every object's digit block is a block of the heap's objects. -/
-theorem BcHeap.db_mem {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    (h : BcHeap S Mt H F L) {x : NumObj} (hx : x ∈ L) : x.db ∈ objBlocks L := by
+theorem BcHeap.db_mem {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (h : BcHeap S X Mt H F L) {x : NumObj} (hx : x ∈ L) : x.db ∈ objBlocks L := by
   obtain ⟨w, hw, ho, he⟩ := h.views.owner hx
   rw [← he]; exact mem_objBlocks_db hw ho
 
@@ -238,15 +256,15 @@ theorem objBlocks_db_ne_db {L : List NumObj} (hd : (objBlocks L).Nodup) {x y : N
     (by rw [NumObj.blocks_own hoy]; simp)
 
 /-- A struct block is no digit buffer of the heap. -/
-theorem BcHeap.sb_ne_db {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    (h : BcHeap S Mt H F L) {x y : NumObj} (hx : x ∈ L) (hy : y ∈ L) : x.sb ≠ y.db := by
+theorem BcHeap.sb_ne_db {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (h : BcHeap S X Mt H F L) {x y : NumObj} (hx : x ∈ L) (hy : y ∈ L) : x.sb ≠ y.db := by
   obtain ⟨w, hw, ho, he⟩ := h.views.owner hy
   rw [← he]
   exact objBlocks_sb_ne_db (List.nodup_append.mp h.distinct).2.1 hx hw ho
 
 /-- The owner at the head of the heap lends its buffer to no other object. -/
-theorem BcHeap.head_noView {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {x : NumObj} {L : List NumObj} (h : BcHeap S Mt H F (x :: L)) (ho : x.Owns) :
+theorem BcHeap.head_noView {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {x : NumObj} {L : List NumObj} (h : BcHeap S X Mt H F (x :: L)) (ho : x.Owns) :
     ∀ y ∈ L, y.db ≠ x.db := by
   intro y hy e
   have hL : ViewsOwned L := by cases h.views with | cons _ hL => exact hL
@@ -369,5 +387,34 @@ structure NewNumPost (S : Nat → Prop) (Mt Mt' : Mem) (H H' : Heap) (F F' : Lis
   src : NewSrc H H' F F' x
   live : LiveFrame H x.sb Mt' Mt
   out : OutFrame fr Mt' Mt
+
+/-! ## The caller's raw blocks -/
+
+/-- The raw blocks through agreement on their payloads. -/
+theorem RawOK.frame {X : Raws} {Mt Mt' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (h : RawOK X Mt H F L) (hm : ∀ b ∈ X.bs, ∀ a, b.In a → imgM Mt' a = imgM Mt a) :
+    RawOK X Mt' H F L :=
+  ⟨h.live, h.out, fun b hb a ha => (hm b hb a ha).trans (h.img b hb a ha)⟩
+
+/-- **The raw blocks on a new heap**: still live, every block the heap now
+owns either owned before or not live before, the payloads unchanged. -/
+theorem RawOK.rebase {X : Raws} {Mt Mt' : Mem} {H H' : Heap} {F F' : List Blk}
+    {L L' : List NumObj} (h : RawOK X Mt H F L) (hl : ∀ b ∈ X.bs, b ∈ H'.live)
+    (ho : ∀ c ∈ F' ++ objBlocks L', c ∈ F ++ objBlocks L ∨ c ∉ H.live)
+    (hm : ∀ b ∈ X.bs, ∀ a, b.In a → imgM Mt' a = imgM Mt a) :
+    RawOK X Mt' H' F' L' :=
+  ⟨hl, fun b hb hc => (ho b hc).elim (h.out b hb) fun hn => hn (h.live b hb),
+    fun b hb a ha => (hm b hb a ha).trans (h.img b hb a ha)⟩
+
+/-- The raw blocks through a change of the owned lists alone. -/
+theorem RawOK.relist {X : Raws} {Mt : Mem} {H : Heap} {F F' : List Blk} {L L' : List NumObj}
+    (h : RawOK X Mt H F L) (ho : ∀ c ∈ F' ++ objBlocks L', c ∈ F ++ objBlocks L) :
+    RawOK X Mt H F' L' :=
+  ⟨h.live, fun b hb hc => h.out b hb (ho b hc), h.img⟩
+
+/-- A raw block is none of the heap's owned blocks. -/
+theorem BcHeap.raw_ne {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (h : BcHeap S X Mt H F L) {b c : Blk} (hb : b ∈ X.bs)
+    (hc : c ∈ F ++ objBlocks L) : b ≠ c := fun e => h.raw.out b hb (e ▸ hc)
 
 end Dc.Mach

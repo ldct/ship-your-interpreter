@@ -163,15 +163,15 @@ theorem rx_epi0 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_free_num (result)`** from `bc_raisemod`'s frame (`sp - 112`, `a0`
 the slot), returning to `ra`. -/
-theorem rx_freeSlot {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_freeSlot {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {xr : NumObj} (cx : RxCtx S R0 sp W q)
-    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
+    (hb : BcHeap S X M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 112)) (h10 : R 10 = BitVec.ofNat 64 q)
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L', Keeps freeNumClob R' R → FreedRest L1 L2 xr L' →
-      BcHeap S M' H' F' L' →
+      BcHeap S X M' H' F' L' →
       (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn (sp - 112) 32 a → imgM M' a = imgM M a) →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x800048c0#64 R M := by
@@ -187,7 +187,7 @@ theorem rx_freeSlot {live : Nat → Prop} {S : Nat → Prop}
     ⟨hxn.shape.pLo, by have := hxn.shape.pHi; omega⟩
   have hsf' : StackFrame S (sp - 112) 32 :=
     ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
-  have e : FreeEntry S M H F L1 L2 xr q (sp - 112) :=
+  have e : FreeEntry S X M H F L1 L2 xr q (sp - 112) :=
     FreeEntry.of_slot hb hr hr.noView hq hsl.out hsf' (by simp only [heapEnd]; omega) (by omega)
   refine bc_free_num_spec hlive e R h10 h2 hal
     ⟨fun hx2 R1 Mt1 hk1 hb1 _ hmo => ?_, fun hx1 R1 Mt1 H1 hk1 hrp => ?_⟩
@@ -205,18 +205,18 @@ theorem rx_freeSlot {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The result** from `0x80006420` (the handles `[temp, parity]` left):
 `bc_free_num (result)`, `*result = temp`, `0`. -/
-theorem rx_ret {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_ret {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {hT hX : RH} {xr : NumObj} {n : Num} (cx : RxCtx S R0 sp W q)
     (ra : RxAt S Mt0 M R0 R sp W rxSlots1) (h22 : R 22 = R0 22)
     (h23 : R 23 = BitVec.ofNat 64 q) (h21 : R 21 = BitVec.ofNat 64 hT.p)
-    (hb : BcHeap S M H F (RList [hT, hX] L)) (hown : RHOwn [hT, hX] L)
+    (hb : BcHeap S X M H F (RList [hT, hX] L)) (hown : RHOwn [hT, hX] L)
     (okT : RHOK L hT) (okX : RHOK L hX) (tx : hT.p ≠ hX.p)
     (hn : hT.base.rep.num = n) (hnn : hT.base.rep.Norm) (hl : 1 ≤ hT.base.rep.len)
     (hs : RxSlot M L xr q)
     (hret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
-      RxPost S Mt0 Mt' H' F' L xr q sp W n Lf y → DW live S Q (R0 1) R' Mt') :
+      RxPost S X Mt0 Mt' H' F' L xr q sp W n Lf y → DW live S Q (R0 1) R' Mt') :
     DW live S Q 0x80006420#64 R M := by
   rx_facts cx
   have hsf := cx.frame
@@ -309,26 +309,26 @@ theorem KFreed.rest {H H' : Heap} {F F' : List Blk} {L1 L2 L' : List NumObj} {x 
   | rel h => exact .rel h
 
 /-- **`exponent` freed** from `0x800063ec`, then the result. -/
-theorem rx_exitE {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_exitE {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {hE hT hX : RH} {xr : NumObj} {n : Num} (cx : RxCtx S R0 sp W q)
     (ra : RxAt S Mt0 M R0 R sp W rxSlots1) (h22 : R 22 = R0 22)
     (h23 : R 23 = BitVec.ofNat 64 q) (h21 : R 21 = BitVec.ofNat 64 hT.p)
     (h24 : R 24 = BitVec.ofNat 64 hE.p)
-    (hb : BcHeap S M H F (RList [hE, hT, hX] L)) (hown : RHOwn [hE, hT, hX] L)
+    (hb : BcHeap S X M H F (RList [hE, hT, hX] L)) (hown : RHOwn [hE, hT, hX] L)
     (okE : RHOK L hE) (okT : RHOK L hT) (okX : RHOK L hX) (tx : hT.p ≠ hX.p)
     (hn : hT.base.rep.num = n) (hnn : hT.base.rep.Norm) (hl : 1 ≤ hT.base.rep.len)
     (hs : RxSlot M L xr q)
     (hret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
-      RxPost S Mt0 Mt' H' F' L xr q sp W n Lf y → DW live S Q (R0 1) R' Mt') :
+      RxPost S X Mt0 Mt' H' F' L xr q sp W n Lf y → DW live S Q (R0 1) R' Mt') :
     DW live S Q 0x800063ec#64 R M := by
   obtain ⟨L1, L2, x, e, hp, hr, hnv, _, _, hfr⟩ :=
     RList.slot (hs1 := []) (h := hE) (hs2 := [hT, hX]) hb okE hown
-  have hb' : BcHeap S M H F (RList ([] ++ hE :: [hT, hX]) L) := hb
+  have hb' : BcHeap S X M H F (RList ([] ++ hE :: [hT, hX]) L) := hb
   rw [e] at hb'
   have hx : R 24 = BitVec.ofNat 64 x.rep.p := by rw [hp]; exact h24
-  have k : FreeK [1, 10, 14, 15] live S Q 0x80006420#64 R M (fun _ => False) H F L1 L2 x :=
+  have k : FreeK [1, 10, 14, 15] live S X Q 0x80006420#64 R M (fun _ => False) H F L1 L2 x :=
     fun R' M' H' F' L' hk hkf hb1 hof => by
       have hL : L' = RList [hT, hX] L := hfr L' hkf.rest
       subst hL
@@ -341,12 +341,12 @@ theorem rx_exitE {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The state at the exit `0x800063bc`: the handles, `temp` holding `n`,
 `power`, `exponent`, `temp` in `s0`, `s8`, `s5`, `s6` restored. -/
-structure RxX (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+structure RxX (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
     (H : Heap) (F : List Blk) (L : List NumObj) (hP hE hT hX : RH) (n : Num) : Prop where
   ra : RxAt S Mt0 M R0 R sp W rxSlots1
   r22 : R 22 = R0 22
   r23 : R 23 = BitVec.ofNat 64 q
-  heap : BcHeap S M H F (RList [hP, hE, hT, hX] L)
+  heap : BcHeap S X M H F (RList [hP, hE, hT, hX] L)
   own : RHOwn [hP, hE, hT, hX] L
   okP : RHOK L hP
   okE : RHOK L hE
@@ -362,20 +362,20 @@ structure RxX (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W 
 
 /-- **The exit** from `0x800063bc`: `power` and `exponent` freed, then the
 result. -/
-theorem rx_exit {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_exit {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {hP hE hT hX : RH} {xr : NumObj} {n : Num} (cx : RxCtx S R0 sp W q)
-    (st : RxX S Mt0 M R0 R sp W q H F L hP hE hT hX n) (hs : RxSlot M L xr q)
+    (st : RxX S X Mt0 M R0 R sp W q H F L hP hE hT hX n) (hs : RxSlot M L xr q)
     (hret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
-      RxPost S Mt0 Mt' H' F' L xr q sp W n Lf y → DW live S Q (R0 1) R' Mt') :
+      RxPost S X Mt0 Mt' H' F' L xr q sp W n Lf y → DW live S Q (R0 1) R' Mt') :
     DW live S Q 0x800063bc#64 R M := by
   obtain ⟨L1, L2, x, e, hp, hr, hnv, _, _, hfr⟩ :=
     RList.slot (hs1 := []) (h := hP) (hs2 := [hE, hT, hX]) st.heap st.okP st.own
-  have hb' : BcHeap S M H F (RList ([] ++ hP :: [hE, hT, hX]) L) := st.heap
+  have hb' : BcHeap S X M H F (RList ([] ++ hP :: [hE, hT, hX]) L) := st.heap
   rw [e] at hb'
   have hx : R 8 = BitVec.ofNat 64 x.rep.p := by rw [hp]; exact st.r8
-  have k : FreeK [1, 10, 14, 15] live S Q 0x800063ec#64 R M (fun _ => False) H F L1 L2 x :=
+  have k : FreeK [1, 10, 14, 15] live S X Q 0x800063ec#64 R M (fun _ => False) H F L1 L2 x :=
     fun R' M' H' F' L' hk hkf hb1 hof => by
       have hL : L' = RList [hE, hT, hX] L := hfr L' hkf.rest
       subst hL
@@ -391,15 +391,15 @@ theorem rx_exit {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The loop's exit** at `0x800063b4`: `s6` restored, `power` not `NULL`,
 then `rx_exit`. -/
-theorem rx_fin {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_fin {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {xm : NumObj} {k rs B Sc Ee : Nat}
     {hP hE hT hX : RH} {m : Nat} {p tv : Num} {xr : NumObj} (cx : RxCtx S R0 sp W q)
-    (st : RxM S Mt0 M R0 R sp W q H F L xm k rs B Sc Ee hP hE hT hX m p tv)
+    (st : RxM S X Mt0 M R0 R sp W q H F L xm k rs B Sc Ee hP hE hT hX m p tv)
     (r24 : R 24 = BitVec.ofNat 64 hE.p) (hs : RxSlot M L xr q)
     (hret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
-      RxPost S Mt0 Mt' H' F' L xr q sp W tv Lf y → DW live S Q (R0 1) R' Mt') :
+      RxPost S X Mt0 Mt' H' F' L xr q sp W tv Lf y → DW live S Q (R0 1) R' Mt') :
     DW live S Q 0x800063b4#64 R M := by
   rx_facts cx
   have hsf := cx.frame

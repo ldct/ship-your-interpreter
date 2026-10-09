@@ -16,8 +16,8 @@ open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
 open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 /-- A number heap supplies `bc_new_num`'s precondition. -/
-theorem BcHeap.newHeap {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} (h : BcHeap S Mt H F L) : NewHeap S Mt H F :=
+theorem BcHeap.newHeap {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (h : BcHeap S X Mt H F L) : NewHeap S Mt H F :=
   { inv := h.heap
     dead := h.dead
     deadOK := h.deadLive
@@ -38,9 +38,9 @@ theorem live_in_heap {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt
 
 /-- A number heap survives any memory change confined to bytes outside the
 heap and the allocator's and `_bc_Free_list`'s words. -/
-theorem BcHeap.out_frame {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} (h : BcHeap S Mt H F L) {P : Nat → Prop} (hfr : MemOnly P Mt' Mt)
-    (hP : ∀ a, P a → OutHeap a) : BcHeap S Mt' H F L :=
+theorem BcHeap.out_frame {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (h : BcHeap S X Mt H F L) {P : Nat → Prop} (hfr : MemOnly P Mt' Mt)
+    (hP : ∀ a, P a → OutHeap a) : BcHeap S X Mt' H F L :=
   h.transport (fun a ha => hfr a fun hp => OutHeap.not_alloc h.heap (hP a hp) ha)
     (fun b hb a ha => hfr a fun hp => (hP a hp).1 (live_in_heap h.heap hb ha))
     (fun j hj => hfr _ fun hp => (hP _ hp).2.2 ⟨by omega, by omega⟩)
@@ -81,8 +81,8 @@ theorem NumAt.setDigit {Mt : Mem} {o : NumRep} (h : NumAt Mt o) {i d : Nat}
       simp only [List.getD_eq_getElem?_getD, List.getElem?_set_ne (Ne.symm hji)]
 
 /-- An object no other object shares a buffer with owns its buffer. -/
-theorem BcHeap.owns_of_noView {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+theorem BcHeap.owns_of_noView {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2))
     (hnv : ∀ y ∈ L1 ++ L2, y.db ≠ x.db) : x.Owns := by
   obtain ⟨w, hw, hwo, he⟩ := h.views.owner (List.mem_append_right L1 List.mem_cons_self)
   rcases List.mem_append.mp hw with hw | hw
@@ -94,12 +94,12 @@ theorem BcHeap.owns_of_noView {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List
 /-- One digit byte of the object `x` rewritten, no other object reading its
 buffer: the heap holds `x` with that digit. Only the byte changes; it lies in
 `x`'s digit block. -/
-theorem BcHeap.setDigit {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+theorem BcHeap.setDigit {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2))
     (hnv : ∀ y ∈ L1 ++ L2, y.db ≠ x.db) {i d : Nat}
     (hi : i < x.rep.len + x.rep.scale) (hd : d < 10) {v : BitVec 64}
     (hv : sbData v = BitVec.ofNat 8 d) :
-    BcHeap S (writeLog Mt [(x.rep.val + i, 1, v)]) H F
+    BcHeap S X (writeLog Mt [(x.rep.val + i, 1, v)]) H F
       (L1 ++ { x with rep := { x.rep with ds := x.rep.ds.set i d } } :: L2) := by
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have hn := h.nums x hx
@@ -115,10 +115,10 @@ theorem BcHeap.setDigit {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
 
 /-- The sign word of the object `x` rewritten: the heap holds `x` with that
 sign. Only the four bytes of `n_sign` change; they lie in `x`'s struct. -/
-theorem BcHeap.setSign {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) {v : BitVec 64}
+theorem BcHeap.setSign {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2)) {v : BitVec 64}
     (b : Bool) (hv : v.toNat % 2 ^ 32 = b.toNat) :
-    BcHeap S (writeLog Mt [(x.rep.p, 4, v)]) H F
+    BcHeap S X (writeLog Mt [(x.rep.p, 4, v)]) H F
       (L1 ++ { x with rep := { x.rep with neg := b } } :: L2) := by
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have hn := h.nums x hx

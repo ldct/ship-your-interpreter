@@ -42,9 +42,9 @@ theorem memOnly_touch_of_alloc {S : Nat → Prop} {Mt M : Mem} {H : Heap} (hi : 
 
 /-- **Any frame of a view site's shape is a scratch frame**: the site's
 struct is a block of the number heap. -/
-theorem ViewStruct.touchOf {S : Nat → Prop} {Mt M M'' : Mem} {H H' : Heap} {F F' : List Blk}
+theorem ViewStruct.touchOf {S : Nat → Prop} {X : Raws} {Mt M M'' : Mem} {H H' : Heap} {F F' : List Blk}
     {L : List NumObj} {sb : Blk} (hvs : ViewStruct S Mt M H H' F F' sb L)
-    (hb : BcHeap S Mt H F L)
+    (hb : BcHeap S X Mt H F L)
     (hfr : ∀ a, ¬ AllocByte H a → ¬ sb.In a → ¬ bcFreeBytes a → imgM M'' a = imgM Mt a) :
     MemOnly KTouch M'' Mt := by
   intro a ha
@@ -61,9 +61,9 @@ theorem ViewStruct.touchOf {S : Nat → Prop} {Mt M M'' : Mem} {H H' : Heap} {F 
   exact ha (.inr (.inl (by simp only [heapStart, heapEnd]; omega)))
 
 /-- A view site's own frame is a scratch frame. -/
-theorem ViewStruct.touch {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+theorem ViewStruct.touch {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
     {L : List NumObj} {sb : Blk} (hvs : ViewStruct S Mt M H H' F F' sb L)
-    (hb : BcHeap S Mt H F L) : MemOnly KTouch M Mt := hvs.touchOf hb hvs.base
+    (hb : BcHeap S X Mt H F L) : MemOnly KTouch M Mt := hvs.touchOf hb hvs.base
 
 /-- A doubleword at `_zero_`'s slot survives the scratch. -/
 theorem ldv_zero_touch {M Mt : Mem} (h : MemOnly KTouch M Mt) :
@@ -136,8 +136,8 @@ theorem mem_KList {hs : List Hd} {A B : List NumObj} {z vo : NumObj}
   · exact List.mem_append_right _ (List.mem_cons_of_mem _ h')
 
 /-- A number object's struct lies inside the number heap. -/
-theorem BcHeap.struct_in_heap {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} {x : NumObj} (hb : BcHeap S M H F L) (hx : x ∈ L) :
+theorem BcHeap.struct_in_heap {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x : NumObj} (hb : BcHeap S X M H F L) (hx : x ∈ L) :
     heapStart ≤ x.rep.p ∧ x.rep.p + 40 ≤ heapEnd := by
   have hxb := hb.blocks x hx
   have hxp := hxb.sPay; have hxsz := hxb.sSz
@@ -163,12 +163,12 @@ abbrev kuClob : List Nat := [1, 10, 12, 13, 14, 15, 19, 20, 23, 24]
 /-- **The `u` halves at `0x80004df8`** (`n ≤ la`): two struct sources and two
 views, `u1` the first `la - n` digits (none when `n = la`) and `u0` the last
 `n`; then the second length test at `0x80004e64`. -/
-theorem kara_uhigh {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_uhigh {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R R0 : Nat → BitVec 64} {H : Heap} {F : List Blk} {sp q W : Nat}
     {A B : List NumObj} {z uo vo : NumObj} {hs : List Hd} {n la : Nat}
     (cx : RmCtx S R0 sp q W)
-    (hb : BcHeap S M H F (KList [] hs A B z)) (huo : uo ∈ temps hs ++ A ++ B)
+    (hb : BcHeap S X M H F (KList [] hs A B z)) (huo : uo ∈ temps hs ++ A ++ B)
     (hvo : vo ∈ temps hs ++ A ++ B)
     (hfit : la ≤ uo.rep.len + uo.rep.scale) (hn : n ≤ la) (hn1 : 1 ≤ n) (hlbb : la < 2 ^ 30)
     (hsp : ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p) (h2 : R 2 = BitVec.ofNat 64 (sp - 192))
@@ -179,7 +179,7 @@ theorem kara_uhigh {live : Nat → Prop} {S : Nat → Prop}
       DW live S Q 0x80002bcc#64 R' M')
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (H' : Heap) (F' : List Blk) (sb1 sb2 : Blk),
       Keeps kuClob R' R →
-      BcHeap S M' H' F' (KList [] (some (viewObj sb2 uo (la - n) n) ::
+      BcHeap S X M' H' F' (KList [] (some (viewObj sb2 uo (la - n) n) ::
         some (viewObj sb1 uo 0 (la - n)) :: hs) A B z) →
       R' 24 = BitVec.ofNat 64 sb1.pay → R' 19 = BitVec.ofNat 64 sb2.pay →
       R' 23 = BitVec.ofNat 64 vo.rep.val → R' 15 = BitVec.ofNat 64 (deadHead F') →
@@ -225,11 +225,11 @@ abbrev kuzClob : List Nat := [1, 10, 12, 13, 14, 15, 19, 23, 24]
 /-- **The `u` halves at `0x80005378`** (`la < n`): `u1` is a reference to
 `_zero_` and `u0` a view of all `la` digits; then the second length test at
 `0x800053bc`. -/
-theorem kara_uzero {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_uzero {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk}
     {A B : List NumObj} {z uo vo : NumObj} {hs : List Hd} {la : Nat}
-    (hb : BcHeap S M H F (KList [] hs A B z)) (huo : uo ∈ temps hs ++ A ++ B)
+    (hb : BcHeap S X M H F (KList [] hs A B z)) (huo : uo ∈ temps hs ++ A ++ B)
     (hvo : vo ∈ temps hs ++ A ++ B)
     (hfit : la ≤ uo.rep.len + uo.rep.scale) (hla1 : 1 ≤ la) (hlbb : la < 2 ^ 30)
     (hz : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hzo : ∀ a, constBytes a → S a)
@@ -241,7 +241,7 @@ theorem kara_uzero {live : Nat → Prop} {S : Nat → Prop}
       DW live S Q 0x80002bcc#64 R' M')
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (H' : Heap) (F' : List Blk) (sb : Blk),
       Keeps kuzClob R' R →
-      BcHeap S M' H' F' (KList [] (some (viewObj sb uo 0 la) :: none :: hs) A B z) →
+      BcHeap S X M' H' F' (KList [] (some (viewObj sb uo 0 la) :: none :: hs) A B z) →
       R' 24 = BitVec.ofNat 64 z.rep.p → R' 19 = BitVec.ofNat 64 sb.pay →
       R' 23 = BitVec.ofNat 64 vo.rep.val → R' 15 = BitVec.ofNat 64 (deadHead F') →
       MemOnly KTouch M' M →
@@ -253,7 +253,7 @@ theorem kara_uzero {live : Nat → Prop} {S : Nat → Prop}
   have hzlo := hzb.1; have hzhi := hzb.2
   simp only [heapStart] at hzlo
   simp only [heapEnd] at hzhi
-  have hb' : BcHeap S M H F ((temps hs ++ A) ++
+  have hb' : BcHeap S X M H F ((temps hs ++ A) ++
       z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
     simpa only [KList, List.nil_append, List.append_assoc] using hb
   refine kzeroref_80005378 hlive hb' hz hzo (by simp only [NumObj.withRefs]; omega) ?_
@@ -265,7 +265,7 @@ theorem kara_uzero {live : Nat → Prop} {S : Nat → Prop}
   have ek : KList [] (none :: hs) A B z
       = temps hs ++ A ++ z.withRefs (z.rep.refs + (zeroCount hs + 1)) :: B := by
     simp only [KList, temps_none, zeroCount_none, List.nil_append, Nat.add_assoc]
-  have hb1' : BcHeap S M1 H F (KList [] (none :: hs) A B z) := by
+  have hb1' : BcHeap S X M1 H F (KList [] (none :: hs) A B z) := by
     rw [ek]
     simpa only [NumObj.withRefs_withRefs, NumObj.withRefs, Nat.add_assoc] using hb1
   have huL1 : uo ∈ KList [] (none :: hs) A B z := mem_KList huo
@@ -292,11 +292,11 @@ abbrev kvClob : List Nat := [1, 10, 12, 13, 14, 15, 17, 18, 20, 21, 23, 27]
 
 /-- **The `v` halves at `0x800053c0`** (`n ≤ lb`): two struct sources and two
 views, `v1` the first `lb - n` digits (none when `n = lb`) and `v0` the last `n`. -/
-theorem kara_vhigh {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_vhigh {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk}
     {A B : List NumObj} {z vo : NumObj} {hs : List Hd} {n lb : Nat}
-    (hb : BcHeap S M H F (KList [] hs A B z)) (hvo : vo ∈ temps hs ++ A ++ B)
+    (hb : BcHeap S X M H F (KList [] hs A B z)) (hvo : vo ∈ temps hs ++ A ++ B)
     (hfit : lb ≤ vo.rep.len + vo.rep.scale) (hn : n ≤ lb) (hn1 : 1 ≤ n) (hlbb : lb < 2 ^ 30)
     (hz : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hzo : ∀ a, constBytes a → S a)
     (hh : R 15 = BitVec.ofNat 64 (deadHead F)) (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
@@ -306,7 +306,7 @@ theorem kara_vhigh {live : Nat → Prop} {S : Nat → Prop}
       DW live S Q 0x80002bcc#64 R' M')
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (H' : Heap) (F' : List Blk) (sb1 sb2 : Blk),
       Keeps kvClob R' R →
-      BcHeap S M' H' F' (KList [] (some (viewObj sb2 vo (lb - n) n) ::
+      BcHeap S X M' H' F' (KList [] (some (viewObj sb2 vo (lb - n) n) ::
         some (viewObj sb1 vo 0 (lb - n)) :: hs) A B z) →
       R' 27 = BitVec.ofNat 64 sb1.pay → R' 20 = BitVec.ofNat 64 sb2.pay →
       R' 18 = BitVec.ofNat 64 zeroAddr → R' 17 = BitVec.ofNat 64 z.rep.p →
@@ -344,11 +344,11 @@ theorem kara_vhigh {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The `v` halves at `0x80004e68`** (`lb < n`): `v1` is a reference to
 `_zero_` and `v0` a view of all `lb` digits. -/
-theorem kara_vzero {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_vzero {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk}
     {A B : List NumObj} {z vo : NumObj} {hs : List Hd} {lb : Nat}
-    (hb : BcHeap S M H F (KList [] hs A B z)) (hvo : vo ∈ temps hs ++ A ++ B)
+    (hb : BcHeap S X M H F (KList [] hs A B z)) (hvo : vo ∈ temps hs ++ A ++ B)
     (hfit : lb ≤ vo.rep.len + vo.rep.scale) (hlb1 : 1 ≤ lb) (hlbb : lb < 2 ^ 30)
     (hz : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hzo : ∀ a, constBytes a → S a)
     (hrefs : z.rep.refs + zeroCount hs + 1 < 2 ^ 31)
@@ -358,7 +358,7 @@ theorem kara_vzero {live : Nat → Prop} {S : Nat → Prop}
       DW live S Q 0x80002bcc#64 R' M')
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (H' : Heap) (F' : List Blk) (sb : Blk),
       Keeps kvClob R' R →
-      BcHeap S M' H' F' (KList [] (some (viewObj sb vo 0 lb) :: none :: hs) A B z) →
+      BcHeap S X M' H' F' (KList [] (some (viewObj sb vo 0 lb) :: none :: hs) A B z) →
       R' 27 = BitVec.ofNat 64 z.rep.p → R' 20 = BitVec.ofNat 64 sb.pay →
       R' 18 = BitVec.ofNat 64 zeroAddr → R' 17 = BitVec.ofNat 64 z.rep.p →
       MemOnly KTouch M' M →
@@ -370,7 +370,7 @@ theorem kara_vzero {live : Nat → Prop} {S : Nat → Prop}
   have hzlo := hzb.1; have hzhi := hzb.2
   simp only [heapStart] at hzlo
   simp only [heapEnd] at hzhi
-  have hb' : BcHeap S M H F ((temps hs ++ A) ++
+  have hb' : BcHeap S X M H F ((temps hs ++ A) ++
       z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
     simpa only [KList, List.nil_append, List.append_assoc] using hb
   refine kzeroref_80004e68 hlive hb' hz hzo (by simp only [NumObj.withRefs]; omega) ?_
@@ -381,7 +381,7 @@ theorem kara_vzero {live : Nat → Prop} {S : Nat → Prop}
   have ek : KList [] (none :: hs) A B z
       = temps hs ++ A ++ z.withRefs (z.rep.refs + (zeroCount hs + 1)) :: B := by
     simp only [KList, temps_none, zeroCount_none, List.nil_append, Nat.add_assoc]
-  have hb1' : BcHeap S M1 H F (KList [] (none :: hs) A B z) := by
+  have hb1' : BcHeap S X M1 H F (KList [] (none :: hs) A B z) := by
     rw [ek]
     simpa only [NumObj.withRefs_withRefs, NumObj.withRefs, Nat.add_assoc] using hb1
   have hz1 : ldv .ld M1 zeroAddr = BitVec.ofNat 64 z.rep.p :=

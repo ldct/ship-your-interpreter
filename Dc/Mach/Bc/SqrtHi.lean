@@ -25,19 +25,19 @@ set_option linter.unusedSimpArgs false
 
 /-- **`bc_int2num (&h, v)`** on the handle `h` of `bc_sqrt` (its word at
 `sp - 160 + o`): the new number replaces it. -/
-theorem sq_i2nH {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_i2nH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o : Nat} {v : Int}
     {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {H : Heap} {F : List Blk}
     (cx : SqCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q) (ho : o + 8 ≤ 48) (ho8 : o % 8 = 0)
     (houtM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
+    (hb : BcHeap S X M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
     (hh : RHOK L h) (hw : ldv .ld M (sp - 160 + o) = BitVec.ofNat 64 h.p)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 160)) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 (sp - 160 + o)) (h11 : R 11 = BitVec.ofInt 64 v)
     (hvl : -2 ^ 31 < v) (hvh : v < 2 ^ 31)
     (hret : ∀ R' M' H' F' y, Keeps i2nClob R' R →
-      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
+      BcHeap S X M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       y.rep.num = Num.ofInt v → y.rep.Norm → y.rep.refs = 1 →
       ldv .ld M' (sp - 160 + o) = BitVec.ofNat 64 y.rep.p →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) 128 a →
@@ -62,7 +62,7 @@ theorem sq_i2nH {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The fixed facts of the path above one: `x > 1` with the Newton loop
 from the first guess, and the continuations. -/
-structure SqGo (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure SqGo (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t : String) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q k : Nat) (L : List NumObj)
     (x z o p5 : NumObj) (rs : Nat) (r : Num) : Prop where
   cx : SqCtx S R0 sp W q
@@ -80,14 +80,14 @@ structure SqGo (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (
   oz : o.rep.p ≠ z.rep.p
   loop : Dc.SqrtLoop x.rep.num rs ⟨false, 10 ^ (x.rep.len / 2), 0⟩ 3 r
   ret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
-    SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
+    SqPost S X Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
 
 /-- Between the calls: the frame, the handles `hs`, `s1 = &guess`, `num`,
 `point5`, `rscale`, `&_one_` and `diff = _zero_`. -/
-structure SqH (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+structure SqH (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
     (H : Heap) (F : List Blk) (L : List NumObj) (x z p5 : NumObj) (rs : Nat) (hs : List RH) :
     Prop where
-  fr : SqFr S Mt0 M R0 R sp W H F L hs
+  fr : SqFr S X Mt0 M R0 R sp W H F L hs
   r9 : R 9 = BitVec.ofNat 64 (sp - 160 + 24)
   r19 : R 19 = BitVec.ofNat 64 q
   r20 : R 20 = BitVec.ofNat 64 p5.rep.p
@@ -98,14 +98,14 @@ structure SqH (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W 
 
 /-- Through a callee that changes the caller-saved registers, the frame word
 at `o` and the bytes below the frame, and the handles. -/
-theorem SqH.call {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+theorem SqH.call {S : Nat → Prop} {X : Raws} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
     {H H' : Heap} {F F' : List Blk} {L : List NumObj} {x z p5 : NumObj} {rs o : Nat}
-    {hs hs' : List RH} (cx : SqCtx S R0 sp W q) (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs hs)
+    {hs hs' : List RH} (cx : SqCtx S R0 sp W q) (st : SqH S X Mt0 M R0 R sp W q H F L x z p5 rs hs)
     (ho : 16 ≤ o) (ho' : o + 8 ≤ 40) (hk : Keeps raCallClob R' R)
     (hout : ∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
       imgM M' a = imgM M a)
-    (hb : BcHeap S M' H' F' (RList hs' L)) (hown : RHOwn hs' L) (hok : ∀ h ∈ hs', RHOK L h) :
-    SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs hs' := by
+    (hb : BcHeap S X M' H' F' (RList hs' L)) (hown : RHOwn hs' L) (hok : ∀ h ∈ hs', RHOK L h) :
+    SqH S X Mt0 M' R0 R' sp W q H' F' L x z p5 rs hs' := by
   sq_facts cx
   have hsl := cx.slot
   have hap := hsl.apart
@@ -145,18 +145,18 @@ theorem sq_i2nOut {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp W q o : Nat} {
 
 /-- **`bc_int2num (&h, v)`** on a handle of the path's state (its word at
 `sp - 160 + o`): the state with the new number's handle. -/
-theorem sq_i2nS {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_i2nS {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o rs : Nat} {v : Int}
     {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {x z p5 : NumObj} {H : Heap} {F : List Blk}
     (cx : SqCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q)
-    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs (hs1 ++ h :: hs2))
+    (st : SqH S X Mt0 M R0 R sp W q H F L x z p5 rs (hs1 ++ h :: hs2))
     (ho : 16 ≤ o) (ho' : o + 8 ≤ 40) (ho8 : o % 8 = 0)
     (hh : RHOK L h) (hw : ldv .ld M (sp - 160 + o) = BitVec.ofNat 64 h.p)
     (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 (sp - 160 + o)) (h11 : R 11 = BitVec.ofInt 64 v)
     (hvl : -2 ^ 31 < v) (hvh : v < 2 ^ 31)
-    (hnext : ∀ R' M' H' F' y, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs (hs1 ++ .own y :: hs2) →
+    (hnext : ∀ R' M' H' F' y, SqH S X Mt0 M' R0 R' sp W q H' F' L x z p5 rs (hs1 ++ .own y :: hs2) →
       y.rep.num = Num.ofInt v → y.rep.Norm → y.rep.refs = 1 →
       ldv .ld M' (sp - 160 + o) = BitVec.ofNat 64 y.rep.p →
       (∀ o', o' ≤ 40 → o' + 8 ≤ o ∨ o + 8 ≤ o' → ldv .ld M' (sp - 160 + o') = ldv .ld M (sp - 160 + o')) →
@@ -178,14 +178,14 @@ theorem sq_i2nS {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`guess = bc_int2num (10)`** from `0x80006ad4`, into the second `_zero_`
 handle. -/
-theorem sq_hiTen {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_hiTen {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 : NumObj} {r : Num}
-    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
-    (st : SqS S Mt0 M R0 R sp W q H F L x z p5 rs)
-    (hnext : ∀ R' M' H' F' gg, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+    (g : SqGo live S X Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqS S X Mt0 M R0 R sp W q H F L x z p5 rs)
+    (hnext : ∀ R' M' H' F' gg, SqH S X Mt0 M' R0 R' sp W q H' F' L x z p5 rs
         [.own p5, .ref z, .own gg, .ref z] → gg.rep.num = Num.ofInt 10 → gg.rep.Norm →
       gg.rep.refs = 1 → ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p →
       ldv .ld M' (sp - 160 + 32) = BitVec.ofNat 64 z.rep.p →
@@ -213,16 +213,16 @@ theorem sq_hiTen {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`guess1 = bc_int2num (n_len)`** from `0x80006ae4`, into the last
 `_zero_` handle. -/
-theorem sq_hiLen {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_hiLen {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 gg : NumObj} {r : Num}
-    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
-    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .ref z])
+    (g : SqGo live S X Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqH S X Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .ref z])
     (w24 : ldv .ld M (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p)
     (w32 : ldv .ld M (sp - 160 + 32) = BitVec.ofNat 64 z.rep.p)
-    (hnext : ∀ R' M' H' F' l, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+    (hnext : ∀ R' M' H' F' l, SqH S X Mt0 M' R0 R' sp W q H' F' L x z p5 rs
         [.own p5, .ref z, .own gg, .own l] → l.rep.num = Num.ofInt x.rep.len → l.rep.Norm →
       l.rep.refs = 1 → ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p →
       ldv .ld M' (sp - 160 + 32) = BitVec.ofNat 64 l.rep.p →
@@ -271,17 +271,17 @@ theorem NumRep.len_of_int {o : NumRep} (hs : NumShape o) (hn : o.Norm) {m : Nat}
   · omega
 
 /-- **`guess1 = guess1 * 0.5`** at scale `0` from `0x80006af4`. -/
-theorem sq_hiMul {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_hiMul {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 gg l : NumObj} {r : Num}
-    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
-    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .own l])
+    (g : SqGo live S X Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqH S X Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .own l])
     (hln : l.rep.num = Num.ofInt x.rep.len) (hlN : l.rep.Norm) (hlr : l.rep.refs = 1)
     (w24 : ldv .ld M (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p)
     (w32 : ldv .ld M (sp - 160 + 32) = BitVec.ofNat 64 l.rep.p)
-    (hnext : ∀ R' M' H' F' m, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+    (hnext : ∀ R' M' H' F' m, SqH S X Mt0 M' R0 R' sp W q H' F' L x z p5 rs
         [.own p5, .ref z, .own gg, .own m] →
       MulRes M' (sp - 160 + 32) (Num.mul (Num.ofInt x.rep.len) Num.half 0) m →
       ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p →
@@ -360,21 +360,21 @@ theorem RList.pos {hs : List RH} {L : List NumObj} (ht : ∀ y, .own y ∈ hs �
 /-- **`guess = bc_raise (guess, guess1)`** at `0x8000660c` with `guess1` cut
 to scale `0` (`n_len / 2`): `guess`'s handle replaced by the power's
 (`raPost_handle`). -/
-theorem sq_hiRaise {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_hiRaise {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 gg m : NumObj} {r : Num}
-    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
-    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .own m])
+    (g : SqGo live S X Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqH S X Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .own m])
     (hgn : gg.rep.num = Num.ofInt 10) (hgN : gg.rep.Norm) (hgr : gg.rep.refs = 1)
     (hmn : m.rep.num = ⟨false, x.rep.len / 2, 0⟩) (hml : 1 ≤ m.rep.len) (hmr : m.rep.refs = 1)
     (w24 : ldv .ld M (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p)
     (h1 : R 1 = 0x80006b24#64) (h8 : R 8 = BitVec.ofNat 64 m.rep.p)
     (h10 : R 10 = BitVec.ofNat 64 gg.rep.p) (h11 : R 11 = BitVec.ofNat 64 m.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 160 + 24)) (h13 : R 13 = BitVec.ofNat 64 0)
-    (hnext : ∀ R' M' H' F' y h, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
-        [.own p5, .ref z, h, .own m] → RaH S M' H' F' [.own p5, .ref z] [.own m] L o y h →
+    (hnext : ∀ R' M' H' F' y h, SqH S X Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+        [.own p5, .ref z, h, .own m] → RaH S X M' H' F' [.own p5, .ref z] [.own m] L o y h →
       y.rep.num = ⟨false, 10 ^ (x.rep.len / 2), 0⟩ → y.rep.Norm → 1 ≤ y.rep.len →
       R' 8 = BitVec.ofNat 64 m.rep.p →
       ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 h.p →
@@ -468,19 +468,19 @@ theorem sq_hiRaise {live : Nat → Prop} {S : Nat → Prop}
     exact st.fr.sa.out a ha' hf
 
 /-- **`guess1->n_scale = 0`** from `0x80006b08`, then `bc_raise`. -/
-theorem sq_hiCut {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_hiCut {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 gg m : NumObj} {r : Num}
-    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
-    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .own m])
+    (g : SqGo live S X Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqH S X Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, .own gg, .own m])
     (hgn : gg.rep.num = Num.ofInt 10) (hgN : gg.rep.Norm) (hgr : gg.rep.refs = 1)
     (hres : MulRes M (sp - 160 + 32) (Num.mul (Num.ofInt x.rep.len) Num.half 0) m)
     (w24 : ldv .ld M (sp - 160 + 24) = BitVec.ofNat 64 gg.rep.p)
-    (hnext : ∀ R' M' H' F' y h, SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs
+    (hnext : ∀ R' M' H' F' y h, SqH S X Mt0 M' R0 R' sp W q H' F' L x z p5 rs
         [.own p5, .ref z, h, .own { m with rep := m.rep.cutScale 0 }] →
-      RaH S M' H' F' [.own p5, .ref z] [.own { m with rep := m.rep.cutScale 0 }] L o y h →
+      RaH S X M' H' F' [.own p5, .ref z] [.own { m with rep := m.rep.cutScale 0 }] L o y h →
       y.rep.num = ⟨false, 10 ^ (x.rep.len / 2), 0⟩ → y.rep.Norm → 1 ≤ y.rep.len →
       R' 8 = BitVec.ofNat 64 m.rep.p →
       ldv .ld M' (sp - 160 + 24) = BitVec.ofNat 64 h.p →
@@ -545,14 +545,14 @@ theorem sq_hiCut {live : Nat → Prop} {S : Nat → Prop}
   · rw [ldv_ld_miss _ _ (by omega)]; exact w24
 
 /-- **`bc_free_num (&guess1)`** inlined at `0x80006b24`. -/
-theorem sq_hiFree {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_hiFree {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z p5 m : NumObj} {h : RH}
     (cx : SqCtx S R0 sp W q)
-    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, h, .own m])
+    (st : SqH S X Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, h, .own m])
     (h8 : R 8 = BitVec.ofNat 64 m.rep.p)
-    (hnext : ∀ R' M' H' F', SqH S Mt0 M' R0 R' sp W q H' F' L x z p5 rs [.own p5, .ref z, h] →
+    (hnext : ∀ R' M' H' F', SqH S X Mt0 M' R0 R' sp W q H' F' L x z p5 rs [.own p5, .ref z, h] →
       Keeps [1, 10, 14, 15] R' R → (∀ a, OutHeap a → imgM M' a = imgM M a) →
       DW live S Q 0x80006b54#64 R' M') :
     DW live S Q 0x80006b24#64 R M := by
@@ -578,13 +578,13 @@ theorem sq_hiFree {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **Into the Newton loop** from `0x80006b54`: `guess` the power's handle,
 `cscale = 3`, no `guess1`. -/
-theorem sq_hiLoop {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_hiLoop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 y : NumObj} {h : RH} {r : Num}
-    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
-    (st : SqH S Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, h])
+    (g : SqGo live S X Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqH S X Mt0 M R0 R sp W q H F L x z p5 rs [.own p5, .ref z, h])
     (hp : h.p = y.rep.p) (hbase : ∃ k, h.base = y.withRefs k)
     (hsrc : (∃ t, h = .own t) ∨ h = .ref o)
     (hyn : y.rep.num = ⟨false, 10 ^ (x.rep.len / 2), 0⟩) (hyN : y.rep.Norm) (hyl : 1 ≤ y.rep.len)
@@ -656,13 +656,13 @@ theorem sq_hiLoop {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The first guess above one** from `0x80006ad4`, on to the loop and its
 exit. -/
-theorem sq_hi {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_hi {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 : NumObj} {r : Num}
-    (g : SqGo live S Q t Mt0 R0 sp W q k L x z o p5 rs r)
-    (st : SqS S Mt0 M R0 R sp W q H F L x z p5 rs) :
+    (g : SqGo live S X Q t Mt0 R0 sp W q k L x z o p5 rs r)
+    (st : SqS S X Mt0 M R0 R sp W q H F L x z p5 rs) :
     DW live S (DQ live S Q t) 0x80006ad4#64 R M :=
   sq_hiTen hlive g st fun _ _ _ _ _ st1 hgn hgN hgr w1 w2 =>
     sq_hiLen hlive g st1 w1 w2 fun _ _ _ _ _ st2 hln hlN hlr w3 w4 =>

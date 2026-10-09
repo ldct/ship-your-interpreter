@@ -1,18 +1,18 @@
 
 /-- **The differences** from `0x@A@`: `_zero_` two more references, in the
 slots of `d1` (`0x40(sp)`) and `d2` (`0x48(sp)`); `d1 = u1 - u0` by `bc_sub`. -/
-theorem ksubs_@A@ {live : Nat → Prop} {S : Nat → Prop}
+theorem ksubs_@A@ {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W n la lb : Nat} {A B : List NumObj}
     {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk} {hu1 hu0 hv1 hv0 : Hd} {hs : List Hd}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     (hW : 368 ≤ W) (pk : KM1 S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0)
     (h17 : R 17 = BitVec.ofNat 64 z.rep.p)
-    (hb : BcHeap S M H F (KList [] hs A B z))
+    (hb : BcHeap S X M H F (KList [] hs A B z))
     (hu1m : hu1 ∈ hs) (hu0m : hu0 ∈ hs) (hv0m : hv0 ∈ hs) (hv1m : hv1 ∈ hs)
     (sa1 : KSubArgs z hu1 hu0) (sa2 : KSubArgs z hv0 hv1)
     (hzr : 1 ≤ z.rep.refs) (hzk : z.rep.refs + zeroCount hs + 2 < 2 ^ 31)@H26P@
-    (hnext : KSubsK live S Q M0 M R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
+    (hnext : KSubsK live S X Q M0 M R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
     DW live S Q 0x@A@#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hzm : z.withRefs (z.rep.refs + zeroCount hs) ∈ KList [] hs A B z :=

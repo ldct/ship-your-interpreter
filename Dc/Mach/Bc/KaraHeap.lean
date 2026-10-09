@@ -32,10 +32,10 @@ theorem NumObj.withRefs_self (x : NumObj) : x.withRefs x.rep.refs = x := rfl
 theorem NumObj.decRef_eq (x : NumObj) : x.decRef = x.withRefs (x.rep.refs - 1) := rfl
 
 /-- **A reference count rewritten**: the word stored at `n_refs` of `x`. -/
-theorem BcHeap.setRefs {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+theorem BcHeap.setRefs {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2))
     {v : BitVec 64} {k : Nat} (hv : v.toNat % 2 ^ 32 = k) (hk : k < 2 ^ 31) :
-    BcHeap S (writeLog Mt [(x.rep.p + 12, 4, v)]) H F (L1 ++ x.withRefs k :: L2) := by
+    BcHeap S X (writeLog Mt [(x.rep.p + 12, 4, v)]) H F (L1 ++ x.withRefs k :: L2) := by
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have hb := h.blocks x hx
   have hp := hb.sPay; have hz := hb.sSz
@@ -76,12 +76,12 @@ structure ViewSrc (S : Nat → Prop) (Mt Mt' : Mem) (H H' : Heap) (F F' : List B
 
 /-- **A view pushed**: `k ≥ 1` digits of `w` (an object of the heap) from
 `off`, in a struct from `ViewSrc`, head the heap. -/
-theorem BcHeap.pushView {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F F' : List Blk}
-    {L : List NumObj} {w : NumObj} {sb : Blk} {off k : Nat} (h : BcHeap S Mt H F L)
+theorem BcHeap.pushView {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H H' : Heap} {F F' : List Blk}
+    {L : List NumObj} {w : NumObj} {sb : Blk} {off k : Nat} (h : BcHeap S X Mt H F L)
     (hw : w ∈ L) (hoff : off < w.rep.len + w.rep.scale)
     (hfit : off + k ≤ w.rep.len + w.rep.scale)
     (hv : ViewSrc S Mt Mt' H H' F F' sb (w.rep.val + off) k) :
-    BcHeap S Mt' H' F' (viewObj sb w off k :: L) := by
+    BcHeap S X Mt' H' F' (viewObj sb w off k :: L) := by
   have hp1 : 1 ≤ w.rep.len + w.rep.scale := by omega
   have hi := h.heap
   have hi' := hv.inv
@@ -192,7 +192,8 @@ theorem BcHeap.pushView {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F F' : 
       blocks := ?_
       distinct := ?_
       views := .cons (x := viewObj sb w off k) (.inr (h.views.owner (x := w) hw)) h.views
-      globOwn := h.globOwn }
+      globOwn := h.globOwn
+      raw := ?_ }
   · cases hv.src with
     | pop e _ =>
       have hdt : DeadChain Mt (sb.pay + 16) F' := by
@@ -220,6 +221,28 @@ theorem BcHeap.pushView {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap} {F F' : 
       rw [objBlocks_cons, NumObj.blocks_view rfl]; rfl
     rw [hob]
     exact List.perm_middle.nodup_iff.mpr hbase
+  · have hsbN : sb ∈ F ∨ sb ∉ H.live := by
+      cases hv.src with
+      | pop e _ => exact .inl (by rw [e]; exact List.mem_cons_self)
+      | fresh _ _ hl =>
+        have hn := hi'.live_nodup; rw [hl] at hn; exact .inr (List.nodup_cons.mp hn).1
+    have hrs : ∀ b ∈ X.bs, b ≠ sb := fun b hb e => hsbN.elim
+      (fun hf => h.raw.out b hb (e ▸ List.mem_append_left _ hf)) fun hn => hn (e ▸ h.raw.live b hb)
+    refine h.raw.rebase (fun b hb => hsub b (h.raw.live b hb)) (fun c hc => ?_) fun b hb a ha => ?_
+    · rw [show objBlocks (viewObj sb w off k :: L) = sb :: objBlocks L by
+        rw [objBlocks_cons, NumObj.blocks_view rfl]; rfl] at hc
+      simp only [List.mem_append, List.mem_cons] at hc
+      rcases hc with hc | rfl | hc
+      · exact .inl (List.mem_append_left _ (hF'F c hc))
+      · exact hsbN.imp (List.mem_append_left _) id
+      · exact .inl (List.mem_append_right _ hc)
+    · have hbH := h.raw.live b hb
+      have fb := hi.blk (List.mem_append_right _ hbH)
+      have h1 := fb.lo
+      simp only [heapStart, Blk.In, Blk.pay] at h1 ha
+      refine hv.frame a (live_not_alloc hi hbH ha)
+        (fun hs => live_apart hi' (hsub b hbH) hsbL (hrs b hb) ha hs) ?_
+      simp only [bcFreeBytes, bcFreeAddr]; omega
 
 
 /-- The struct pushed on `_bc_Free_list` (`sd x, _bc_Free_list` then
@@ -237,13 +260,13 @@ theorem HeapInv.pushStruct {S : Nat → Prop} {Mt : Mem} {H' : Heap} (hi : HeapI
 
 /-- **The last reference to an owner dropped inline**: `n_refs` stored, the
 buffer freed (`FreePost`), the struct pushed on `_bc_Free_list`. -/
-theorem BcHeap.freeOwner {S : Nat → Prop} {Mt Mt3 : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) (ho : x.Owns)
+theorem BcHeap.freeOwner {S : Nat → Prop} {X : Raws} {Mt Mt3 : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2)) (ho : x.Owns)
     (hnv : ∀ y ∈ L1, y.db ≠ x.db) {lpre lpost : List Blk} (hl : H.live = lpre ++ x.db :: lpost)
     {v : BitVec 64}
     (hfp : FreePost S (writeLog Mt [(x.rep.p + 12, 4, v)]) Mt3 H
       ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩ x.db lpre lpost) :
-    BcHeap S (writeLog (writeLog Mt3 [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)])
+    BcHeap S X (writeLog (writeLog Mt3 [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)])
         [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))])
       ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩ (x.sb :: F) (L1 ++ L2) := by
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
@@ -277,10 +300,10 @@ theorem BcHeap.freeOwner {S : Nat → Prop} {Mt Mt3 : Mem} {H : Heap} {F : List 
 
 /-- **The last reference to a view dropped inline**: `n_refs` stored, the
 struct pushed on `_bc_Free_list`. -/
-theorem BcHeap.freeView {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2)) (hv : ¬ x.Owns)
+theorem BcHeap.freeView {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2)) (hv : ¬ x.Owns)
     (v : BitVec 64) :
-    BcHeap S (writeLog (writeLog (writeLog Mt [(x.rep.p + 12, 4, v)])
+    BcHeap S X (writeLog (writeLog (writeLog Mt [(x.rep.p + 12, 4, v)])
         [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)]) [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))])
       H (x.sb :: F) (L1 ++ L2) := by
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self

@@ -21,19 +21,19 @@ set_option maxRecDepth 8000
 
 /-- The frame, the number heap with the zeroed quotient `y` at its head, the
 three raw buffers, before the loop's frame words are written. -/
-structure DvBase (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
+structure DvBase (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
     (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) : Prop where
   saved : SavedWords M (sp - 208) divSlots R0
   s8 : ldv .ld M (sp - 208 + 8) = BitVec.ofNat 64 D.Bm
-  heap : BcHeap S M H F (y :: Lh)
+  heap : BcHeap S X M H F (y :: Lh)
   owns : y.Owns
   qzero : ∀ j, y.rep.ds.getD j 0 = 0
   b1l : D.b1 ∈ H.live
   b2l : D.b2 ∈ H.live
   b3l : D.b3 ∈ H.live
-  b1n : D.b1 ∉ F ++ objBlocks (y :: Lh)
-  b2n : D.b2 ∉ F ++ objBlocks (y :: Lh)
-  b3n : D.b3 ∉ F ++ objBlocks (y :: Lh)
+  b1n : D.b1 ∉ F ++ objBlocks (y :: Lh) ++ X.bs
+  b2n : D.b2 ∉ F ++ objBlocks (y :: Lh) ++ X.bs
+  b3n : D.b3 ∉ F ++ objBlocks (y :: Lh) ++ X.bs
   b12 : D.b1 ≠ D.b2
   b13 : D.b1 ≠ D.b3
   b23 : D.b2 ≠ D.b3
@@ -45,11 +45,11 @@ structure DvBase (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W
   out : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a
 
 /-- `DvBase` through stores to the frame words `sp - 208 + 16 … + 104`. -/
-theorem DvBase.slots {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
+theorem DvBase.slots {S : Nat → Prop} {X : Raws} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
-    (bs : DvBase S Mt0 M R0 sp W D H F Lh y) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
+    (bs : DvBase S X Mt0 M R0 sp W D H F Lh y) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
     (hm : ∀ a, (a < sp - 208 + 16 ∨ sp - 208 + 104 ≤ a) → imgM M' a = imgM M a) :
-    DvBase S Mt0 M' R0 sp W D H F Lh y := by
+    DvBase S X Mt0 M' R0 sp W D H F Lh y := by
   have hh : ∀ a, a < heapEnd → imgM M' a = imgM M a := fun a h => hm a (.inl (by omega))
   refine { bs with
     saved := bs.saved.transport (lo := 104) (top := 208) (hag := fun a h1 _ => hm a (.inr h1))
@@ -73,10 +73,10 @@ abbrev DvRawBytes (sp W : Nat) (D : DvData) (a : Nat) : Prop :=
   D.b1.In a ∨ D.b2.In a ∨ D.b3.In a ∨ (sp - W ≤ a ∧ a < sp - 208)
 
 /-- `DvBase` through stores to the raw buffers and below the frame. -/
-theorem DvBase.raw {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
+theorem DvBase.raw {S : Nat → Prop} {X : Raws} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
-    (bs : DvBase S Mt0 M R0 sp W D H F Lh y) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
-    (hm : MemOnly (DvRawBytes sp W D) M' M) : DvBase S Mt0 M' R0 sp W D H F Lh y := by
+    (bs : DvBase S X Mt0 M R0 sp W D H F Lh y) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
+    (hm : MemOnly (DvRawBytes sp W D) M' M) : DvBase S X Mt0 M' R0 sp W D H F Lh y := by
   have hi := bs.heap.heap
   have inH : ∀ b, b ∈ H.live → ∀ a, b.In a → a < heapEnd := fun b hb a ha =>
     (live_in_heap hi hb ha).2
@@ -125,9 +125,9 @@ theorem subw_ofNat_le {a b : Nat} (h : b ≤ a) (ha : a < 2 ^ 30) :
 /-- **The loop head at its first iteration** from `DvBase`, the frame words,
 the buffers' digits (the window is the dividend's first `L` digits, below
 `V`) and the registers. -/
-theorem DvBase.at0 {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
+theorem DvBase.at0 {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
-    (hs : DvShape D) (bs : DvBase S Mt0 M R0 sp W D H F Lh y)
+    (hs : DvShape D) (bs : DvBase S X Mt0 M R0 sp W D H F Lh y)
     (hx : ∀ i, i < D.xs.length → imgM M (D.P + i) = BitVec.ofNat 8 (D.xs.getD i 0))
     (hdiv : ∀ i, i < D.L → imgM M (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0))
     (hsent : imgM M (D.N + D.L) = 0#8) (hqe : D.off + D.Kb + 1 = y.rep.len + y.rep.scale)
@@ -146,7 +146,7 @@ theorem DvBase.at0 {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {
     (h17 : R 17 = BitVec.ofNat 64 (D.vs.getD 0 0))
     (h27 : R 27 = BitVec.ofNat 64 (y.rep.val + D.off + 0)) (h26 : R 26 = BitVec.ofNat 64 D.Kb)
     (hkp : Keeps divAll R R0) :
-    DvAt S Mt0 M R0 R sp W D H F Lh y y.rep.ds 0 := by
+    DvAt S X Mt0 M R0 R sp W D H F Lh y y.rep.ds 0 := by
   have hyn := bs.heap.nums y List.mem_cons_self
   have hxl := hs.xl
   have hl := hs.l1
@@ -169,9 +169,9 @@ theorem DvBase.at0 {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {
 
 /-- `DvBase.at0` after the frame-word stores: the contents carried from the
 memory before them. -/
-theorem DvBase.at0_of {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
+theorem DvBase.at0_of {S : Nat → Prop} {X : Raws} {Mt0 M M' : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
-    (hs : DvShape D) (bs : DvBase S Mt0 M R0 sp W D H F Lh y) (hab : heapEnd + W ≤ sp)
+    (hs : DvShape D) (bs : DvBase S X Mt0 M R0 sp W D H F Lh y) (hab : heapEnd + W ≤ sp)
     (hW : 208 ≤ W)
     (hx : ∀ i, i < D.xs.length → imgM M (D.P + i) = BitVec.ofNat 8 (D.xs.getD i 0))
     (hdiv : ∀ i, i < D.L → imgM M (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0))
@@ -192,7 +192,7 @@ theorem DvBase.at0_of {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R : Nat → BitVec
     (h17 : R 17 = BitVec.ofNat 64 (D.vs.getD 0 0))
     (h27 : R 27 = BitVec.ofNat 64 (y.rep.val + D.off + 0)) (h26 : R 26 = BitVec.ofNat 64 D.Kb)
     (hkp : Keeps divAll R R0) :
-    DvAt S Mt0 M' R0 R sp W D H F Lh y y.rep.ds 0 := by
+    DvAt S X Mt0 M' R0 R sp W D H F Lh y y.rep.ds 0 := by
   have hi := bs.heap.heap
   simp only [heapEnd] at hab
   have inH : ∀ b, b ∈ H.live → ∀ a, b.In a → imgM M' a = imgM M a := fun b hb a ha =>
@@ -204,11 +204,11 @@ theorem DvBase.at0_of {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R : Nat → BitVec
     s16 s24 s32 s40 s48 s56 s64 s72 s80 s88 h2 h9 h18 h24 h17 h27 h26 hkp
 
 /-- The loop's frame words from `0x80005c60` (`qptr` in `s11`). -/
-theorem dvs_slots {live : Nat → Prop} {S : Nat → Prop}
+theorem dvs_slots {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {y : NumObj} {len1 k : Nat}
-    (cx : DvCtx S sp W) (hs : DvShape D) (bs : DvBase S Mt0 M R0 sp W D H F Lh y)
+    (cx : DvCtx S sp W) (hs : DvShape D) (bs : DvBase S X Mt0 M R0 sp W D H F Lh y)
     (hx : ∀ i, i < D.xs.length → imgM M (D.P + i) = BitVec.ofNat 8 (D.xs.getD i 0))
     (hdiv : ∀ i, i < D.L → imgM M (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0))
     (hsent : imgM M (D.N + D.L) = 0#8)
@@ -223,7 +223,7 @@ theorem dvs_slots {live : Nat → Prop} {S : Nat → Prop}
     (h16 : R 16 = BitVec.ofNat 64 (D.L + 1)) (h17 : R 17 = BitVec.ofNat 64 (D.vs.getD 0 0))
     (h27 : R 27 = BitVec.ofNat 64 (y.rep.val + D.off))
     (hkp : Keeps divAll R R0)
-    (hnext : ∀ R' M', DvAt S Mt0 M' R0 R' sp W D H F Lh y y.rep.ds 0 →
+    (hnext : ∀ R' M', DvAt S X Mt0 M' R0 R' sp W D H F Lh y y.rep.ds 0 →
       DW live S Q 0x80005d4c#64 R' M') :
     DW live S Q 0x80005c60#64 R M := by
   have hsf := cx.frame
@@ -257,11 +257,11 @@ theorem dvs_slots {live : Nat → Prop} {S : Nat → Prop}
 /-- **The loop's frame words** at `0x80005c40`: `qptr` (`n_value`, past
 `len2 - len1` zeros when `len1 < len2`), `16(sp)`–`88(sp)`, `s1 = 0`,
 `s10 = len1 + scale - len2`; the loop head at its first iteration. -/
-theorem dvs_init {live : Nat → Prop} {S : Nat → Prop}
+theorem dvs_init {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {y : NumObj} {len1 k : Nat}
-    (cx : DvCtx S sp W) (hs : DvShape D) (bs : DvBase S Mt0 M R0 sp W D H F Lh y)
+    (cx : DvCtx S sp W) (hs : DvShape D) (bs : DvBase S X Mt0 M R0 sp W D H F Lh y)
     (hx : ∀ i, i < D.xs.length → imgM M (D.P + i) = BitVec.ofNat 8 (D.xs.getD i 0))
     (hdiv : ∀ i, i < D.L → imgM M (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0))
     (hsent : imgM M (D.N + D.L) = 0#8)
@@ -275,7 +275,7 @@ theorem dvs_init {live : Nat → Prop} {S : Nat → Prop}
     (h26 : R 26 = BitVec.ofNat 64 len1) (h20 : R 20 = BitVec.ofNat 64 (len1 + k))
     (h16 : R 16 = BitVec.ofNat 64 (D.L + 1)) (h17 : R 17 = BitVec.ofNat 64 (D.vs.getD 0 0))
     (hkp : Keeps divAll R R0)
-    (hnext : ∀ R' M', DvAt S Mt0 M' R0 R' sp W D H F Lh y y.rep.ds 0 →
+    (hnext : ∀ R' M', DvAt S X Mt0 M' R0 R' sp W D H F Lh y y.rep.ds 0 →
       DW live S Q 0x80005d4c#64 R' M') :
     DW live S Q 0x80005c40#64 R M := by
   have hsf := cx.frame
@@ -315,11 +315,11 @@ abbrev normClob : List Nat := [1, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 27, 2
 
 /-- The second `_one_mult` at `0x80005c24`: the divisor's `L` digits at `N`
 times `norm`, in place; then `a7 = vs[0]`, `a6 = L + 1`. -/
-theorem dvs_norm2 {live : Nat → Prop} {S : Nat → Prop}
+theorem dvs_norm2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {y : NumObj} {vs0 : List Nat} {nm : Nat}
-    (cx : DvCtx S sp W) (bs : DvBase S Mt0 M R0 sp W D H F Lh y)
+    (cx : DvCtx S sp W) (bs : DvBase S X Mt0 M R0 sp W D H F Lh y)
     (hv0l : vs0.length = D.L) (hv0d : IsDigits vs0) (hv00 : 0 < vs0.getD 0 0)
     (hnm : nm = 10 / (vs0.getD 0 0 + 1)) (hn1 : nm ≠ 1)
     (hV : D.vs = digBE (dvalBE vs0 * nm) D.L) (hL1 : 1 ≤ D.L) (hLs : D.L < 2 ^ 30)
@@ -328,7 +328,7 @@ theorem dvs_norm2 {live : Nat → Prop} {S : Nat → Prop}
     (s16 : ldv .ld M (sp - 208 + 16) = BitVec.ofNat 64 (D.L + 1))
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h23 : R 23 = BitVec.ofNat 64 D.L)
     (h24 : R 24 = BitVec.ofNat 64 D.N) (h27 : R 27 = BitVec.ofNat 64 nm)
-    (hnext : ∀ R' M', DvBase S Mt0 M' R0 sp W D H F Lh y →
+    (hnext : ∀ R' M', DvBase S X Mt0 M' R0 sp W D H F Lh y →
       (∀ a, ¬ D.b2.In a → ¬ (sp - W ≤ a ∧ a < sp - 208) → imgM M' a = imgM M a) →
       (∀ i, i < D.L → imgM M' (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0)) →
       imgM M' (D.N + D.L) = 0#8 → R' 17 = BitVec.ofNat 64 (D.vs.getD 0 0) →
@@ -456,11 +456,11 @@ theorem dvx_norm_last {xs : List Nat} (hd : IsDigits xs) (hl : 2 ≤ xs.length)
 /-- **The normalisation** at `0x80005be0`: `norm = 10 / (v0 + 1)`; unless it
 is `1`, `_one_mult` of the dividend's first `T - 1` digits and of the
 divisor's `L` digits, in place. -/
-theorem dvs_norm {live : Nat → Prop} {S : Nat → Prop}
+theorem dvs_norm {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {y : NumObj} {xs0 vs0 : List Nat}
-    (cx : DvCtx S sp W) (bs : DvBase S Mt0 M R0 sp W D H F Lh y)
+    (cx : DvCtx S sp W) (bs : DvBase S X Mt0 M R0 sp W D H F Lh y)
     (hx0l : xs0.length = D.xs.length) (hx0d : IsDigits xs0) (hx2 : 2 ≤ xs0.length)
     (hx00 : xs0.getD 0 0 = 0) (hx0z : xs0.getD (xs0.length - 1) 0 = 0)
     (hv0l : vs0.length = D.L) (hv0d : IsDigits vs0) (hv00 : 0 < vs0.getD 0 0)
@@ -473,7 +473,7 @@ theorem dvs_norm {live : Nat → Prop} {S : Nat → Prop}
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h16 : R 16 = BitVec.ofNat 64 (D.L + 1))
     (h18 : R 18 = BitVec.ofNat 64 D.P) (h23 : R 23 = BitVec.ofNat 64 D.L)
     (h24 : R 24 = BitVec.ofNat 64 D.N) (h25 : R 25 = BitVec.ofNat 64 (xs0.length - 2))
-    (hnext : ∀ R' M', DvBase S Mt0 M' R0 sp W D H F Lh y →
+    (hnext : ∀ R' M', DvBase S X Mt0 M' R0 sp W D H F Lh y →
       (∀ i, i < D.xs.length → imgM M' (D.P + i) = BitVec.ofNat 8 (D.xs.getD i 0)) →
       (∀ i, i < D.L → imgM M' (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0)) →
       imgM M' (D.N + D.L) = 0#8 → R' 17 = BitVec.ofNat 64 (D.vs.getD 0 0) →

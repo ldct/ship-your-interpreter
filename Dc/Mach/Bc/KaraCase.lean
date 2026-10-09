@@ -137,15 +137,15 @@ theorem HalfV.diff {z : NumObj} {h1 h2 : Hd} {k1 k2 V1 V2 : Nat} (a : HalfV z h1
 
 /-- **The Karatsuba case** at a level of `la + lb` digits, from `_bc_rec_mul`'s
 contract for the levels below. -/
-theorem kara_case {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_case {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {N : Nat} (ih : RmIH live S Q N)
+    {N : Nat} (ih : RmIH live S X Q N)
     {M0 : Mem} {R0 : Nat → BitVec 64} {sp q W la lb : Nat} {A B : List NumObj}
     {z uo vo : NumObj}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) uo.rep vo.rep la lb q sp W)
     (kz : KZero M0 z (4 * (la + lb) + 8)) (hW : rmStack (la + lb) ≤ W)
     (ha : RmArgs M0 (A ++ z :: B) uo vo la lb) (hN : 3 * (la + lb) / 4 + 1 ≤ N) :
-    RmKara live S Q R0 M0 (A ++ z :: B) uo vo la lb q sp W := by
+    RmKara live S X Q R0 M0 (A ++ z :: B) uo vo la lb q sp W := by
   intro R M H F st kp h80 hla hlb h0 h22 h20 h21 h18 h9 hb
   have hga := RmAt.glob cx st
   have kzM := hga.zero kz
@@ -249,9 +249,9 @@ theorem kara_case {live : Nat → Prop} {S : Nat → Prop}
 /-- **`_bc_rec_mul`'s contract at every size**: by strong induction on the
 digit count, the Karatsuba case's children taking at most
 `3 (la + lb) / 4 + 1` digits. -/
-theorem rm_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1) :
-    ∀ N, RmIH live S Q N := by
+    ∀ N, RmIH live S X Q N := by
   intro N
   induction N using Nat.strongRecOn with
   | _ N IH =>

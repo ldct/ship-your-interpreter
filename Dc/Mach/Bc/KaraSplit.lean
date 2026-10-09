@@ -72,18 +72,18 @@ macro "kv_base" hvs:term ", " hsz:term : tactic =>
 
 /-- **The view of `u`'s high half at `0x80004e08`**: `u1` is `u`'s first
 `la - n` digits. -/
-theorem kview_80004e08 {live : Nat → Prop} {S : Nat → Prop}
+theorem kview_80004e08 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
     {w : NumObj} {sb : Blk} {sp n la W : Nat} (hsf : StackFrame S sp W) (hW : 224 ≤ W)
-    (hab : heapEnd + W ≤ sp) (hb : BcHeap S Mt H F L)
+    (hab : heapEnd + W ≤ sp) (hb : BcHeap S X Mt H F L)
     (hvs : ViewStruct S Mt M H H' F F' sb L) (hw : w ∈ L) (hn : n ≤ la)
     (hfit : la ≤ w.rep.len + w.rep.scale) (hlb : la < 2 ^ 30) (hn1 : 1 ≤ n)
     (hsp : ldv .ld M (sp - 192) = BitVec.ofNat 64 w.rep.p) (h2 : R 2 = BitVec.ofNat 64 (sp - 192))
     (h24 : R 24 = BitVec.ofNat 64 sb.pay) (h20 : R 20 = BitVec.ofNat 64 la)
     (h8 : R 8 = BitVec.ofNat 64 n) (h26 : R 26 = BitVec.ofNat 64 w.rep.val)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [14, 15, 23] R' R →
-      BcHeap S M' H' F' (viewObj sb w 0 (la - n) :: L) →
+      BcHeap S X M' H' F' (viewObj sb w 0 (la - n) :: L) →
       R' 23 = BitVec.ofNat 64 w.rep.val →
       (∀ a, ¬ AllocByte H a → ¬ sb.In a → ¬ bcFreeBytes a → imgM M' a = imgM Mt a) →
       DW live S Q 0x80004e30#64 R' M') :
@@ -110,17 +110,17 @@ theorem kview_80004e08 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The view of `u`'s low half at `0x80004e3c`**: `u0` is the last `n` of
 `u`'s first `la` digits. -/
-theorem kview_80004e3c {live : Nat → Prop} {S : Nat → Prop}
+theorem kview_80004e3c {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
-    {w v : NumObj} {sb : Blk} {n la : Nat} (hb : BcHeap S Mt H F L)
+    {w v : NumObj} {sb : Blk} {n la : Nat} (hb : BcHeap S X Mt H F L)
     (hvs : ViewStruct S Mt M H H' F F' sb L) (hw : w ∈ L) (hv : v ∈ L) (hn : n ≤ la)
     (hfit : la ≤ w.rep.len + w.rep.scale) (hlb : la < 2 ^ 30) (hn1 : 1 ≤ n)
     (h19 : R 19 = BitVec.ofNat 64 sb.pay) (h20 : R 20 = BitVec.ofNat 64 la)
     (h8 : R 8 = BitVec.ofNat 64 n) (h23 : R 23 = BitVec.ofNat 64 w.rep.val)
     (h18 : R 18 = BitVec.ofNat 64 v.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [14, 20, 23] R' R →
-      BcHeap S M' H' F' (viewObj sb w (la - n) n :: L) →
+      BcHeap S X M' H' F' (viewObj sb w (la - n) n :: L) →
       R' 20 = BitVec.ofNat 64 (la - n) → R' 23 = BitVec.ofNat 64 v.rep.val →
       (∀ a, ¬ AllocByte H a → ¬ sb.In a → ¬ bcFreeBytes a → imgM M' a = imgM Mt a) →
       DW live S Q 0x80004e64#64 R' M') :
@@ -147,17 +147,17 @@ theorem kview_80004e3c {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The view of `v`'s high half at `0x800053d0`**: `v1` is `v`'s first
 `lb - n` digits. -/
-theorem kview_800053d0 {live : Nat → Prop} {S : Nat → Prop}
+theorem kview_800053d0 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
-    {v : NumObj} {sb : Blk} {n lb : Nat} (hb : BcHeap S Mt H F L)
+    {v : NumObj} {sb : Blk} {n lb : Nat} (hb : BcHeap S X Mt H F L)
     (hvs : ViewStruct S Mt M H H' F F' sb L) (hv : v ∈ L) (hn : n ≤ lb)
     (hfit : lb ≤ v.rep.len + v.rep.scale) (hlb : lb < 2 ^ 30) (hn1 : 1 ≤ n)
     (h27 : R 27 = BitVec.ofNat 64 sb.pay) (h21 : R 21 = BitVec.ofNat 64 lb)
     (h8 : R 8 = BitVec.ofNat 64 n) (h23 : R 23 = BitVec.ofNat 64 v.rep.val)
     (h18 : R 18 = BitVec.ofNat 64 v.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [14, 15, 23] R' R →
-      BcHeap S M' H' F' (viewObj sb v 0 (lb - n) :: L) →
+      BcHeap S X M' H' F' (viewObj sb v 0 (lb - n) :: L) →
       R' 23 = BitVec.ofNat 64 v.rep.val →
       (∀ a, ¬ AllocByte H a → ¬ sb.In a → ¬ bcFreeBytes a → imgM M' a = imgM Mt a) →
       DW live S Q 0x800053f4#64 R' M') :
@@ -181,17 +181,17 @@ theorem kview_800053d0 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The view of `v`'s low half at `0x80005400`**: `v0` is the last `n` of
 `v`'s first `lb` digits; `a7` takes `_zero_`. -/
-theorem kview_80005400 {live : Nat → Prop} {S : Nat → Prop}
+theorem kview_80005400 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
-    {v z : NumObj} {sb : Blk} {n lb : Nat} (hb : BcHeap S Mt H F L)
+    {v z : NumObj} {sb : Blk} {n lb : Nat} (hb : BcHeap S X Mt H F L)
     (hvs : ViewStruct S Mt M H H' F F' sb L) (hv : v ∈ L) (hn : n ≤ lb)
     (hfit : lb ≤ v.rep.len + v.rep.scale) (hlb : lb < 2 ^ 30) (hn1 : 1 ≤ n)
     (hz : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hzo : ∀ a, constBytes a → S a)
     (h20 : R 20 = BitVec.ofNat 64 sb.pay) (h21 : R 21 = BitVec.ofNat 64 lb)
     (h8 : R 8 = BitVec.ofNat 64 n) (h23 : R 23 = BitVec.ofNat 64 v.rep.val)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [15, 17, 18, 21, 23] R' R →
-      BcHeap S M' H' F' (viewObj sb v (lb - n) n :: L) →
+      BcHeap S X M' H' F' (viewObj sb v (lb - n) n :: L) →
       R' 21 = BitVec.ofNat 64 (lb - n) → R' 23 = BitVec.ofNat 64 (v.rep.val + (lb - n)) →
       R' 18 = BitVec.ofNat 64 zeroAddr → R' 17 = BitVec.ofNat 64 z.rep.p →
       (∀ a, ¬ AllocByte H a → ¬ sb.In a → ¬ bcFreeBytes a → imgM M' a = imgM Mt a) →
@@ -219,16 +219,16 @@ theorem kview_80005400 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The view of all of `u` at `0x8000539c`** (`u1` a reference to
 `_zero_`): `u0` is `u`'s first `la` digits. -/
-theorem kview_8000539c {live : Nat → Prop} {S : Nat → Prop}
+theorem kview_8000539c {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
-    {w v : NumObj} {sb : Blk} {la : Nat} (hb : BcHeap S Mt H F L)
+    {w v : NumObj} {sb : Blk} {la : Nat} (hb : BcHeap S X Mt H F L)
     (hvs : ViewStruct S Mt M H H' F F' sb L) (hw : w ∈ L) (hv : v ∈ L) (hla : 1 ≤ la)
     (hfit : la ≤ w.rep.len + w.rep.scale) (hlb : la < 2 ^ 30)
     (h19 : R 19 = BitVec.ofNat 64 sb.pay) (h20 : R 20 = BitVec.ofNat 64 la)
     (h26 : R 26 = BitVec.ofNat 64 w.rep.val) (h18 : R 18 = BitVec.ofNat 64 v.rep.p)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [14, 23] R' R →
-      BcHeap S M' H' F' (viewObj sb w 0 la :: L) →
+      BcHeap S X M' H' F' (viewObj sb w 0 la :: L) →
       R' 23 = BitVec.ofNat 64 v.rep.val →
       (∀ a, ¬ AllocByte H a → ¬ sb.In a → ¬ bcFreeBytes a → imgM M' a = imgM Mt a) →
       DW live S Q 0x800053bc#64 R' M') :
@@ -253,16 +253,16 @@ theorem kview_8000539c {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The view of all of `v` at `0x80004e94`** (`v1` a reference to
 `_zero_`): `v0` is `v`'s first `lb` digits. -/
-theorem kview_80004e94 {live : Nat → Prop} {S : Nat → Prop}
+theorem kview_80004e94 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt M : Mem} {R : Nat → BitVec 64} {H H' : Heap} {F F' : List Blk} {L : List NumObj}
-    {w : NumObj} {sb : Blk} {k : Nat} (hb : BcHeap S Mt H F L)
+    {w : NumObj} {sb : Blk} {k : Nat} (hb : BcHeap S X Mt H F L)
     (hvs : ViewStruct S Mt M H H' F F' sb L) (hw : w ∈ L) (hk1 : 1 ≤ k)
     (hfit : k ≤ w.rep.len + w.rep.scale) (hkb : k < 2 ^ 31)
     (h20 : R 20 = BitVec.ofNat 64 sb.pay) (h21 : R 21 = BitVec.ofNat 64 k)
     (h23 : R 23 = BitVec.ofNat 64 w.rep.val)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [15] R' R →
-      BcHeap S M' H' F' (viewObj sb w 0 k :: L) →
+      BcHeap S X M' H' F' (viewObj sb w 0 k :: L) →
       (∀ a, ¬ AllocByte H a → ¬ sb.In a → ¬ bcFreeBytes a → imgM M' a = imgM Mt a) →
       DW live S Q 0x80004eb0#64 R' M') :
     DW live S Q 0x80004e94#64 R M := by

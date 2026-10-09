@@ -100,9 +100,9 @@ structure RxSlot (M : Mem) (L : List NumObj) (xr : NumObj) (q : Nat) : Prop wher
 /-- The result `y` for `n` in the slot `q`: one reference added to the
 leaked `parity` (`w`), one to `y`, then the old number `xr` dropped. Off the
 heap only the slot and the window changed. -/
-structure RxPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
+structure RxPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
     (xr : NumObj) (q sp W : Nat) (n : Num) (Lf : List NumObj) (y : NumObj) : Prop where
-  heap : BcHeap S Mt H F Lf
+  heap : BcHeap S X Mt H F Lf
   mid : ∃ w Lw Lm, AddRef L w Lw ∧ AddRef Lw y Lm ∧ DropAt Lm xr.rep.p Lf
   num : y.rep.num = n
   norm : y.rep.Norm
@@ -114,11 +114,11 @@ structure RxPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L 
 /-- `bc_raisemod`'s continuations: the result (`Num.raisemod …`), `-1` with
 nothing changed but the window (a zero modulus or a negative exponent), or
 `out_of_memory`. -/
-structure RxK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure RxK (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t : String) (R0 : Nat → BitVec 64) (Mt0 : Mem) (L : List NumObj) (xr : NumObj)
     (q sp W : Nat) (n : Option Num) : Prop where
   ret : ∀ r, n = some r → ∀ R' Mt' H F Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
-    RxPost S Mt0 Mt' H F L xr q sp W r Lf y → DWO live S Q t (R0 1) R' Mt'
+    RxPost S X Mt0 Mt' H F L xr q sp W r Lf y → DWO live S Q t (R0 1) R' Mt'
   fail : n = none → ∀ R' Mt', Keeps binClob R' R0 → R' 10 = 0xffffffffffffffff#64 →
     (∀ a, ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) → DWO live S Q t (R0 1) R' Mt'
   oom : RaOom live S (DQ live S Q t) Mt0 sp W q
@@ -200,28 +200,28 @@ theorem RHOwn.set {hs1 hs2 : List RH} {h : RH} {L : List NumObj} (ho : RHOwn (hs
 
 /-- **A new number** for a handle's slot: the heap with the handle replaced,
 from the callee's heap `y :: L'` and its drop of the handle's reference. -/
-theorem RList.replace {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {hs1 hs2 : List RH}
+theorem RList.replace {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {hs1 hs2 : List RH}
     {h : RH} {L L' : List NumObj} {y : NumObj} (ho : RHOwn (hs1 ++ h :: hs2) L) (hy : y.Owns)
-    (hb : BcHeap S M H F (y :: L')) (he : L' = RList (hs1 ++ hs2) L) :
-    BcHeap S M H F (RList (hs1 ++ .own y :: hs2) L) := by
+    (hb : BcHeap S X M H F (y :: L')) (he : L' = RList (hs1 ++ hs2) L) :
+    BcHeap S X M H F (RList (hs1 ++ .own y :: hs2) L) := by
   subst he
   exact hb.perm (RList.cons_perm hs1 hs2 y L) (ho.set hy).all
 
 /-- **A call of `bc_multiply`** from `bc_raisemod`'s frame (`sp - 112`) into
 the word at `sp - 112 + o`. -/
-theorem rx_mulCall {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_mulCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {L1 L2 : List NumObj} {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : RxCtx S R0 sp W q) (hoom : DmOom live S Q Mt0 sp W) (ho : o ≤ 24) (ho8 : o % 8 = 0)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (ha : MulArgs M (L1 ++ xr :: L2) x1 x2 z k)
-    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr (sp - 112 + o))
+    (hb : BcHeap S X M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr (sp - 112 + o))
     (h2 : R 2 = BitVec.ofNat 64 (sp - 112)) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 112 + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ R' M' H' F' L' y, Keeps binClob R' R →
-      BinPostW S M M' H' F' L1 L2 xr (sp - 112 + o) (sp - 112) (W - 112)
+      BinPostW S X M M' H' F' L1 L2 xr (sp - 112 + o) (sp - 112) (W - 112)
         (Num.mul x1.rep.num x2.rep.num k) L' y → DW live S Q (R 1) R' M') :
     DW live S Q 0x8000573c#64 R M := by
   rx_facts cx
@@ -243,8 +243,8 @@ theorem rx_mulCall {live : Nat → Prop} {S : Nat → Prop}
         exact houtM a ha hf⟩
 
 /-- What a callee's slot holds: the number a handle names. -/
-theorem RList.slot {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {hs1 hs2 : List RH}
-    {h : RH} {L : List NumObj} (hb : BcHeap S M H F (RList (hs1 ++ h :: hs2) L)) (hh : RHOK L h)
+theorem RList.slot {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {hs1 hs2 : List RH}
+    {h : RH} {L : List NumObj} (hb : BcHeap S X M H F (RList (hs1 ++ h :: hs2) L)) (hh : RHOK L h)
     (ho : RHOwn (hs1 ++ h :: hs2) L) :
     ∃ L1 L2 x, RList (hs1 ++ h :: hs2) L = L1 ++ x :: L2 ∧ x.rep.p = h.p ∧ 1 ≤ x.rep.refs ∧
       (x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db) ∧ (∀ y, h = .ref y → 2 ≤ x.rep.refs) ∧
@@ -258,21 +258,21 @@ theorem RList.slot {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {hs1 h
 
 /-- **`bc_multiply (u1, u2, &h, k)`** on the handle `h` of `bc_raisemod`
 (its word at `sp - 112 + o`): the product replaces it. -/
-theorem rx_mulH {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_mulH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {u1 u2 z : NumObj} {H : Heap}
     {F : List Blk}
     (cx : RxCtx S R0 sp W q) (hoom : DmOom live S Q Mt0 sp W) (ho : o ≤ 24) (ho8 : o % 8 = 0)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
+    (hb : BcHeap S X M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
     (hh : RHOK L h) (ha : MulArgs M (RList (hs1 ++ h :: hs2) L) u1 u2 z k)
     (hw : ldv .ld M (sp - 112 + o) = BitVec.ofNat 64 h.p)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 112)) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 u1.rep.p) (h11 : R 11 = BitVec.ofNat 64 u2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 (sp - 112 + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
-      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) →
+      BcHeap S X M' H' F' (RList (hs1 ++ .own y :: hs2) L) →
       MulRes M' (sp - 112 + o) (Num.mul u1.rep.num u2.rep.num k) y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 112 + o) a → ¬ frameIn (sp - 112) (W - 112) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
@@ -317,14 +317,14 @@ theorem DmOom.inner {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
 /-- **`bc_divmod (u1, u2, NULL, &h, k)`** (`bc_modulo`) on the handle `h`
 of `bc_raisemod` (its word at `sp - 112 + o`) by a nonzero `u2`: the
 remainder replaces it. -/
-theorem rx_modH {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_modH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {hs1 hs2 : List RH} {h : RH} {L : List NumObj} {u1 u2 z : NumObj} {H : Heap}
     {F : List Blk}
     (cx : RxCtx S R0 sp W q) (hoom : DmOom live S Q Mt0 sp W) (ho : o ≤ 24) (ho8 : o % 8 = 0)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
+    (hb : BcHeap S X M H F (RList (hs1 ++ h :: hs2) L)) (hown : RHOwn (hs1 ++ h :: hs2) L)
     (hh : RHOK L h) (ha : DmArgs M (RList (hs1 ++ h :: hs2) L) u1 u2 z k)
     (hm2 : u2.rep.num.mag ≠ 0)
     (hw : ldv .ld M (sp - 112 + o) = BitVec.ofNat 64 h.p)
@@ -334,7 +334,7 @@ theorem rx_modH {live : Nat → Prop} {S : Nat → Prop}
     (h14 : R 14 = BitVec.ofNat 64 k)
     (hret : ∀ r, Num.modulo u1.rep.num u2.rep.num k = some r → ∀ R' M' H' F' y,
       Keeps binClob R' R → R' 10 = 0#64 →
-      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → ResNum M' (sp - 112 + o) r y →
+      BcHeap S X M' H' F' (RList (hs1 ++ .own y :: hs2) L) → ResNum M' (sp - 112 + o) r y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 112 + o) a → ¬ frameIn (sp - 112) (W - 112) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x80005fd0#64 R M := by
@@ -355,13 +355,13 @@ theorem rx_modH {live : Nat → Prop} {S : Nat → Prop}
 /-- **`bc_divmod (exponent, u2, &exponent, &parity, 0)`** on `bc_raisemod`'s
 handles `[power, exponent, temp, parity]` (words at `sp - 112 + 8` and
 `+ 16`): the quotient and remainder replace the exponent and the parity. -/
-theorem rx_halveH {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_halveH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
     {hP hE hT hX : RH} {L : List NumObj} {u1 u2 z : NumObj} {H : Heap} {F : List Blk}
     (cx : RxCtx S R0 sp W q) (hoom : DmOom live S Q Mt0 sp W)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (RList [hP, hE, hT, hX] L)) (hown : RHOwn [hP, hE, hT, hX] L)
+    (hb : BcHeap S X M H F (RList [hP, hE, hT, hX] L)) (hown : RHOwn [hP, hE, hT, hX] L)
     (hhE : RHOK L hE) (hhX : RHOK L hX) (hEX : hE.p ≠ hX.p)
     (ha : DmArgs M (RList [hP, hE, hT, hX] L) u1 u2 z 0) (hm2 : u2.rep.num.mag ≠ 0)
     (hw8 : ldv .ld M (sp - 112 + 8) = BitVec.ofNat 64 hE.p)
@@ -372,16 +372,16 @@ theorem rx_halveH {live : Nat → Prop} {S : Nat → Prop}
     (h14 : R 14 = BitVec.ofNat 64 0)
     (hret : ∀ m, Num.divmod u1.rep.num u2.rep.num 0 = some m → ∀ R' M' H' F' yq yr,
       Keeps binClob R' R → R' 10 = 0#64 →
-      BcHeap S M' H' F' (RList [hP, .own yq, hT, .own yr] L) →
+      BcHeap S X M' H' F' (RList [hP, .own yq, hT, .own yr] L) →
       ResNum M' (sp - 112 + 8) m.1 yq → ResNum M' (sp - 112 + 16) m.2 yr →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 112 + 8) a → ¬ slotBytes (sp - 112 + 16) a →
         ¬ frameIn (sp - 112) (W - 112) a → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x80005fd0#64 R M := by
   rx_facts cx
   have hpd := hb.pdist
-  have hbX : BcHeap S M H F (RList ([hP, hE, hT] ++ hX :: []) L) := hb
+  have hbX : BcHeap S X M H F (RList ([hP, hE, hT] ++ hX :: []) L) := hb
   have hoX : RHOwn ([hP, hE, hT] ++ hX :: []) L := hown
-  have hbE : BcHeap S M H F (RList ([hP] ++ hE :: [hT, hX]) L) := hb
+  have hbE : BcHeap S X M H F (RList ([hP] ++ hE :: [hT, hX]) L) := hb
   have hoE : RHOwn ([hP] ++ hE :: [hT, hX]) L := hown
   obtain ⟨L1r, L2r, xr, er, hpr, hrr, _, _, _, hfrr⟩ := RList.slot hbX hhX hoX
   obtain ⟨L1q, L2q, xq, eq, hpq, hrq, _, _, _, _⟩ := RList.slot hbE hhE hoE
@@ -427,13 +427,13 @@ theorem rx_halveH {live : Nat → Prop} {S : Nat → Prop}
 /-- **`bc_divide (u1, u2, &h, k)`** on a reference handle `h` of
 `bc_raisemod` (its word at `sp - 112 + o`) by a nonzero `u2`: the quotient
 replaces it. -/
-theorem rx_divH {live : Nat → Prop} {S : Nat → Prop}
+theorem rx_divH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q o k : Nat}
     {hs1 hs2 : List RH} {L : List NumObj} {p u1 u2 z : NumObj} {H : Heap} {F : List Blk}
     (cx : RxCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q) (ho : o ≤ 24) (ho8 : o % 8 = 0)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S M H F (RList (hs1 ++ .ref p :: hs2) L)) (hown : RHOwn (hs1 ++ .ref p :: hs2) L)
+    (hb : BcHeap S X M H F (RList (hs1 ++ .ref p :: hs2) L)) (hown : RHOwn (hs1 ++ .ref p :: hs2) L)
     (hh : RHOK L (.ref p))
     (hm1 : u1 ∈ RList (hs1 ++ .ref p :: hs2) L) (hm2 : u2 ∈ RList (hs1 ++ .ref p :: hs2) L)
     (hmz : z ∈ RList (hs1 ++ .ref p :: hs2) L)
@@ -446,7 +446,7 @@ theorem rx_divH {live : Nat → Prop} {S : Nat → Prop}
     (h12 : R 12 = BitVec.ofNat 64 (sp - 112 + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ m, Num.div u1.rep.num u2.rep.num k = some m → ∀ R' M' H' F' y,
       Keeps binClob R' R → R' 10 = 0#64 →
-      BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → ResNum M' (sp - 112 + o) m y →
+      BcHeap S X M' H' F' (RList (hs1 ++ .own y :: hs2) L) → ResNum M' (sp - 112 + o) m y →
       (∀ a, OutHeap a → ¬ slotBytes (sp - 112 + o) a → ¬ frameIn (sp - 112) (W - 112) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x8000589c#64 R M := by

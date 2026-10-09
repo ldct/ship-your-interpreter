@@ -15,13 +15,13 @@ open Dc.BcModel
 set_option linter.unusedSimpArgs false
 
 /-- `_bc_shift_addsub (*prod, m3, n, 0)` at `0x80005164` (`a5` holds the product). -/
-theorem kshift_80005164 {live : Nat → Prop} {S : Nat → Prop}
+theorem kshift_80005164 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W n : Nat} {A B : List NumObj} {z : NumObj}
     {y : NumObj} {H : Heap} {F : List Blk} (cx : RmCtx S R0 sp q W)
     {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
-    (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
+    (hb : BcHeap S X M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hyo : y.Owns) (hy15 : R 15 = BitVec.ofNat 64 y.rep.p)
     (hwp : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hfit : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep ≤
@@ -29,7 +29,7 @@ theorem kshift_80005164 {live : Nat → Prop} {S : Nat → Prop}
     (hlt : dvalBE y.rep.ds + hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3) *
       10 ^ n < 10 ^ (y.rep.len + y.rep.scale))
     (hk : ∀ R2 M2 ds, KMid S M0 M2 R0 R2 sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 (withDs y ds) →
-      BcHeap S M2 H F (withDs y ds :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z) →
+      BcHeap S X M2 H F (withDs y ds :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z) →
       dvalBE ds = dvalBE y.rep.ds +
         hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3) * 10 ^ n →
       DW live S Q 0x80005180#64 R2 M2) :
@@ -68,13 +68,13 @@ theorem kshift_80005164 {live : Nat → Prop} {S : Nat → Prop}
     (shiftDs_add ys.dsLen ys.dig hfit hwl hwp ws.dig hc)
 
 /-- `_bc_shift_addsub (*prod, m3, 0, 0)` at `0x80005180`. -/
-theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop}
+theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W n : Nat} {A B : List NumObj} {z : NumObj}
     {y : NumObj} {H : Heap} {F : List Blk} (cx : RmCtx S R0 sp q W)
     {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
-    (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
+    (hb : BcHeap S X M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hyo : y.Owns)
     (hwp : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep.len)
     (hfit : 0 + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3).rep ≤
@@ -82,7 +82,7 @@ theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop}
     (hlt : dvalBE y.rep.ds + hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3) *
       10 ^ 0 < 10 ^ (y.rep.len + y.rep.scale))
     (hk : ∀ R2 M2 ds, KMid S M0 M2 R0 R2 sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 (withDs y ds) →
-      BcHeap S M2 H F (withDs y ds :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z) →
+      BcHeap S X M2 H F (withDs y ds :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z) →
       dvalBE ds = dvalBE y.rep.ds +
         hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm3) * 10 ^ 0 →
       DW live S Q 0x8000519c#64 R2 M2) :
@@ -124,13 +124,13 @@ theorem kshift_80005180 {live : Nat → Prop} {S : Nat → Prop}
     (shiftDs_add ys.dsLen ys.dig hfit hwl hwp ws.dig hc)
 
 /-- `_bc_shift_addsub (*prod, m1, 2*n, 0)` at `0x80005468` (`a0` holds the product). -/
-theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop}
+theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W n : Nat} {A B : List NumObj} {z : NumObj}
     {y : NumObj} {H : Heap} {F : List Blk} (cx : RmCtx S R0 sp q W)
     {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
-    (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
+    (hb : BcHeap S X M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hyo : y.Owns) (hy10 : R 10 = BitVec.ofNat 64 y.rep.p)
     (hwp : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep.len)
     (hfit : (2 * n) + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep ≤
@@ -138,7 +138,7 @@ theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop}
     (hlt : dvalBE y.rep.ds + hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) *
       10 ^ (2 * n) < 10 ^ (y.rep.len + y.rep.scale))
     (hk : ∀ R2 M2 ds, KMid S M0 M2 R0 R2 sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 (withDs y ds) →
-      BcHeap S M2 H F (withDs y ds :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z) →
+      BcHeap S X M2 H F (withDs y ds :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z) →
       dvalBE ds = dvalBE y.rep.ds +
         hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) * 10 ^ (2 * n) →
       DW live S Q 0x80005480#64 R2 M2) :
@@ -177,13 +177,13 @@ theorem kshift_80005468 {live : Nat → Prop} {S : Nat → Prop}
     (shiftDs_add ys.dsLen ys.dig hfit hwl hwp ws.dig hc)
 
 /-- `_bc_shift_addsub (*prod, m1, n, 0)` at `0x80005480`. -/
-theorem kshift_80005480 {live : Nat → Prop} {S : Nat → Prop}
+theorem kshift_80005480 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W n : Nat} {A B : List NumObj} {z : NumObj}
     {y : NumObj} {H : Heap} {F : List Blk} (cx : RmCtx S R0 sp q W)
     {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
     (km : KMid S M0 M R0 R sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 y)
-    (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
+    (hb : BcHeap S X M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hyo : y.Owns)
     (hwp : 1 ≤ (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep.len)
     (hfit : n + valCount (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1).rep ≤
@@ -191,7 +191,7 @@ theorem kshift_80005480 {live : Nat → Prop} {S : Nat → Prop}
     (hlt : dvalBE y.rep.ds + hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) *
       10 ^ n < 10 ^ (y.rep.len + y.rep.scale))
     (hk : ∀ R2 M2 ds, KMid S M0 M2 R0 R2 sp q W n z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 (withDs y ds) →
-      BcHeap S M2 H F (withDs y ds :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z) →
+      BcHeap S X M2 H F (withDs y ds :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z) →
       dvalBE ds = dvalBE y.rep.ds +
         hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) * 10 ^ n →
       DW live S Q 0x8000549c#64 R2 M2) :

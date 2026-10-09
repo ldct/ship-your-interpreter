@@ -1,22 +1,22 @@
 
 /-- After `d1`'s `bc_sub` (`0x@B@`): `d1` into `s5`, its digit count to `0(sp)`,
 then `d2 = v0 - v1` into `0x48(sp)`. -/
-theorem ksubsB_@B@ {live : Nat → Prop} {S : Nat → Prop}
+theorem ksubsB_@B@ {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 Ms M : Mem} {R0 R : Nat → BitVec 64} {sp q W n la lb : Nat} {A B : List NumObj}
     {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk} {hu1 hu0 hv1 hv0 : Hd} {hs : List Hd}
-    {y1 : NumObj} (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    {y1 : NumObj} (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     (hW : 368 ≤ W) (pk : KM1 S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0)
-    (hb : BcHeap S M H F (KList [] (none :: some y1 :: hs) A B z))
+    (hb : BcHeap S X M H F (KList [] (none :: some y1 :: hs) A B z))
     (h64 : ldv .ld M (sp - 192 + 64) = BitVec.ofNat 64 y1.sb.pay)
     (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 z.rep.p)
     (hv0m : hv0 ∈ hs) (hv1m : hv1 ∈ hs) (sa : KSubArgs z hv0 hv1) (hzr : 1 ≤ z.rep.refs)
     (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
     (hga : GlobAgree M Ms)@H26P@
-    (hnext : KSubsK live S Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
+    (hnext : KSubsK live S X Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
     DW live S Q 0x@B@#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
-  have hbs : BcHeap S M H F (KList [] (some y1 :: none :: hs) A B z) := by
+  have hbs : BcHeap S X M H F (KList [] (some y1 :: none :: hs) A B z) := by
     rw [KList_swapNone]; exact hb
   obtain ⟨hy1, hyp⟩ := hbs.khead
   num_facts hy1

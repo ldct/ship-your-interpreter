@@ -465,7 +465,7 @@ abbrev colDs (u v : NumRep) (la lb k : Nat) : List Nat :=
 /-- **The column loop** at `0x80004cb4` with `j` columns left: each column
 adds its products to the carry, stores `sum % 10` at `pvptr` and keeps
 `sum / 10`. -/
-theorem sm_cols {live : Nat → Prop} {S : Nat → Prop}
+theorem sm_cols {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     (hS : HeapOwn S) {H : Heap} {F : List Blk} {L : List NumObj} {y uo vo : NumObj}
     (hyo : y.Owns) (huL : uo ∈ L) (hvL : vo ∈ L) {la lb P sp : Nat} {A8 A10 : BitVec 64}
@@ -481,12 +481,12 @@ theorem sm_cols {live : Nat → Prop} {S : Nat → Prop}
     (hk : ∀ R' M', Keeps colClob R' R0 →
       ColRegs R' uo.rep vo.rep la lb P sp (la + lb)
         (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb (la + lb)).2 →
-      BcHeap S M' H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L) →
+      BcHeap S X M' H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L) →
       MemOnly (accBytes y.rep) M' M0 → DW live S Q 0x80004d44#64 R' M') :
     ∀ j k R M, j + k = la + lb → 1 ≤ j → Keeps colClob R R0 →
       ColRegs R uo.rep vo.rep la lb P sp k
         (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb k).2 →
-      BcHeap S M H F (withDs y (colDs uo.rep vo.rep la lb k) :: L) →
+      BcHeap S X M H F (withDs y (colDs uo.rep vo.rep la lb k) :: L) →
       MemOnly (accBytes y.rep) M M0 → ldv .ld M sp = BitVec.ofNat 64 uo.rep.p →
       ldv .ld M (sp + 8) = A8 → ldv .ld M (sp + 16) = A10 →
       DW live S Q 0x80004cb4#64 R M := by

@@ -63,34 +63,34 @@ structure KZero (M : Mem) (z : NumObj) (k : Nat) : Prop where
 
 /-- **`_bc_rec_mul`'s contract** for operands of `N` digits together or
 fewer: the induction hypothesis. -/
-def RmIH (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) (N : Nat) :
+def RmIH (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) (N : Nat) :
     Prop :=
   ∀ (R0 : Nat → BitVec 64) (M : Mem) (sp q W la lb : Nat) (A B : List NumObj)
     (z uo vo : NumObj) (H : Heap) (F : List Blk),
     la + lb ≤ N → rmStack (la + lb) ≤ W → KZero M z (4 * (la + lb) + 8) →
-    RmCtx S R0 sp q W → RmK live S Q R0 M (A ++ z :: B) uo.rep vo.rep la lb q sp W →
-    RmArgs M (A ++ z :: B) uo vo la lb → BcHeap S M H F (A ++ z :: B) →
+    RmCtx S R0 sp q W → RmK live S X Q R0 M (A ++ z :: B) uo.rep vo.rep la lb q sp W →
+    RmArgs M (A ++ z :: B) uo vo la lb → BcHeap S X M H F (A ++ z :: B) →
     R0 10 = BitVec.ofNat 64 uo.rep.p → R0 11 = BitVec.ofNat 64 la →
     R0 12 = BitVec.ofNat 64 vo.rep.p → R0 13 = BitVec.ofNat 64 lb →
     R0 14 = BitVec.ofNat 64 q → DW live S Q 0x80004bd0#64 R0 M
 
 /-- **A recursive call** from the step's frame (`sp - 192`) into the slot
 `sp - 192 + o`: the child's window is the rest of the step's. -/
-theorem kara_child {live : Nat → Prop} {S : Nat → Prop}
-    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {N : Nat} (ih : RmIH live S Q N)
+theorem kara_child {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {N : Nat} (ih : RmIH live S X Q N)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb la' lb' : Nat} {L : List NumObj}
     {u v : NumRep} {A B : List NumObj} {z uo vo : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L u v la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (o : Nat) (ho : o + 8 ≤ 88) (hoa : o % 8 = 0)
     (hN : la' + lb' ≤ N) (hW : rmStack (la' + lb') + 192 ≤ W)
     (hz : KZero M z (4 * (la' + lb') + 8))
-    (ha : RmArgs M (A ++ z :: B) uo vo la' lb') (hb : BcHeap S M H F (A ++ z :: B))
+    (ha : RmArgs M (A ++ z :: B) uo vo la' lb') (hb : BcHeap S X M H F (A ++ z :: B))
     (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 uo.rep.p) (h11 : R 11 = BitVec.ofNat 64 la')
     (h12 : R 12 = BitVec.ofNat 64 vo.rep.p) (h13 : R 13 = BitVec.ofNat 64 lb')
     (h14 : R 14 = BitVec.ofNat 64 (sp - 192 + o))
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
-      RmPost S M M' H' F' (A ++ z :: B) uo.rep vo.rep la' lb' (sp - 192 + o) (sp - 192) (W - 192) y →
+      RmPost S X M M' H' F' (A ++ z :: B) uo.rep vo.rep la' lb' (sp - 192 + o) (sp - 192) (W - 192) y →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x80004bd0#64 R M := by
   have hsf := cx.frame

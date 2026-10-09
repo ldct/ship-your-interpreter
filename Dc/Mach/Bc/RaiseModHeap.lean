@@ -196,8 +196,8 @@ theorem RList.owns {hs : List RH} {L : List NumObj} (ht : ∀ y, .own y ∈ hs �
     exact rBump_owns (hL w hw)
 
 /-- **The number heap in any order**, when every number owns its digits. -/
-theorem BcHeap.perm {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L L' : List NumObj}
-    (hb : BcHeap S M H F L) (hp : L.Perm L') (ho : ∀ y ∈ L', y.Owns) : BcHeap S M H F L' := by
+theorem BcHeap.perm {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {L L' : List NumObj}
+    (hb : BcHeap S X M H F L) (hp : L.Perm L') (ho : ∀ y ∈ L', y.Owns) : BcHeap S X M H F L' := by
   have hv : ViewsOwned L' := by
     have := ViewsOwned.prefix (T := []) .nil (P := L') fun y hy => .inl (ho y hy)
     simpa only [List.append_nil] using this
@@ -207,8 +207,8 @@ theorem BcHeap.perm {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L L'
     hb.globOwn⟩
 
 /-- Objects after `x` in the heap have other struct pointers. -/
-theorem BcHeap.p_ne_mid {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) {y : NumObj}
+theorem BcHeap.p_ne_mid {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X M H F (L1 ++ x :: L2)) {y : NumObj}
     (hy : y ∈ L2) : y.rep.p ≠ x.rep.p := by
   have hp : (L1 ++ x :: L2).Perm ((L1 ++ L2) ++ [x]) :=
     List.perm_middle.trans (List.perm_append_singleton _ _).symm
@@ -230,8 +230,8 @@ theorem BcHeap.p_ne_mid {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk}
     ⟨by omega, by simp only [Blk.fin, Blk.pay] at e ⊢; omega⟩
 
 /-- No other number of the heap has `x`'s struct pointer. -/
-theorem BcHeap.p_ne_all {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) :
+theorem BcHeap.p_ne_all {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X M H F (L1 ++ x :: L2)) :
     ∀ y ∈ L1 ++ L2, y.rep.p ≠ x.rep.p := fun y hy => by
   rcases List.mem_append.mp hy with hy | hy
   · exact h.p_ne_split hy
@@ -268,8 +268,8 @@ theorem pairwise_of_split {R : NumObj → NumObj → Prop} :
       rw [e]; rfl))
 
 /-- A heap's numbers have distinct struct pointers. -/
-theorem BcHeap.pdist {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    (h : BcHeap S M H F L) : PDist L := by
+theorem BcHeap.pdist {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (h : BcHeap S X M H F L) : PDist L := by
   unfold PDist
   rw [List.nodup_iff_pairwise_ne, List.pairwise_map]
   exact pairwise_of_split L fun L1 x L2 e y hy => by

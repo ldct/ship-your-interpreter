@@ -68,11 +68,11 @@ theorem imgM_swap48 (M : Mem) {b1 b2 : Nat} (v1 v2 : BitVec 64)
 
 /-- **One trim step on any object of the heap**: `n_len` lowered, `n_value`
 advanced past a leading zero. -/
-theorem BcHeap.advanceAt {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+theorem BcHeap.advanceAt {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2))
     (hl : 2 ≤ x.rep.len) {v1 v2 : BitVec 64} (h1 : v1.toNat % 2 ^ 32 = x.rep.len - 1)
     (h2 : v2 = BitVec.ofNat 64 (x.rep.val + 1)) :
-    BcHeap S (writeLog (writeLog Mt [(x.rep.p + 4, 4, v1)]) [(x.rep.p + 32, 8, v2)]) H F
+    BcHeap S X (writeLog (writeLog Mt [(x.rep.p + 4, 4, v1)]) [(x.rep.p + 32, 8, v2)]) H F
       (L1 ++ { x with rep := x.rep.drop 1 } :: L2) := by
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have hn := h.nums x hx
@@ -89,11 +89,11 @@ theorem BcHeap.advanceAt {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
 
 /-- The trim step as the code performs it: `n_value` stored first, then
 `n_len`. -/
-theorem BcHeap.advanceAt' {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+theorem BcHeap.advanceAt' {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (L1 ++ x :: L2))
     (hl : 2 ≤ x.rep.len) {v1 v2 : BitVec 64} (h1 : v1.toNat % 2 ^ 32 = x.rep.len - 1)
     (h2 : v2 = BitVec.ofNat 64 (x.rep.val + 1)) :
-    BcHeap S (writeLog (writeLog Mt [(x.rep.p + 32, 8, v2)]) [(x.rep.p + 4, 4, v1)]) H F
+    BcHeap S X (writeLog (writeLog Mt [(x.rep.p + 32, 8, v2)]) [(x.rep.p + 4, 4, v1)]) H F
       (L1 ++ { x with rep := x.rep.drop 1 } :: L2) :=
   (h.advanceAt hl h1 h2).congr fun a => (imgM_swap48 Mt v1 v2 (by omega) a).symm
 

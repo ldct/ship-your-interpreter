@@ -50,9 +50,9 @@ def HdOwned (A B : List NumObj) (z : NumObj) (hs : List Hd) : Prop :=
 
 /-- **The handles reordered**: the number heap under any permutation of the
 handles whose views stay before their owners. -/
-theorem BcHeap.kperm {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {P A B : List NumObj}
-    {z : NumObj} {hs hs' : List Hd} (hb : BcHeap S M H F (KList P hs A B z)) (hp : hs.Perm hs')
-    (hP : ∀ y ∈ P, y.Owns) (ho : HdOwned A B z hs') : BcHeap S M H F (KList P hs' A B z) := by
+theorem BcHeap.kperm {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {P A B : List NumObj}
+    {z : NumObj} {hs hs' : List Hd} (hb : BcHeap S X M H F (KList P hs A B z)) (hp : hs.Perm hs')
+    (hP : ∀ y ∈ P, y.Owns) (ho : HdOwned A B z hs') : BcHeap S X M H F (KList P hs' A B z) := by
   have hL : (KList P hs A B z).Perm (KList P hs' A B z) := by
     simp only [KList, zeroCount_perm hp, List.append_assoc]
     exact (List.Perm.refl P).append ((hp.filterMap id).append (List.Perm.refl _))
@@ -78,13 +78,13 @@ theorem BcHeap.kperm {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {P A
 
 /-- **A copy of `_zero_`** (`bc_copy_num`): its count raised, one more
 `none` handle. -/
-theorem BcHeap.kzero {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {P A B : List NumObj}
-    {z : NumObj} {hs : List Hd} (hb : BcHeap S M H F (KList P hs A B z)) {v : BitVec 64}
+theorem BcHeap.kzero {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {P A B : List NumObj}
+    {z : NumObj} {hs : List Hd} (hb : BcHeap S X M H F (KList P hs A B z)) {v : BitVec 64}
     (hv : v.toNat % 2 ^ 32 = z.rep.refs + zeroCount hs + 1)
     (hk : z.rep.refs + zeroCount hs + 1 < 2 ^ 31) :
-    BcHeap S (writeLog M [(z.rep.p + 12, 4, v)]) H F (KList P (none :: hs) A B z) := by
+    BcHeap S X (writeLog M [(z.rep.p + 12, 4, v)]) H F (KList P (none :: hs) A B z) := by
   rw [KList_none]
-  have hb' : BcHeap S M H F ((P ++ temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
+  have hb' : BcHeap S X M H F ((P ++ temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
     simpa only [KList, List.append_assoc] using hb
   exact hb'.setRefs hv hk
 
@@ -189,15 +189,15 @@ theorem KPre.toMid {S : Nat → Prop} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 
 
 /-- **From a return of the product's `bc_new_num`** (`0x80005158` or
 `0x8000545c`): the pointer stored through `prod`, then the fill. -/
-theorem kara_newRet {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_newRet {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj} {z : NumObj}
     {u v : NumRep} {y : NumObj} {H : Heap} {F : List Blk} {fl : Bool} {pc : BitVec 64}
     (hpc : pc = 0x80005158#64 ∨ pc = 0x8000545c#64)
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
     (pk : KPre S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 fl)
-    (hb : BcHeap S M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
+    (hb : BcHeap S X M H F (y :: KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hok : HdOK (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2)) (hz : 1 ≤ z.rep.refs)
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0) (hP : dvalBE y.rep.ds = 0)
@@ -247,15 +247,15 @@ theorem kara_newRet {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The product's `bc_new_num (ulen + vlen + 1, 0)`** at `0x80004250`,
 called from `0x80005154` or `0x80005458`. -/
-theorem kara_newCall {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_newCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj} {z : NumObj}
     {u v : NumRep} {H : Heap} {F : List Blk} {fl : Bool}
     (hra : R 1 = 0x80005158#64 ∨ R 1 = 0x8000545c#64)
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
     (pk : KPre S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 fl)
-    (hb : BcHeap S M H F (KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
+    (hb : BcHeap S X M H F (KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hok : HdOK (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2)) (hz : 1 ≤ z.rep.refs)
     (hN : la + lb < 2 ^ 30)
     (h10 : R 10 = BitVec.ofNat 64 (la + lb + 1)) (h11 : R 11 = 0#64)
@@ -298,14 +298,14 @@ theorem kara_newCall {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`m3` computed** (`0x8000514c`, after the recursive call): the product's
 `bc_new_num`. -/
-theorem kara_new514c {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_new514c {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj} {z : NumObj}
     {u v : NumRep} {H : Heap} {F : List Blk} {fl : Bool}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     {hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2 : Hd}
     (pk : KPre S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 hm3 fl)
-    (hb : BcHeap S M H F (KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
+    (hb : BcHeap S X M H F (KList [] (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) A B z))
     (hok : HdOK (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2)) (hz : 1 ≤ z.rep.refs)
     (hN : la + lb < 2 ^ 30)
     (hm1z : fl = true → hdVal (Hd.objIn (kHs hu1 hu0 hv1 hm1 hv0 hm2 hm3 hd1 hd2) z hm1) = 0)
@@ -334,14 +334,14 @@ theorem kara_new514c {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`m3 = _zero_`** (`0x80005440`, a factor zero): the copy of `_zero_`
 into `m3`'s slot, then the product's `bc_new_num`. -/
-theorem kara_new5440 {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_new5440 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj} {z : NumObj}
     {u v : NumRep} {H : Heap} {F : List Blk} {fl : Bool}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     {hu1 hu0 hv1 hm1 hv0 hm2 hd1 hd2 : Hd} {hs : List Hd}
     (pk : KM3 S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 fl)
-    (hb : BcHeap S M H F (KList [] hs A B z))
+    (hb : BcHeap S X M H F (KList [] hs A B z))
     (hpm : (none :: hs).Perm (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2))
     (hown : HdOwned A B z (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2))
     (hok : HdOK (kHs hu1 hu0 hv1 hm1 hv0 hm2 none hd1 hd2)) (hz : 1 ≤ z.rep.refs)

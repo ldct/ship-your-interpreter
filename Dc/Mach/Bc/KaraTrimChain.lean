@@ -23,39 +23,39 @@ set_option linter.unusedSimpArgs false
 
 /-- **A leading-zero trim site**: the object named by the register `r` has its
 `n_value` advanced past its leading zeros and `n_len` shrunk, reaching `N`. -/
-structure KTrim (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure KTrim (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (pc N : BitVec 64) (r : Nat) : Prop where
   run : ∀ (M : Mem) (R : Nat → BitVec 64) (H : Heap) (F : List Blk) (L1 L2 : List NumObj)
-    (x : NumObj), BcHeap S M H F (L1 ++ x :: L2) → R r = BitVec.ofNat 64 x.rep.p →
+    (x : NumObj), BcHeap S X M H F (L1 ++ x :: L2) → R r = BitVec.ofNat 64 x.rep.p →
     (∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [12, 13, 14, 15] R' R →
-      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      BcHeap S X M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
       lzCount (x.rep.len - 1) x.rep.ds = j →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
       DW live S Q N R' M') →
     DW live S Q pc R M
 
 /-- The trim of `u1` at `0x80004eb0`. -/
-theorem ktrimSite_80004eb0 {live S : Nat → Prop}
+theorem ktrimSite_80004eb0 {live S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1) :
-    KTrim live S Q 0x80004eb0#64 0x80004ee0#64 24 :=
+    KTrim live S X Q 0x80004eb0#64 0x80004ee0#64 24 :=
   ⟨fun _ _ _ _ _ _ _ hb hr hk => ktrim_80004eb0 hlive hb hr hk⟩
 
 /-- The trim of `u0` at `0x80004ee0`. -/
-theorem ktrimSite_80004ee0 {live S : Nat → Prop}
+theorem ktrimSite_80004ee0 {live S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1) :
-    KTrim live S Q 0x80004ee0#64 0x80004f10#64 19 :=
+    KTrim live S X Q 0x80004ee0#64 0x80004f10#64 19 :=
   ⟨fun _ _ _ _ _ _ _ hb hr hk => ktrim_80004ee0 hlive hb hr hk⟩
 
 /-- The trim of `v1` at `0x80004f10`. -/
-theorem ktrimSite_80004f10 {live S : Nat → Prop}
+theorem ktrimSite_80004f10 {live S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1) :
-    KTrim live S Q 0x80004f10#64 0x80004f40#64 27 :=
+    KTrim live S X Q 0x80004f10#64 0x80004f40#64 27 :=
   ⟨fun _ _ _ _ _ _ _ hb hr hk => ktrim_80004f10 hlive hb hr hk⟩
 
 /-- The trim of `v0` at `0x80004f40`. -/
-theorem ktrimSite_80004f40 {live S : Nat → Prop}
+theorem ktrimSite_80004f40 {live S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1) :
-    KTrim live S Q 0x80004f40#64 0x80004f70#64 20 :=
+    KTrim live S X Q 0x80004f40#64 0x80004f70#64 20 :=
   ⟨fun _ _ _ _ _ _ _ hb hr hk => ktrim_80004f40 hlive hb hr hk⟩
 
 /-- A handle with its leading zeros dropped. -/
@@ -96,14 +96,14 @@ theorem zeroCount_trim (pre post : List Hd) (h : Hd) (j : Nat) :
 
 /-- **One handle trimmed**: the site's span applied to the handle `h` of
 `KList [] (pre ++ h :: post) A B z`. -/
-theorem ktrimHd {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-    {pc N : BitVec 64} {r : Nat} (site : KTrim live S Q pc N r)
+theorem ktrimHd {live S : Nat → Prop} {X : Raws} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {pc N : BitVec 64} {r : Nat} (site : KTrim live S X Q pc N r)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {pre post : List Hd}
     {A B : List NumObj} {z : NumObj} {h : Hd}
-    (hb : BcHeap S M H F (KList [] (pre ++ h :: post) A B z)) (hz : z.rep.len = 1)
+    (hb : BcHeap S X M H F (KList [] (pre ++ h :: post) A B z)) (hz : z.rep.len = 1)
     (hr : R r = BitVec.ofNat 64 (Hd.p z h))
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [12, 13, 14, 15] R' R →
-      BcHeap S M' H F (KList [] (pre ++ h.trim h.lz :: post) A B z) →
+      BcHeap S X M' H F (KList [] (pre ++ h.trim h.lz :: post) A B z) →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
       DW live S Q N R' M') :
     DW live S Q pc R M := by
@@ -145,15 +145,15 @@ theorem ktrimHd {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
 /-- **The four trims** from `0x80004eb0` to `0x80004f70`: `u1`, `u0`, `v1`
 and `v0` in turn. The handles are listed in the order the step pushed them
 (`v0` last), so `x24` names the last of the list. -/
-theorem ktrims {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem ktrims {live S : Nat → Prop} {X : Raws} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk}
     {A B : List NumObj} {z : NumObj} {h1 h2 h3 h4 : Hd}
-    (hb : BcHeap S M H F (KList [] [h4, h3, h2, h1] A B z)) (hz : z.rep.len = 1)
+    (hb : BcHeap S X M H F (KList [] [h4, h3, h2, h1] A B z)) (hz : z.rep.len = 1)
     (hr24 : R 24 = BitVec.ofNat 64 (Hd.p z h1)) (hr19 : R 19 = BitVec.ofNat 64 (Hd.p z h2))
     (hr27 : R 27 = BitVec.ofNat 64 (Hd.p z h3)) (hr20 : R 20 = BitVec.ofNat 64 (Hd.p z h4))
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps [12, 13, 14, 15] R' R →
-      BcHeap S M' H F (KList [] [h4.trim h4.lz, h3.trim h3.lz, h2.trim h2.lz, h1.trim h1.lz]
+      BcHeap S X M' H F (KList [] [h4.trim h4.lz, h3.trim h3.lz, h2.trim h2.lz, h1.trim h1.lz]
         A B z) →
       MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
       DW live S Q 0x80004f70#64 R' M') :

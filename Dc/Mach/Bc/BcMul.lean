@@ -183,15 +183,15 @@ theorem NumAt.relabel {Mt : Mem} {o : NumRep} (h : NumAt Mt o) {l ps : Nat} {v1 
       imgM_store_miss _ _ (by omega), h.digit i (by omega), getD_take hi]
 
 /-- The relabelling on the heap's head object. -/
-theorem BcHeap.relabel {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (x :: L)) {l ps a : Nat} {v1 v2 : BitVec 64}
+theorem BcHeap.relabel {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (x :: L)) {l ps a : Nat} {v1 v2 : BitVec 64}
     (ha : x.rep.p = a) (hl : 1 ≤ l) (hle : l + ps ≤ x.rep.len + x.rep.scale)
     (h1 : v1.toNat % 2 ^ 32 = ps) (h2 : v2.toNat % 2 ^ 32 = l) :
-    BcHeap S (writeLog (writeLog (writeLog Mt [(a + 8, 4, v1)]) [(a + 4, 4, v2)])
+    BcHeap S X (writeLog (writeLog (writeLog Mt [(a + 8, 4, v1)]) [(a + 4, 4, v2)])
       [(a + 32, 8, BitVec.ofNat 64 x.rep.val)]) H F
       ({ x with rep := { x.rep with len := l, scale := ps, ds := x.rep.ds.take (l + ps) } } :: L) := by
   subst ha
-  have h' : BcHeap S Mt H F ([] ++ x :: L) := h
+  have h' : BcHeap S X Mt H F ([] ++ x :: L) := h
   have hx : x ∈ x :: L := List.mem_cons_self
   have hn := h.nums x hx
   have hxb := h.blocks x hx
@@ -210,15 +210,15 @@ theorem BcHeap.relabel {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
 /-! ## The tail: `bc_free_num(prod)`, the store, the epilogue -/
 
 /-- The end of the epilogue at `0x80005878`: `s3`–`s6` back, the return. -/
-theorem bmul_epi2 {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_epi2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 L : List NumObj} {xr y : NumObj}
     {H : Heap} {F : List Blk} {n : Num}
-    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W n)
     (sv : SavedWords M (sp - 96) mulSlots R0)
     (h1 : R 1 = R0 1) (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (h8 : R 8 = R0 8) (h9 : R 9 = R0 9)
     (h18 : R 18 = R0 18) (hkp : Keeps mulAll R R0) (hS : HeapOwn S)
-    (hp : BinPostW S Mt0 M H F L1 L2 xr q sp W n L y) :
+    (hp : BinPostW S X Mt0 M H F L1 L2 xr q sp W n L y) :
     DW live S Q 0x80005878#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -237,15 +237,15 @@ theorem bmul_epi2 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The epilogue at `0x80005864` after `bc_free_num`: the product into the
 slot, `ra`, `s0`–`s2` back. -/
-theorem bmul_epi {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_epi {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 L : List NumObj} {xr y : NumObj}
     {H : Heap} {F : List Blk} {n : Num}
-    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W n)
     (sv : SavedWords M (sp - 96) mulSlots R0)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (h8 : R 8 = BitVec.ofNat 64 y.sb.pay)
     (h18 : R 18 = BitVec.ofNat 64 q) (hkp : Keeps mulAll R R0) (hS : HeapOwn S)
-    (hp : BinPostW S Mt0 (writeLog M [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 xr q sp W n L y) :
+    (hp : BinPostW S X Mt0 (writeLog M [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 xr q sp W n L y) :
     DW live S Q 0x80005864#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -276,12 +276,12 @@ theorem ResSlot.of_mulAt {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec
   exact h.word
 
 /-- The tail at `0x8000585c`: `bc_free_num(prod)`, then the epilogue. -/
-theorem bmul_tail {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_tail {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj} {xr y : NumObj}
     {H : Heap} {F : List Blk} {n : Num}
-    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W n)
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S X M H F (y :: (L1 ++ xr :: L2)))
     (hr0 : ResSlot Mt0 L1 xr q) (h8 : R 8 = BitVec.ofNat 64 y.sb.pay)
     (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
     (hyo : y.Owns) :
@@ -303,7 +303,7 @@ theorem bmul_tail {live : Nat → Prop} {S : Nat → Prop}
   bc_run hlive hS [h18, h2] at 0x800048c0
   have hsf' : StackFrame S (sp - 96) 32 :=
     ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
-  have e : FreeEntry S M H F (y :: L1) L2 xr q (sp - 96) :=
+  have e : FreeEntry S X M H F (y :: L1) L2 xr q (sp - 96) :=
     FreeEntry.of_slot hb hr (hr.noView_cons hb hyo) hq cx.slotOut hsf' (by simp only [heapEnd]; omega)
       (by omega)
   have hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a :=
@@ -393,12 +393,12 @@ theorem bmul_scan {live : Nat → Prop} {S : Nat → Prop}
       exact hnz _ (by keeps_tac kk) (hnz' i (by omega) h0)
 
 /-- A zero made positive at `0x80005894`, then the tail. -/
-theorem bmul_pos {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_pos {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj} {xr y : NumObj}
     {H : Heap} {F : List Blk} {n : Num}
-    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W n)
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S X M H F (y :: (L1 ++ xr :: L2)))
     (hr0 : ResSlot Mt0 L1 xr q) (h8 : R 8 = BitVec.ofNat 64 y.sb.pay)
     (hnum : ({ y.rep with neg := false } : NumRep).num = n) (hnorm : y.rep.Norm)
     (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns) :
@@ -426,12 +426,12 @@ theorem bmul_pos {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The zero test from `0x80005828`: the product (not `_zero_`) is scanned
 from `a5 = n_value`; a zero is made positive. -/
-theorem bmul_zero {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_zero {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj} {xr y z : NumObj}
     {H : Heap} {F : List Blk} {n : Num}
-    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W n)
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S X M H F (y :: (L1 ++ xr :: L2)))
     (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
     (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p)
     (h8 : R 8 = BitVec.ofNat 64 y.sb.pay) (h19 : R 19 = BitVec.ofNat 64 y.rep.scale)
@@ -485,13 +485,13 @@ theorem bmul_zero {live : Nat → Prop} {S : Nat → Prop}
 /-! ## The leading-zero trim, inlined -/
 
 /-- After the trim at `0x80005828`: `j` leading zeros dropped. -/
-theorem bmul_trimmed {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_trimmed {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W j : Nat} {L1 L2 : List NumObj} {xr y z : NumObj}
     {H : Heap} {F : List Blk} {n : Num}
-    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W n)
     (st : MulAt S Mt0 M R0 R sp q W)
-    (hb : BcHeap S M H F ({ y with rep := y.rep.drop j } :: (L1 ++ xr :: L2)))
+    (hb : BcHeap S X M H F ({ y with rep := y.rep.drop j } :: (L1 ++ xr :: L2)))
     (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
     (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hj : lzCount (y.rep.len - 1) y.rep.ds = j)
     (h8 : R 8 = BitVec.ofNat 64 y.sb.pay) (h19 : R 19 = BitVec.ofNat 64 y.rep.scale)
@@ -513,12 +513,12 @@ theorem bmul_trimmed {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The trim from `0x800057fc`: the first digit, `s3 = s1`, then the loop
 `ktrimLoop_8000580c`. -/
-theorem bmul_trim {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_trim {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj} {xr y z : NumObj}
     {H : Heap} {F : List Blk} {n : Num}
-    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W n)
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S X M H F (y :: (L1 ++ xr :: L2)))
     (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
     (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p)
     (h8 : R 8 = BitVec.ofNat 64 y.sb.pay) (h9 : R 9 = BitVec.ofNat 64 y.rep.scale)
@@ -536,7 +536,7 @@ theorem bmul_trim {live : Nat → Prop} {S : Nat → Prop}
   have hd := hn.getD_lt 0
   simp only [Nat.add_zero] at hl0 hd
   have hr8 : R 8 = BitVec.ofNat 64 y.rep.p := by rw [h8, hyp]
-  have hb0 : BcHeap S M H F ([] ++ { y with rep := y.rep.drop 0 } :: (L1 ++ xr :: L2)) := by
+  have hb0 : BcHeap S X M H F ([] ++ { y with rep := y.rep.drop 0 } :: (L1 ++ xr :: L2)) := by
     rw [NumRep.drop_zero]; exact hb
   have hmo0 : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M M := fun a _ => rfl
   have hfr : ∀ {M' : Mem}, MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
@@ -616,12 +616,12 @@ theorem MulNum.of_prod {y : NumObj} {u v : NumRep} {k : Nat} (hs : NumShape y.re
 
 /-- The four stores at `0x800057ec`: sign, `n_scale`, `n_len`, `n_value`;
 then the trim. -/
-theorem bmul_store {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_store {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W l ps : Nat} {L1 L2 : List NumObj}
     {xr y z : NumObj} {H : Heap} {F : List Blk} {b : Bool} {n : Num}
-    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
-    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W n)
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S X M H F (y :: (L1 ++ xr :: L2)))
     (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
     (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p)
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyv : y.rep.val = y.rep.ptr)
@@ -650,7 +650,7 @@ theorem bmul_store {live : Nat → Prop} {S : Nat → Prop}
   simp only [List.nil_append] at hb1
   have hb2 := hb1.relabel (l := l) (ps := ps) hyp hl hle (toNat_ofNat_mod32 (by omega))
     (toNat_ofNat_mod32 (by omega))
-  have hb3 : BcHeap S (writeLog (writeLog (writeLog (writeLog M [(y.sb.pay, 4, signWord b)])
+  have hb3 : BcHeap S X (writeLog (writeLog (writeLog (writeLog M [(y.sb.pay, 4, signWord b)])
       [(y.sb.pay + 8, 4, BitVec.ofNat 64 ps)]) [(y.sb.pay + 4, 4, BitVec.ofNat 64 l)])
       [(y.sb.pay + 32, 8, BitVec.ofNat 64 y.rep.val)]) H F
       (mulObj y b l ps :: (L1 ++ xr :: L2)) := hb2
@@ -670,13 +670,13 @@ theorem bmul_store {live : Nat → Prop} {S : Nat → Prop}
 
 /-- After `_bc_rec_mul` at `0x800057c0`: the operands' signs, the product's
 `n_ptr`, `len1 + len2 + 1`. -/
-theorem bmul_ret {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_ret {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr y z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R0 sp q W)
-    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
-    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S X M H F (y :: (L1 ++ xr :: L2)))
     (hr0 : ResSlot Mt0 L1 xr q) (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2)
     (hz : z ∈ L1 ++ xr :: L2) (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p)
     (hy : KProd x1.rep x2.rep (x1.rep.len + x1.rep.scale) (x2.rep.len + x2.rep.scale) y)
@@ -728,13 +728,13 @@ theorem bmul_ret {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The call at `0x800057bc`: `_bc_rec_mul` multiplies every digit of both
 operands into the slot `sp - 96 + 24`, its window the rest of `W`. -/
-theorem bmul_jal {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_jal {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R0 sp q W)
-    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
-    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (L1 ++ xr :: L2))
+    (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S X M H F (L1 ++ xr :: L2))
     (hr0 : ResSlot Mt0 L1 xr q) (ha : MulArgs M (L1 ++ xr :: L2) x1 x2 z k)
     (hW : 96 + rmStack (x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale)) ≤ W)
     (s0 : ldv .ld M (sp - 96) = BitVec.ofNat 64 x1.rep.p)
@@ -830,10 +830,10 @@ abbrev mulPreTmp : List Nat := [1, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 19, 28
 
 /-- After the prologue's loads: the frame, the heap, the operands, and the
 lengths and pointers `bc_multiply` keeps in registers. -/
-structure MulPre (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp q W k : Nat)
+structure MulPre (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp q W k : Nat)
     (L : List NumObj) (x1 x2 z : NumObj) (H : Heap) (F : List Blk) : Prop where
   st : MulAt S Mt0 M R0 R sp q W
-  heap : BcHeap S M H F L
+  heap : BcHeap S X M H F L
   args : MulArgs M L x1 x2 z k
   r10 : R 10 = BitVec.ofNat 64 x1.rep.p
   r11 : R 11 = BitVec.ofNat 64 (x1.rep.len + x1.rep.scale)
@@ -841,10 +841,10 @@ structure MulPre (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp
   r21 : R 21 = BitVec.ofNat 64 x2.rep.p
   r22 : R 22 = BitVec.ofNat 64 (x1.rep.scale + x2.rep.scale)
 
-theorem MulPre.keeps {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp q W k : Nat}
+theorem MulPre.keeps {S : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp q W k : Nat}
     {L : List NumObj} {x1 x2 z : NumObj} {H : Heap} {F : List Blk}
-    (pr : MulPre S Mt0 M R0 R sp q W k L x1 x2 z H F) (hk : Keeps mulPreTmp R' R) :
-    MulPre S Mt0 M R0 R' sp q W k L x1 x2 z H F where
+    (pr : MulPre S X Mt0 M R0 R sp q W k L x1 x2 z H F) (hk : Keeps mulPreTmp R' R) :
+    MulPre S X Mt0 M R0 R' sp q W k L x1 x2 z H F where
   st := pr.st.keeps ((hk.mono (by decide)))
   heap := pr.heap
   args := pr.args
@@ -856,13 +856,13 @@ theorem MulPre.keeps {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 
 
 /-- The call's arguments from `0x800057a8`: `n1`'s pointer and digit count
 saved at `sp`, `sp + 8`; the slot `sp + 24`. -/
-theorem bmul_args {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_args {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R0 sp q W)
-    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
-    (pr : MulPre S Mt0 M R0 R sp q W k (L1 ++ xr :: L2) x1 x2 z H F)
+    (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (pr : MulPre S X Mt0 M R0 R sp q W k (L1 ++ xr :: L2) x1 x2 z H F)
     (hr0 : ResSlot Mt0 L1 xr q)
     (hW : 96 + rmStack (x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale)) ≤ W)
     (h9 : R 9 = BitVec.ofNat 64 (mulScale x1.rep.scale x2.rep.scale k)) :
@@ -895,13 +895,13 @@ theorem bmul_args {live : Nat → Prop} {S : Nat → Prop}
   exact ldv_store_hit _ _ _
 
 /-- The bound `scale1 + scale2` on the product scale from `0x8000579c`. -/
-theorem bmul_min {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_min {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R0 sp q W)
-    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
-    (pr : MulPre S Mt0 M R0 R sp q W k (L1 ++ xr :: L2) x1 x2 z H F)
+    (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (pr : MulPre S X Mt0 M R0 R sp q W k (L1 ++ xr :: L2) x1 x2 z H F)
     (hr0 : ResSlot Mt0 L1 xr q)
     (hW : 96 + rmStack (x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale)) ≤ W)
     (h9 : R 9 = BitVec.ofNat 64 (max (max k x2.rep.scale) x1.rep.scale)) :
@@ -924,13 +924,13 @@ theorem bmul_min {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [h22]; congr 1; simp only [mulScale]; omega)
 
 /-- The larger of `max k scale2` and `scale1` from `0x80005790`. -/
-theorem bmul_max2 {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_max2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R0 sp q W)
-    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
-    (pr : MulPre S Mt0 M R0 R sp q W k (L1 ++ xr :: L2) x1 x2 z H F)
+    (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (pr : MulPre S X Mt0 M R0 R sp q W k (L1 ++ xr :: L2) x1 x2 z H F)
     (hr0 : ResSlot Mt0 L1 xr q)
     (hW : 96 + rmStack (x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale)) ≤ W)
     (h9 : R 9 = BitVec.ofNat 64 (max k x2.rep.scale))
@@ -953,13 +953,13 @@ theorem bmul_max2 {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [h14]; congr 1; omega)
 
 /-- The larger of `k` and `scale2` from `0x80005788`. -/
-theorem bmul_max1 {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_max1 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R0 sp q W)
-    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
-    (pr : MulPre S Mt0 M R0 R sp q W k (L1 ++ xr :: L2) x1 x2 z H F)
+    (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (pr : MulPre S X Mt0 M R0 R sp q W k (L1 ++ xr :: L2) x1 x2 z H F)
     (hr0 : ResSlot Mt0 L1 xr q)
     (hW : 96 + rmStack (x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale)) ≤ W)
     (h9 : R 9 = BitVec.ofNat 64 k) (h13 : R 13 = BitVec.ofNat 64 k)
@@ -981,13 +981,13 @@ theorem bmul_max1 {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [h15]; congr 1; omega) (by bsimp [h14])
 
 /-- The digit counts and the scale sum from `0x80005778`. -/
-theorem bmul_sums {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_sums {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R0 sp q W)
-    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
-    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (L1 ++ xr :: L2))
+    (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S X M H F (L1 ++ xr :: L2))
     (ha : MulArgs M (L1 ++ xr :: L2) x1 x2 z k) (hr0 : ResSlot Mt0 L1 xr q)
     (hW : 96 + rmStack (x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale)) ≤ W)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x1.rep.len)
@@ -1007,13 +1007,13 @@ theorem bmul_sums {live : Nat → Prop} {S : Nat → Prop}
     hr0 hW (by bsimp [h13]) (by bsimp [h13]) (by bsimp [h15]) (by bsimp [h14])
 
 /-- The prologue's last six saves from `0x8000575c`, then `s2 = prod`. -/
-theorem bmul_saves {live : Nat → Prop} {S : Nat → Prop}
+theorem bmul_saves {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R0 sp q W)
-    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
-    (hb : BcHeap S Mt0 H F (L1 ++ xr :: L2))
+    (hk : BinKW live S X Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (hb : BcHeap S X Mt0 H F (L1 ++ xr :: L2))
     (ha : MulArgs Mt0 (L1 ++ xr :: L2) x1 x2 z k) (hr0 : ResSlot Mt0 L1 xr q)
     (hW : 96 + rmStack (x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale)) ≤ W)
     (sv : SavedWords M (sp - 96) [(20, 48), (21, 40)] R0)
@@ -1068,16 +1068,16 @@ of the heap with a digit each and the result slot `q` holding `x` of the
 heap: the new number for `Num.mul n1 n2 scale` in the slot, `x` freed once
 (`BinKW.ret`), or `out_of_memory` (`BinKW.oom`). The window `W` holds the
 96-byte frame and `_bc_rec_mul`'s recursion (`rmStack`). -/
-theorem bc_multiply_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem bc_multiply_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
     {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : MulCtx S R sp q W) (ha : MulArgs M (L1 ++ xr :: L2) x1 x2 z k)
     (hW : 96 + rmStack (x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale)) ≤ W)
-    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
+    (hb : BcHeap S X M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 q) (h13 : R 13 = BitVec.ofNat 64 k)
-    (hk : BinKW live S Q R M L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k)) :
+    (hk : BinKW live S X Q R M L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k)) :
     DW live S Q 0x8000573c#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al

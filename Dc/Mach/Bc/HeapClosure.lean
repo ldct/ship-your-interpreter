@@ -15,8 +15,8 @@ open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
 /-- Two objects that share no digit buffer cannot share a byte: their
 allocated blocks are distinct by `BcHeap.distinct` and apart by
 `HeapInv.apart`. (A view shares its buffer with its owner.) -/
-theorem BcHeap.foot_disjoint {S : Nat → Prop} {Mt : Mem} {H : Heap}
-    {F : List Blk} {L : List NumObj} (h : BcHeap S Mt H F L)
+theorem BcHeap.foot_disjoint {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap}
+    {F : List Blk} {L : List NumObj} (h : BcHeap S X Mt H F L)
     {x y : NumObj} (hx : x ∈ L) (hy : y ∈ L) (hne : x ≠ y) (hdb : x.db ≠ y.db)
     {a : Nat} (hax : x.rep.Foot a) (hay : y.rep.Foot a) : False := by
   have hd := (List.nodup_append.mp h.distinct).2.1
@@ -30,8 +30,8 @@ theorem BcHeap.foot_disjoint {S : Nat → Prop} {Mt : Mem} {H : Heap}
   · exact live_apart h.heap hxb.dLive hyb.dLive hdb hxd hyd
 
 /-- Every represented number footprint is disjoint from allocator metadata. -/
-theorem BcHeap.foot_not_alloc {S : Nat → Prop} {Mt : Mem} {H : Heap}
-    {F : List Blk} {L : List NumObj} (h : BcHeap S Mt H F L)
+theorem BcHeap.foot_not_alloc {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap}
+    {F : List Blk} {L : List NumObj} (h : BcHeap S X Mt H F L)
     {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.rep.Foot a) : ¬ AllocByte H a := by
   have hb := h.blocks x hx
   rcases NumObj.foot_blocks (h.nums x hx) hb ha with hs | hd
@@ -41,13 +41,14 @@ theorem BcHeap.foot_not_alloc {S : Nat → Prop} {Mt : Mem} {H : Heap}
 /-- Transport through memory agreement on the three owned regions. The
 allocator frame supplies `ha`, live-block frames supply `hl`, and the
 caller's global-word frame supplies `hg`. No unrelated bytes are read. -/
-theorem BcHeap.transport {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap}
-    {F : List Blk} {L : List NumObj} (h : BcHeap S Mt H F L)
+theorem BcHeap.transport {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H : Heap}
+    {F : List Blk} {L : List NumObj} (h : BcHeap S X Mt H F L)
     (ha : ∀ a, AllocByte H a → imgM Mt' a = imgM Mt a)
     (hl : ∀ b ∈ H.live, ∀ a, b.In a → imgM Mt' a = imgM Mt a)
     (hg : ∀ j, j < 8 → imgM Mt' (bcFreeAddr + j) = imgM Mt (bcFreeAddr + j)) :
-    BcHeap S Mt' H F L := by
-  refine { h with heap := h.heap.transport ha, dead := ?_, nums := ?_ }
+    BcHeap S X Mt' H F L := by
+  refine { h with heap := h.heap.transport ha, dead := ?_, nums := ?_,
+                  raw := h.raw.frame fun b hb => hl b (h.raw.live b hb) }
   · refine h.dead.frame (ldv_congr .ld hg) ?_
     intro b hb j hj
     obtain ⟨hbl, hsz⟩ := h.deadLive b hb
@@ -107,11 +108,11 @@ theorem HeapInv.live_nodup {S : Nat → Prop} {Mt : Mem} {H : Heap}
 /-- A successful `bc_new_num` extends the number heap by its returned object.
 The old objects survive the actual allocation's `LiveFrame`; `NewSrc` supplies
 freshness and the exact dead-chain update. -/
-theorem NewNumPost.insert {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
+theorem NewNumPost.insert {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H H' : Heap}
     {F F' : List Blk} {fr : Nat → Prop} {len scale : Nat} {x : NumObj}
-    {L : List NumObj} (h : BcHeap S Mt H F L)
+    {L : List NumObj} (h : BcHeap S X Mt H F L)
     (p : NewNumPost S Mt Mt' H H' F F' fr len scale x) :
-    BcHeap S Mt' H' F' (x :: L) := by
+    BcHeap S X Mt' H' F' (x :: L) := by
   have hold : ∀ b ∈ F ++ objBlocks L, b ∈ H.live := by
     intro b hb
     rcases List.mem_append.mp hb with hf | hl
@@ -172,7 +173,8 @@ theorem NewNumPost.insert {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
     blocks := ?_
     distinct := ?_
     views := .cons (.inl p.owns) h.views
-    globOwn := h.globOwn }
+    globOwn := h.globOwn
+    raw := ?_ }
   · intro b hb
     obtain ⟨hbl, hsz⟩ := h.deadLive b (hsub b hb)
     exact ⟨p.src.live_mono hbl, hsz⟩
@@ -195,5 +197,29 @@ theorem NewNumPost.insert {S : Nat → Prop} {Mt Mt' : Mem} {H H' : Heap}
       exact { hb with sLive := p.src.live_mono hb.sLive, dLive := p.src.live_mono hb.dLive }
   · rw [objBlocks_cons, NumObj.blocks_own p.owns]
     exact horder.nodup_iff.mpr hnew
+  · have hsbN : x.sb ∈ F ∨ x.sb ∉ H.live := by
+      cases p.src with
+      | reuse he _ => exact .inl (by rw [he]; exact List.mem_cons_self)
+      | fresh _ _ hl =>
+        have hn := p.inv.live_nodup
+        rw [hl] at hn
+        exact .inr (List.nodup_cons.mp (List.nodup_cons.mp hn).2).1
+    have hdbN : x.db ∉ H.live := by
+      cases p.src with
+      | reuse _ hl => exact p.inv.head_not_mem hl
+      | fresh _ _ hl => exact fun hb => p.inv.head_not_mem hl (List.mem_cons_of_mem _ hb)
+    refine h.raw.rebase (fun b hb => p.src.live_mono (h.raw.live b hb)) (fun c hc => ?_)
+      fun b hb a ha => p.live b (h.raw.live b hb) (fun e => ?_) a ha
+    · rw [objBlocks_cons, NumObj.blocks_own p.owns] at hc
+      simp only [List.mem_append, List.mem_cons] at hc
+      rcases hc with hc | (rfl | rfl | hc) | hc
+      · exact .inl (List.mem_append_left _ (hsub c hc))
+      · exact hsbN.imp (List.mem_append_left _) id
+      · exact .inr hdbN
+      · exact absurd hc (by simp)
+      · exact .inl (List.mem_append_right _ hc)
+    · subst e
+      exact hsbN.elim (fun hf => h.raw.out _ hb (List.mem_append_left _ hf))
+        fun hn => hn (h.raw.live _ hb)
 
 end Dc.Mach

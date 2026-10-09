@@ -55,8 +55,8 @@ theorem HdOK.cons {hs : List Hd} (h : HdOK hs) {h3 : Hd} (h3o : ∀ x, h3 = some
   · exact h x hx
 
 /-- Objects before `y` in the heap have other struct pointers. -/
-theorem BcHeap.p_ne_split {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {y : NumObj} (h : BcHeap S M H F (L1 ++ y :: L2)) {x : NumObj}
+theorem BcHeap.p_ne_split {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {y : NumObj} (h : BcHeap S X M H F (L1 ++ y :: L2)) {x : NumObj}
     (hx : x ∈ L1) : x.rep.p ≠ y.rep.p := by
   have hd := (List.nodup_append.mp h.distinct).2.1
   rw [objBlocks_append] at hd
@@ -131,9 +131,9 @@ theorem valCount_le_of_lt {o : NumRep} (hl : o.ds.length = o.len + o.scale) (h1 
 
 /-- What a recursive call's result gives the step: the product `y` heading
 the handles, its slot, its value and digit count. -/
-structure KRet (S : Nat → Prop) (M' : Mem) (H' : Heap) (F' : List Blk) (hs : List Hd)
+structure KRet (S : Nat → Prop) (X : Raws) (M' : Mem) (H' : Heap) (F' : List Blk) (hs : List Hd)
     (A B : List NumObj) (z x0 y0 y : NumObj) (qs : Nat) : Prop where
-  heap : BcHeap S M' H' F' (KList [] (some y :: hs) A B z)
+  heap : BcHeap S X M' H' F' (KList [] (some y :: hs) A B z)
   owns : y.Owns
   refs : y.rep.refs = 1
   slot : ldv .ld M' qs = BitVec.ofNat 64 (Hd.p z (some y))
@@ -143,12 +143,12 @@ structure KRet (S : Nat → Prop) (M' : Mem) (H' : Heap) (F' : List Blk) (hs : L
   pos : 1 ≤ y.rep.len
 
 /-- `RmPost` of a recursive call on two handles of the step. -/
-theorem RmPost.kret {S : Nat → Prop} {M M' : Mem} {H' : Heap} {F' : List Blk} {hs : List Hd}
+theorem RmPost.kret {S : Nat → Prop} {X : Raws} {M M' : Mem} {H' : Heap} {F' : List Blk} {hs : List Hd}
     {A B : List NumObj} {z x0 y0 y : NumObj} {qs sp' W' : Nat}
-    (post : RmPost S M M' H' F' ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B)
+    (post : RmPost S X M M' H' F' ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B)
       x0.rep y0.rep x0.rep.len y0.rep.len qs sp' W' y)
     (hx0 : NumAt M x0.rep) (hy0 : NumAt M y0.rep) :
-    KRet S M' H' F' hs A B z x0 y0 y qs := by
+    KRet S X M' H' F' hs A B z x0 y0 y qs := by
   have hyb := post.heap.blocks y List.mem_cons_self
   have hyn := post.heap.nums y List.mem_cons_self
   have hlen : y.rep.ds.length = y.rep.len := by rw [hyn.shape.dsLen, post.scale]; rfl
@@ -171,18 +171,18 @@ theorem RmPost.kret {S : Nat → Prop} {M M' : Mem} {H' : Heap} {F' : List Blk} 
 
 /-- **`m3` returned** (`0x8000514c`): `_bc_rec_mul (u0, v0)`'s product in
 `m3`'s slot; the handles reordered, then the product's `bc_new_num`. -/
-theorem kara_m3ret {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_m3ret {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
     {z : NumObj} {u v : NumRep} {H' : Heap} {F' : List Blk} {fl : Bool}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     {hu1 hv1 hm1 hm2 hd1 hd2 : Hd} {hs : List Hd} {x0 y0 y : NumObj}
     (pk : KM3 S M0 M R0 R sp q W n la lb z hu1 (some x0) hv1 (some y0) hd1 hd2 hm1 hm2 fl)
     (hpm : ∀ h3 : Hd, (h3 :: hs).Perm (kHs hu1 (some x0) hv1 hm1 (some y0) hm2 h3 hd1 hd2))
     (hown : HdOwned A B z hs) (hok : HdOK hs) (hzr : 1 ≤ z.rep.refs)
     (hx0 : NumAt M x0.rep) (hy0 : NumAt M y0.rep)
     (kk : Keeps (1 :: binClob) R' R)
-    (post : RmPost S M M' H' F' ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B)
+    (post : RmPost S X M M' H' F' ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B)
       x0.rep y0.rep x0.rep.len y0.rep.len (sp - 192 + 56) (sp - 192) (W - 192) y)
     (hNla : la + lb < 2 ^ 30)
     (hm1z : fl = true → hdVal (Hd.o z hm1) = 0)
@@ -235,15 +235,15 @@ theorem HdZero.val {z : NumObj} {h : Hd} (hz : HdZero h) (hzd : z.rep.ds = [0]) 
 
 /-- The recursive call for `m3` at `0x8000513c` (both factors nonzero):
 `_bc_rec_mul (u0, n_len (u0), v0, n_len (v0), &m3)`. -/
-theorem kara_m3call {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_m3call {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {N : Nat} (ih : RmIH live S Q N)
+    {N : Nat} (ih : RmIH live S X Q N)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
     {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk} {fl : Bool}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     {hu1 hv1 hm1 hm2 hd1 hd2 : Hd} {hs : List Hd} {x0 y0 : NumObj}
     (pk : KM3 S M0 M R0 R sp q W n la lb z hu1 (some x0) hv1 (some y0) hd1 hd2 hm1 hm2 fl)
-    (hb : BcHeap S M H F (KList [] hs A B z))
+    (hb : BcHeap S X M H F (KList [] hs A B z))
     (hpm : ∀ h3 : Hd, (h3 :: hs).Perm (kHs hu1 (some x0) hv1 hm1 (some y0) hm2 h3 hd1 hd2))
     (hown : HdOwned A B z hs) (hok : HdOK hs) (hx0m : some x0 ∈ hs) (hy0m : some y0 ∈ hs)
     (kz : KZero M z (zeroCount hs + (4 * (x0.rep.len + y0.rep.len) + 8)))
@@ -260,7 +260,7 @@ theorem kara_m3call {live : Nat → Prop} {S : Nat → Prop}
     (hv : KFillVal (hdVal (Hd.o z hm1)) (hdVal (Hd.o z hm2)) (hdVal x0 * hdVal y0) (10 ^ n)
       (kUV u v la lb) (la + lb + 1) ((Hd.o z hd1).rep.neg != (Hd.o z hd2).rep.neg)) :
     DW live S Q 0x8000513c#64 R M := by
-  have hb' : BcHeap S M H F ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
+  have hb' : BcHeap S X M H F ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
     simpa only [KList, List.nil_append, List.append_assoc] using hb
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hxm : x0 ∈ (temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B :=
@@ -290,15 +290,15 @@ theorem kara_m3call {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`m3 = u0 · v0`** from `0x800050d4`: `u0` or `v0` zero, a copy of
 `_zero_`; else the recursive call; then the product's `bc_new_num`. -/
-theorem kara_m3 {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_m3 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {N : Nat} (ih : RmIH live S Q N)
+    {N : Nat} (ih : RmIH live S X Q N)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb n : Nat} {A B : List NumObj}
     {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk} {fl : Bool}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
     {hu1 hu0 hv1 hv0 hm1 hm2 hd1 hd2 : Hd} {hs : List Hd}
     (pk : KM3 S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0 hd1 hd2 hm1 hm2 fl)
-    (hb : BcHeap S M H F (KList [] hs A B z))
+    (hb : BcHeap S X M H F (KList [] hs A B z))
     (hpm : ∀ h3 : Hd, (h3 :: hs).Perm (kHs hu1 hu0 hv1 hm1 hv0 hm2 h3 hd1 hd2))
     (hown : HdOwned A B z hs) (hok : HdOK hs) (hu0m : hu0 ∈ hs) (hv0m : hv0 ∈ hs)
     (kz : KZero M z (zeroCount hs + (4 * ((Hd.o z hu0).rep.len + (Hd.o z hv0).rep.len) + 8)))
@@ -316,7 +316,7 @@ theorem kara_m3 {live : Nat → Prop} {S : Nat → Prop}
       (hdVal (Hd.o z hu0) * hdVal (Hd.o z hv0)) (10 ^ n)
       (kUV u v la lb) (la + lb + 1) ((Hd.o z hd1).rep.neg != (Hd.o z hd2).rep.neg)) :
     DW live S Q 0x800050d4#64 R M := by
-  have hb' : BcHeap S M H F ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
+  have hb' : BcHeap S X M H F ((temps hs ++ A) ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
     simpa only [KList, List.nil_append, List.append_assoc] using hb
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hzn := hb'.nums _ (List.mem_append_right _ List.mem_cons_self)

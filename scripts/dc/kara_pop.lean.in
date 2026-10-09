@@ -1,10 +1,10 @@
 
 /-- **The struct of the view at `0x@E@`**: the head taken off `_bc_Free_list`,
 or `malloc(40)` with the chain empty (`out_of_memory` on failure). -/
-theorem ksplit_@T@ {live : Nat → Prop} {S : Nat → Prop}
+theorem ksplit_@T@ {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj}
-    (hb : BcHeap S Mt H F L) (hh : R @h@ = BitVec.ofNat 64 (deadHead F))
+    (hb : BcHeap S X Mt H F L) (hh : R @h@ = BitVec.ofNat 64 (deadHead F))
     (h25 : R 25 = BitVec.ofNat 64 bcFreeAddr)
     (hoom : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps @KEEP@ R' R →
       (∀ a, ¬ AllocByte H a → imgM M' a = imgM Mt a) → DW live S Q 0x80002bcc#64 R' M')

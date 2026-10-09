@@ -61,10 +61,10 @@ theorem NumShape.ofWithRefs {x1 : NumObj} {k : Nat} (h : NumShape (x1.withRefs k
 power too) and `0x80006708` (after it): `power` the fresh `Pw` holding
 `a ^ P`, `temp` the handle `hT` holding `a ^ T`, the exponent left `e`,
 `pwrscale` and `calcscale` in `s1`, `s5`, `temp`'s pointer in `s4`. -/
-structure RaP2 (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat) (H : Heap)
+structure RaP2 (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat) (H : Heap)
     (F : List Blk) (A B : List NumObj) (x1 Pw : NumObj) (hT : Hd) (P T e rs nf : Nat) : Prop where
   ra : RaAt S Mt0 M R0 R sp W q raSlots2
-  heap : BcHeap S M H F (KList [] [some Pw, hT] A B x1)
+  heap : BcHeap S X M H F (KList [] [some Pw, hT] A B x1)
   pw : RaPow x1.rep.num P Pw
   pw1 : Pw.rep.refs = 1
   tm : RaPow x1.rep.num T (Hd.objIn [hT] x1 hT)
@@ -80,13 +80,13 @@ structure RaP2 (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W
 
 /-- **A squaring of the second loop** from `0x800066f0`: the handles
 `hs1 ++ hW :: hs2` leave `[hT]` once `power` (`hW`) is dropped. -/
-theorem ra_p2_sq {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_p2_sq {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u P T e rs nf : Nat} {H : Heap}
     {F : List Blk} {A B : List NumObj} {x1 z o : NumObj} {hs1 hs2 : List Hd} {hW hT : Hd}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots2)
-    (hb : BcHeap S M H F (KList [] (hs1 ++ hW :: hs2) A B x1))
+    (hb : BcHeap S X M H F (KList [] (hs1 ++ hW :: hs2) A B x1))
     (hown : ∀ x, some x ∈ hs1 ++ hW :: hs2 → x.Owns)
     (hzc : zeroCount (hs1 ++ hW :: hs2) ≤ 2)
     (hd : hs1 ++ Hd.drop hW ++ hs2 = [hT]) (hh : ∀ x, hW = some x → 1 ≤ x.rep.refs)
@@ -99,7 +99,7 @@ theorem ra_p2_sq {live : Nat → Prop} {S : Nat → Prop}
     (h22 : R 22 = BitVec.ofNat 64 rs) (h24 : R 24 = BitVec.ofNat 64 nf)
     (hw8 : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 (Hd.p x1 hW))
     (hw0 : ldv .ld M (sp - 96) = BitVec.ofNat 64 (Hd.p x1 hT))
-    (hk : ∀ R' M' H' F' Pw, RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw hT (2 * P) T e rs nf →
+    (hk : ∀ R' M' H' F' Pw, RaP2 S X Mt0 M' R0 R' sp W q H' F' A B x1 Pw hT (2 * P) T e rs nf →
       DW live S Q 0x80006708#64 R' M') :
     DW live S Q 0x800066f0#64 R M := by
   have cx := env.cx
@@ -175,17 +175,17 @@ theorem ra_p2_sq {live : Nat → Prop} {S : Nat → Prop}
 /-- **The rest of an iteration** from `0x80006708` (`power = a ^ P` squared,
 `u = T + P·e`): an odd bit multiplies `power` into `temp` at
 `calcscale = pwrscale + calcscale`; `e >>= 1`; the loop again or its exit. -/
-theorem ra_p2_tail {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_p2_tail {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u P T e rs nf : Nat} {H : Heap}
     {F : List Blk} {A B : List NumObj} {x1 z o Pw : NumObj} {hT : Hd}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
-    (st : RaP2 S Mt0 M R0 R sp W q H F A B x1 Pw hT P T e rs nf)
+    (st : RaP2 S X Mt0 M R0 R sp W q H F A B x1 Pw hT P T e rs nf)
     (hinv : u = T + P * e) (he1 : 1 ≤ e) (hP1 : 1 ≤ P) (hT1 : 1 ≤ T)
-    (hloop : ∀ R' M' H' F' Pw' hT' T', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P T' (e / 2) rs nf →
+    (hloop : ∀ R' M' H' F' Pw' hT' T', RaP2 S X Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P T' (e / 2) rs nf →
       R' 18 = BitVec.ofNat 64 Pw'.rep.p → T' = (if e % 2 = 1 then T + P else T) → 1 ≤ e / 2 →
       DW live S Q 0x800066f0#64 R' M')
-    (hexit : ∀ R' M' H' F' Pw' T', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T', RaP2 S X Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     DW live S Q 0x80006708#64 R M := by
   have cx := env.cx
@@ -267,7 +267,7 @@ theorem ra_p2_tail {live : Nat → Prop} {S : Nat → Prop}
       | none => rfl
       | some x => simp only [Hd.drop, st.t1 x rfl, ite_true]
     rw [hdrop] at hb1
-    have hb2 : BcHeap S M1 H1 F1 (KList [] [some Pw, some y] A B x1) :=
+    have hb2 : BcHeap S X M1 H1 F1 (KList [] [some Pw, some y] A B x1) :=
       hb1.kperm (List.Perm.swap (some Pw) (some y) []) (fun _ h => nomatch h) (fun x hx => by
         rcases List.mem_cons.mp hx with h | h
         · cases h; exact .inl st.pw.owns
@@ -287,7 +287,7 @@ theorem ra_p2_tail {live : Nat → Prop} {S : Nat → Prop}
       rw [ldv_mulRet (o := 0) (o' := 8) (by omega) (by simp only [heapEnd]; omega) (by omega)
         (by omega) hout1]; exact st.w8
     have hst : ∀ R', Keeps [18, 20] R' R1 → R' 20 = BitVec.ofNat 64 y.rep.p →
-        RaP2 S Mt0 M1 R0 R' sp W q H1 F1 A B x1 Pw (some y) P (T + P) (e / 2) rs nf := by
+        RaP2 S X Mt0 M1 R0 R' sp W q H1 F1 A B x1 Pw (some y) P (T + P) (e / 2) rs nf := by
       intro R' hk h20'
       have e21 : x1.rep.scale * (T + P) = x1.rep.scale * P + x1.rep.scale * T := by
         rw [Nat.mul_add, Nat.add_comm]
@@ -347,14 +347,14 @@ theorem ra_p2_tail {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The second loop** from `0x800066f0` (`u = T + 2·P·e`, `e ≥ 1`): to its
 exit at `0x80006740` with `temp = a ^ u`. -/
-theorem ra_p2_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_p2_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q u rs nf : Nat} {A B : List NumObj} {x1 z o : NumObj}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
-    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S X Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     ∀ e P T {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {Pw : NumObj} {hT : Hd},
-      RaP2 S Mt0 M R0 R sp W q H F A B x1 Pw hT P T e rs nf → R 18 = BitVec.ofNat 64 Pw.rep.p →
+      RaP2 S X Mt0 M R0 R sp W q H F A B x1 Pw hT P T e rs nf → R 18 = BitVec.ofNat 64 Pw.rep.p →
       u = T + 2 * P * e → 1 ≤ e → 1 ≤ P → 1 ≤ T → DW live S Q 0x800066f0#64 R M := by
   intro e
   induction e using Nat.strongRecOn with
@@ -381,13 +381,13 @@ theorem ra_p2_loop {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The second loop from any handles** whose squaring leaves `[temp]`
 (the first iteration, `temp` and `power` one object). -/
-theorem ra_p2_first {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_p2_first {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u P T e rs nf : Nat} {H : Heap}
     {F : List Blk} {A B : List NumObj} {x1 z o : NumObj} {hs1 hs2 : List Hd} {hW hT : Hd}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots2)
-    (hb : BcHeap S M H F (KList [] (hs1 ++ hW :: hs2) A B x1))
+    (hb : BcHeap S X M H F (KList [] (hs1 ++ hW :: hs2) A B x1))
     (hown : ∀ x, some x ∈ hs1 ++ hW :: hs2 → x.Owns)
     (hzc : zeroCount (hs1 ++ hW :: hs2) ≤ 2)
     (hd : hs1 ++ Hd.drop hW ++ hs2 = [hT]) (hh : ∀ x, hW = some x → 1 ≤ x.rep.refs)
@@ -400,7 +400,7 @@ theorem ra_p2_first {live : Nat → Prop} {S : Nat → Prop}
     (h22 : R 22 = BitVec.ofNat 64 rs) (h24 : R 24 = BitVec.ofNat 64 nf)
     (hw8 : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 (Hd.p x1 hW))
     (hw0 : ldv .ld M (sp - 96) = BitVec.ofNat 64 (Hd.p x1 hT))
-    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S X Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     DW live S Q 0x800066f0#64 R M := by
   have hPu : 2 * P ≤ u := by
@@ -497,10 +497,10 @@ theorem Hd.cpW_refs {h : Hd} : ∀ x, Hd.cpW h = some x → 1 ≤ x.rep.refs := 
   | some P => intro x hx; cases hx; simp [NumObj.withRefs]
 
 /-- The power object's extra reference among the handles. -/
-theorem BcHeap.cpRefs {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {A B : List NumObj}
-    {x1 : NumObj} {h : Hd} (hb : BcHeap S M H F (KList [] [h] A B x1))
+theorem BcHeap.cpRefs {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {A B : List NumObj}
+    {x1 : NumObj} {h : Hd} (hb : BcHeap S X M H F (KList [] [h] A B x1))
     (hf : ∀ P, h = some P → P.rep.refs = 1) (hr : x1.rep.refs + 2 < 2 ^ 31) :
-    BcHeap S (writeLog M [((Hd.objIn [h] x1 h).rep.p + 12, 4,
+    BcHeap S X (writeLog M [((Hd.objIn [h] x1 h).rep.p + 12, 4,
       BitVec.ofNat 64 ((Hd.objIn [h] x1 h).rep.refs + 1))]) H F (KList [] (Hd.cp h) A B x1) := by
   cases h with
   | none =>
@@ -522,11 +522,11 @@ theorem BcHeap.cpRefs {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {A 
 
 /-- The state at `0x800068cc` (the exponent was `2^i`): `temp` and `power`
 both the power object. -/
-structure RaC (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat) (H : Heap)
+structure RaC (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat) (H : Heap)
     (F : List Blk) (A B : List NumObj) (x1 : NumObj) (hP : Hd) (i rs nf : Nat) : Prop where
   ra : RaAt S Mt0 M R0 R sp W q raSlots1
   r21 : R 21 = R0 21
-  heap : BcHeap S M H F (KList [] (Hd.cp hP) A B x1)
+  heap : BcHeap S X M H F (KList [] (Hd.cp hP) A B x1)
   pow : RaPow x1.rep.num (2 ^ i) (Hd.objIn [hP] x1 hP)
   fresh : ∀ P, hP = some P → P.rep.refs = 1
   base : hP = none → i = 0
@@ -538,16 +538,16 @@ structure RaC (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W 
 /-- **`temp = power`** from `0x800066d0` (the first loop's odd exponent `e`,
 `a5` the power's reference count): `e = 1` ends at `0x800068cc`; otherwise
 the second loop to `0x80006740`. -/
-theorem ra_copy {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_copy {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u i e rs nf : Nat} {H : Heap}
     {F : List Blk} {A B : List NumObj} {x1 z o : NumObj} {hP : Hd}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
-    (st : RaP1 S Mt0 M R0 R sp W q H F A B x1 hP i e rs nf) (hu : u = 2 ^ i * e)
+    (st : RaP1 S X Mt0 M R0 R sp W q H F A B x1 hP i e rs nf) (hu : u = 2 ^ i * e)
     (he : e % 2 = 1) (h15 : R 15 = BitVec.ofNat 64 (Hd.objIn [hP] x1 hP).rep.refs)
-    (hpow2 : ∀ R' M' H' F', RaC S Mt0 M' R0 R' sp W q H' F' A B x1 hP i rs nf → e = 1 →
+    (hpow2 : ∀ R' M' H' F', RaC S X Mt0 M' R0 R' sp W q H' F' A B x1 hP i rs nf → e = 1 →
       DW live S Q 0x800068cc#64 R' M')
-    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S X Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     DW live S Q 0x800066d0#64 R M := by
   have cx := env.cx
@@ -640,19 +640,19 @@ theorem ra_copy {live : Nat → Prop} {S : Nat → Prop}
 /-- **Both loops** from `0x8000668c` (`power = num1` with one more
 reference, the exponent `u` in `s0`): to `0x800068cc` for `u = 2^i`, or to
 the second loop's exit at `0x80006740`. -/
-theorem ra_loops {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_loops {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u rs nf : Nat} {H : Heap}
     {F : List Blk} {A B : List NumObj} {x1 z o : NumObj}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
-    (hb : BcHeap S M H F (A ++ x1 :: B))
+    (hb : BcHeap S X M H F (A ++ x1 :: B))
     (h18 : R 18 = BitVec.ofNat 64 x1.rep.p) (h9 : R 9 = BitVec.ofNat 64 x1.rep.scale)
     (h8 : R 8 = BitVec.ofNat 64 u) (h22 : R 22 = BitVec.ofNat 64 rs)
     (h24 : R 24 = BitVec.ofNat 64 nf)
-    (hpow2 : ∀ R' M' H' F' hP i, RaC S Mt0 M' R0 R' sp W q H' F' A B x1 hP i rs nf → u = 2 ^ i →
+    (hpow2 : ∀ R' M' H' F' hP i, RaC S X Mt0 M' R0 R' sp W q H' F' A B x1 hP i rs nf → u = 2 ^ i →
       DW live S Q 0x800068cc#64 R' M')
-    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S X Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     DW live S Q 0x8000668c#64 R M := by
   have cx := env.cx
@@ -681,7 +681,7 @@ theorem ra_loops {live : Nat → Prop} {S : Nat → Prop}
     ⟨by rw [Nat.pow_zero, Dc.BcModel.powRaise_one]; rfl, env.n1, env.len1,
       env.owns x1 hxm⟩
   have st : ∀ R', Keeps [14, 15] R' R → R' 8 = BitVec.ofNat 64 u →
-      RaP1 S Mt0 (writeLog (writeLog M [(sp - 96 + 8, 8, BitVec.ofNat 64 x1.rep.p)])
+      RaP1 S X Mt0 (writeLog (writeLog M [(sp - 96 + 8, 8, BitVec.ofNat 64 x1.rep.p)])
         [(x1.rep.p + 12, 4, BitVec.ofNat 64 (x1.rep.refs + 1))]) R0 R' sp W q H F A B x1 none 0 u rs nf :=
     fun R' hk h8' =>
     { ra := ((ra.lowStore cx (a := sp - 96 + 8) (by omega) (by omega)
@@ -701,7 +701,7 @@ theorem ra_loops {live : Nat → Prop} {S : Nat → Prop}
       r22 := by rw [hk.get 22 (by decide)]; exact h22
       r24 := by rw [hk.get 24 (by decide)]; exact h24
       w8 := by rw [ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _ }
-  have hcopy : ∀ R' M' H' F' hP i e, RaP1 S Mt0 M' R0 R' sp W q H' F' A B x1 hP i e rs nf →
+  have hcopy : ∀ R' M' H' F' hP i e, RaP1 S X Mt0 M' R0 R' sp W q H' F' A B x1 hP i e rs nf →
       u = 2 ^ i * e → e % 2 = 1 →
       R' 15 = BitVec.ofNat 64 (Hd.objIn [hP] x1 hP).rep.refs → DW live S Q 0x800066d0#64 R' M' :=
     fun R' M' H' F' hP i e st' hu he h15 =>

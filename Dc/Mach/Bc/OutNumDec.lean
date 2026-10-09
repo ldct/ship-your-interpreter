@@ -27,20 +27,20 @@ set_option linter.unusedSimpArgs false
 
 /-- The base-10 branch's state: the frame with `s0`–`s7` saved, the heap as
 at entry, the number in `s2`, `s8`–`s11` the caller's. -/
-structure OnDec (S G : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat)
+structure OnDec (S : Nat → Prop) (X : Raws) (G : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat)
     (H : Heap) (F : List Blk) (L : List NumObj) (x : NumObj) : Prop where
   st : OnAt S G Mt0 M R0 R sp W onSlots2
-  heap : BcHeap S M H F L
+  heap : BcHeap S X M H F L
   num : R 18 = BitVec.ofNat 64 x.rep.p
   hi : ∀ z ∈ [24, 25, 26, 27], R z = R0 z
 
 /-- Through a change of registers outside the saved ones, `s1`, `s2` and
 `s8`–`s11`. -/
-theorem OnDec.regs {S G : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W : Nat}
+theorem OnDec.regs {S G : Nat → Prop} {X : Raws} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x : NumObj}
-    (h : OnDec S G Mt0 M R0 R sp W H F L x) {ks : List Nat} (hk : Keeps ks R' R)
+    (h : OnDec S X G Mt0 M R0 R sp W H F L x) {ks : List Nat} (hk : Keeps ks R' R)
     (hks : ∀ z ∈ ks, z ∈ onAll ∧ z ≠ 2 ∧ z ≠ 9 ∧ z ≠ 18 ∧ z < 24 := by decide) :
-    OnDec S G Mt0 M R0 R' sp W H F L x where
+    OnDec S X G Mt0 M R0 R' sp W H F L x where
   st := h.st.regs hk fun z hz => ⟨(hks z hz).1, (hks z hz).2.1, (hks z hz).2.2.1⟩
   heap := h.heap
   num := by rw [hk.get 18 fun hm => (hks 18 hm).2.2.2.1 rfl]; exact h.num
@@ -51,15 +51,15 @@ theorem OnDec.regs {S G : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 
     rw [hk.get z this]; exact h.hi z hz
 
 /-- **The callback in the branch**: the state survives, the characters grow. -/
-theorem OnDec.call {live S : Nat → Prop}
+theorem OnDec.call {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {G : Nat → Prop} {I : List Nat → String → Mem → Prop} {Mt0 M : Mem}
     {R0 R : Nat → BitVec 64} {sp W d c : Nat} {H : Heap} {F : List Blk} {L : List NumObj}
     {x : NumObj} {cs : List Nat} {t : String}
     (cb : CharFn live S Q (R0 12) d G I) (cx : OnCtx S R0 sp W d)
-    (h : OnDec S G Mt0 M R0 R sp W H F L x) (hI : I cs t M) (h10 : R 10 = BitVec.ofNat 64 c)
+    (h : OnDec S X G Mt0 M R0 R sp W H F L x) (hI : I cs t M) (h10 : R 10 = BitVec.ofNat 64 c)
     (hc : c < 256) (h1 : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' t', Keeps cClob R' R → I (cs ++ [c]) t' M' → OnDec S G Mt0 M' R0 R' sp W H F L x →
+    (hk : ∀ R' M' t', Keeps cClob R' R → I (cs ++ [c]) t' M' → OnDec S X G Mt0 M' R0 R' sp W H F L x →
       DWO live S Q t' (R 1) R' M') :
     DWO live S Q t (R0 12) R M :=
   on_call cb cx h.st (by decide) (by decide) h.heap hI h10 hc h1 fun R' M' t' hk' hI' st' hb' _ =>
@@ -71,22 +71,22 @@ theorem OnDec.call {live S : Nat → Prop}
 
 /-- The fixed facts of the branch: the callback, the frame, the heap owned,
 the number `x` of `L` and the continuation for the characters `target`. -/
-structure OnDecFix (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure OnDecFix (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (I : List Nat → String → Mem → Prop) (G : Nat → Prop) (Mt0 : Mem) (R0 : Nat → BitVec 64)
     (sp W d : Nat) (L : List NumObj) (x : NumObj) (target : List Nat) : Prop where
   cb : CharFn live S Q (R0 12) d G I
   cx : OnCtx S R0 sp W d
   hS : HeapOwn S
   mx : x ∈ L
-  hK : OnK live S Q I G R0 Mt0 L sp W target
+  hK : OnK live S X Q I G R0 Mt0 L sp W target
 
 /-- **The end of the branch**: the epilogue and the caller's continuation. -/
-theorem on_decEnd {live S : Nat → Prop}
+theorem on_decEnd {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x : NumObj} {target : List Nat}
-    {t : String} (fx : OnDecFix live S Q I G Mt0 R0 sp W d L x target)
-    (h : OnDec S G Mt0 M R0 R sp W H F L x) (hI : I target t M) :
+    {t : String} (fx : OnDecFix live S X Q I G Mt0 R0 sp W d L x target)
+    (h : OnDec S X G Mt0 M R0 R sp W H F L x) (hI : I target t M) :
     DWO live S Q t 0x80007434#64 R M :=
   on_epi hlive fx.cx h.st.saved h.st.r2 h.st.keep h.hi fun R' hk =>
     fx.hK.ret R' M t H F hk hI h.heap h.st.out
@@ -104,13 +104,13 @@ theorem take_succ_map {l : List Nat} {i : Nat} (hi : i < l.length) (f : Nat → 
 
 /-! ## The fraction loop (`0x80007060`) -/
 
-theorem on_frac {live S : Nat → Prop}
+theorem on_frac {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
     {sp W d : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x : NumObj} {pre : List Nat}
-    (fx : OnDecFix live S Q I G Mt0 R0 sp W d L x (pre ++ (fracDs x).map Num.decChar)) :
+    (fx : OnDecFix live S X Q I G Mt0 R0 sp W d L x (pre ++ (fracDs x).map Num.decChar)) :
     ∀ k i (R : Nat → BitVec 64) (M : Mem) (t : String), x.rep.scale - i = k → i < x.rep.scale →
-      OnDec S G Mt0 M R0 R sp W H F L x → I (pre ++ ((fracDs x).take i).map Num.decChar) t M →
+      OnDec S X G Mt0 M R0 R sp W H F L x → I (pre ++ ((fracDs x).take i).map Num.decChar) t M →
       R 8 = BitVec.ofNat 64 i → R 22 = BitVec.ofNat 64 (x.rep.val + x.rep.len) →
       DWO live S Q t 0x80007060#64 R M := by
   have cx := fx.cx
@@ -161,14 +161,14 @@ theorem on_frac {live S : Nat → Prop}
 
 /-! ## The point (`0x80007048`) -/
 
-theorem on_dot {live S : Nat → Prop}
+theorem on_dot {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x : NumObj} {pre : List Nat}
     {t : String}
-    (fx : OnDecFix live S Q I G Mt0 R0 sp W d L x
+    (fx : OnDecFix live S X Q I G Mt0 R0 sp W d L x
       (pre ++ if x.rep.scale = 0 then [] else 46 :: (fracDs x).map Num.decChar))
-    (h : OnDec S G Mt0 M R0 R sp W H F L x) (hI : I pre t M)
+    (h : OnDec S X G Mt0 M R0 R sp W H F L x) (hI : I pre t M)
     (h11 : R 11 = BitVec.ofNat 64 x.rep.scale)
     (h22 : R 22 = BitVec.ofNat 64 (x.rep.val + x.rep.len)) :
     DWO live S Q t 0x80007048#64 R M := by
@@ -204,7 +204,7 @@ theorem on_dot {live S : Nat → Prop}
     · intro hc; simp at hc; omega
     intro _
     bc_run hlive fx.hS [] at 0x80007060
-    have fx' : OnDecFix live S Q I G Mt0 R0 sp W d L x ((pre ++ [46]) ++ (fracDs x).map Num.decChar) :=
+    have fx' : OnDecFix live S X Q I G Mt0 R0 sp W d L x ((pre ++ [46]) ++ (fracDs x).map Num.decChar) :=
       { fx with hK := by simpa only [List.append_assoc, List.singleton_append] using fx.hK }
     refine on_frac hlive (H := H) (F := F) fx' _ 0 _ M' t' rfl hp ?_
       (by rw [List.take_zero, List.map_nil, List.append_nil]; exact hI') ?_ ?_
@@ -233,13 +233,13 @@ theorem subw_end {v n j : Nat} (hv : v + n < 2 ^ 32) (hj : j ≤ n) (hn : n < 2 
   simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofNat]
   omega
 
-theorem on_int {live S : Nat → Prop}
+theorem on_int {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
     {sp W d : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x : NumObj} {pre : List Nat}
-    (fx : OnDecFix live S Q I G Mt0 R0 sp W d L x (pre ++ (intDs x).map Num.decChar ++ fracOut x)) :
+    (fx : OnDecFix live S X Q I G Mt0 R0 sp W d L x (pre ++ (intDs x).map Num.decChar ++ fracOut x)) :
     ∀ k i (R : Nat → BitVec 64) (M : Mem) (t : String), x.rep.len - i = k → i < x.rep.len →
-      OnDec S G Mt0 M R0 R sp W H F L x → I (pre ++ ((intDs x).take i).map Num.decChar) t M →
+      OnDec S X G Mt0 M R0 R sp W H F L x → I (pre ++ ((intDs x).take i).map Num.decChar) t M →
       R 8 = BitVec.ofNat 64 (x.rep.val + i) →
       R 23 = BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 x.rep.val) +
         BitVec.extractLsb 31 0 (BitVec.ofNat 64 x.rep.len)) →
@@ -313,12 +313,12 @@ theorem on_int {live S : Nat → Prop}
 abbrev intOut (x : NumObj) : List Nat :=
   if 1 < x.rep.len ∨ x.rep.ds.getD 0 0 ≠ 0 then (intDs x).map Num.decChar else []
 
-theorem on_dec {live S : Nat → Prop}
+theorem on_dec {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x : NumObj} {pre : List Nat}
-    {t : String} (fx : OnDecFix live S Q I G Mt0 R0 sp W d L x (pre ++ intOut x ++ fracOut x))
-    (h : OnDec S G Mt0 M R0 R sp W H F L x) (hI : I pre t M) (hlen : 1 ≤ x.rep.len)
+    {t : String} (fx : OnDecFix live S X Q I G Mt0 R0 sp W d L x (pre ++ intOut x ++ fracOut x))
+    (h : OnDec S X G Mt0 M R0 R sp W H F L x) (hI : I pre t M) (hlen : 1 ≤ x.rep.len)
     (h19 : R 19 = BitVec.ofNat 64 x.rep.val) (h22 : R 22 = BitVec.ofNat 64 x.rep.len)
     (h21 : R 21 = 0#64) (h11 : R 11 = BitVec.ofNat 64 x.rep.scale) :
     DWO live S Q t 0x80006fd4#64 R M := by
@@ -328,11 +328,11 @@ theorem on_dec {live S : Nat → Prop}
   num_facts hxn
   have hdig := hxn.shape.dig
   have hti := toInt_ofNat_small (k := x.rep.len) (by omega)
-  have hint : ∀ R', OnDec S G Mt0 M R0 R' sp W H F L x → R' 8 = BitVec.ofNat 64 x.rep.val →
+  have hint : ∀ R', OnDec S X G Mt0 M R0 R' sp W H F L x → R' 8 = BitVec.ofNat 64 x.rep.val →
       R' 22 = BitVec.ofNat 64 x.rep.len → R' 19 = BitVec.ofNat 64 x.rep.val → R' 21 = 0#64 →
       (1 < x.rep.len ∨ x.rep.ds.getD 0 0 ≠ 0) → DWO live S Q t 0x80006fe0#64 R' M := by
     intro R' h' r8 r22 r19 r21 hc
-    have fx' : OnDecFix live S Q I G Mt0 R0 sp W d L x (pre ++ (intDs x).map Num.decChar ++ fracOut x) :=
+    have fx' : OnDecFix live S X Q I G Mt0 R0 sp W d L x (pre ++ (intDs x).map Num.decChar ++ fracOut x) :=
       { fx with hK := by simpa only [intOut, hc, if_true] using fx.hK }
     bc_run hlive fx.hS [r22, r19] at 0x80006fe4
     refine on_int hlive (H := H) (F := F) fx' _ 0 _ M t rfl (by omega) ?_

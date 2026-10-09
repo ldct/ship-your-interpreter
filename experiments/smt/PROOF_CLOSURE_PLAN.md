@@ -5125,3 +5125,31 @@ Premises the callers supply in `SqArgs`:
 
 `SqrtEntry.lean` sets `maxRecDepth 8000`, following the division files. The
 axioms are `propext`, `Classical.choice` and `Quot.sound`.
+
+### M8 obstruction: no callee frames a caller's raw heap blocks
+
+`bc_out_num` for a base other than 10 pushes the integer digits on a stack of
+`malloc(16)` cells (`[digit, next]`) and calls `bc_divmod` and `bc_divide`
+while the cells are live (`0x800071b4`, `0x800071ec`). It reads the cells
+back after the loop (`0x80007468`). No callee contract says the cells
+survive. `BinPostW`, `QPost`, `DmPostQ` and `DmPostR` give a `BcHeap` at a
+fresh allocator state `H'` and an `out` frame for bytes off the heap
+(`OutHeap`). They say nothing about a live block outside the dead chain and
+the objects' blocks.
+
+The ownership set does not supply the frame. A callee needs `HeapInv S`,
+whose `own` field covers the whole heap, so it cannot run with the cells
+removed from `S`. A split of the run at the callee's return would need one
+fuel bound over all of the callee's posts, and `SWP` gives none.
+
+The same gap blocks M9 and M10. `dc` keeps its stack nodes, strings and
+register arrays in `malloc` blocks across every `bc_*` call.
+
+Fix: `BcHeap S X Mt H F L` takes the caller's raw blocks `X : Raws` (blocks
+`X.bs` and their frozen image `X.img`). The field `raw : RawOK X Mt H F L`
+requires each raw block to be live, outside the dead chain and the objects'
+blocks, and to hold its image. A callee's post keeps the same `X`, so every
+callee frames its caller's raw blocks. The central transports
+(`BcHeap.rebase`, `.transportOwn`, `.malloc`, `.rawWrite`, `.freeRaw`,
+`.update`, `.unlink`, `NewNumPost.insert`) discharge the field once. The
+scratch buffers of `bc_divide` carry their separation from `X.bs`.

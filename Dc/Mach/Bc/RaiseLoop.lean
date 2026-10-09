@@ -215,11 +215,11 @@ structure RaEnv (S : Nat → Prop) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q 
 /-- The first loop's state at `0x800066a4` (and its exit `0x800066cc`):
 `power` the handle `hP` holding `a ^ 2^i`, `pwrscale` (`s1`) its scale, the
 exponent left `e` in `s0`, `rscale` and the sign flag in `s6`, `s8`. -/
-structure RaP1 (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat) (H : Heap)
+structure RaP1 (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat) (H : Heap)
     (F : List Blk) (A B : List NumObj) (x1 : NumObj) (hP : Hd) (i e rs nf : Nat) : Prop where
   ra : RaAt S Mt0 M R0 R sp W q raSlots1
   r21 : R 21 = R0 21
-  heap : BcHeap S M H F (KList [] [hP] A B x1)
+  heap : BcHeap S X M H F (KList [] [hP] A B x1)
   pow : RaPow x1.rep.num (2 ^ i) (Hd.objIn [hP] x1 hP)
   fresh : ∀ P, hP = some P → P.rep.refs = 1
   base : hP = none → i = 0
@@ -233,16 +233,16 @@ structure RaP1 (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W
 /-- **One squaring of the first loop** from `0x800066a4` (`e` even):
 `power = power²` at the doubled scale, `e >>= 1`, then the loop again or its
 exit. -/
-theorem ra_p1_body {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_p1_body {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u i e rs nf : Nat} {H : Heap}
     {F : List Blk} {A B : List NumObj} {x1 z o : NumObj} {hP : Hd}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
-    (st : RaP1 S Mt0 M R0 R sp W q H F A B x1 hP i e rs nf) (hu : u = 2 ^ i * e)
+    (st : RaP1 S X Mt0 M R0 R sp W q H F A B x1 hP i e rs nf) (hu : u = 2 ^ i * e)
     (he : e % 2 = 0)
-    (hnext : ∀ R' M' H' F' P, RaP1 S Mt0 M' R0 R' sp W q H' F' A B x1 (some P) (i + 1) (e / 2) rs nf →
+    (hnext : ∀ R' M' H' F' P, RaP1 S X Mt0 M' R0 R' sp W q H' F' A B x1 (some P) (i + 1) (e / 2) rs nf →
       e / 2 % 2 = 0 → DW live S Q 0x800066a4#64 R' M')
-    (hexit : ∀ R' M' H' F' P, RaP1 S Mt0 M' R0 R' sp W q H' F' A B x1 (some P) (i + 1) (e / 2) rs nf →
+    (hexit : ∀ R' M' H' F' P, RaP1 S X Mt0 M' R0 R' sp W q H' F' A B x1 (some P) (i + 1) (e / 2) rs nf →
       e / 2 % 2 = 1 → DW live S Q 0x800066cc#64 R' M') :
     DW live S Q 0x800066a4#64 R M := by
   have cx := env.cx
@@ -328,7 +328,7 @@ theorem ra_p1_body {live : Nat → Prop} {S : Nat → Prop}
   bsimp []
   have hsc : x1.rep.scale * 2 ^ i * 2 ^ 1 = x1.rep.scale * 2 ^ (i + 1) := by
     rw [Nat.pow_succ 2 i, Nat.pow_one, Nat.mul_assoc]
-  have st' : ∀ v, RaP1 S Mt0 M1 R0 (upd (upd (upd R1 8 (BitVec.ofNat 64 (e / 2))) 15 v) 18
+  have st' : ∀ v, RaP1 S X Mt0 M1 R0 (upd (upd (upd R1 8 (BitVec.ofNat 64 (e / 2))) 15 v) 18
       (BitVec.ofNat 64 y.rep.p)) sp W q H1 F1 A B x1 (some y) (i + 1) (e / 2) rs nf := fun v =>
     { ra := hrA.regsA (ks := [8, 15, 18]) (by keeps_tac Keeps.refl _ _)
       r21 := by bsimp []; rw [hk1.get 21 (by decide)]; bsimp [st.r21]
@@ -355,15 +355,15 @@ theorem ra_p1_body {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The first loop** from `0x800066a4` (`e` even): squarings until the
 exponent left is odd, then its exit at `0x800066cc`. -/
-theorem ra_p1_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_p1_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q u rs nf : Nat}
     {A B : List NumObj} {x1 z o : NumObj}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
-    (hexit : ∀ R' M' H' F' P i e, RaP1 S Mt0 M' R0 R' sp W q H' F' A B x1 (some P) i e rs nf →
+    (hexit : ∀ R' M' H' F' P i e, RaP1 S X Mt0 M' R0 R' sp W q H' F' A B x1 (some P) i e rs nf →
       u = 2 ^ i * e → e % 2 = 1 → DW live S Q 0x800066cc#64 R' M') :
     ∀ e i {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {hP : Hd},
-      RaP1 S Mt0 M R0 R sp W q H F A B x1 hP i e rs nf → u = 2 ^ i * e → e % 2 = 0 →
+      RaP1 S X Mt0 M R0 R sp W q H F A B x1 hP i e rs nf → u = 2 ^ i * e → e % 2 = 0 →
       DW live S Q 0x800066a4#64 R M := by
   intro e
   induction e using Nat.strongRecOn with

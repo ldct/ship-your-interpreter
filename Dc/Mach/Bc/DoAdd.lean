@@ -255,12 +255,12 @@ theorem addDs_length {a b : NumRep} (h : AddModel a b) (smin : Nat) {k : Nat} (h
 
 /-- One position written into the result object: digit `k` of the sum at
 index `N - k`. -/
-theorem add_store {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+theorem add_store {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {a b : NumRep} {smin k : Nat} (h : AddModel a b)
     (hyl : y.rep.len + y.rep.scale = max a.len b.len + 1 + max smin (max a.scale b.scale))
-    (hyo : y.Owns) (hb : BcHeap S M H F (withDs y (addDs a b smin k) :: L)) (hk : k < addN a b + 1)
+    (hyo : y.Owns) (hb : BcHeap S X M H F (withDs y (addDs a b smin k) :: L)) (hk : k < addN a b + 1)
     {v : BitVec 64} (hv : sbData v = BitVec.ofNat 8 ((addR a b).getD k 0)) :
-    BcHeap S (writeLog M [(y.rep.val + (addN a b - k), 1, v)]) H F
+    BcHeap S X (writeLog M [(y.rep.val + (addN a b - k), 1, v)]) H F
       (withDs y (addDs a b smin (k + 1)) :: L) := by
   have hst := BcHeap.setDigit (L1 := []) hb (hb.head_noView hyo) (i := addN a b - k) (d := (addR a b).getD k 0)
     (by simp only [withDs, addN, loopLen] at hyl ⊢; omega) (h.getD_lt_r k) hv
@@ -307,13 +307,13 @@ theorem NumAt.advance {Mt : Mem} {o : NumRep} (h : NumAt Mt o) (hl : 2 ≤ o.len
     rw [Nat.add_comm 1 i]
 
 /-- The object `x` with `n_value` advanced past a leading zero. -/
-theorem BcHeap.advance {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (x :: L)) (hl : 2 ≤ x.rep.len)
+theorem BcHeap.advance {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (x :: L)) (hl : 2 ≤ x.rep.len)
     {v1 v2 : BitVec 64} (h1 : v1.toNat % 2 ^ 32 = x.rep.len - 1)
     (h2 : v2 = BitVec.ofNat 64 (x.rep.val + 1)) :
-    BcHeap S (writeLog (writeLog Mt [(x.rep.p + 4, 4, v1)]) [(x.rep.p + 32, 8, v2)]) H F
+    BcHeap S X (writeLog (writeLog Mt [(x.rep.p + 4, 4, v1)]) [(x.rep.p + 32, 8, v2)]) H F
       ({ x with rep := x.rep.drop 1 } :: L) := by
-  have h' : BcHeap S Mt H F ([] ++ x :: L) := h
+  have h' : BcHeap S X Mt H F ([] ++ x :: L) := h
   have hx : x ∈ x :: L := List.mem_cons_self
   have hn := h.nums x hx
   have hxb := h.blocks x hx
@@ -370,9 +370,9 @@ structure AddArgs (L : List NumObj) (x1 x2 : NumObj) (smin : Nat) : Prop where
 /-- `_bc_do_add`'s result: the new number `y` (positive, normalized, one
 reference) holding `_bc_do_add`'s digit array heads the heap; off the heap
 only the stack window changed. -/
-structure AddPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
+structure AddPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
     (a b : NumRep) (smin sp : Nat) (y : NumObj) : Prop where
-  heap : BcHeap S Mt H F (y :: L)
+  heap : BcHeap S X Mt H F (y :: L)
   num : y.rep.num = ⟨false, dval (addDigits a.len a.scale a.ds b.len b.scale b.ds smin),
     resScale a.scale b.scale smin⟩
   norm : y.rep.Norm
@@ -382,10 +382,10 @@ structure AddPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L
   out : ∀ a, OutHeap a → ¬ frameIn sp 96 a → imgM Mt a = imgM Mt0 a
 
 /-- `_bc_do_add`'s continuations: the result, or `out_of_memory`. -/
-structure AddK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure AddK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R0 : Nat → BitVec 64) (Mt0 : Mem) (L : List NumObj) (a b : NumRep) (smin sp : Nat) : Prop where
   ret : ∀ R' Mt' H F y, Keeps addClob R' R0 → R' 10 = BitVec.ofNat 64 y.sb.pay →
-    AddPost S Mt0 Mt' H F L a b smin sp y → DW live S Q (R0 1) R' Mt'
+    AddPost S X Mt0 Mt' H F L a b smin sp y → DW live S Q (R0 1) R' Mt'
   oom : ∀ R' Mt', R' 2 = BitVec.ofNat 64 (sp - 96) →
     (∀ a, OutHeap a → ¬ frameIn sp 96 a → imgM Mt' a = imgM Mt0 a) →
     DW live S Q 0x80002bcc#64 R' Mt'
@@ -427,13 +427,13 @@ theorem AddAt.keeps {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 6
     regs := (hk.mono (by decide)).trans st.regs }
 
 /-- The epilogue at `0x80004534`: the saved registers back, `sp` up. -/
-theorem add_epi {live : Nat → Prop} {S : Nat → Prop}
+theorem add_epi {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hp : AddPost S Mt0 M H F L x1.rep x2.rep smin sp y) :
+    (hp : AddPost S X Mt0 M H F L x1.rep x2.rep smin sp y) :
     DW live S Q 0x80004534#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -468,13 +468,13 @@ structure AddFinal (o a b : NumRep) (smin : Nat) : Prop where
   ptr : o.ptr ≠ 0
 
 /-- Leading zeros removed: the result. -/
-theorem add_done {live : Nat → Prop} {S : Nat → Prop}
+theorem add_done {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {o : NumRep} {j : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay) (hf : AddFinal o x1.rep x2.rep smin)
-    (hj : lzCount (o.len - 1) o.ds = j) (hb : BcHeap S M H F ({ y with rep := o.drop j } :: L)) :
+    (hj : lzCount (o.len - 1) o.ds = j) (hb : BcHeap S X M H F ({ y with rep := o.drop j } :: L)) :
     DW live S Q 0x80004534#64 R M := by
   obtain ⟨hnum, hnorm, -, hpos⟩ := NumRep.rmLeadingZeros_spec hf.dsLen hf.lenPos
   have e : o.rmLeadingZeros = o.drop j := by rw [NumRep.rmLeadingZeros, hj]
@@ -485,15 +485,15 @@ theorem add_done {live : Nat → Prop} {S : Nat → Prop}
 
 /-- `_bc_rm_leading_zeros`' loop at `0x8000452c`: `j` leading zeros
 dropped (`n_value = val + j`, `n_len = len - j`), digit `j` zero too. -/
-theorem add_rmlz_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem add_rmlz_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {o : NumRep}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hf : AddFinal o x1.rep x2.rep smin) (hp : o.p = y.sb.pay) :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), o.len - 1 - j = n → j < o.len →
       AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
-      BcHeap S M H F ({ y with rep := o.drop j } :: L) →
+      BcHeap S X M H F ({ y with rep := o.drop j } :: L) →
       R 15 = BitVec.ofNat 64 (o.val + j) → R 14 = BitVec.ofNat 64 (o.len - j) →
       R 12 = BitVec.ofNat 64 1 → (∀ i, i ≤ j → o.ds.getD i 0 = 0) →
       DW live S Q 0x8000452c#64 R M := by
@@ -568,13 +568,13 @@ theorem add_rmlz_loop {live : Nat → Prop} {S : Nat → Prop}
           (.inl (by omega))) hb
 
 /-- `_bc_rm_leading_zeros` inlined at `0x80004500`. -/
-theorem add_rmlz {live : Nat → Prop} {S : Nat → Prop}
+theorem add_rmlz {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {o : NumRep}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hf : AddFinal o x1.rep x2.rep smin) (hp : o.p = y.sb.pay)
-    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay) (hb : BcHeap S M H F ({ y with rep := o } :: L)) :
+    (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay) (hb : BcHeap S X M H F ({ y with rep := o } :: L)) :
     DW live S Q 0x80004500#64 R M := by
   have hsf := cx.frame
   have hn := hb.nums _ List.mem_cons_self
@@ -587,7 +587,7 @@ theorem add_rmlz {live : Nat → Prop} {S : Nat → Prop}
   have hd := hn.getD_lt 0
   simp only [Nat.add_zero] at hl0 hd
   have hr10 := st.r10
-  have hb0 : BcHeap S M H F ({ y with rep := o.drop 0 } :: L) := by rw [NumRep.drop_zero]; exact hb
+  have hb0 : BcHeap S X M H F ({ y with rep := o.drop 0 } :: L) := by rw [NumRep.drop_zero]; exact hb
   bc_run hlive hS [hr10, hv, hl0, hlen] at 0x8000452c 0x80004534
   · intro hne
     bv_nat at hne
@@ -660,13 +660,13 @@ theorem addDs_last_zero {a b : NumRep} {smin : Nat} (h : AddModel a b)
   simp [sumDs]
 
 /-- The final carry at `0x800044f0`: `a6` at index `0`, `a2` the carry. -/
-theorem add_final {live : Nat → Prop} {S : Nat → Prop}
+theorem add_final {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (addN x1.rep x2.rep)) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (addN x1.rep x2.rep)) :: L))
     (h16 : R 16 = BitVec.ofNat 64 y.rep.val)
     (h12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep (addN x1.rep x2.rep))) :
     DW live S Q 0x800044f0#64 R M := by
@@ -725,15 +725,15 @@ structure CarryRegs (R : Nat → BitVec 64) (A Y c j carry : Nat) : Prop where
   r28 : R 28 = BitVec.ofNat 64 9
 
 /-- After the carry loop, from `0x800044e0`: `a6` back to index `0`. -/
-theorem add_carry_exit {live : Nat → Prop} {S : Nat → Prop}
+theorem add_carry_exit {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {k0 c Y : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
     (hstop : k0 + c = addN x1.rep x2.rep) (hc : 1 ≤ c)
     (hY : Y = y.rep.val + (addN x1.rep x2.rep - k0))
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (addN x1.rep x2.rep)) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (addN x1.rep x2.rep)) :: L))
     (h16 : R 16 = BitVec.ofNat 64 Y) (h13 : R 13 = BitVec.ofNat 64 (c - 1))
     (h12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep (addN x1.rep x2.rep))) :
     DW live S Q 0x800044e0#64 R M := by
@@ -754,15 +754,15 @@ theorem add_carry_exit {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The carry loop's store, step and back edge at `0x800044d4`: `a5` the
 digit of position `k0 + j`, `a2` the carry out, `a4` the count left. -/
-theorem add_carry_tail {live : Nat → Prop} {S : Nat → Prop}
+theorem add_carry_tail {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {k0 c A Y j : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
     (hstop : k0 + c = addN x1.rep x2.rep) (hj : j < c) (hjA : j + 1 ≤ A)
     (hY : Y = y.rep.val + (addN x1.rep x2.rep - k0))
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L))
     (h15 : R 15 = BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))
     (h12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep (k0 + j + 1)))
     (h14 : R 14 = BitVec.ofNat 64 (c - 1 - j)) (h17 : R 17 = BitVec.ofNat 64 (A - j - 1))
@@ -770,7 +770,7 @@ theorem add_carry_tail {live : Nat → Prop} {S : Nat → Prop}
     (h6 : R 6 = BitVec.ofNat 64 (Y - j)) (h16 : R 16 = BitVec.ofNat 64 Y)
     (h28 : R 28 = BitVec.ofNat 64 9)
     (hnext : j + 1 < c → ∀ (R' : Nat → BitVec 64) (M' : Mem), AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
       CarryRegs R' A Y c (j + 1) (addC x1.rep x2.rep (k0 + (j + 1))) →
       DW live S Q 0x800044a8#64 R' M') :
     DW live S Q 0x800044d4#64 R M := by
@@ -785,7 +785,7 @@ theorem add_carry_tail {live : Nat → Prop} {S : Nat → Prop}
   simp only [heapStart, heapEnd] at v1 v2
   have eaddr : Y - j = y.rep.val + (addN x1.rep x2.rep - (k0 + j)) := by
     simp only [addN, loopLen] at hstop hY hls ⊢; omega
-  have hb' : BcHeap S (writeLog M [(Y - j, 1,
+  have hb' : BcHeap S X (writeLog M [(Y - j, 1,
       BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))]) H F
       (withDs y (addDs x1.rep x2.rep smin (k0 + j + 1)) :: L) := by
     rw [eaddr]
@@ -808,17 +808,17 @@ theorem add_carry_tail {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [h16]) (by bsimp [h13]) (by bsimp [h12])
 
 /-- The carry loop at `0x800044a8`: `j` positions after `k0` done. -/
-theorem add_carry_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem add_carry_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y z : NumObj}
     {H : Heap} {F : List Blk} {k0 c A Y : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (hz : z ∈ L) (ht : AddTail x1.rep x2.rep z.rep k0 c)
     (hA : A = z.rep.val + (z.rep.len + max x1.rep.scale x2.rep.scale - 1 - k0))
     (hY : Y = y.rep.val + (addN x1.rep x2.rep - k0)) :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), c - j = n → j < c →
       AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
-      BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L) →
+      BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L) →
       CarryRegs R A Y c j (addC x1.rep x2.rep (k0 + j)) →
       DW live S Q 0x800044a8#64 R M := by
   have hm := hy.model
@@ -843,7 +843,7 @@ theorem add_carry_loop {live : Nat → Prop} {S : Nat → Prop}
     have h16 := cr.r16; have h12 := cr.r12; have h28 := cr.r28
     have hnext : j + 1 < c → ∀ (R' : Nat → BitVec 64) (M' : Mem),
         AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-        BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
+        BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
         CarryRegs R' A Y c (j + 1) (addC x1.rep x2.rep (k0 + (j + 1))) →
         DW live S Q 0x800044a8#64 R' M' := fun hj' R' M' => ih (j + 1) R' M' (by omega) hj'
     have hNl := hy.N_lt
@@ -865,16 +865,16 @@ theorem add_carry_loop {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The carry loop's entry at `0x80004498`: `a4` the positions left, `a1`
 the operand's digit, `a6` the result's. -/
-theorem add_carry_entry {live : Nat → Prop} {S : Nat → Prop}
+theorem add_carry_entry {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y z : NumObj}
     {H : Heap} {F : List Blk} {k0 c A Y : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (hz : z ∈ L) (ht : AddTail x1.rep x2.rep z.rep k0 c)
     (hc : 1 ≤ c) (hA : A = z.rep.val + (z.rep.len + max x1.rep.scale x2.rep.scale - 1 - k0))
     (hY : Y = y.rep.val + (addN x1.rep x2.rep - k0))
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin k0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin k0) :: L))
     (h14 : R 14 = BitVec.ofNat 64 c) (h11 : R 11 = BitVec.ofNat 64 A)
     (h16 : R 16 = BitVec.ofNat 64 Y) (h12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep k0)) :
     DW live S Q 0x80004498#64 R M := by
@@ -931,23 +931,23 @@ structure MainRegs (R : Nat → BitVec 64) (P1 P2 Y c1 c2 j carry : Nat) : Prop 
   r28 : R 28 = BitVec.ofNat 64 9
 
 /-- The common hypotheses of the add loop's exits. -/
-structure MainExit (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp smin : Nat)
+structure MainExit (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp smin : Nat)
     (L : List NumObj) (x1 x2 y : NumObj) (H : Heap) (F : List Blk) (k : Nat) : Prop where
   st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay
-  heap : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin k) :: L)
+  heap : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin k) :: L)
   r12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep k)
   r16 : R 16 = BitVec.ofNat 64 (y.rep.val + (addN x1.rep x2.rep - k))
 
 /-- `n1`'s digits used up at `0x800045b0` (`k = S + l1`, `a3` the digits of
 `n2` left): the final carry, or the carry loop over `n2`. -/
-theorem add_exit1 {live : Nat → Prop} {S : Nat → Prop}
+theorem add_exit1 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hl : x1.rep.len ≤ x2.rep.len) {k : Nat} (hk0 : k = max x1.rep.scale x2.rep.scale + x1.rep.len)
-    (e : MainExit S Mt0 M R0 R sp smin L x1 x2 y H F k)
+    (e : MainExit S X Mt0 M R0 R sp smin L x1 x2 y H F k)
     (h13 : R 13 = BitVec.ofNat 64 (x2.rep.len - x1.rep.len))
     (h17 : x1.rep.len < x2.rep.len →
       R 17 = BitVec.ofNat 64 (x2.rep.val + (x2.rep.len - x1.rep.len - 1))) :
@@ -977,14 +977,14 @@ theorem add_exit1 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- `n2`'s digits used up first at `0x80004494` (`k = S + l2`, `a4` the
 digits of `n1` left): the carry loop over `n1`. -/
-theorem add_exit2 {live : Nat → Prop} {S : Nat → Prop}
+theorem add_exit2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hl : x2.rep.len < x1.rep.len) {k : Nat} (hk0 : k = max x1.rep.scale x2.rep.scale + x2.rep.len)
-    (e : MainExit S Mt0 M R0 R sp smin L x1 x2 y H F k)
+    (e : MainExit S X Mt0 M R0 R sp smin L x1 x2 y H F k)
     (h14 : R 14 = BitVec.ofNat 64 (x1.rep.len - x2.rep.len))
     (h11 : R 11 = BitVec.ofNat 64 (x1.rep.val + (x1.rep.len - x2.rep.len - 1))) :
     DW live S Q 0x80004494#64 R M := by
@@ -1005,10 +1005,10 @@ theorem add_exit2 {live : Nat → Prop} {S : Nat → Prop}
 /-- The add loop's hypotheses after the store of position `k0 + j`: the
 exit state at `k0 + j + 1`, the counts left, the operands' digits, and the
 next iteration. -/
-structure MainNext (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure MainNext (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp smin : Nat) (L : List NumObj) (x1 x2 y : NumObj)
     (H : Heap) (F : List Blk) (k0 c1 c2 P1 P2 Y j : Nat) : Prop where
-  ex : MainExit S Mt0 M R0 R sp smin L x1 x2 y H F (k0 + j + 1)
+  ex : MainExit S X Mt0 M R0 R sp smin L x1 x2 y H F (k0 + j + 1)
   r11 : R 11 = BitVec.ofNat 64 (P1 - j - 1)
   r17 : R 17 = BitVec.ofNat 64 (P2 - j - 1)
   r14 : R 14 = BitVec.ofNat 64 (c1 - j - 1)
@@ -1016,19 +1016,19 @@ structure MainNext (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat →
   r28 : R 28 = BitVec.ofNat 64 9
   next : j + 1 < c1 → j + 1 < c2 → ∀ (R' : Nat → BitVec 64) (M' : Mem),
     AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-    BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
+    BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
     MainRegs R' P1 P2 Y c1 c2 (j + 1) (addC x1.rep x2.rep (k0 + (j + 1))) →
     DW live S Q 0x80004450#64 R' M'
 
 /-- The add loop's second test at `0x80004490` (`n1` has digits left). -/
-theorem add_main_br2 {live : Nat → Prop} {S : Nat → Prop}
+theorem add_main_br2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y j : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) (hj1 : j + 1 < c1) (hj2 : j < c2)
-    (nx : MainNext live S Q Mt0 M R0 R sp smin L x1 x2 y H F k0 c1 c2 P1 P2 Y j) :
+    (nx : MainNext live S X Q Mt0 M R0 R sp smin L x1 x2 y H F k0 c1 c2 P1 P2 Y j) :
     DW live S Q 0x80004490#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => nx.ex.heap.heap.own a h1 h2
   have h11 := nx.r11; have h17 := nx.r17; have h14 := nx.r14; have h13 := nx.r13
@@ -1051,14 +1051,14 @@ theorem add_main_br2 {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [h14]; congr 1; omega) (by bsimp [h11]; congr 1; omega)
 
 /-- The add loop's first test at `0x8000448c` (`a4` the digits of `n1` left). -/
-theorem add_main_br1 {live : Nat → Prop} {S : Nat → Prop}
+theorem add_main_br1 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y j : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) (hj1 : j < c1) (hj2 : j < c2)
-    (nx : MainNext live S Q Mt0 M R0 R sp smin L x1 x2 y H F k0 c1 c2 P1 P2 Y j) :
+    (nx : MainNext live S X Q Mt0 M R0 R sp smin L x1 x2 y H F k0 c1 c2 P1 P2 Y j) :
     DW live S Q 0x8000448c#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => nx.ex.heap.heap.own a h1 h2
   have h14 := nx.r14; have h13 := nx.r13; have h17 := nx.r17
@@ -1075,15 +1075,15 @@ theorem add_main_br1 {live : Nat → Prop} {S : Nat → Prop}
     exact add_main_br2 hlive cx hk hy ha hg (by omega) hj2 nx
 
 /-- The add loop's store at `0x80004484`. -/
-theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop}
+theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y j : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) (hj1 : j < c1) (hj2 : j < c2)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L))
     (h15 : R 15 = BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))
     (h12 : R 12 = BitVec.ofNat 64 (addC x1.rep x2.rep (k0 + j + 1)))
     (h11 : R 11 = BitVec.ofNat 64 (P1 - j - 1)) (h17 : R 17 = BitVec.ofNat 64 (P2 - j - 1))
@@ -1092,7 +1092,7 @@ theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop}
     (h28 : R 28 = BitVec.ofNat 64 9)
     (hnext : j + 1 < c1 → j + 1 < c2 → ∀ (R' : Nat → BitVec 64) (M' : Mem),
       AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
       MainRegs R' P1 P2 Y c1 c2 (j + 1) (addC x1.rep x2.rep (k0 + (j + 1))) →
       DW live S Q 0x80004450#64 R' M') :
     DW live S Q 0x80004484#64 R M := by
@@ -1110,7 +1110,7 @@ theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop}
   simp only [addN, loopLen] at hls hNl
   have eaddr : Y - j = y.rep.val + (addN x1.rep x2.rep - (k0 + j)) := by
     simp only [addN, loopLen]; omega
-  have hb' : BcHeap S (writeLog M [(Y - j, 1,
+  have hb' : BcHeap S X (writeLog M [(Y - j, 1,
       BitVec.ofNat 64 ((addR x1.rep x2.rep).getD (k0 + j) 0))]) H F
       (withDs y (addDs x1.rep x2.rep smin (k0 + j + 1)) :: L) := by
     rw [eaddr]
@@ -1129,15 +1129,15 @@ theorem add_main_tail {live : Nat → Prop} {S : Nat → Prop}
 
 /-- One iteration of the add loop at `0x80004450`: the operands' digits
 `d1`, `d2` at `P1 - j`, `P2 - j`, the carry `c` in. -/
-theorem add_main_body {live : Nat → Prop} {S : Nat → Prop}
+theorem add_main_body {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y j d1 d2 c : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) (hj1 : j < c1) (hj2 : j < c2)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L))
     (mr : MainRegs R P1 P2 Y c1 c2 j c)
     (l1 : ldv .lbu M (P1 - j) = BitVec.ofNat 64 d1) (l2 : ldv .lbu M (P2 - j) = BitVec.ofNat 64 d2)
     (hd1 : d1 < 10) (hd2 : d2 < 10) (hc : c ≤ 1)
@@ -1147,7 +1147,7 @@ theorem add_main_body {live : Nat → Prop} {S : Nat → Prop}
     (hcs : addC x1.rep x2.rep (k0 + j + 1) = (d1 + d2 + c) / 10)
     (hnext : j + 1 < c1 → j + 1 < c2 → ∀ (R' : Nat → BitVec 64) (M' : Mem),
       AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (k0 + (j + 1))) :: L) →
       MainRegs R' P1 P2 Y c1 c2 (j + 1) (addC x1.rep x2.rep (k0 + (j + 1))) →
       DW live S Q 0x80004450#64 R' M') :
     DW live S Q 0x80004450#64 R M := by
@@ -1171,16 +1171,16 @@ theorem add_main_body {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [h17]) (by bsimp [h16]) (by bsimp [h14]) (by bsimp [h13]) (by bsimp [h28]) hnext
 
 /-- The add loop at `0x80004450`: `j` positions after `k0` done. -/
-theorem add_main_loop {live : Nat → Prop} {S : Nat → Prop}
+theorem add_main_loop {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y) :
     ∀ n j (R : Nat → BitVec 64) (M : Mem), c1 - j = n → j < c1 → j < c2 →
       AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
-      BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L) →
+      BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (k0 + j)) :: L) →
       MainRegs R P1 P2 Y c1 c2 j (addC x1.rep x2.rep (k0 + j)) →
       DW live S Q 0x80004450#64 R M := by
   have hm := hy.model
@@ -1240,15 +1240,15 @@ theorem addR_low2 {a b : NumRep} (ha : NumShape a) (hb : NumShape b) (hm : AddMo
 
 /-- The join at `0x80004430`: `a4 = a3 = min s1 s2`, `t3 = l1`, `t1 = l2`;
 the counts, the zero carry, and the add loop. -/
-theorem add_join {live : Nat → Prop} {S : Nat → Prop}
+theorem add_join {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {k0 c1 c2 P1 P2 Y : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hg : AddMain x1.rep x2.rep y.rep.val k0 c1 c2 P1 P2 Y)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin k0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin k0) :: L))
     (h14 : R 14 = BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale))
     (h13 : R 13 = BitVec.ofNat 64 (min x1.rep.scale x2.rep.scale))
     (h28 : R 28 = BitVec.ofNat 64 x1.rep.len) (h6 : R 6 = BitVec.ofNat 64 x2.rep.len)
@@ -1297,17 +1297,17 @@ structure Copy1Regs (R : Nat → BitVec 64) (A Y n s P2 j : Nat) : Prop where
 
 /-- After the first fraction copy, from `0x80004414`: `a1`, `a6` past the
 copied digits, `t1 = l2`, `t3 = l1`, `a3 = s2`, then the join. -/
-theorem add_copy1_exit {live : Nat → Prop} {S : Nat → Prop}
+theorem add_copy1_exit {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {A Y P2 : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hs : x2.rep.scale < x1.rep.scale) (hA : A = x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
     (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + x1.rep.scale))
     (hP2 : P2 = x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (x1.rep.scale - x2.rep.scale)) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (x1.rep.scale - x2.rep.scale)) :: L))
     (cr : Copy1Regs R A Y (x1.rep.scale - x2.rep.scale) x2.rep.scale P2
       (x1.rep.scale - x2.rep.scale)) :
     DW live S Q 0x80004414#64 R M := by
@@ -1340,23 +1340,23 @@ theorem add_copy1_exit {live : Nat → Prop} {S : Nat → Prop}
 
 /-- One step of the first fraction copy at `0x80004400`: the digit `d` of
 `n1` at `A - j` into the result at `Y - j`. -/
-theorem add_copy1_body {live : Nat → Prop} {S : Nat → Prop}
+theorem add_copy1_body {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {A Y n s P2 j d : Nat}
     (cx : AddCtx S R0 sp) (hy : AddSum y x1.rep x2.rep smin)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin j) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin j) :: L))
     (cr : Copy1Regs R A Y n s P2 j) (hj : j < n) (hnA : n ≤ A) (hA : A < 2 ^ 63)
     (hl : ldv .lbu M (A - j) = BitVec.ofNat 64 d) (hr : (addR x1.rep x2.rep).getD j 0 = d)
     (a1 : 2147603920 ≤ A - j) (a2 : A - j < 2273312768) (hjN : j < addN x1.rep x2.rep) (hYa : Y = y.rep.val + addN x1.rep x2.rep)
     (hnext : j + 1 < n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
       AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
       Copy1Regs R' A Y n s P2 (j + 1) → DW live S Q 0x80004400#64 R' M')
     (hexit : j + 1 = n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
       AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
       Copy1Regs R' A Y n s P2 (j + 1) → DW live S Q 0x80004414#64 R' M') :
     DW live S Q 0x80004400#64 R M := by
   have hm := hy.model
@@ -1369,7 +1369,7 @@ theorem add_copy1_body {live : Nat → Prop} {S : Nat → Prop}
   have hls := hy.lenScale
   simp only [heapStart, heapEnd] at v1 v2
   simp only [addN, loopLen] at hls hjN hYa
-  have hb' : BcHeap S (writeLog M [(Y - j - 1 + 1, 1, BitVec.ofNat 64 d)]) H F
+  have hb' : BcHeap S X (writeLog M [(Y - j - 1 + 1, 1, BitVec.ofNat 64 d)]) H F
       (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) := by
     rw [show Y - j - 1 + 1 = y.rep.val + (addN x1.rep x2.rep - j) by simp only [addN, loopLen]; omega]
     exact add_store hm hy.lenScale hy.owns hb (by simp only [addN, loopLen]; omega) (by rw [sbData_ofNat, hr])
@@ -1392,11 +1392,11 @@ theorem add_copy1_body {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The first fraction copy at `0x80004400` (`s2 < s1`): `n1`'s last
 `s1 - s2` digits into the result, then the join. -/
-theorem add_copy1 {live : Nat → Prop} {S : Nat → Prop}
+theorem add_copy1 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {A Y P2 : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hs : x2.rep.scale < x1.rep.scale) (hA : A = x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
     (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + x1.rep.scale))
@@ -1404,7 +1404,7 @@ theorem add_copy1 {live : Nat → Prop} {S : Nat → Prop}
     ∀ m j (R : Nat → BitVec 64) (M : Mem), x1.rep.scale - x2.rep.scale - j = m →
       j < x1.rep.scale - x2.rep.scale →
       AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
-      BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin j) :: L) →
+      BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin j) :: L) →
       Copy1Regs R A Y (x1.rep.scale - x2.rep.scale) x2.rep.scale P2 j →
       DW live S Q 0x80004400#64 R M := by
   have hm := hy.model
@@ -1451,17 +1451,17 @@ structure Copy2Regs (R : Nat → BitVec 64) (A Y s1 s2 P1 j : Nat) : Prop where
 
 /-- After the second fraction copy, from `0x80004580`: `a7`, `a6` past the
 copied digits, `t1 = l2`, `t3 = l1`, `a4 = s1`, then the join. -/
-theorem add_copy2_exit {live : Nat → Prop} {S : Nat → Prop}
+theorem add_copy2_exit {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {A Y P1 : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hs : x1.rep.scale < x2.rep.scale) (hA : A = x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
     (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + x2.rep.scale))
     (hP1 : P1 = x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin (x2.rep.scale - x1.rep.scale)) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin (x2.rep.scale - x1.rep.scale)) :: L))
     (cr : Copy2Regs R A Y x1.rep.scale x2.rep.scale P1 (x2.rep.scale - x1.rep.scale)) :
     DW live S Q 0x80004580#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -1493,13 +1493,13 @@ theorem add_copy2_exit {live : Nat → Prop} {S : Nat → Prop}
 
 /-- One step of the second fraction copy at `0x80004564`: the digit `d` of
 `n2` at `A - j` into the result at `Y - j`. -/
-theorem add_copy2_body {live : Nat → Prop} {S : Nat → Prop}
+theorem add_copy2_body {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {A Y s1 s2 P1 j d : Nat}
     (cx : AddCtx S R0 sp) (hy : AddSum y x1.rep x2.rep smin)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin j) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin j) :: L))
     (cr : Copy2Regs R A Y s1 s2 P1 j) (hj : j + s1 < s2) (hs2 : s2 < 2 ^ 31) (hsA : s2 ≤ A)
     (hA : A < 2 ^ 63)
     (hl : ldv .lbu M (A - j) = BitVec.ofNat 64 d) (hr : (addR x1.rep x2.rep).getD j 0 = d)
@@ -1507,11 +1507,11 @@ theorem add_copy2_body {live : Nat → Prop} {S : Nat → Prop}
     (hYa : Y = y.rep.val + addN x1.rep x2.rep)
     (hnext : j + 1 + s1 < s2 → ∀ (R' : Nat → BitVec 64) (M' : Mem),
       AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
       Copy2Regs R' A Y s1 s2 P1 (j + 1) → DW live S Q 0x80004564#64 R' M')
     (hexit : j + 1 + s1 = s2 → ∀ (R' : Nat → BitVec 64) (M' : Mem),
       AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) →
       Copy2Regs R' A Y s1 s2 P1 (j + 1) → DW live S Q 0x80004580#64 R' M') :
     DW live S Q 0x80004564#64 R M := by
   have hm := hy.model
@@ -1524,7 +1524,7 @@ theorem add_copy2_body {live : Nat → Prop} {S : Nat → Prop}
   have hls := hy.lenScale
   simp only [heapStart, heapEnd] at v1 v2
   simp only [addN, loopLen] at hls hjN hYa
-  have hb' : BcHeap S (writeLog M [(Y - j, 1, BitVec.ofNat 64 d)]) H F
+  have hb' : BcHeap S X (writeLog M [(Y - j, 1, BitVec.ofNat 64 d)]) H F
       (withDs y (addDs x1.rep x2.rep smin (j + 1)) :: L) := by
     rw [show Y - j = y.rep.val + (addN x1.rep x2.rep - j) by simp only [addN, loopLen]; omega]
     exact add_store hm hy.lenScale hy.owns hb (by simp only [addN, loopLen]; omega) (by rw [sbData_ofNat, hr])
@@ -1550,11 +1550,11 @@ theorem add_copy2_body {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The second fraction copy at `0x80004564` (`s1 < s2`): `n2`'s last
 `s2 - s1` digits into the result, then the join. -/
-theorem add_copy2 {live : Nat → Prop} {S : Nat → Prop}
+theorem add_copy2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {A Y P1 : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hs : x1.rep.scale < x2.rep.scale) (hA : A = x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
     (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + x2.rep.scale))
@@ -1562,7 +1562,7 @@ theorem add_copy2 {live : Nat → Prop} {S : Nat → Prop}
     ∀ m j (R : Nat → BitVec 64) (M : Mem), x2.rep.scale - x1.rep.scale - j = m →
       j < x2.rep.scale - x1.rep.scale →
       AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
-      BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin j) :: L) →
+      BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin j) :: L) →
       Copy2Regs R A Y x1.rep.scale x2.rep.scale P1 j →
       DW live S Q 0x80004564#64 R M := by
   have hm := hy.model
@@ -1599,17 +1599,17 @@ theorem add2_pred {a b : Nat} (h : 1 ≤ a + b) :
 
 /-- The first fraction copy's entry at `0x800043e0` (`s2 < s1`): the count
 `s1 - s2 - 1` in `t3`, `a5`'s stop in `t1`. -/
-theorem add_copy1_entry {live : Nat → Prop} {S : Nat → Prop}
+theorem add_copy1_entry {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {A Y P2 : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hs : x2.rep.scale < x1.rep.scale) (hA : A = x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
     (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + x1.rep.scale))
     (hP2 : P2 = x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
     (h13 : R 13 = BitVec.ofNat 64 x1.rep.scale) (h14 : R 14 = BitVec.ofNat 64 x2.rep.scale)
     (h16 : R 16 = BitVec.ofNat 64 Y) (h11 : R 11 = BitVec.ofNat 64 A)
     (h17 : R 17 = BitVec.ofNat 64 P2) :
@@ -1626,17 +1626,17 @@ theorem add_copy1_entry {live : Nat → Prop} {S : Nat → Prop}
       by bsimp [h16], by bsimp [h11], by bsimp [h14], by bsimp [h17]⟩
 
 /-- The second fraction copy's entry at `0x8000455c` (`s1 < s2`). -/
-theorem add_copy2_entry {live : Nat → Prop} {S : Nat → Prop}
+theorem add_copy2_entry {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {A Y P1 : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hs : x1.rep.scale < x2.rep.scale) (hA : A = x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
     (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + x2.rep.scale))
     (hP1 : P1 = x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
     (h13 : R 13 = BitVec.ofNat 64 x1.rep.scale) (h14 : R 14 = BitVec.ofNat 64 x2.rep.scale)
     (h16 : R 16 = BitVec.ofNat 64 Y) (h11 : R 11 = BitVec.ofNat 64 P1)
     (h17 : R 17 = BitVec.ofNat 64 A) :
@@ -1650,14 +1650,14 @@ theorem add_copy2_entry {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The three-way dispatch at `0x800043d8` on the operands' scales `a3`,
 `a4`: equal scales to the join, the longer fraction copied first otherwise. -/
-theorem add_dispatch {live : Nat → Prop} {S : Nat → Prop}
+theorem add_dispatch {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {Y P1 P2 : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
     (hY : Y = y.rep.val + (max x1.rep.len x2.rep.len + max x1.rep.scale x2.rep.scale))
     (hP1 : P1 = x1.rep.val + (x1.rep.len + x1.rep.scale - 1))
     (hP2 : P2 = x2.rep.val + (x2.rep.len + x2.rep.scale - 1))
@@ -1697,14 +1697,14 @@ theorem add_dispatch {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The setup's arithmetic at `0x800043b4`: the operands' and the result's
 last digit addresses from `n_value`, the lengths and scales. -/
-theorem add_setup_addr {live : Nat → Prop} {S : Nat → Prop}
+theorem add_setup_addr {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
     (h8 : R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale))
     (h19 : R 19 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + 1))
     (h13 : R 13 = BitVec.ofNat 64 x1.rep.scale) (h14 : R 14 = BitVec.ofNat 64 x2.rep.scale)
@@ -1730,14 +1730,14 @@ theorem add_setup_addr {live : Nat → Prop} {S : Nat → Prop}
 
 /-- After `bc_new_num` and the zero fill, from `0x80004398`: the operands'
 scales, lengths and `n_value`s, the result's `n_value`. -/
-theorem add_setup {live : Nat → Prop} {S : Nat → Prop}
+theorem add_setup {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
     (h8 : R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale))
     (h19 : R 19 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + 1)) :
     DW live S Q 0x80004398#64 R M := by
@@ -1764,13 +1764,13 @@ theorem add_setup {live : Nat → Prop} {S : Nat → Prop}
 /-! ## The `scale_min` zero fill -/
 
 /-- A zero written into the result before any position changes nothing. -/
-theorem BcHeap.zeroFill {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+theorem BcHeap.zeroFill {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {y : NumObj} {a b : NumRep} {smin i : Nat}
     (hyl : y.rep.len + y.rep.scale = max a.len b.len + 1 + max smin (max a.scale b.scale))
-    (hyo : y.Owns) (hb : BcHeap S M H F (withDs y (addDs a b smin 0) :: L))
+    (hyo : y.Owns) (hb : BcHeap S X M H F (withDs y (addDs a b smin 0) :: L))
     (hi : i < max a.len b.len + 1 + max smin (max a.scale b.scale)) {v : BitVec 64}
     (hv : sbData v = BitVec.ofNat 8 0) :
-    BcHeap S (writeLog M [(y.rep.val + i, 1, v)]) H F (withDs y (addDs a b smin 0) :: L) := by
+    BcHeap S X (writeLog M [(y.rep.val + i, 1, v)]) H F (withDs y (addDs a b smin 0) :: L) := by
   have hst := BcHeap.setDigit (L1 := []) hb (hb.head_noView hyo) (i := i) (d := 0) (by simp only [withDs]; omega)
     (by decide) hv
   simp only [withDs, List.nil_append] at hst ⊢
@@ -1785,24 +1785,24 @@ theorem inc_dec (x : BitVec 64) : x + 1#64 + 18446744073709551615#64 = x := by
 
 /-- One zero of the `scale_min` tail at `0x8000438c`: `a5` at the `i`-th
 digit past `S + D`, `a4` past the last. -/
-theorem add_zfill_body {live : Nat → Prop} {S : Nat → Prop}
+theorem add_zfill_body {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {Z n i : Nat}
     (cx : AddCtx S R0 sp) (hy : AddSum y x1.rep x2.rep smin)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
     (hZ : Z = y.rep.val + (max x1.rep.scale x2.rep.scale + (max x1.rep.len x2.rep.len + 1)))
     (hn : max x1.rep.scale x2.rep.scale + n = smin) (hi : i < n)
     (h15 : R 15 = BitVec.ofNat 64 (Z + i)) (h14 : R 14 = BitVec.ofNat 64 (Z + n))
     (hnext : i + 1 < n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
       AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin 0) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin 0) :: L) →
       R' 15 = BitVec.ofNat 64 (Z + (i + 1)) → R' 14 = BitVec.ofNat 64 (Z + n) →
       R' 8 = R 8 → R' 19 = R 19 → DW live S Q 0x8000438c#64 R' M')
     (hexit : i + 1 = n → ∀ (R' : Nat → BitVec 64) (M' : Mem),
       AddAt S Mt0 M' R0 R' sp x1 x2 y.sb.pay →
-      BcHeap S M' H F (withDs y (addDs x1.rep x2.rep smin 0) :: L) →
+      BcHeap S X M' H F (withDs y (addDs x1.rep x2.rep smin 0) :: L) →
       R' 8 = R 8 → R' 19 = R 19 → DW live S Q 0x80004398#64 R' M') :
     DW live S Q 0x8000438c#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -1837,17 +1837,17 @@ theorem add_zfill_body {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The `scale_min` zero fill at `0x8000438c` (`S < scale_min`): `i` zeros
 written, then the setup. -/
-theorem add_zfill {live : Nat → Prop} {S : Nat → Prop}
+theorem add_zfill {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk} {Z n : Nat}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (hZ : Z = y.rep.val + (max x1.rep.scale x2.rep.scale + (max x1.rep.len x2.rep.len + 1)))
     (hn : max x1.rep.scale x2.rep.scale + n = smin) :
     ∀ m i (R : Nat → BitVec 64) (M : Mem), n - i = m → i < n →
       AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay →
-      BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L) →
+      BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L) →
       R 15 = BitVec.ofNat 64 (Z + i) → R 14 = BitVec.ofNat 64 (Z + n) →
       R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale) →
       R 19 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + 1) →
@@ -1865,14 +1865,14 @@ theorem add_zfill {live : Nat → Prop} {S : Nat → Prop}
 
 /-- After `bc_new_num` at `0x80004368`: `scale_min` back from the frame;
 below it the zero fill, otherwise the setup. -/
-theorem add_after_new {live : Nat → Prop} {S : Nat → Prop}
+theorem add_after_new {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 y : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
     (hy : AddSum y x1.rep x2.rep smin) (ha : AddArgs L x1 x2 smin)
     (st : AddAt S Mt0 M R0 R sp x1 x2 y.sb.pay)
-    (hb : BcHeap S M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
+    (hb : BcHeap S X M H F (withDs y (addDs x1.rep x2.rep smin 0) :: L))
     (h8 : R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale))
     (h19 : R 19 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + 1))
     (hsm : ldv .ld M (sp - 64 + 8) = BitVec.ofNat 64 smin) :
@@ -1938,12 +1938,12 @@ theorem AddSum.withDs_zero {y : NumObj} {a b : NumRep} {smin : Nat} (h : AddSum 
 
 /-- The `bc_new_num(D, max S scale_min)` call from `0x8000435c` (`scale_min`
 saved at `sp + 8`); out of memory reaches `AddK.oom`. -/
-theorem add_call {live : Nat → Prop} {S : Nat → Prop}
+theorem add_call {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
-    (ha : AddArgs L x1 x2 smin) (hb : BcHeap S M H F L) (pr : AddPre Mt0 M R0 R sp x1 x2)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (ha : AddArgs L x1 x2 smin) (hb : BcHeap S X M H F L) (pr : AddPre Mt0 M R0 R sp x1 x2)
     (h8 : R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale))
     (h19 : R 19 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len + 1))
     (h11 : R 11 = BitVec.ofNat 64 (max (max x1.rep.scale x2.rep.scale) smin))
@@ -1963,7 +1963,7 @@ theorem add_call {live : Nat → Prop} {S : Nat → Prop}
   have := ha.l1; have := ha.l2
   have hoff : ∀ a, sp - 64 + 8 ≤ a → a < sp - 64 + 16 → OutHeap a := fun a h1 h2 => by
     simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
-  have hb2 : BcHeap S (writeLog M [(sp - 64 + 8, 8, BitVec.ofNat 64 smin)]) H F L :=
+  have hb2 : BcHeap S X (writeLog M [(sp - 64 + 8, 8, BitVec.ofNat 64 smin)]) H F L :=
     hb.out_frame (P := fun a => sp - 64 + 8 ≤ a ∧ a < sp - 64 + 16)
       (fun a ha => imgM_store_miss _ _ (by omega)) fun a ha => hoff a ha.1 ha.2
   bc_run hlive hS [h2, h19, h12] at 0x80004250
@@ -2007,12 +2007,12 @@ theorem add_call {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The result's length `max l1 l2 + 1` in `s3` and `max S scale_min` in
 `a1`, from `0x8000434c`. -/
-theorem add_pre3 {live : Nat → Prop} {S : Nat → Prop}
+theorem add_pre3 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
-    (ha : AddArgs L x1 x2 smin) (hb : BcHeap S M H F L) (pr : AddPre Mt0 M R0 R sp x1 x2)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (ha : AddArgs L x1 x2 smin) (hb : BcHeap S X M H F L) (pr : AddPre Mt0 M R0 R sp x1 x2)
     (h8 : R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale))
     (h19 : R 19 = BitVec.ofNat 64 (max x1.rep.len x2.rep.len))
     (h12 : R 12 = BitVec.ofNat 64 smin) :
@@ -2038,12 +2038,12 @@ theorem word_sub64 {x : Nat} (h : 64 ≤ x) :
   exact BitVec.ofNat_sub_ofNat_of_le x 64 (by decide) h
 
 /-- The longer length into `s3`, from `0x80004338`. -/
-theorem add_pre2 {live : Nat → Prop} {S : Nat → Prop}
+theorem add_pre2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R0 sp) (hk : AddK live S Q R0 Mt0 L x1.rep x2.rep smin sp)
-    (ha : AddArgs L x1 x2 smin) (hb : BcHeap S M H F L) (pr : AddPre Mt0 M R0 R sp x1 x2)
+    (cx : AddCtx S R0 sp) (hk : AddK live S X Q R0 Mt0 L x1.rep x2.rep smin sp)
+    (ha : AddArgs L x1 x2 smin) (hb : BcHeap S X M H F L) (pr : AddPre Mt0 M R0 R sp x1 x2)
     (h8 : R 8 = BitVec.ofNat 64 (max x1.rep.scale x2.rep.scale))
     (h12 : R 12 = BitVec.ofNat 64 smin) :
     DW live S Q 0x80004338#64 R M := by
@@ -2070,13 +2070,13 @@ theorem add_pre2 {live : Nat → Prop} {S : Nat → Prop}
 /-- **`_bc_do_add(n1, n2, scale_min)`** at `0x80004304`, for two numbers of
 the heap: a new number holding the sum of the magnitudes heads the heap
 (`AddK.ret`), or `out_of_memory` (`AddK.oom`). -/
-theorem bc_do_add_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem bc_do_add_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {sp smin : Nat} {L : List NumObj} {x1 x2 : NumObj}
     {H : Heap} {F : List Blk}
-    (cx : AddCtx S R sp) (ha : AddArgs L x1 x2 smin) (hb : BcHeap S M H F L)
+    (cx : AddCtx S R sp) (ha : AddArgs L x1 x2 smin) (hb : BcHeap S X M H F L)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
-    (h12 : R 12 = BitVec.ofNat 64 smin) (hk : AddK live S Q R M L x1.rep x2.rep smin sp) :
+    (h12 : R 12 = BitVec.ofNat 64 smin) (hk : AddK live S X Q R M L x1.rep x2.rep smin sp) :
     DW live S Q 0x80004304#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al

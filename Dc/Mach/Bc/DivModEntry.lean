@@ -29,13 +29,13 @@ set_option maxRecDepth 8000
 
 /-- The state at `0x80006068`, after `bc_divide (num1, num2, &temp, scale)`
 returned the quotient `t` for `a` in `temp` (`sp - 72`). -/
-structure DmAt68 (S : Nat → Prop) (R0 : Nat → BitVec 64) (Mt0 M : Mem) (R : Nat → BitVec 64)
+structure DmAt68 (S : Nat → Prop) (X : Raws) (R0 : Nat → BitVec 64) (Mt0 M : Mem) (R : Nat → BitVec 64)
     (H : Heap) (F : List Blk) (L : List NumObj) (x1 x2 z : NumObj) (k sp W : Nat) (a : Num)
     (t : NumObj) : Prop where
   sv : SavedWords M (sp - 80) dmSlots R0
   r2 : R 2 = BitVec.ofNat 64 (sp - 80)
   kp : Keeps dmAll R R0
-  heap : BcHeap S M H F (t :: L)
+  heap : BcHeap S X M H F (t :: L)
   new : NewNum a t
   slot : ldv .ld M (sp - 80 + 8) = BitVec.ofNat 64 t.sb.pay
   out : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a
@@ -49,11 +49,11 @@ structure DmAt68 (S : Nat → Prop) (R0 : Nat → BitVec 64) (Mt0 M : Mem) (R : 
 
 /-- The entry's continuations: the quotient at `0x80006068`, `-1` for a zero
 divisor, out of memory. -/
-structure DmPreK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure DmPreK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R0 : Nat → BitVec 64) (Mt0 : Mem) (L : List NumObj) (x1 x2 z : NumObj) (k sp W : Nat) :
     Prop where
   div : ∀ a, Num.div x1.rep.num x2.rep.num k = some a → ∀ R M H F t,
-    DmAt68 S R0 Mt0 M R H F L x1 x2 z k sp W a t → DW live S Q 0x80006068#64 R M
+    DmAt68 S X R0 Mt0 M R H F L x1 x2 z k sp W a t → DW live S Q 0x80006068#64 R M
   zero : x2.rep.num.mag = 0 → DmZero live S Q R0 Mt0 sp W
   oom : DmOom live S Q Mt0 sp W
 
@@ -155,12 +155,12 @@ theorem NumObj.withRefs_succ_decRef (z : NumObj) : (z.withRefs (z.rep.refs + 1))
 
 /-- `bc_divide`'s quotient back at `0x80006068`: `_zero_`'s extra reference
 dropped, `DmAt68`. -/
-theorem dm_divRet {live : Nat → Prop} {S : Nat → Prop}
+theorem dm_divRet {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {Mt0 M Mt' : Mem} {R0 Rc R' : Nat → BitVec 64} {sp W k : Nat} {A B L' : List NumObj}
     {x1 x2 z y : NumObj} {H H' : Heap} {F F' : List Blk} {m : Num}
-    (cx : DmCtx S R0 sp W) (hk : DmPreK live S Q R0 Mt0 (A ++ z :: B) x1 x2 z k sp W)
-    (ha : DmArgs M (A ++ z :: B) x1 x2 z k) (hb : BcHeap S M H F (A ++ z :: B))
+    (cx : DmCtx S R0 sp W) (hk : DmPreK live S X Q R0 Mt0 (A ++ z :: B) x1 x2 z k sp W)
+    (ha : DmArgs M (A ++ z :: B) x1 x2 z k) (hb : BcHeap S X M H F (A ++ z :: B))
     (sv : SavedWords M (sp - 80) dmSlots R0)
     (hfr : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (hm : Num.div x1.rep.num x2.rep.num k = some m)
@@ -168,7 +168,7 @@ theorem dm_divRet {live : Nat → Prop} {S : Nat → Prop}
     (h8 : Rc 8 = BitVec.ofNat 64 x1.rep.p) (h9 : Rc 9 = BitVec.ofNat 64 x2.rep.p)
     (h18 : Rc 18 = BitVec.ofNat 64 (max x1.rep.scale (x2.rep.scale + k)))
     (h19 : Rc 19 = R0 12) (h21 : Rc 21 = R0 13) (kk : Keeps binClob R' Rc)
-    (hp : BinPostW S (writeLog (writeLog M [(z.rep.p + 12, 4, BitVec.ofNat 64 (z.rep.refs + 1))])
+    (hp : BinPostW S X (writeLog (writeLog M [(z.rep.p + 12, 4, BitVec.ofNat 64 (z.rep.refs + 1))])
       [(sp - 80 + 8, 8, BitVec.ofNat 64 z.rep.p)]) Mt' H' F' A B (z.withRefs (z.rep.refs + 1))
       (sp - 80 + 8) (sp - 80) (W - 80) m L' y) :
     DW live S Q 0x80006068#64 R' Mt' := by
@@ -220,12 +220,12 @@ theorem dm_divRet {live : Nat → Prop} {S : Nat → Prop}
 /-- **`bc_divide (num1, num2, &temp, scale)`** from `0x8000603c`
 (`num2` not `_zero_`, nonzero): `temp = _zero_` with one reference more, the
 call, `DmPreK.div` at the return. -/
-theorem dm_divCall {live : Nat → Prop} {S : Nat → Prop}
+theorem dm_divCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W k : Nat} {L : List NumObj}
     {x1 x2 z : NumObj} {H : Heap} {F : List Blk}
-    (cx : DmCtx S R0 sp W) (hk : DmPreK live S Q R0 Mt0 L x1 x2 z k sp W)
-    (ha : DmArgs M L x1 x2 z k) (hb : BcHeap S M H F L) (hmag : x2.rep.num.mag ≠ 0)
+    (cx : DmCtx S R0 sp W) (hk : DmPreK live S X Q R0 Mt0 L x1 x2 z k sp W)
+    (ha : DmArgs M L x1 x2 z k) (hb : BcHeap S X M H F L) (hmag : x2.rep.num.mag ≠ 0)
     (sv : SavedWords M (sp - 80) dmSlots R0)
     (hfr : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 80)) (hkp : Keeps dmAll R R0)
@@ -297,12 +297,12 @@ theorem dm_divCall {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **From `0x80006010`** (`num2` has digits): the zero test, then `-1` or
 `rscale` and the `bc_divide` call. -/
-theorem dm_test {live : Nat → Prop} {S : Nat → Prop}
+theorem dm_test {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W k : Nat} {L : List NumObj}
     {x1 x2 z : NumObj} {H : Heap} {F : List Blk}
-    (cx : DmCtx S R0 sp W) (hk : DmPreK live S Q R0 Mt0 L x1 x2 z k sp W)
-    (ha : DmArgs M L x1 x2 z k) (hb : BcHeap S M H F L)
+    (cx : DmCtx S R0 sp W) (hk : DmPreK live S X Q R0 Mt0 L x1 x2 z k sp W)
+    (ha : DmArgs M L x1 x2 z k) (hb : BcHeap S X M H F L)
     (sv : SavedWords M (sp - 80) dmSlots R0)
     (hfr : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (hfz : ∀ a, ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
@@ -386,12 +386,12 @@ theorem DmArgs.agree {M M' : Mem} {L : List NumObj} {x1 x2 z : NumObj} {k : Nat}
 /-- **The prologue** from `0x80005fdc` (`num2` not `_zero_`): seven saved
 registers, `num2`'s digit count; none is a zero divisor (`-1`), else
 `dm_test`. -/
-theorem dm_pro {live : Nat → Prop} {S : Nat → Prop}
+theorem dm_pro {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 R : Nat → BitVec 64} {sp W k : Nat} {L : List NumObj}
     {x1 x2 z : NumObj} {H : Heap} {F : List Blk}
-    (cx : DmCtx S R0 sp W) (hk : DmPreK live S Q R0 Mt0 L x1 x2 z k sp W)
-    (ha : DmArgs Mt0 L x1 x2 z k) (hb : BcHeap S Mt0 H F L) (hkp0 : Keeps [28] R R0)
+    (cx : DmCtx S R0 sp W) (hk : DmPreK live S X Q R0 Mt0 L x1 x2 z k sp W)
+    (ha : DmArgs Mt0 L x1 x2 z k) (hb : BcHeap S X Mt0 H F L) (hkp0 : Keeps [28] R R0)
     (h28 : R 28 = BitVec.ofNat 64 z.rep.p)
     (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
     (h14 : R0 14 = BitVec.ofNat 64 k) :
@@ -458,14 +458,14 @@ theorem dm_size {M : Mem} {L : List NumObj} {x1 x2 z t : NumObj} {k : Nat} {a : 
 
 /-- **The quotient's dispatch** at `0x80006068` (`quot` a slot): `temp`
 loaded, `dm_qmul`. -/
-theorem dm_q68 {live : Nat → Prop} {S : Nat → Prop}
+theorem dm_q68 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W k qq qr : Nat} {L : List NumObj}
     {xq xr x1 x2 z t : NumObj} {H : Heap} {F : List Blk} {a : Num}
     (cx : DmCtx S R0 sp W) (sl : DmQSlots S Mt0 L xq xr qq qr sp W)
-    (hk : DmKQ live S Q R0 Mt0 L xq xr qq qr sp W (Num.divmod x1.rep.num x2.rep.num k))
+    (hk : DmKQ live S X Q R0 Mt0 L xq xr qq qr sp W (Num.divmod x1.rep.num x2.rep.num k))
     (ha : DmArgs Mt0 L x1 x2 z k) (hd : Num.div x1.rep.num x2.rep.num k = some a)
-    (st : DmAt68 S R0 Mt0 M R H F L x1 x2 z k sp W a t)
+    (st : DmAt68 S X R0 Mt0 M R H F L x1 x2 z k sp W a t)
     (h12 : R0 12 = BitVec.ofNat 64 qq) (h13 : R0 13 = BitVec.ofNat 64 qr) :
     DW live S Q 0x80006068#64 R M := by
   have hsf := cx.frame
@@ -495,15 +495,15 @@ theorem dm_q68 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The remainder's dispatch** at `0x80006068` (`quot = NULL`): `temp`
 loaded, `dm_rmul`. -/
-theorem dm_r68 {live : Nat → Prop} {S : Nat → Prop}
+theorem dm_r68 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W k qr : Nat} {L : List NumObj}
     {xr x1 x2 z t : NumObj} {H : Heap} {F : List Blk} {a : Num}
     (cx : DmCtx S R0 sp W) (sr : DmSlot S sp W qr) (hmr : xr ∈ L) (hrr : 1 ≤ xr.rep.refs)
     (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p)
-    (hk : DmKR live S Q R0 Mt0 L xr qr sp W (Num.modulo x1.rep.num x2.rep.num k))
+    (hk : DmKR live S X Q R0 Mt0 L xr qr sp W (Num.modulo x1.rep.num x2.rep.num k))
     (ha : DmArgs Mt0 L x1 x2 z k) (hd : Num.div x1.rep.num x2.rep.num k = some a)
-    (st : DmAt68 S R0 Mt0 M R H F L x1 x2 z k sp W a t)
+    (st : DmAt68 S X R0 Mt0 M R H F L x1 x2 z k sp W a t)
     (h12 : R0 12 = 0#64) (h13 : R0 13 = BitVec.ofNat 64 qr) :
     DW live S Q 0x80006068#64 R M := by
   have hsf := cx.frame
@@ -530,12 +530,12 @@ theorem dm_r68 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_divmod`'s entry** at `0x80005fd0`: `num2 == _zero_` returns `-1`,
 otherwise `dm_pro`. -/
-theorem dm_entry {live : Nat → Prop} {S : Nat → Prop}
+theorem dm_entry {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W k : Nat} {L : List NumObj}
     {x1 x2 z : NumObj} {H : Heap} {F : List Blk}
-    (cx : DmCtx S R0 sp W) (hk : DmPreK live S Q R0 Mt0 L x1 x2 z k sp W)
-    (ha : DmArgs Mt0 L x1 x2 z k) (hb : BcHeap S Mt0 H F L)
+    (cx : DmCtx S R0 sp W) (hk : DmPreK live S X Q R0 Mt0 L x1 x2 z k sp W)
+    (ha : DmArgs Mt0 L x1 x2 z k) (hb : BcHeap S X Mt0 H F L)
     (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
     (h14 : R0 14 = BitVec.ofNat 64 k) :
     DW live S Q 0x80005fd0#64 R0 Mt0 := by
@@ -569,13 +569,13 @@ theorem divmod_none {a b : Num} (k : Nat) (hb : b.mag = 0) : Num.divmod a b k = 
 /-- **`bc_divmod (num1, num2, quot, rem, scale)`** at `0x80005fd0` with a
 quotient slot: `Num.divmod`'s quotient and remainder in the slots
 (`DmKQ.ret`), `-1` for a zero divisor (`DmKQ.zero`), or `out_of_memory`. -/
-theorem bc_divmod_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem bc_divmod_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W k qq qr : Nat} {L : List NumObj}
     {xq xr x1 x2 z : NumObj} {H : Heap} {F : List Blk}
     (cx : DmCtx S R0 sp W) (ha : DmArgs Mt0 L x1 x2 z k)
-    (sl : DmQSlots S Mt0 L xq xr qq qr sp W) (hb : BcHeap S Mt0 H F L)
-    (hk : DmKQ live S Q R0 Mt0 L xq xr qq qr sp W (Num.divmod x1.rep.num x2.rep.num k))
+    (sl : DmQSlots S Mt0 L xq xr qq qr sp W) (hb : BcHeap S X Mt0 H F L)
+    (hk : DmKQ live S X Q R0 Mt0 L xq xr qq qr sp W (Num.divmod x1.rep.num x2.rep.num k))
     (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R0 12 = BitVec.ofNat 64 qq) (h13 : R0 13 = BitVec.ofNat 64 qr)
     (h14 : R0 14 = BitVec.ofNat 64 k) :
@@ -587,14 +587,14 @@ theorem bc_divmod_spec {live : Nat → Prop} {S : Nat → Prop}
 /-- **`bc_divmod (num1, num2, NULL, rem, scale)`** at `0x80005fd0`:
 `Num.modulo`'s remainder in the slot (`DmKR.ret`), `-1` for a zero divisor,
 or `out_of_memory`. -/
-theorem bc_divmod_rem_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem bc_divmod_rem_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W k qr : Nat} {L : List NumObj}
     {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk}
     (cx : DmCtx S R0 sp W) (ha : DmArgs Mt0 L x1 x2 z k)
     (sr : DmSlot S sp W qr) (hmr : xr ∈ L) (hrr : 1 ≤ xr.rep.refs)
-    (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p) (hb : BcHeap S Mt0 H F L)
-    (hk : DmKR live S Q R0 Mt0 L xr qr sp W (Num.modulo x1.rep.num x2.rep.num k))
+    (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p) (hb : BcHeap S X Mt0 H F L)
+    (hk : DmKR live S X Q R0 Mt0 L xr qr sp W (Num.modulo x1.rep.num x2.rep.num k))
     (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R0 12 = 0#64) (h13 : R0 13 = BitVec.ofNat 64 qr)
     (h14 : R0 14 = BitVec.ofNat 64 k) :
@@ -605,10 +605,10 @@ theorem bc_divmod_rem_spec {live : Nat → Prop} {S : Nat → Prop}
       hk.oom⟩ ha hb h10 h11 h14
 
 /-- `DmKR` for registers that differ from the caller's only in `binClob`. -/
-theorem DmKR.retarget {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem DmKR.retarget {live S : Nat → Prop} {X : Raws} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {R0 R1 : Nat → BitVec 64} {Mt0 : Mem} {L : List NumObj} {xr : NumObj} {qr sp W : Nat}
-    {n : Option Num} (hk : DmKR live S Q R0 Mt0 L xr qr sp W n) (hkp : Keeps binClob R1 R0) :
-    DmKR live S Q R1 Mt0 L xr qr sp W n where
+    {n : Option Num} (hk : DmKR live S X Q R0 Mt0 L xr qr sp W n) (hkp : Keeps binClob R1 R0) :
+    DmKR live S X Q R1 Mt0 L xr qr sp W n where
   ret := fun r hr R' Mt' H F Lf yr kk h10 hp => by
     rw [hkp.get 1]; exact hk.ret r hr R' Mt' H F Lf yr (kk.trans hkp) h10 hp
   zero := fun hn R' Mt' kk h10 hf => by
@@ -625,14 +625,14 @@ theorem DmCtx.retarget {S : Nat → Prop} {R0 R1 : Nat → BitVec 64} {sp W : Na
 /-- **`bc_modulo (num1, num2, result, scale)`** at `0x800061b4`
 (`bc_divmod (num1, num2, NULL, result, scale)`): `Num.modulo`'s remainder in
 the slot, `-1` for a zero divisor, or `out_of_memory`. -/
-theorem bc_modulo_spec {live : Nat → Prop} {S : Nat → Prop}
+theorem bc_modulo_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W k qr : Nat} {L : List NumObj}
     {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk}
     (cx : DmCtx S R0 sp W) (ha : DmArgs Mt0 L x1 x2 z k)
     (sr : DmSlot S sp W qr) (hmr : xr ∈ L) (hrr : 1 ≤ xr.rep.refs)
-    (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p) (hb : BcHeap S Mt0 H F L)
-    (hk : DmKR live S Q R0 Mt0 L xr qr sp W (Num.modulo x1.rep.num x2.rep.num k))
+    (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p) (hb : BcHeap S X Mt0 H F L)
+    (hk : DmKR live S X Q R0 Mt0 L xr qr sp W (Num.modulo x1.rep.num x2.rep.num k))
     (h10 : R0 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R0 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R0 12 = BitVec.ofNat 64 qr) (h13 : R0 13 = BitVec.ofNat 64 k) :
     DW live S Q 0x800061b4#64 R0 Mt0 := by

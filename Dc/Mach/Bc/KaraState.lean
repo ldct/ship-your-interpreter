@@ -104,8 +104,8 @@ theorem KList_nil (P A B : List NumObj) (z : NumObj) : KList P [] A B z = P ++ (
     List.append_nil, List.append_assoc]
 
 /-- Two owners of the heap have different digit buffers. -/
-theorem BcHeap.owner_db_ne {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk}
-    {P L2 : List NumObj} {x : NumObj} (h : BcHeap S M H F (P ++ x :: L2)) (hx : x.Owns)
+theorem BcHeap.owner_db_ne {S : Nat → Prop} {X : Raws} {M : Mem} {H : Heap} {F : List Blk}
+    {P L2 : List NumObj} {x : NumObj} (h : BcHeap S X M H F (P ++ x :: L2)) (hx : x.Owns)
     {y : NumObj} (hy : y ∈ P) (hyo : y.Owns) : y.db ≠ x.db := by
   have hd := (List.nodup_append.mp h.distinct).2.1
   rw [objBlocks_append, objBlocks_cons] at hd
@@ -114,15 +114,15 @@ theorem BcHeap.owner_db_ne {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk
     (List.mem_append_left _ (by rw [NumObj.blocks_own hx]; simp))
 
 /-- **The first handle freed** at an inlined free site. -/
-theorem kfreeH {live : Nat → Prop} {S : Nat → Prop}
+theorem kfreeH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {pc N : BitVec 64} {fr : Nat → Prop}
-    {Loc : (Nat → BitVec 64) → Mem → NumObj → Prop} (site : KSite live S Q pc N fr Loc)
+    {Loc : (Nat → BitVec 64) → Mem → NumObj → Prop} (site : KSite live S X Q pc N fr Loc)
     {R : Nat → BitVec 64} {M : Mem} {H : Heap} {F : List Blk} {P A B : List NumObj}
     {z : NumObj} {h : Hd} {hs : List Hd}
-    (hb : BcHeap S M H F (KList P (h :: hs) A B z)) (hP : ∀ y ∈ P, y.Owns)
+    (hb : BcHeap S X M H F (KList P (h :: hs) A B z)) (hP : ∀ y ∈ P, y.Owns)
     (hok : ∀ x, h = some x → x.rep.refs = 1) (hz : 1 ≤ z.rep.refs)
     (hl : Loc R M (Hd.obj hs z h))
-    (hk : ∀ R' M' H' F', Keeps [1, 10, 14, 15] R' R → BcHeap S M' H' F' (KList P hs A B z) →
+    (hk : ∀ R' M' H' F', Keeps [1, 10, 14, 15] R' R → BcHeap S X M' H' F' (KList P hs A B z) →
       OutFrame fr M' M → DW live S Q N R' M') :
     DW live S Q pc R M := by
   cases h with

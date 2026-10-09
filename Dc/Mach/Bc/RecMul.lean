@@ -61,9 +61,9 @@ structure RmArgs (M : Mem) (L : List NumObj) (u v : NumObj) (ulen vlen : Nat) : 
 /-- The result: a new number `y` (one reference, scale `0`,
 `ulen + vlen + 1` digits) holding the product heads the heap, its struct is
 in the slot, and off the heap only the slot and the window changed. -/
-structure RmPost (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
+structure RmPost (S : Nat → Prop) (X : Raws) (M0 M : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
     (u v : NumRep) (ulen vlen q sp W : Nat) (y : NumObj) : Prop where
-  heap : BcHeap S M H F (y :: L)
+  heap : BcHeap S X M H F (y :: L)
   owns : y.Owns
   refs : y.rep.refs = 1
   neg : y.rep.neg = false
@@ -77,10 +77,10 @@ structure RmPost (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : 
 
 /-- The continuations: the result, or `out_of_memory` with `sp` inside the
 window. -/
-structure RmK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure RmK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R0 : Nat → BitVec 64) (M0 : Mem) (L : List NumObj) (u v : NumRep) (ulen vlen q sp W : Nat) :
     Prop where
-  ret : ∀ R' M' H F y, Keeps binClob R' R0 → RmPost S M0 M' H F L u v ulen vlen q sp W y →
+  ret : ∀ R' M' H F y, Keeps binClob R' R0 → RmPost S X M0 M' H F L u v ulen vlen q sp W y →
     DW live S Q (R0 1) R' M'
   oom : ∀ R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
     (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M' a = imgM M0 a) →
@@ -109,15 +109,15 @@ structure RmAt (S : Nat → Prop) (M0 M : Mem) (R0 R : Nat → BitVec 64) (sp q 
   out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM M0 a
 
 /-- The epilogue at `0x80004d84` (`s3`, `s7`–`s11` already restored). -/
-theorem rm_epi {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_epi {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W ulen vlen : Nat} {L : List NumObj}
     {u v : NumRep} {y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L u v ulen vlen q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L u v ulen vlen q sp W)
     (st : RmAt S M0 M R0 R sp q W)
     (h19 : R 19 = R0 19) (h23 : R 23 = R0 23) (h24 : R 24 = R0 24) (h25 : R 25 = R0 25)
     (h26 : R 26 = R0 26) (h27 : R 27 = R0 27)
-    (hp : RmPost S M0 M H F L u v ulen vlen q sp W y) :
+    (hp : RmPost S X M0 M H F L u v ulen vlen q sp W y) :
     DW live S Q 0x80004d84#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -186,11 +186,11 @@ theorem RmAt.keeps {S : Nat → Prop} {M0 M : Mem} {R0 R R' : Nat → BitVec 64}
 
 /-- The final carry (zero) stored at `0x80004d74` into the product's first
 digit, then the epilogue. -/
-theorem rm_fin2 {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_fin2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W)
     (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
     (hlb1 : 1 ≤ lb) (hla1 : 1 ≤ la)
@@ -202,7 +202,7 @@ theorem rm_fin2 {live : Nat → Prop} {S : Nat → Prop}
     (h26 : R 26 = R0 26) (h27 : R 27 = R0 27)
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
-    (hb : BcHeap S M H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L))
+    (hb : BcHeap S X M H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L))
     (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
     DW live S Q 0x80004d74#64 R M := by
   have hsf := cx.frame
@@ -249,11 +249,11 @@ theorem rm_fin2 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The base case's last store at `0x80004d44`: the final carry (zero) into
 the product's first digit, `s3`, `s7`–`s11` restored, then the epilogue. -/
-theorem rm_fin {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_fin {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (sv : SavedWords M (sp - 192) rmSlots2 R0)
     (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
     (hlb1 : 1 ≤ lb) (hla1 : 1 ≤ la) (hN : la + lb < 2 ^ 30)
@@ -266,7 +266,7 @@ theorem rm_fin {live : Nat → Prop} {S : Nat → Prop}
       (colSt (digLE uo.rep.ds la) la (digLE vo.rep.ds lb) lb (la + lb)).2)
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
-    (hb : BcHeap S M H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L))
+    (hb : BcHeap S X M H F (withDs y (colDs uo.rep vo.rep la lb (la + lb)) :: L))
     (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
     DW live S Q 0x80004d44#64 R M := by
   have hsf := cx.frame
@@ -309,11 +309,11 @@ theorem subw_ptr1 {P V k : Nat} (hk : k ≤ P) :
 
 /-- The column loop entered at `0x80004cb4` with the product `y` fresh (all
 zeros) at the head of the heap, run to the final carry. -/
-theorem rm_cols_call {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_cols_call {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (sv : SavedWords M (sp - 192) rmSlots2 R0)
     (huL : uo ∈ L) (hvL : vo ∈ L)
     (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
@@ -328,7 +328,7 @@ theorem rm_cols_call {live : Nat → Prop} {S : Nat → Prop}
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hyd : y.rep.ds = List.replicate (la + lb + 1) 0)
-    (hb : BcHeap S M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
+    (hb : BcHeap S X M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
     DW live S Q 0x80004cb4#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -365,11 +365,11 @@ theorem rm_cols_call {live : Nat → Prop} {S : Nat → Prop}
     · rw [ldv_congr .ld fun j hj => hag _ (by simp only [accBytes, widthOfM] at hj ⊢; omega)]; exact hq
 
 /-- The second half of the column loop's setup, `0x80004c80`–`0x80004cb4`. -/
-theorem rm_setup2 {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_setup2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (sv : SavedWords M (sp - 192) [(19, 152), (25, 104), (24, 112)] R0)
     (k23 : R 23 = R0 23) (k26 : R 26 = R0 26) (k27 : R 27 = R0 27)
     (huL : uo ∈ L) (hvL : vo ∈ L)
@@ -385,7 +385,7 @@ theorem rm_setup2 {live : Nat → Prop} {S : Nat → Prop}
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hyd : y.rep.ds = List.replicate (la + lb + 1) 0)
-    (hb : BcHeap S M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
+    (hb : BcHeap S X M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
     DW live S Q 0x80004c80#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -440,11 +440,11 @@ theorem rm_setup2 {live : Nat → Prop} {S : Nat → Prop}
   · exact hq
 
 /-- The column loop's setup, `0x80004c6c`–`0x80004c80`. -/
-theorem rm_setup1b {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_setup1b {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (sv : SavedWords M (sp - 192) [(25, 104), (24, 112)] R0)
     (k19 : R 19 = R0 19) (k23 : R 23 = R0 23) (k26 : R 26 = R0 26) (k27 : R 27 = R0 27)
     (huL : uo ∈ L) (hvL : vo ∈ L)
@@ -459,7 +459,7 @@ theorem rm_setup1b {live : Nat → Prop} {S : Nat → Prop}
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hyd : y.rep.ds = List.replicate (la + lb + 1) 0)
-    (hb : BcHeap S M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
+    (hb : BcHeap S X M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
     DW live S Q 0x80004c6c#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -497,11 +497,11 @@ theorem rm_setup1b {live : Nat → Prop} {S : Nat → Prop}
   · exact hq
 
 /-- The first half of the column loop's setup, `0x80004c58`–`0x80004c80`. -/
-theorem rm_setup1 {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_setup1 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (kp : RmKept R R0)
     (huL : uo ∈ L) (hvL : vo ∈ L)
     (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
@@ -514,7 +514,7 @@ theorem rm_setup1 {live : Nat → Prop} {S : Nat → Prop}
     (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyn : y.rep.neg = false) (hyv : y.rep.val = y.rep.ptr)
     (hyl : y.rep.len = la + lb + 1) (hys : y.rep.scale = 0)
     (hyd : y.rep.ds = List.replicate (la + lb + 1) 0)
-    (hb : BcHeap S M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
+    (hb : BcHeap S X M H F (y :: L)) (hq : ldv .ld M q = BitVec.ofNat 64 y.sb.pay) :
     DW live S Q 0x80004c58#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -556,11 +556,11 @@ theorem rm_setup1 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The base case after `bc_new_num` returned the product `y` at
 `0x80004c40`: `*prod = y`, the column loop's pointers and saved registers. -/
-theorem rm_setup {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_setup {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo y : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (kp : RmKept R R0)
     (huL : uo ∈ L) (hvL : vo ∈ L)
     (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
@@ -571,7 +571,7 @@ theorem rm_setup {live : Nat → Prop} {S : Nat → Prop}
     (h21 : R 21 = BitVec.ofNat 64 lb) (h18 : R 18 = BitVec.ofNat 64 vo.rep.p)
     (h9 : R 9 = BitVec.ofNat 64 q)
     (hy : y.rep = zeroRep y.sb.pay y.db.pay (la + lb + 1) 0)
-    (hb : BcHeap S M H F (y :: L)) :
+    (hb : BcHeap S X M H F (y :: L)) :
     DW live S Q 0x80004c40#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -631,11 +631,11 @@ theorem rm_setup {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The base case** at `0x80004c30` (`_bc_simp_mul`, inlined):
 `bc_new_num(ulen + vlen + 1, 0)`, the column loop, the final carry. -/
-theorem rm_base {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_base {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (kp : RmKept R R0)
     (huL : uo ∈ L) (hvL : vo ∈ L)
     (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
@@ -643,7 +643,7 @@ theorem rm_base {live : Nat → Prop} {S : Nat → Prop}
     (h0 : ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p)
     (h22 : R 22 = BitVec.ofNat 64 (la + lb)) (h20 : R 20 = BitVec.ofNat 64 la)
     (h21 : R 21 = BitVec.ofNat 64 lb) (h18 : R 18 = BitVec.ofNat 64 vo.rep.p)
-    (h9 : R 9 = BitVec.ofNat 64 q) (hb : BcHeap S M H F L) :
+    (h9 : R 9 = BitVec.ofNat 64 q) (hb : BcHeap S X M H F L) :
     DW live S Q 0x80004c30#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -697,23 +697,23 @@ theorem quarter80 : BitVec.signExtend 64 (shift_bits_right_arith (BitVec.extract
 
 /-- The Karatsuba case at `0x80004db0`, entered after the prologue with both
 operands of at least `20` digits and `80` digits together. -/
-def RmKara (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+def RmKara (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R0 : Nat → BitVec 64) (M0 : Mem) (L : List NumObj) (uo vo : NumObj) (la lb q sp W : Nat) :
     Prop :=
   ∀ R M H F, RmAt S M0 M R0 R sp q W → RmKept R R0 → 80 ≤ la + lb → 20 ≤ la → 20 ≤ lb →
     ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p →
     R 22 = BitVec.ofNat 64 (la + lb) → R 20 = BitVec.ofNat 64 la → R 21 = BitVec.ofNat 64 lb →
-    R 18 = BitVec.ofNat 64 vo.rep.p → R 9 = BitVec.ofNat 64 q → BcHeap S M H F L →
+    R 18 = BitVec.ofNat 64 vo.rep.p → R 9 = BitVec.ofNat 64 q → BcHeap S X M H F L →
     DW live S Q 0x80004db0#64 R M
 
 /-- The threshold test at `0x80004c10`: the base case when
 `ulen + vlen < 80` or either length is below `20`, else the Karatsuba case. -/
-theorem rm_disp {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_disp {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L uo.rep vo.rep la lb q sp W)
-    (hkara : RmKara live S Q R0 M0 L uo vo la lb q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L uo.rep vo.rep la lb q sp W)
+    (hkara : RmKara live S X Q R0 M0 L uo vo la lb q sp W)
     (st : RmAt S M0 M R0 R sp q W) (kp : RmKept R R0)
     (huL : uo ∈ L) (hvL : vo ∈ L)
     (hla : la ≤ uo.rep.len + uo.rep.scale) (hlb : lb ≤ vo.rep.len + vo.rep.scale)
@@ -722,7 +722,7 @@ theorem rm_disp {live : Nat → Prop} {S : Nat → Prop}
     (h11 : R 11 = BitVec.ofNat 64 la) (h13 : R 13 = BitVec.ofNat 64 lb)
     (h22 : R 22 = BitVec.ofNat 64 (la + lb)) (h20 : R 20 = BitVec.ofNat 64 la)
     (h21 : R 21 = BitVec.ofNat 64 lb) (h18 : R 18 = BitVec.ofNat 64 vo.rep.p)
-    (h9 : R 9 = BitVec.ofNat 64 q) (hb : BcHeap S M H F L) :
+    (h9 : R 9 = BitVec.ofNat 64 q) (hb : BcHeap S X M H F L) :
     DW live S Q 0x80004c10#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -761,13 +761,13 @@ theorem rm_disp {live : Nat → Prop} {S : Nat → Prop}
     exact base _ (by keeps_tac Keeps.refl _ _) (Or.inr (Or.inl (by omega)))
 
 /-- **The entry** at `0x80004bd0`: the prologue, then the threshold test. -/
-theorem rm_entry {live : Nat → Prop} {S : Nat → Prop}
+theorem rm_entry {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 : Nat → BitVec 64} {sp q W la lb : Nat} {L : List NumObj}
     {uo vo : NumObj} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M L uo.rep vo.rep la lb q sp W)
-    (hkara : RmKara live S Q R0 M L uo vo la lb q sp W)
-    (ha : RmArgs M L uo vo la lb) (hb : BcHeap S M H F L)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M L uo.rep vo.rep la lb q sp W)
+    (hkara : RmKara live S X Q R0 M L uo vo la lb q sp W)
+    (ha : RmArgs M L uo vo la lb) (hb : BcHeap S X M H F L)
     (h10 : R0 10 = BitVec.ofNat 64 uo.rep.p) (h11 : R0 11 = BitVec.ofNat 64 la)
     (h12 : R0 12 = BitVec.ofNat 64 vo.rep.p) (h13 : R0 13 = BitVec.ofNat 64 lb)
     (h14 : R0 14 = BitVec.ofNat 64 q) :

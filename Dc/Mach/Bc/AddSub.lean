@@ -66,10 +66,10 @@ structure ResSlot (Mt : Mem) (L1 : List NumObj) (x : NumObj) (q : Nat) : Prop wh
 /-- The result: the new number `y` for `n` (normalized, one reference) heads
 the heap left by freeing `x`, its struct is in the slot, and off the heap only
 the slot and the stack window changed. -/
-structure BinPostW (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
+structure BinPostW (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
     (L1 L2 : List NumObj) (x : NumObj) (q sp W : Nat) (n : Num) (L : List NumObj) (y : NumObj) :
     Prop where
-  heap : BcHeap S Mt H F (y :: L)
+  heap : BcHeap S X Mt H F (y :: L)
   rest : FreedRest L1 L2 x L
   num : y.rep.num = n
   norm : y.rep.Norm
@@ -80,39 +80,41 @@ structure BinPostW (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
   out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM Mt a = imgM Mt0 a
 
 /-- `BinPostW` for `bc_add`/`bc_sub`'s 176-byte window. -/
-abbrev BinPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
+abbrev BinPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
     (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (n : Num) (L : List NumObj) (y : NumObj) :
     Prop :=
-  BinPostW S Mt0 Mt H F L1 L2 x q sp 176 n L y
+  BinPostW S X Mt0 Mt H F L1 L2 x q sp 176 n L y
 
 /-- The continuations: the result, or `out_of_memory` with `sp` inside the
 window. -/
-structure BinKW (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure BinKW (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R0 : Nat → BitVec 64) (Mt0 : Mem) (L1 L2 : List NumObj) (x : NumObj) (q sp W : Nat)
     (n : Num) : Prop where
-  ret : ∀ R' Mt' H F L y, Keeps binClob R' R0 → BinPostW S Mt0 Mt' H F L1 L2 x q sp W n L y →
+  ret : ∀ R' Mt' H F L y, Keeps binClob R' R0 → BinPostW S X Mt0 Mt' H F L1 L2 x q sp W n L y →
     DW live S Q (R0 1) R' Mt'
   oom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
     (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
     DW live S Q 0x80002bcc#64 R' Mt'
 
 /-- `BinKW` for `bc_add`/`bc_sub`'s 176-byte window. -/
-abbrev BinK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+abbrev BinK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R0 : Nat → BitVec 64) (Mt0 : Mem) (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (n : Num) :
     Prop :=
-  BinKW live S Q R0 Mt0 L1 L2 x q sp 176 n
+  BinKW live S X Q R0 Mt0 L1 L2 x q sp 176 n
 
 /-- `bc_free_num`'s entry facts for the slot `q` holding `x` of the heap. -/
-theorem FreeEntry.of_slot {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L0 L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (h : BcHeap S Mt H F (L1 ++ x :: L2))
+theorem FreeEntry.of_slot {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L0 L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (h : BcHeap S X Mt H F (L1 ++ x :: L2))
     (hr : ResSlot Mt L0 x q) (hnv : x.rep.refs = 1 → x.Owns → ∀ z ∈ L1, z.db ≠ x.db) (hq : PtrSlot S q)
     (hout : ∀ a, slotBytes q a → OutHeap a)
     (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp) (hap : q + 8 ≤ sp - 32 ∨ sp ≤ q) :
-    FreeEntry S Mt H F L1 L2 x q sp := by
+    FreeEntry S X Mt H F L1 L2 x q sp := by
   have hq0 := hout q ⟨Nat.le_refl _, by omega⟩
   have hq7 := hout (q + 7) ⟨by omega, by omega⟩
   refine ⟨h, hr.refs, hq, ⟨fun a ha => OutHeap.not_alloc h.heap (hout a ha),
-    fun b hb a ha hba => ?_, ?_, hap⟩, hr.word, hsf, hab, hnv⟩
+    fun b hb a ha hba => ?_, ?_, hap,
+    fun b hb a ha hba => (hout a ha).1 (live_in_heap h.heap (h.raw.live b hb) hba)⟩,
+    hr.word, hsf, hab, hnv⟩
   · have hbl : b ∈ H.live := by
       rcases List.mem_append.mp hb with hb | hb
       · exact (h.deadLive b hb).1
@@ -130,8 +132,8 @@ theorem FreeEntry.of_slot {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk
 
 /-- With an owner `y` heading the heap, the slot's object has no view before
 it in `y :: L1`. -/
-theorem ResSlot.noView_cons {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F : List Blk}
-    {L1 L2 : List NumObj} {x y : NumObj} {q : Nat} (hb : BcHeap S M H F (y :: (L1 ++ x :: L2)))
+theorem ResSlot.noView_cons {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H : Heap} {F : List Blk}
+    {L1 L2 : List NumObj} {x y : NumObj} {q : Nat} (hb : BcHeap S X M H F (y :: (L1 ++ x :: L2)))
     (hyo : y.Owns) (hr : ResSlot Mt L1 x q) :
     x.rep.refs = 1 → x.Owns → ∀ z ∈ y :: L1, z.db ≠ x.db := by
   intro hx1 hxo z hz
@@ -145,17 +147,17 @@ theorem ResSlot.noView_cons {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F : List
   · exact hr.noView hx1 hxo z hz
 
 /-- After `bc_free_num` dropped one reference: the slot written with `y`. -/
-theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Blk}
+theorem binPost_dec {S : Nat → Prop} {X : Raws} {Mt0 M Mt' : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x y : NumObj} {q sp W : Nat} {n : Num}
     (hout : ∀ a, slotBytes q a → OutHeap a)
     (hm : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb : BcHeap S Mt' H F (y :: (L1 ++ x.decRef :: L2)))
+    (hb : BcHeap S X Mt' H F (y :: (L1 ++ x.decRef :: L2)))
     (hmo : MemOnly (fun a => refsBytes x.rep a ∨ slotBytes q a) Mt' M)
     (hxp : heapStart ≤ x.rep.p ∧ x.rep.p + 16 ≤ heapEnd)
     (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
     (hyo : y.Owns)
     (hx2 : 2 ≤ x.rep.refs) :
-    BinPostW S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 x q sp W n
+    BinPostW S X Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F L1 L2 x q sp W n
       (L1 ++ x.decRef :: L2) y :=
   { heap := hb.out_frame (P := slotBytes q) (fun a ha => imgM_store_miss _ _ (by
       simp only [slotBytes] at ha; omega)) hout
@@ -174,17 +176,17 @@ theorem binPost_dec {S : Nat → Prop} {Mt0 M Mt' : Mem} {H : Heap} {F : List Bl
         · exact hs hc }
 
 /-- After `bc_free_num` released the last reference: the slot written with `y`. -/
-theorem binPost_rel {S : Nat → Prop} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List Blk}
+theorem binPost_rel {S : Nat → Prop} {X : Raws} {Mt0 M Mt' : Mem} {H H' : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x y : NumObj} {q sp W sp' : Nat} {n : Num}
     (hout : ∀ a, slotBytes q a → OutHeap a)
     (hm : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
-    (hb0 : BcHeap S M H F (y :: (L1 ++ x :: L2)))
-    (hrp : ReleasePost S M Mt' H H' F (y :: L1) L2 x q sp')
+    (hb0 : BcHeap S X M H F (y :: (L1 ++ x :: L2)))
+    (hrp : ReleasePost S X M Mt' H H' F (y :: L1) L2 x q sp')
     (hsp : heapEnd + W ≤ sp) (hsp' : sp - W + 32 ≤ sp' ∧ sp' ≤ sp)
     (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
     (hyo : y.Owns)
     (hx1 : x.rep.refs = 1) :
-    BinPostW S Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H' (x.sb :: F) L1 L2 x q sp W
+    BinPostW S X Mt0 (writeLog Mt' [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H' (x.sb :: F) L1 L2 x q sp W
       n (L1 ++ L2) y :=
   { heap := hrp.heap.out_frame (P := slotBytes q) (fun a ha => imgM_store_miss _ _ (by
       simp only [slotBytes] at ha; omega)) hout
@@ -261,10 +263,10 @@ theorem BinAt.call {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec
       (st.out a ha hf) }
 
 /-- `memset(val, 0, len + scale)` over a fresh number changes nothing it holds. -/
-theorem BcHeap.zeroAgain {S : Nat → Prop} {M Mt' : Mem} {H : Heap} {F : List Blk}
+theorem BcHeap.zeroAgain {S : Nat → Prop} {X : Raws} {M Mt' : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {y : NumObj} {len sc : Nat}
-    (hb : BcHeap S M H F (y :: L)) (hy : y.rep = zeroRep y.sb.pay y.db.pay len sc)
-    (hf : Filled Mt' M y.rep.val (len + sc) fun _ => 0#8) : BcHeap S Mt' H F (y :: L) := by
+    (hb : BcHeap S X M H F (y :: L)) (hy : y.rep = zeroRep y.sb.pay y.db.pay len sc)
+    (hf : Filled Mt' M y.rep.val (len + sc) fun _ => 0#8) : BcHeap S X Mt' H F (y :: L) := by
   have hn := hb.nums y List.mem_cons_self
   have hls : y.rep.len + y.rep.scale = len + sc := by rw [hy]; rfl
   have hall : ∀ a, imgM Mt' a = imgM M a := fun a => by

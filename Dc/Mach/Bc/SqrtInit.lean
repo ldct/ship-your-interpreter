@@ -82,23 +82,23 @@ theorem RList.ref_last (hs1 hs2 : List RH) (y : NumObj) (L : List NumObj) :
 /-- `bc_raise`'s result `y` for the handle `h` that was the owned number `g`
 (base and result slot both): the heap with `h` for `g`, `h` naming `y`'s
 number (its count aside), a new number or one more reference to `_one_`. -/
-structure RaH (S : Nat → Prop) (Mt : Mem) (H : Heap) (F : List Blk) (hs1 hs2 : List RH)
+structure RaH (S : Nat → Prop) (X : Raws) (Mt : Mem) (H : Heap) (F : List Blk) (hs1 hs2 : List RH)
     (Lb : List NumObj) (o y : NumObj) (h : RH) : Prop where
-  heap : BcHeap S Mt H F (RList (hs1 ++ h :: hs2) Lb)
+  heap : BcHeap S X Mt H F (RList (hs1 ++ h :: hs2) Lb)
   own : RHOwn (hs1 ++ h :: hs2) Lb
   ok : RHOK Lb h
   p : h.p = y.rep.p
   base : ∃ k, h.base = y.withRefs k
   src : (∃ t, h = .own t) ∨ h = .ref o
 
-theorem raPost_handle {S : Nat → Prop} {Mt0 Mt : Mem} {H : Heap} {F : List Blk}
+theorem raPost_handle {S : Nat → Prop} {X : Raws} {Mt0 Mt : Mem} {H : Heap} {F : List Blk}
     {hs1 hs2 : List RH} {Lb Lf : List NumObj} {g o y : NumObj} {q sp W : Nat} {n : Num}
     (hd : PDist (RList (hs1 ++ .own g :: hs2) Lb)) (hown : RHOwn (hs1 ++ .own g :: hs2) Lb)
     (hg : g.rep.refs = 1) (hpos : ∀ c ∈ RList (hs1 ++ .own g :: hs2) Lb, 1 ≤ c.rep.refs)
     (hmo : o ∈ Lb) (hor : 1 ≤ o.rep.refs)
-    (hp : RaPost S Mt0 Mt H F (RList (hs1 ++ .own g :: hs2) Lb) g [g.rep.p, o.rep.p] q sp W n
+    (hp : RaPost S X Mt0 Mt H F (RList (hs1 ++ .own g :: hs2) Lb) g [g.rep.p, o.rep.p] q sp W n
       Lf y) :
-    ∃ h, RaH S Mt H F hs1 hs2 Lb o y h := by
+    ∃ h, RaH S X Mt H F hs1 hs2 Lb o y h := by
   have hb := hp.heap
   have hgo : g.Owns := hown.temps g (List.mem_append_right _ List.mem_cons_self)
   obtain ⟨Lm, hadd, hdrop⟩ := hp.mid
@@ -108,12 +108,12 @@ theorem raPost_handle {S : Nat → Prop} {Mt0 Mt : Mem} {H : Heap} {F : List Blk
   have hdL := hd; rw [eL] at hdL
   -- the heap unchanged: the handle names `g`, which is `y` (its count aside)
   have keep : Lf = RList (hs1 ++ .own g :: hs2) Lb → g = y.withRefs g.rep.refs →
-      ∃ h, RaH S Mt H F hs1 hs2 Lb o y h := fun e eg => by
+      ∃ h, RaH S X Mt H F hs1 hs2 Lb o y h := fun e eg => by
     subst e
     exact ⟨.own g, hb, hown, ⟨hg, hgo⟩, by rw [eg]; rfl, ⟨_, eg⟩, .inl ⟨g, rfl⟩⟩
   -- the old guess dropped from `y :: L`: the new number's handle
   have fresh : y.rep.refs = 1 → ∀ L'', DropAt (RList (hs1 ++ .own g :: hs2) Lb) g.rep.p L'' →
-      Lf = y :: L'' → ∃ h, RaH S Mt H F hs1 hs2 Lb o y h := fun hy1 L'' hd' e => by
+      Lf = y :: L'' → ∃ h, RaH S X Mt H F hs1 hs2 Lb o y h := fun hy1 L'' hd' e => by
     rw [eL] at hd'
     have hfr := DropAt.unique hdL hd'
     have e2 := RList.freed_own hg hfr
@@ -277,16 +277,16 @@ theorem SqArgs.env {S : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W
       by have := hz.room; simp only [NumObj.withRefs_refs]; omega⟩
 
 /-- **The Newton loop and the exit** from the head with the model's guess. -/
-theorem sq_run {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_run {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
     {H : Heap} {F : List Blk} {L Lb : List NumObj} {x z zb o p5 : NumObj} {k rs cs : Nat}
     {D G : RH} {G1 : Option RH} {g r : Num}
     (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) (hoom : RaOom live S Q Mt0 sp W q)
     (hl : SqLeak L z Lb) (hL : Dc.SqrtLoop x.rep.num rs g cs r)
-    (st : SqL S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G G1 g)
+    (st : SqL S X Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G G1 g)
     (hret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
-      SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S Q (R0 1) R' M') :
+      SqPost S X Mt0 M' H' F' L x z q sp W r Lf y' → DW live S Q (R0 1) R' M') :
     DW live S Q 0x80006b74#64 R M :=
   sq_loop hlive env hoom hL (fun _ _ _ _ _ _ _ _ _ st' _ hsy hr =>
     sq_exit hlive env hoom hl st' hsy (hr ▸ hret)) R M H F D G G1 st
@@ -294,9 +294,9 @@ theorem sq_run {live : Nat → Prop} {S : Nat → Prop}
 /-- After the setup, at `0x80006ad4`/`0x80006d04`: `point5` (`s4`) and three
 references to `_zero_` (`guess`, `guess1`, `diff` at `+24`, `+32`, `+40`;
 `s10` holds `_zero_`), `rscale` in `s8`. -/
-structure SqS (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+structure SqS (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
     (H : Heap) (F : List Blk) (L : List NumObj) (x z p5 : NumObj) (rs : Nat) : Prop where
-  fr : SqFr S Mt0 M R0 R sp W H F L [.own p5, .ref z, .ref z, .ref z]
+  fr : SqFr S X Mt0 M R0 R sp W H F L [.own p5, .ref z, .ref z, .ref z]
   r19 : R 19 = BitVec.ofNat 64 q
   r20 : R 20 = BitVec.ofNat 64 p5.rep.p
   r24 : R 24 = BitVec.ofNat 64 rs
@@ -331,12 +331,12 @@ theorem RList.leak (p5 : NumObj) {A B : List NumObj} {z o : NumObj}
 
 /-- At the loop head after the below-one setup: `_one_`'s count raised and
 stored as `guess`, `cscale = x`'s scale. -/
-theorem sq_loHead {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_loHead {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 : NumObj} {r : Num}
     (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hoom : RaOom live S Q Mt0 sp W q)
-    (st : SqS S Mt0 M R0 R sp W q H F L x z p5 rs)
+    (st : SqS S X Mt0 M R0 R sp W q H F L x z p5 rs)
     (h5n : p5.rep.num = Num.half) (h5l : p5.rep.len = 1) (h5s : p5.rep.scale = 1)
     (h5N : p5.rep.Norm) (hrs : rs = max k x.rep.scale)
     (hxneg : x.rep.neg = false) (hlt : Num.cmp x.rep.num Num.one = .lt)
@@ -348,7 +348,7 @@ theorem sq_loHead {live : Nat → Prop} {S : Nat → Prop}
     (r8 : R1 8 = BitVec.ofNat 64 o.rep.p) (r18 : R1 18 = BitVec.ofNat 64 (x.rep.scale + 1))
     (r27 : R1 27 = BitVec.ofNat 64 x.rep.scale)
     (hret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
-      SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S Q (R0 1) R' M') :
+      SqPost S X Mt0 M' H' F' L x z q sp W r Lf y' → DW live S Q (R0 1) R' M') :
     DW live S Q 0x80006b74#64 R1 (writeLog (writeLog M [(sp - 160 + 24, 8, BitVec.ofNat 64 o.rep.p)])
       [(o.rep.p + 12, 4, BitVec.ofNat 64 (o.rep.refs + 1))]) := by
   sq_facts cx
@@ -442,12 +442,12 @@ theorem sq_loHead {live : Nat → Prop} {S : Nat → Prop}
     hret
 
 /-- `_one_`'s raised count stored, from `0x80006d30`, on to `sq_loHead`. -/
-theorem sq_loStore {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_loStore {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 : NumObj} {r : Num}
     (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hoom : RaOom live S Q Mt0 sp W q)
-    (st : SqS S Mt0 M R0 R sp W q H F L x z p5 rs)
+    (st : SqS S X Mt0 M R0 R sp W q H F L x z p5 rs)
     (h5n : p5.rep.num = Num.half) (h5l : p5.rep.len = 1) (h5s : p5.rep.scale = 1)
     (h5N : p5.rep.Norm) (hrs : rs = max k x.rep.scale)
     (hxneg : x.rep.neg = false) (hlt : Num.cmp x.rep.num Num.one = .lt)
@@ -458,7 +458,7 @@ theorem sq_loStore {live : Nat → Prop} {S : Nat → Prop}
     (r8 : R2 8 = BitVec.ofNat 64 o.rep.p) (r18 : R2 18 = BitVec.ofNat 64 (x.rep.scale + 1))
     (r27 : R2 27 = BitVec.ofNat 64 x.rep.scale) (r15 : R2 15 = BitVec.ofNat 64 (o.rep.refs + 1))
     (hret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
-      SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S Q (R0 1) R' M') :
+      SqPost S X Mt0 M' H' F' L x z q sp W r Lf y' → DW live S Q (R0 1) R' M') :
     DW live S Q 0x80006d30#64 R2 (writeLog M [(sp - 160 + 24, 8, BitVec.ofNat 64 o.rep.p)]) := by
   sq_facts cx
   have hb := st.fr.heap
@@ -478,19 +478,19 @@ theorem sq_loStore {live : Nat → Prop} {S : Nat → Prop}
 /-- **The first guess below one** from `0x80006d04`: `guess = _one_` with
 one more reference (the slot's `_zero_` leaked), `cscale = x`'s scale, on to
 the loop and its exit. -/
-theorem sq_lo {live : Nat → Prop} {S : Nat → Prop}
+theorem sq_lo {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k rs : Nat}
     {H : Heap} {F : List Blk} {L : List NumObj} {x z o p5 : NumObj} {r : Num}
     (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hoom : RaOom live S Q Mt0 sp W q)
-    (st : SqS S Mt0 M R0 R sp W q H F L x z p5 rs)
+    (st : SqS S X Mt0 M R0 R sp W q H F L x z p5 rs)
     (h5n : p5.rep.num = Num.half) (h5l : p5.rep.len = 1) (h5s : p5.rep.scale = 1)
     (h5N : p5.rep.Norm) (hrs : rs = max k x.rep.scale)
     (hxneg : x.rep.neg = false) (hlt : Num.cmp x.rep.num Num.one = .lt)
     (hx0 : x.rep.num.mag ≠ 0) (hxz : x.rep.p ≠ z.rep.p) (hxo : x.rep.p ≠ o.rep.p)
     (hoz : o.rep.p ≠ z.rep.p) (hL : Dc.SqrtLoop x.rep.num rs Num.one x.rep.scale r)
     (hret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
-      SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S Q (R0 1) R' M') :
+      SqPost S X Mt0 M' H' F' L x z q sp W r Lf y' → DW live S Q (R0 1) R' M') :
     DW live S Q 0x80006d04#64 R M := by
   sq_facts cx
   have hsf := cx.cc.frame

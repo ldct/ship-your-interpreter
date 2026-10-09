@@ -70,11 +70,11 @@ theorem ra_ret {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The continuation after `power` is freed into the epilogue: the heap
 freed, nothing else off the heap changed. -/
-def RaFreeK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+def RaFreeK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R0 : Nat → BitVec 64) (M0 : Mem) (H : Heap) (F : List Blk) (L1 L2 : List NumObj)
     (x : NumObj) : Prop :=
   ∀ R' M' H' F' L', Keeps binClob R' R0 → KFreed H F L1 L2 x H' F' L' →
-    BcHeap S M' H' F' L' → (∀ a, OutHeap a → imgM M' a = imgM M0 a) → DW live S Q (R0 1) R' M'
+    BcHeap S X M' H' F' L' → (∀ a, OutHeap a → imgM M' a = imgM M0 a) → DW live S Q (R0 1) R' M'
 
 /-- The epilogue's second half from `0x800067d4` (`ra`, `s0`, `s5` back). -/
 theorem ra_ret2 {live : Nat → Prop} {S : Nat → Prop}
@@ -99,19 +99,19 @@ theorem ra_ret2 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- The struct of `x` pushed on `_bc_Free_list` inside the epilogue
 (`0x800067b8`), then the return. -/
-theorem ra_pushRet {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_pushRet {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M1 : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H H' : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} (cx : RaCtx S R0 sp W q) (hS : HeapOwn S)
     (hgl : ∀ a, bcFreeAddr ≤ a → a < bcFreeAddr + 8 → S a) (hr1 : x.rep.refs = 1)
-    (hpost : BcHeap S (writeLog (writeLog M1 [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)])
+    (hpost : BcHeap S X (writeLog (writeLog M1 [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)])
       [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))]) H' (x.sb :: F) (L1 ++ L2))
     (hout : ∀ a, OutHeap a → imgM M1 a = imgM M0 a)
     (wg : ldv .ld M1 bcFreeAddr = BitVec.ofNat 64 (deadHead F))
     (hp : 2147603920 ≤ x.rep.p) (hp' : x.rep.p + 40 ≤ 2273312768) (hpa : x.rep.p % 8 = 0)
     (sv : SavedWords M1 (sp - 96) raSlots1 R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 96))
     (hkp : Keeps raAll R R0) (h21 : R 21 = R0 21) (h18 : R 18 = BitVec.ofNat 64 x.rep.p)
-    (hk : RaFreeK live S Q R0 M0 H F L1 L2 x) :
+    (hk : RaFreeK live S X Q R0 M0 H F L1 L2 x) :
     DW live S Q 0x800067b8#64 R M1 := by
   ra_facts cx
   have hsf := cx.frame
@@ -137,16 +137,16 @@ theorem ra_pushRet {live : Nat → Prop} {S : Nat → Prop}
 
 /-- `power`'s buffer freed (`jal free` at `0x800067b4`), then
 `ra_pushRet`. -/
-theorem ra_freePowRel {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_freePowRel {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (L1 ++ x :: L2)) (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db)
+    (hb : BcHeap S X M H F (L1 ++ x :: L2)) (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db)
     (hr1 : x.rep.refs = 1) {v : BitVec 64}
     (sv : SavedWords M (sp - 96) raSlots1 R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 96))
     (hkp : Keeps raAll R R0) (h21 : R 21 = R0 21) (h18 : R 18 = BitVec.ofNat 64 x.rep.p)
     (h10 : R 10 = BitVec.ofNat 64 x.rep.ptr)
-    (hk : RaFreeK live S Q R0 M H F L1 L2 x) :
+    (hk : RaFreeK live S X Q R0 M H F L1 L2 x) :
     DW live S Q 0x800067b4#64 R (writeLog M [(x.rep.p + 12, 4, v)]) := by
   ra_facts cx
   have hi := hb.heap
@@ -186,14 +186,14 @@ theorem ra_freePowRel {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_free_num (&power)` and return** from `0x8000679c` (`power` not
 `NULL`): one reference fewer, or the owner released. -/
-theorem ra_freePow {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_freePow {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (L1 ++ x :: L2)) (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db)
+    (hb : BcHeap S X M H F (L1 ++ x :: L2)) (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db)
     (hr : 1 ≤ x.rep.refs) (ra : RaAt S Mt0 M R0 R sp W q raSlots1)
     (h21 : R 21 = R0 21) (h18 : R 18 = BitVec.ofNat 64 x.rep.p)
-    (hk : RaFreeK live S Q R0 M H F L1 L2 x) :
+    (hk : RaFreeK live S X Q R0 M H F L1 L2 x) :
     DW live S Q 0x8000679c#64 R M := by
   ra_facts cx
   have hi := hb.heap
@@ -244,14 +244,14 @@ theorem ra_freePow {live : Nat → Prop} {S : Nat → Prop}
     exact imgM_store_miss _ _ (by omega)
 
 /-- **`bc_free_num (&power)` and return** from `0x80006798`. -/
-theorem ra_freePow0 {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_freePow0 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (L1 ++ x :: L2)) (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db)
+    (hb : BcHeap S X M H F (L1 ++ x :: L2)) (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db)
     (hr : 1 ≤ x.rep.refs) (ra : RaAt S Mt0 M R0 R sp W q raSlots1)
     (h21 : R 21 = R0 21) (h18 : R 18 = BitVec.ofNat 64 x.rep.p)
-    (hk : RaFreeK live S Q R0 M H F L1 L2 x) :
+    (hk : RaFreeK live S X Q R0 M H F L1 L2 x) :
     DW live S Q 0x80006798#64 R M := by
   have hi := hb.heap
   have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2

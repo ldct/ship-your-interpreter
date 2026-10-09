@@ -103,11 +103,11 @@ theorem MemOnly.touch_of_heap {M' M : Mem} (h : MemOnly (fun a => heapStart ≤ 
 /-- **The `v` side and the trims**, from either route of the second length
 test: `v1`, `v0` from `vo`'s first `lb` digits, then all four halves trimmed,
 to the `m1` stage at `0x80004f70`. -/
-theorem kara_vside {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_vside {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk}
     {A B : List NumObj} {z vo : NumObj} {hu1 hu0 : Hd} {n lb : Nat}
-    (hb : BcHeap S M H F (KList [] [hu0, hu1] A B z)) (hvo : vo ∈ temps [hu0, hu1] ++ A ++ B)
+    (hb : BcHeap S X M H F (KList [] [hu0, hu1] A B z)) (hvo : vo ∈ temps [hu0, hu1] ++ A ++ B)
     (hfit : lb ≤ vo.rep.len + vo.rep.scale) (hn1 : 1 ≤ n) (hlb1 : 1 ≤ lb) (hlbb : lb < 2 ^ 30)
     (hz : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p) (hzo : ∀ a, constBytes a → S a)
     (hz1 : z.rep.len = 1) (hrefs : z.rep.refs + zeroCount [hu0, hu1] + 1 < 2 ^ 31)
@@ -119,7 +119,7 @@ theorem kara_vside {live : Nat → Prop} {S : Nat → Prop}
       DW live S Q 0x80002bcc#64 R' M')
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (H' : Heap) (F' : List Blk) (hv1 hv0 : Hd),
       Keeps kvClob R' R →
-      BcHeap S M' H' F' (KList [] [hv0.trim hv0.lz, hv1.trim hv1.lz, hu0.trim hu0.lz,
+      BcHeap S X M' H' F' (KList [] [hv0.trim hv0.lz, hv1.trim hv1.lz, hu0.trim hu0.lz,
         hu1.trim hu1.lz] A B z) →
       KRaw vo 0 (lb - n) hv1 → KRaw vo (lb - n) (lb - (lb - n)) hv0 →
       R' 27 = BitVec.ofNat 64 (Hd.p z hv1) → R' 20 = BitVec.ofNat 64 (Hd.p z hv0) →
@@ -153,13 +153,13 @@ abbrev kuvClob : List Nat := [1, 10, 12, 13, 14, 15, 17, 18, 19, 20, 21, 23, 24,
 head the handles, `u1`, `u0` from `uo`'s first `la` digits and `v1`, `v0`
 from `vo`'s first `lb`, split at `n`; off the heap and the allocator's words
 memory is the spilled entry memory `Ms`. -/
-structure KHalvesAt (S : Nat → Prop) (M0 Ms M : Mem) (R0 R : Nat → BitVec 64)
+structure KHalvesAt (S : Nat → Prop) (X : Raws) (M0 Ms M : Mem) (R0 R : Nat → BitVec 64)
     (sp q W n la lb : Nat) (A B : List NumObj) (z uo vo : NumObj) (H : Heap) (F : List Blk)
     (hu1 hu0 hv1 hv0 : Hd) : Prop where
   pk : KM1 S M0 M R0 R sp q W n la lb z (hu1.trim hu1.lz) (hu0.trim hu0.lz) (hv1.trim hv1.lz)
     (hv0.trim hv0.lz)
   r17 : R 17 = BitVec.ofNat 64 z.rep.p
-  heap : BcHeap S M H F (KList [] [hv0.trim hv0.lz, hv1.trim hv1.lz, hu0.trim hu0.lz,
+  heap : BcHeap S X M H F (KList [] [hv0.trim hv0.lz, hv1.trim hv1.lz, hu0.trim hu0.lz,
     hu1.trim hu1.lz] A B z)
   u1 : KRaw uo 0 (la - n) hu1
   u0 : KRaw uo (la - n) (la - (la - n)) hu0
@@ -170,13 +170,13 @@ structure KHalvesAt (S : Nat → Prop) (M0 Ms M : Mem) (R0 R : Nat → BitVec 64
 /-- **From the step's entry at `0x80004db0` to the `m1` stage**: the spills,
 the half `n = ⌈max la lb / 2⌉`, both operands split (a `_zero_` high half
 when the operand is not longer than `n`), and the trims. -/
-theorem kara_halves {live : Nat → Prop} {S : Nat → Prop}
+theorem kara_halves {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W la lb : Nat} {A B L' : List NumObj}
     {z uo vo : NumObj} {u v : NumRep} {la' lb' : Nat} {H : Heap} {F : List Blk}
-    (cx : RmCtx S R0 sp q W) (hk : RmK live S Q R0 M0 L' u v la' lb' q sp W)
+    (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 L' u v la' lb' q sp W)
     (st : RmAt S M0 M R0 R sp q W) (kp : RmKept R R0)
-    (hb : BcHeap S M H F (A ++ z :: B)) (huA : uo ∈ A ++ B) (hvA : vo ∈ A ++ B)
+    (hb : BcHeap S X M H F (A ++ z :: B)) (huA : uo ∈ A ++ B) (hvA : vo ∈ A ++ B)
     (hfu : la ≤ uo.rep.len + uo.rep.scale) (hfv : lb ≤ vo.rep.len + vo.rep.scale)
     (hN : la + lb < 2 ^ 30) (hla : 20 ≤ la) (hlb : 20 ≤ lb) (kz : KZero M z 2)
     (h0 : ldv .ld M (sp - 192) = BitVec.ofNat 64 uo.rep.p)
@@ -185,7 +185,7 @@ theorem kara_halves {live : Nat → Prop} {S : Nat → Prop}
     (h9 : R 9 = BitVec.ofNat 64 q)
     (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (H' : Heap) (F' : List Blk)
       (hu1 hu0 hv1 hv0 : Hd),
-      KHalvesAt S M0 (kSpillMem M R0 (sp - 192)) M' R0 R' sp q W ((max la lb + 1) / 2) la lb
+      KHalvesAt S X M0 (kSpillMem M R0 (sp - 192)) M' R0 R' sp q W ((max la lb + 1) / 2) la lb
         A B z uo vo H' F' hu1 hu0 hv1 hv0 →
       DW live S Q 0x80004f70#64 R' M') :
     DW live S Q 0x80004db0#64 R M := by
@@ -201,7 +201,7 @@ theorem kara_halves {live : Nat → Prop} {S : Nat → Prop}
     · exact .inr (.inr h)
   have hzs : ldv .ld (kSpillMem M R0 (sp - 192)) zeroAddr = BitVec.ofNat 64 z.rep.p :=
     (kSpillMem_ldv M R0 (by simp only [zeroAddr]; omega)).trans kz.glob
-  have hKL : ∀ (M' : Mem), BcHeap S M' H F (A ++ z :: B) → BcHeap S M' H F (KList [] [] A B z) :=
+  have hKL : ∀ (M' : Mem), BcHeap S X M' H F (A ++ z :: B) → BcHeap S X M' H F (KList [] [] A B z) :=
     fun M' h => by rw [KList_nil, List.nil_append]; exact h
   have hmem : ∀ {hs : List Hd} {x : NumObj}, x ∈ A ++ B → x ∈ temps hs ++ A ++ B := by
     intro hs x hx
@@ -221,7 +221,7 @@ theorem kara_halves {live : Nat → Prop} {S : Nat → Prop}
             (ke.st.rm.out a ha hs hf)
     have fin : ∀ (R' : Nat → BitVec 64) (M' : Mem) (H' : Heap) (F' : List Blk)
         (hu1 hu0 hv1 hv0 : Hd), Keeps kuvClob R' Re →
-        BcHeap S M' H' F' (KList [] [hv0.trim hv0.lz, hv1.trim hv1.lz, hu0.trim hu0.lz,
+        BcHeap S X M' H' F' (KList [] [hv0.trim hv0.lz, hv1.trim hv1.lz, hu0.trim hu0.lz,
           hu1.trim hu1.lz] A B z) →
         KRaw uo 0 (la - (max la lb + 1) / 2) hu1 →
         KRaw uo (la - (max la lb + 1) / 2) (la - (la - (max la lb + 1) / 2)) hu0 →

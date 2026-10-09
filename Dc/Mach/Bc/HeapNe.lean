@@ -12,8 +12,8 @@ namespace Dc.Mach
 open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
 
 /-- A struct of the heap is not `_zero_`'s: their payloads differ. -/
-theorem BcHeap.p_ne {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} {x z : NumObj} (h : BcHeap S Mt H F (x :: L)) (hz : z ∈ L) :
+theorem BcHeap.p_ne {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z : NumObj} (h : BcHeap S X Mt H F (x :: L)) (hz : z ∈ L) :
     x.rep.p ≠ z.rep.p := by
   have hx := h.blocks x List.mem_cons_self
   have hzb := h.blocks z (List.mem_cons_of_mem _ hz)

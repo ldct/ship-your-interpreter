@@ -99,8 +99,8 @@ structure ViewStruct (S : Nat → Prop) (Mt M : Mem) (H H' : Heap) (F F' : List 
 
 /-- **The struct popped off `_bc_Free_list`**: the list's head, its tail the
 rest of the chain. -/
-theorem ViewStruct.pop {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F F' : List Blk}
-    {L : List NumObj} {sb : Blk} (hb : BcHeap S Mt H F L) (hF : F = sb :: F')
+theorem ViewStruct.pop {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} (hb : BcHeap S X Mt H F L) (hF : F = sb :: F')
     (hhead : ldv .ld M bcFreeAddr = BitVec.ofNat 64 (deadHead F'))
     (hfr : ∀ a, ¬ bcFreeBytes a → imgM M a = imgM Mt a) :
     ViewStruct S Mt M H H F F' sb L :=
@@ -117,8 +117,8 @@ theorem ViewStruct.pop {S : Nat → Prop} {Mt M : Mem} {H : Heap} {F F' : List B
     base := fun a _ _ hg => hfr a hg }
 
 /-- Every block of the heap's objects is a live block. -/
-theorem BcHeap.objBlocks_live {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} (hb : BcHeap S Mt H F L) {b : Blk} (h : b ∈ objBlocks L) :
+theorem BcHeap.objBlocks_live {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (hb : BcHeap S X Mt H F L) {b : Blk} (h : b ∈ objBlocks L) :
     b ∈ H.live := by
   obtain ⟨x, hx, hbx⟩ := List.mem_flatMap.mp h
   have hxb := hb.blocks x hx
@@ -132,8 +132,8 @@ theorem BcHeap.objBlocks_live {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List
 /-- **The struct freshly allocated**, `_bc_Free_list` empty: `malloc`'s block
 is a block of neither the chain nor the objects, since its bytes were the
 allocator's. -/
-theorem ViewStruct.fresh {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F : List Blk}
-    {L : List NumObj} {sb : Blk} (hb : BcHeap S Mt H F L) (hF : F = [])
+theorem ViewStruct.fresh {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H H' : Heap} {F : List Blk}
+    {L : List NumObj} {sb : Blk} (hb : BcHeap S X Mt H F L) (hF : F = [])
     (hinv : HeapInv S M H') (hfr : ∀ a, ¬ AllocByte H a → imgM M a = imgM Mt a)
     (hl : H'.live = sb :: H.live) (hsz : 40 ≤ sb.sz)
     (hal : ∀ a, sb.h ≤ a → a < sb.fin → AllocByte H a) :
@@ -154,16 +154,16 @@ theorem ViewStruct.fresh {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F : List
   exact ⟨.fresh hF rfl hl, hinv, hlive, hmono, hno, hsz, hhead, fun a h1 _ _ => hfr a h1⟩
 
 /-- The tail of the chain, read out of the popped struct's link word. -/
-theorem BcHeap.popNext {S : Nat → Prop} {Mt : Mem} {H : Heap} {F F' : List Blk}
-    {L : List NumObj} {sb : Blk} (hb : BcHeap S Mt H F L) (hF : F = sb :: F') :
+theorem BcHeap.popNext {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} (hb : BcHeap S X Mt H F L) (hF : F = sb :: F') :
     ldv .ld Mt (sb.pay + 16) = BitVec.ofNat 64 (deadHead F') := by
   rw [hF] at hb
   cases hb.dead with
   | cons _ ht => exact ht.head
 
 /-- A chain's head is a heap address, so it fits a word. -/
-theorem BcHeap.deadHead_lt {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} (hb : BcHeap S Mt H F L) : deadHead F < 2 ^ 64 := by
+theorem BcHeap.deadHead_lt {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (hb : BcHeap S X Mt H F L) : deadHead F < 2 ^ 64 := by
   cases F with
   | nil => simp only [deadHead]; omega
   | cons b t =>
@@ -176,8 +176,8 @@ theorem BcHeap.deadHead_lt {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Bl
 
 /-- **The head word is `NULL` exactly when the chain is empty**: the test that
 sends an inlined `new_sub_num` to `malloc`. -/
-theorem BcHeap.deadHead_eq_zero_iff {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} (hb : BcHeap S Mt H F L) : deadHead F = 0 ↔ F = [] := by
+theorem BcHeap.deadHead_eq_zero_iff {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} (hb : BcHeap S X Mt H F L) : deadHead F = 0 ↔ F = [] := by
   cases F with
   | nil => exact ⟨fun _ => rfl, fun _ => rfl⟩
   | cons b t =>
@@ -189,8 +189,8 @@ theorem BcHeap.deadHead_eq_zero_iff {S : Nat → Prop} {Mt : Mem} {H : Heap} {F 
 
 /-- **The struct taken off the chain**: the link word read out of the head
 struct and stored back into `_bc_Free_list`. -/
-theorem ViewStruct.popAt {S : Nat → Prop} {Mt : Mem} {H : Heap} {F F' : List Blk}
-    {L : List NumObj} {sb : Blk} (hb : BcHeap S Mt H F L) (hF : F = sb :: F') (v : BitVec 64)
+theorem ViewStruct.popAt {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F F' : List Blk}
+    {L : List NumObj} {sb : Blk} (hb : BcHeap S X Mt H F L) (hF : F = sb :: F') (v : BitVec 64)
     (hv : v = BitVec.ofNat 64 (deadHead F')) :
     ViewStruct S Mt (writeLog Mt [(bcFreeAddr, 8, v)]) H H F F' sb L := by
   subst hv
@@ -223,16 +223,16 @@ theorem ViewStruct.toSrc {S : Nat → Prop} {Mt M Mt' : Mem} {H H' : Heap} {F F'
 
 /-- **A byte of an object's struct is off the view's struct**: the blocks are
 distinct live blocks. -/
-theorem ViewStruct.sb_off {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+theorem ViewStruct.sb_off {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
     {L : List NumObj} {sb : Blk} (hv : ViewStruct S Mt M H H' F F' sb L)
-    (hb : BcHeap S Mt H F L) {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.sb.In a) : ¬ sb.In a :=
+    (hb : BcHeap S X Mt H F L) {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.sb.In a) : ¬ sb.In a :=
   fun hin => live_apart hv.inv (hv.mono _ (hb.blocks x hx).sLive) hv.live
     (fun he => hv.notObj (he ▸ mem_objBlocks hx)) ha hin
 
 /-- A byte of an object's digit buffer is off the view's struct. -/
-theorem ViewStruct.db_off {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+theorem ViewStruct.db_off {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
     {L : List NumObj} {sb : Blk} (hv : ViewStruct S Mt M H H' F F' sb L)
-    (hb : BcHeap S Mt H F L) {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.db.In a) : ¬ sb.In a := by
+    (hb : BcHeap S X Mt H F L) {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.db.In a) : ¬ sb.In a := by
   obtain ⟨y, hy, ho, he⟩ := hb.views.owner hx
   refine fun hin => live_apart hv.inv (hv.mono _ (hb.blocks x hx).dLive) hv.live
     (fun hne => hv.notObj ?_) ha hin
@@ -259,9 +259,9 @@ theorem ViewStruct.bounds {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : 
   exact ⟨by omega, by omega, by omega, hsz⟩
 
 /-- A word of an object's struct is off the view's struct. -/
-theorem ViewStruct.word_off {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+theorem ViewStruct.word_off {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
     {L : List NumObj} {sb : Blk} {x : NumObj} (hv : ViewStruct S Mt M H H' F F' sb L)
-    (hb : BcHeap S Mt H F L) (hx : x ∈ L) {o : Nat} (ho : o < 40) : ¬ sb.In (x.rep.p + o) := by
+    (hb : BcHeap S X Mt H F L) (hx : x ∈ L) {o : Nat} (ho : o < 40) : ¬ sb.In (x.rep.p + o) := by
   have hxb := hb.blocks x hx
   have hxp := hxb.sPay; have hxsz := hxb.sSz
   exact hv.sb_off hb hx (by simp only [Blk.In, Blk.pay, Blk.fin] at hxp hxsz ⊢; omega)
@@ -270,9 +270,9 @@ theorem ViewStruct.word_off {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' 
 /-- **A word of an object's struct is unchanged** at the point where the site
 has its struct: the pop touched only `_bc_Free_list`, a `malloc` only the
 allocator's bytes. -/
-theorem ViewStruct.word_agree {S : Nat → Prop} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
+theorem ViewStruct.word_agree {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
     {L : List NumObj} {sb : Blk} {x : NumObj} (hv : ViewStruct S Mt M H H' F F' sb L)
-    (hb : BcHeap S Mt H F L) (hx : x ∈ L) {o : Nat} (ho : o + 8 ≤ 40) :
+    (hb : BcHeap S X Mt H F L) (hx : x ∈ L) {o : Nat} (ho : o + 8 ≤ 40) :
     ldv .ld M (x.rep.p + o) = ldv .ld Mt (x.rep.p + o) := by
   have hxb := hb.blocks x hx
   have hxp := hxb.sPay; have hxsz := hxb.sSz

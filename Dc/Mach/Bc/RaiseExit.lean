@@ -17,22 +17,22 @@ set_option linter.unusedSimpArgs false
 
 /-- The continuation at `0x80006798` after `temp` is released: the heap
 freed, `s5` the word `w`. -/
-def RaTempK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+def RaTempK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (R : Nat → BitVec 64) (M : Mem) (H : Heap) (F : List Blk) (L1 L2 : List NumObj)
     (x : NumObj) (w : BitVec 64) : Prop :=
   ∀ R' M' H' F' L', Keeps [1, 10, 14, 15, 21] R' R → R' 21 = w → KFreed H F L1 L2 x H' F' L' →
-    BcHeap S M' H' F' L' → (∀ a, OutHeap a → imgM M' a = imgM M a) → DW live S Q 0x80006798#64 R' M'
+    BcHeap S X M' H' F' L' → (∀ a, OutHeap a → imgM M' a = imgM M a) → DW live S Q 0x80006798#64 R' M'
 
 /-- **`bc_free_num (&temp)`** from `0x80006760` (`temp` in `s4`, not `NULL`),
 `s5` reloaded from `sp + 40` between the count's load and store. -/
-theorem ra_freeTemp {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_freeTemp {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (L1 ++ x :: L2)) (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db)
+    (hb : BcHeap S X M H F (L1 ++ x :: L2)) (ho : x.Owns) (hnv : ∀ y ∈ L1, y.db ≠ x.db)
     (hr : 1 ≤ x.rep.refs) (h2 : R 2 = BitVec.ofNat 64 (sp - 96))
     (h20 : R 20 = BitVec.ofNat 64 x.rep.p) {w : BitVec 64} (hw : ldv .ld M (sp - 96 + 40) = w)
-    (hk : RaTempK live S Q R M H F L1 L2 x w) :
+    (hk : RaTempK live S X Q R M H F L1 L2 x w) :
     DW live S Q 0x80006760#64 R M := by
   ra_facts cx
   have hsf := cx.frame
@@ -88,19 +88,19 @@ theorem ra_freeTemp {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **A call of `bc_divide`** from `bc_raise`'s frame (`sp - 96`) into the
 result slot `q`. -/
-theorem ra_divCall {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_divCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {n : Option Num}
     {L1 L2 : List NumObj} {x1 x2 xr z : NumObj} {H : Heap} {F : List Blk}
     (cx : RaCtx S R0 sp W q) (hoom : RaOom live S Q Mt0 sp W q)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (ha : DivArgs M L1 L2 xr x1 x2 z n k) (hzm : z.rep.num.mag = 0)
-    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
+    (hb : BcHeap S X M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = BitVec.ofNat 64 x1.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.p)
     (h12 : R 12 = BitVec.ofNat 64 q) (h13 : R 13 = BitVec.ofNat 64 k)
     (hret : ∀ m, n = some m → ∀ R' M' H' F' L' y, Keeps binClob R' R →
-      BinPostW S M M' H' F' L1 L2 xr q (sp - 96) (W - 96) m L' y → DW live S Q (R 1) R' M')
+      BinPostW S X M M' H' F' L1 L2 xr q (sp - 96) (W - 96) m L' y → DW live S Q (R 1) R' M')
     (hzero : n = none → ∀ R' M', Keeps binClob R' R →
       (∀ a, ¬ frameIn (sp - 96) (W - 96) a → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x8000589c#64 R M := by
@@ -138,26 +138,26 @@ theorem FreedRest.unpre {P X1 X2 L : List NumObj} {x : NumObj} (h : FreedRest (P
 
 /-- **A new number `y` for `n`** in the slot, heading the caller's heap with
 the old number dropped. -/
-theorem raPost_fresh {S : Nat → Prop} {Mt0 Mt : Mem} {H : Heap} {F : List Blk}
+theorem raPost_fresh {S : Nat → Prop} {X : Raws} {Mt0 Mt : Mem} {H : Heap} {F : List Blk}
     {X1 X2 L : List NumObj} {xr y : NumObj} {ps : List Nat} {q sp W : Nat} {n : Num}
-    (hb : BcHeap S Mt H F (y :: L)) (hr : FreedRest X1 X2 xr L) (hy1 : y.rep.refs = 1)
+    (hb : BcHeap S X Mt H F (y :: L)) (hr : FreedRest X1 X2 xr L) (hy1 : y.rep.refs = 1)
     (hnum : y.rep.num = n) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hyo : y.Owns)
     (hslot : ldv .ld Mt q = BitVec.ofNat 64 y.rep.p)
     (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM Mt a = imgM Mt0 a) :
-    RaPost S Mt0 Mt H F (X1 ++ xr :: X2) xr ps q sp W n (y :: L) y :=
+    RaPost S X Mt0 Mt H F (X1 ++ xr :: X2) xr ps q sp W n (y :: L) y :=
   ⟨hb, ⟨_, .fresh hy1, [y] ++ X1, X2, xr, rfl, rfl, hr.pre [y]⟩,
     ⟨y.rep.refs, by rw [NumObj.withRefs_self]; exact List.mem_cons_self⟩, .inl hy1, hnum, hnorm, hpos, hyo,
     hslot, hout⟩
 
 /-- **The old number kept** (a division by zero): one reference added, then
 dropped. -/
-theorem raPost_keep {S : Nat → Prop} {Mt0 Mt : Mem} {H : Heap} {F : List Blk}
+theorem raPost_keep {S : Nat → Prop} {X : Raws} {Mt0 Mt : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {xr : NumObj} {ps : List Nat} {q sp W : Nat} {n : Num}
-    (hb : BcHeap S Mt H F L) (hm : xr ∈ L) (hr : 1 ≤ xr.rep.refs)
+    (hb : BcHeap S X Mt H F L) (hm : xr ∈ L) (hr : 1 ≤ xr.rep.refs)
     (hnum : xr.rep.num = n) (hnorm : xr.rep.Norm) (hpos : 1 ≤ xr.rep.len) (hxo : xr.Owns)
     (hslot : ldv .ld Mt q = BitVec.ofNat 64 xr.rep.p)
     (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM Mt a = imgM Mt0 a) :
-    RaPost S Mt0 Mt H F L xr ps q sp W n L (xr.withRefs (xr.rep.refs + 1)) := by
+    RaPost S X Mt0 Mt H F L xr ps q sp W n L (xr.withRefs (xr.rep.refs + 1)) := by
   obtain ⟨A, B, rfl⟩ := List.append_of_mem hm
   have hd : (xr.withRefs (xr.rep.refs + 1)).decRef = xr := by
     simp only [NumObj.decRef_eq, NumObj.withRefs_withRefs]
@@ -171,16 +171,16 @@ theorem raPost_keep {S : Nat → Prop} {Mt0 Mt : Mem} {H : Heap} {F : List Blk}
 
 /-- **From `0x8000675c`** (after the division): `temp` and `power` (`T`, `P`,
 one reference each, after the numbers `Y`) released, the epilogue. -/
-theorem ra_negFree {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_negFree {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {Y L : List NumObj} {T P : NumObj} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (Y ++ T :: P :: L)) (hY : ∀ y ∈ Y, y.Owns)
+    (hb : BcHeap S X M H F (Y ++ T :: P :: L)) (hY : ∀ y ∈ Y, y.Owns)
     (hT1 : T.rep.refs = 1) (hP1 : P.rep.refs = 1) (hTo : T.Owns) (hPo : P.Owns)
     (ra : RaAt S M M R0 R sp W q raSlots2)
     (h20 : R 20 = BitVec.ofNat 64 T.rep.p)
     (hwP : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 P.rep.p)
-    (hk : ∀ R' M' H' F', Keeps binClob R' R0 → BcHeap S M' H' F' (Y ++ L) →
+    (hk : ∀ R' M' H' F', Keeps binClob R' R0 → BcHeap S X M' H' F' (Y ++ L) →
       (∀ a, OutHeap a → imgM M' a = imgM M a) → DW live S Q (R0 1) R' M') :
     DW live S Q 0x8000675c#64 R M := by
   ra_facts cx
@@ -217,14 +217,14 @@ theorem ra_negFree {live : Nat → Prop} {S : Nat → Prop}
 /-- **The negative exponent's tail** from `0x80006744`: `bc_divide (_one_,
 temp, result, rscale)`, then `temp` and `power` (`T`, `P`, fresh) released;
 the quotient (or, `temp` zero, the old number) is the result. -/
-theorem ra_neg2 {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_neg2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L0 : List NumObj} {x1 x2 z o xr T P : NumObj} {n : Num}
-    {ps : List Nat} (cx : RaCtx S R0 sp W q) (hK : RaK live S Q t R0 Mt0 L0 xr ps q sp W n)
+    {ps : List Nat} (cx : RaCtx S R0 sp W q) (hK : RaK live S X Q t R0 Mt0 L0 xr ps q sp W n)
     (ha : RaArgs S Mt0 L0 x1 x2 z o k) (hs : RaSlot M L0 x1 x2 z o xr q)
-    (ra : RaAt S Mt0 M R0 R sp W q raSlots2) (hb : BcHeap S M H F (T :: P :: L0))
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots2) (hb : BcHeap S X M H F (T :: P :: L0))
     (hT1 : T.rep.refs = 1) (hP1 : P.rep.refs = 1) (hTo : T.Owns) (hPo : P.Owns)
     (hzT : T.rep.num.mag = 0 → x1.rep.num.mag = 0 ∧ raExp x2 < 0)
     (hsz : o.rep.len + o.rep.scale + k + T.rep.len + T.rep.scale < 2 ^ 27)
@@ -385,15 +385,15 @@ theorem owns_cons2 {T P : NumObj} {X : List NumObj} (hT : T.Owns) (hP : P.Owns)
 
 /-- **`*result = temp`, `temp` cut to `rscale`** from `0x80006898` (`temp`
 in `s4`, `rscale` in `s6`, the slot in `s7`); `power` reloaded into `s2`. -/
-theorem ra_store {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_store {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {Ya Yb : List NumObj} {y : NumObj} {pw : BitVec 64} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (Ya ++ y :: Yb)) (hk31 : k < 2 ^ 31)
+    (hb : BcHeap S X M H F (Ya ++ y :: Yb)) (hk31 : k < 2 ^ 31)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (h20 : R 20 = BitVec.ofNat 64 y.rep.p)
     (h22 : R 22 = BitVec.ofNat 64 k) (h23 : R 23 = BitVec.ofNat 64 q)
     (hwP : ldv .ld M (sp - 96 + 8) = pw)
-    (hk : ∀ R' M', Keeps [15, 18] R' R → R' 18 = pw → BcHeap S M' H F (Ya ++ y.cutTo k :: Yb) →
+    (hk : ∀ R' M', Keeps [15, 18] R' R → R' 18 = pw → BcHeap S X M' H F (Ya ++ y.cutTo k :: Yb) →
       ldv .ld M' q = BitVec.ofNat 64 y.rep.p →
       (∀ a, OutHeap a → ¬ slotBytes q a → imgM M' a = imgM M a) → DW live S Q 0x80006798#64 R' M') :
     DW live S Q 0x80006898#64 R M := by
@@ -439,15 +439,15 @@ theorem ra_store {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`bc_free_num (result)`** from `bc_raise`'s frame (`sp - 96`, `a0` the
 slot), returning to `ra`. -/
-theorem ra_freeSlot {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_freeSlot {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {xr : NumObj} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
+    (hb : BcHeap S X M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (h10 : R 10 = BitVec.ofNat 64 q)
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L', Keeps freeNumClob R' R → FreedRest L1 L2 xr L' →
-      BcHeap S M' H' F' L' →
+      BcHeap S X M' H' F' L' →
       (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn (sp - 96) 32 a → imgM M' a = imgM M a) →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x800048c0#64 R M := by
@@ -463,7 +463,7 @@ theorem ra_freeSlot {live : Nat → Prop} {S : Nat → Prop}
     ⟨hxn.shape.pLo, by have := hxn.shape.pHi; omega⟩
   have hsf' : StackFrame S (sp - 96) 32 :=
     ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
-  have e : FreeEntry S M H F L1 L2 xr q (sp - 96) :=
+  have e : FreeEntry S X M H F L1 L2 xr q (sp - 96) :=
     FreeEntry.of_slot hb hr hr.noView hq hsl.out hsf' (by simp only [heapEnd]; omega) (by omega)
   refine bc_free_num_spec hlive e R h10 h2 hal
     ⟨fun hx2 R1 Mt1 hk1 hb1 _ hmo => ?_, fun hx1 R1 Mt1 H1 hk1 hrp => ?_⟩
@@ -480,14 +480,14 @@ theorem ra_freeSlot {live : Nat → Prop} {S : Nat → Prop}
     · exact ha.2.2 hc
 
 /-- **`bc_free_num (result)`** from `0x80006890` (`s7` the slot). -/
-theorem ra_posFree {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_posFree {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {xr : NumObj} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
+    (hb : BcHeap S X M H F (L1 ++ xr :: L2)) (hr : ResSlot M L1 xr q)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (h23 : R 23 = BitVec.ofNat 64 q)
     (hk : ∀ R' M' H' F' L', Keeps [1, 10, 13, 14, 15] R' R → FreedRest L1 L2 xr L' →
-      BcHeap S M' H' F' L' →
+      BcHeap S X M' H' F' L' →
       (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn (sp - 96) 32 a → imgM M' a = imgM M a) →
       DW live S Q 0x80006898#64 R' M') :
     DW live S Q 0x80006890#64 R M := by
@@ -502,14 +502,14 @@ theorem ra_posFree {live : Nat → Prop} {S : Nat → Prop}
 /-- **The positive exponent's tail** from `0x8000688c`: `bc_free_num
 (result)`, `*result = temp` (`T`) cut to `rscale` (`k`), `power` (`P`)
 released; both fresh. -/
-theorem ra_pos2 {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_pos2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L0 : List NumObj} {x1 x2 z o xr T P : NumObj} {n : Num}
-    {ps : List Nat} (cx : RaCtx S R0 sp W q) (hK : RaK live S Q t R0 Mt0 L0 xr ps q sp W n)
+    {ps : List Nat} (cx : RaCtx S R0 sp W q) (hK : RaK live S X Q t R0 Mt0 L0 xr ps q sp W n)
     (hs : RaSlot M L0 x1 x2 z o xr q) (hown : ∀ y ∈ L0, y.Owns)
-    (ra : RaAt S Mt0 M R0 R sp W q raSlots2) (hb : BcHeap S M H F (T :: P :: L0))
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots2) (hb : BcHeap S X M H F (T :: P :: L0))
     (hT1 : T.rep.refs = 1) (hP1 : P.rep.refs = 1) (hTo : T.Owns) (hPo : P.Owns)
     (hTN : T.rep.Norm) (hTl : 1 ≤ T.rep.len) (hkT : k ≤ T.rep.scale) (hk31 : k < 2 ^ 31)
     (hn : n = ⟨T.rep.num.neg, T.rep.num.mag / 10 ^ (T.rep.scale - k), k⟩)
@@ -646,14 +646,14 @@ theorem NumObj.cutTo_withRefs (k j : Nat) (y : NumObj) :
 than its base) from `0x80006890`: `bc_free_num (result)` (`xs`, possibly
 `w` itself), `*result = w` cut to `rscale`, one reference of `w` dropped. The
 result is `w` with one reference more than its base, `hadd`. -/
-theorem ra_posPow2 {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_posPow2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L0 A B L1 L2 : List NumObj} {w xs xr : NumObj} {n : Num}
-    {ps : List Nat} (cx : RaCtx S R0 sp W q) (hK : RaK live S Q t R0 Mt0 L0 xr ps q sp W n)
+    {ps : List Nat} (cx : RaCtx S R0 sp W q) (hK : RaK live S X Q t R0 Mt0 L0 xr ps q sp W n)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
-    (hb : BcHeap S M H F (A ++ w :: B)) (hown : ∀ y ∈ A ++ w :: B, y.Owns)
+    (hb : BcHeap S X M H F (A ++ w :: B)) (hown : ∀ y ∈ A ++ w :: B, y.Owns)
     (he : L1 ++ xs :: L2 = A ++ w :: B) (hr : ResSlot M L1 xs q) (hxp : xs.rep.p = xr.rep.p)
     (hw2 : 2 ≤ w.rep.refs) (hsame : xs = w → 3 ≤ w.rep.refs)
     (hwN : w.rep.Norm) (hwl : 1 ≤ w.rep.len) (hkw : k ≤ w.rep.scale) (hk31 : k < 2 ^ 31)
@@ -681,7 +681,7 @@ theorem ra_posPow2 {live : Nat → Prop} {S : Nat → Prop}
   have hyo : ((w.cutTo k).withRefs (w.rep.refs - 1)).Owns :=
     NumObj.cutTo_owns (hown w (List.mem_append_right _ List.mem_cons_self))
   have hyp : ((w.cutTo k).withRefs (w.rep.refs - 1)).rep.p = w.rep.p := NumObj.cutTo_p k w
-  have hb0 : BcHeap S M H F (L1 ++ xs :: L2) := he ▸ hb
+  have hb0 : BcHeap S X M H F (L1 ++ xs :: L2) := he ▸ hb
   have hown0 : ∀ y ∈ L1 ++ xs :: L2, y.Owns := he ▸ hown
   refine ra_posFree hlive cx hb0 hr (by bsimp [h2]) ra.r23 ?_
   intro R1 M1 H1 F1 L' hk1 hfr hb1 ho1
@@ -781,13 +781,13 @@ theorem ra_posPow2 {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **`temp`'s reference dropped** at `0x800068ec` (`temp` = `power` = `v` in
 `s2`, two references or more), then `bc_free_num (&power)`. -/
-theorem ra_negDec {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_negDec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {H : Heap} {F : List Blk}
     {P1 P2 : List NumObj} {v : NumObj} (cx : RaCtx S R0 sp W q)
-    (hb : BcHeap S M H F (P1 ++ v :: P2)) (ho : v.Owns) (hnv : ∀ y ∈ P1, y.db ≠ v.db)
+    (hb : BcHeap S X M H F (P1 ++ v :: P2)) (ho : v.Owns) (hnv : ∀ y ∈ P1, y.db ≠ v.db)
     (hr : 2 ≤ v.rep.refs) (ra : RaAt S M M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
-    (h18 : R 18 = BitVec.ofNat 64 v.rep.p) (hk : RaFreeK live S Q R0 M H F P1 P2 v.decRef) :
+    (h18 : R 18 = BitVec.ofNat 64 v.rep.p) (hk : RaFreeK live S X Q R0 M H F P1 P2 v.decRef) :
     DW live S Q 0x800068ec#64 R M := by
   ra_facts cx
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -816,14 +816,14 @@ theorem ra_negDec {live : Nat → Prop} {S : Nat → Prop}
 than in the caller's `L0`, or fresh with two) from `0x800068d4`:
 `bc_divide (_one_, w, result, rscale)` (`o'`, `z'` the current `_one_`,
 `_zero_`), then both references of `w` dropped. -/
-theorem ra_negPow2 {live : Nat → Prop} {S : Nat → Prop}
+theorem ra_negPow2 {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L0 A B L1 L2 : List NumObj} {w xs xr o' z' : NumObj} {n : Num}
-    {ps : List Nat} (cx : RaCtx S R0 sp W q) (hK : RaK live S Q t R0 Mt0 L0 xr ps q sp W n)
+    {ps : List Nat} (cx : RaCtx S R0 sp W q) (hK : RaK live S X Q t R0 Mt0 L0 xr ps q sp W n)
     (ra : RaAt S Mt0 M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
-    (hb : BcHeap S M H F (A ++ w :: B)) (hown : ∀ y ∈ A ++ w :: B, y.Owns)
+    (hb : BcHeap S X M H F (A ++ w :: B)) (hown : ∀ y ∈ A ++ w :: B, y.Owns)
     (he : L1 ++ xs :: L2 = A ++ w :: B) (hxr : 1 ≤ xs.rep.refs) (hxp : xs.rep.p = xr.rep.p)
     (hwq : ldv .ld M q = BitVec.ofNat 64 xr.rep.p)
     (hmr : xr ∈ L0) (hrr : 1 ≤ xr.rep.refs) (hxro : xr.Owns)
@@ -851,7 +851,7 @@ theorem ra_negPow2 {live : Nat → Prop} {S : Nat → Prop}
     have := of_mem_accAddrs hb'
     exact cx.consts b (by simp only [constBytes, twoAddr, zeroAddr, oneAddr] at *; omega)
   have h2 := ra.r2
-  have hb0 : BcHeap S M H F (L1 ++ xs :: L2) := he ▸ hb
+  have hb0 : BcHeap S X M H F (L1 ++ xs :: L2) := he ▸ hb
   have hown0 : ∀ y ∈ L1 ++ xs :: L2, y.Owns := he ▸ hown
   have hm : ∀ {y}, y ∈ A ++ w :: B → y ∈ L1 ++ xs :: L2 := fun h => he ▸ h
   have hwm : w ∈ A ++ w :: B := List.mem_append_right _ List.mem_cons_self
@@ -879,7 +879,7 @@ theorem ra_negPow2 {live : Nat → Prop} {S : Nat → Prop}
         by rw [hk1.get 23]; bsimp [ra.r23], fun _ _ _ => rfl⟩
     have h21' : R1 21 = R0 21 := by rw [hk1.get 21]; bsimp [h21]
     have h18' : R1 18 = BitVec.ofNat 64 w.rep.p := by rw [hk1.get 18]; bsimp [h18]
-    have hpost : ∀ {R3 M3 H3 F3 Lf}, Keeps binClob R3 R0 → BcHeap S M3 H3 F3 (y :: Lf) →
+    have hpost : ∀ {R3 M3 H3 F3 Lf}, Keeps binClob R3 R0 → BcHeap S X M3 H3 F3 (y :: Lf) →
         DropAt (y :: L0) xr.rep.p (y :: Lf) → (∀ a, OutHeap a → imgM M3 a = imgM M1 a) →
         DW live S (DQ live S Q t) (R0 1) R3 M3 := fun hk3 hb3 hd ho3 =>
       hK.ret _ _ _ _ _ y hk3 ⟨hb3, ⟨_, .fresh hp.refs, hd⟩, ⟨_, List.mem_cons_self⟩, .inl hp.refs,
@@ -958,7 +958,7 @@ theorem ra_negPow2 {live : Nat → Prop} {S : Nat → Prop}
       (fun y' hy' => hb1.owner_db_ne hwo hy' (hown y' (List.mem_append_left _ hy'))) hw2 raN
       (by rw [hk1.get 21]; bsimp [h21]) (by rw [hk1.get 18]; bsimp [h18]) ?_
     intro R3 M3 H3 F3 L3 hk3 hkf hb3 ho3
-    have hfin : BcHeap S M3 H3 F3 L0 := by
+    have hfin : BcHeap S X M3 H3 F3 L0 := by
       cases hkf with
       | dec h =>
         rcases hL0 with ⟨_, rfl⟩ | ⟨h2', _⟩

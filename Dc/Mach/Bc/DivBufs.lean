@@ -154,10 +154,10 @@ theorem dvs_disp {live : Nat → Prop} {S : Nat → Prop}
     exact hlt _ (by omega) (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp []; exact congrArg _ (by omega))
 
 /-- The frame, the number heap and `num1` (`b1`) before `num2` is allocated. -/
-structure DvBuf1 (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
-    (H : Heap) (F : List Blk) (Lh : List NumObj) : Prop extends DvCore S Mt0 M R0 sp W H F Lh where
+structure DvBuf1 (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
+    (H : Heap) (F : List Blk) (Lh : List NumObj) : Prop extends DvCore S X Mt0 M R0 sp W H F Lh where
   b1l : D.b1 ∈ H.live
-  b1n : D.b1 ∉ F ++ objBlocks Lh
+  b1n : D.b1 ∉ F ++ objBlocks Lh ++ X.bs
   pPay : D.P = D.b1.pay
   pIn : ∀ i, i < D.xs.length → D.b1.In (D.P + i)
 
@@ -188,11 +188,11 @@ theorem dvx_getD (ds : List Nat) (e i : Nat) :
 
 /-- **`num1`'s allocation** from `0x80005970` (`s4 = extra`): `malloc`, `memset`,
 `memcpy (num1 + 1, n1->n_value, len + scale)`, landing at `0x800059d0`. -/
-theorem dv1_alloc {live : Nat → Prop} {S : Nat → Prop}
+theorem dv1_alloc {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {x1 : NumObj} {E s2 : Nat}
-    (cx : DvCtx S sp W) (core : DvCore S Mt0 M R0 sp W H F Lh) (hx1 : x1 ∈ Lh)
+    (cx : DvCtx S sp W) (core : DvCore S X Mt0 M R0 sp W H F Lh) (hx1 : x1 ∈ Lh)
     (hsz : x1.rep.len + x1.rep.scale + E < 2 ^ 29)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
     (h15 : R 15 = BitVec.ofNat 64 x1.rep.scale) (h20 : R 20 = BitVec.ofNat 64 E)
@@ -202,7 +202,7 @@ theorem dv1_alloc {live : Nat → Prop} {S : Nat → Prop}
       DW live S Q 0x80002bcc#64 R' Mt')
     (hnext : ∀ R' M' H' b,
       (∀ D : DvData, D.b1 = b → D.P = b.pay → D.xs.length = x1.rep.len + x1.rep.scale + E + 2 →
-        DvBuf1 S Mt0 M' R0 sp W D H' F Lh) →
+        DvBuf1 S X Mt0 M' R0 sp W D H' F Lh) →
       (∀ i, i < x1.rep.len + x1.rep.scale + E + 2 → imgM M' (b.pay + i) =
         BitVec.ofNat 8 ((0 :: x1.rep.ds ++ List.replicate (E + 1) 0).getD i 0)) →
       R' 18 = BitVec.ofNat 64 b.pay → R' 25 = BitVec.ofNat 64 (x1.rep.len + x1.rep.scale + E) →
@@ -310,7 +310,7 @@ theorem dv1_alloc {live : Nat → Prop} {S : Nat → Prop}
       simp only [Blk.In] at h
       rw [hf3.rest a (by omega), hf2.rest a (by omega)]
     have hbn := core.heap.fresh_not_owned (b := b) (by omega) e5
-    have core' : DvCore S Mt0 M3 R0 sp W H1 F Lh :=
+    have core' : DvCore S X Mt0 M3 R0 sp W H1 F Lh :=
       { saved := core.saved.transport (lo := 104) (top := 208) (hag := fun a h1 h2 => by
           rw [m3 a (by simp only [Blk.In]; omega)]
           exact hMa a (outHeap_of_ge (by simp only [heapEnd]; omega)))
@@ -349,11 +349,11 @@ theorem dv1_alloc {live : Nat → Prop} {S : Nat → Prop}
 /-- **`num1`** from `0x80005954`: `extra = max (0, k - (n1->n_scale - scale2))`,
 `malloc (len + scale + extra + 2)`, zeroed, `n1`'s digits copied from its
 second byte, landing at `0x800059d0`. -/
-theorem dv1_setup {live : Nat → Prop} {S : Nat → Prop}
+theorem dv1_setup {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {x1 : NumObj} {s2 k : Nat}
-    (cx : DvCtx S sp W) (core : DvCore S Mt0 M R0 sp W H F Lh) (hx1 : x1 ∈ Lh)
+    (cx : DvCtx S sp W) (core : DvCore S X Mt0 M R0 sp W H F Lh) (hx1 : x1 ∈ Lh)
     (hsz : x1.rep.len + x1.rep.scale + k + s2 < 2 ^ 28)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
     (h19 : R 19 = BitVec.ofNat 64 s2) (h21 : R 21 = BitVec.ofNat 64 k)
@@ -363,7 +363,7 @@ theorem dv1_setup {live : Nat → Prop} {S : Nat → Prop}
     (hnext : ∀ R' M' H' b,
       (∀ D : DvData, D.b1 = b → D.P = b.pay →
         D.xs.length = x1.rep.len + x1.rep.scale + dvExtra k s2 x1.rep.scale + 2 →
-        DvBuf1 S Mt0 M' R0 sp W D H' F Lh) →
+        DvBuf1 S X Mt0 M' R0 sp W D H' F Lh) →
       (∀ i, i < x1.rep.len + x1.rep.scale + dvExtra k s2 x1.rep.scale + 2 → imgM M' (b.pay + i) =
         BitVec.ofNat 8 ((0 :: x1.rep.ds ++ List.replicate (dvExtra k s2 x1.rep.scale + 1) 0).getD i 0)) →
       R' 18 = BitVec.ofNat 64 b.pay →
@@ -413,11 +413,11 @@ theorem dv1_setup {live : Nat → Prop} {S : Nat → Prop}
 /-- **`num2`** from `0x800059d0`: `len2 = n2->n_len + scale2`, `malloc (len2 + 1)`,
 `memcpy (num2, n2->n_value, len2)`, the zero sentinel, the leading-zero skip
 to the first nonzero digit `z0`, landing at `0x80005a50`. -/
-theorem dvn_setup {live : Nat → Prop} {S : Nat → Prop}
+theorem dvn_setup {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
     {Lh : List NumObj} {x2 : NumObj} {s2 z0 : Nat}
-    (cx : DvCtx S sp W) (b1 : DvBuf1 S Mt0 M R0 sp W D H F Lh) (hx2 : x2 ∈ Lh)
+    (cx : DvCtx S sp W) (b1 : DvBuf1 S X Mt0 M R0 sp W D H F Lh) (hx2 : x2 ∈ Lh)
     (hs2 : s2 ≤ x2.rep.scale) (hz : ∀ i, i < z0 → x2.rep.ds.getD i 0 = 0)
     (hnz : x2.rep.ds.getD z0 0 ≠ 0) (hzl : z0 < x2.rep.len + s2)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h9 : R 9 = BitVec.ofNat 64 x2.rep.p)
@@ -425,7 +425,7 @@ theorem dvn_setup {live : Nat → Prop} {S : Nat → Prop}
     (hoom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
       (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
       DW live S Q 0x80002bcc#64 R' Mt')
-    (hnext : ∀ R' M' H' b2, DvBufs S Mt0 M' R0 sp W
+    (hnext : ∀ R' M' H' b2, DvBufs S X Mt0 M' R0 sp W
         { D with b2 := b2, N := b2.pay + z0, L := x2.rep.len + s2 - z0 } H' F Lh →
       (∀ a, D.b1.In a → imgM M' a = imgM M a) →
       (∀ i, i < x2.rep.len + s2 → imgM M' (b2.pay + i) = BitVec.ofNat 8 (x2.rep.ds.getD i 0)) →
@@ -453,7 +453,7 @@ theorem dvn_setup {live : Nat → Prop} {S : Nat → Prop}
   have c1 := b1.toDvCore.slots cx.above (by omega)
     (M' := writeLog M [(sp - 208 + 8, 8, BitVec.ofNat 64 (x2.rep.len + s2 + 1))])
     fun a ha => by simp (disch := omega) only [imgM_store_miss]
-  have b1' : DvBuf1 S Mt0 (writeLog M [(sp - 208 + 8, 8, BitVec.ofNat 64 (x2.rep.len + s2 + 1))])
+  have b1' : DvBuf1 S X Mt0 (writeLog M [(sp - 208 + 8, 8, BitVec.ofNat 64 (x2.rep.len + s2 + 1))])
       R0 sp W D H F Lh := { b1 with toDvCore := c1 }
   refine malloc_spec hlive b1'.heap.heap (n := x2.rep.len + s2 + 1) (by omega) _ (by bsimp [])
     (by bsimp []) fun R1 M1 H1 hk1 hpost => ?_
@@ -541,7 +541,7 @@ theorem dvn_setup {live : Nat → Prop} {S : Nat → Prop}
         simp only [Blk.In, Blk.fin, Blk.pay] at h1
         rw [m3 a (by omega), hst a (by omega)]
         simp (disch := omega) only [imgM_store_miss]
-    have core : DvCore S Mt0 M3 R0 sp W H1 F Lh :=
+    have core : DvCore S X Mt0 M3 R0 sp W H1 F Lh :=
       { saved := b1'.saved.transport (lo := 104) (top := 208) (hag := fun a h1 h2 => by
           rw [m31 a (by simp only [Blk.In, Blk.fin, Blk.pay]; omega) (by omega)]
           exact hMa a (outHeap_of_ge (by simp only [heapEnd]; omega)))
@@ -556,7 +556,7 @@ theorem dvn_setup {live : Nat → Prop} {S : Nat → Prop}
           simp (disch := omega) only [imgM_store_miss]
           exact b1.out a ho (by simp only [frameIn]; omega) }
     have hb12 : D.b1 ≠ b2 := fresh_ne_live (b := b2) b1'.heap.heap b1.b1l (by omega) e5
-    have bfs : DvBufs S Mt0 M3 R0 sp W
+    have bfs : DvBufs S X Mt0 M3 R0 sp W
         { D with b2 := b2, N := b2.pay + z0, L := x2.rep.len + s2 - z0 } H1 F Lh :=
       { toDvCore := core
         b1l := hp'.res.live_mono b1.b1l

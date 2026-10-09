@@ -44,12 +44,12 @@ theorem FreedRest.keep {L1 L2 L : List NumObj} {x y : NumObj} (h : FreedRest L1 
 /-- **The continuations after the detour**: the slot holds `y` (one
 reference), `L` is what freeing the old number left, and off the heap, the
 slot and the window the memory is the entry's. -/
-theorem DivKF.rebase {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem DivKF.rebase {live S : Nat → Prop} {X : Raws} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {R0 : Nat → BitVec 64} {Mt0 Mt1 : Mem} {Fr : List NumObj → Prop} {L : List NumObj} {y : NumObj}
-    {q sp W : Nat} {n : Option Num} (hk : DivKF live S Q R0 Mt0 Fr q sp W n) (hfr : Fr L)
+    {q sp W : Nat} {n : Option Num} (hk : DivKF live S X Q R0 Mt0 Fr q sp W n) (hfr : Fr L)
     (hy : y.rep.refs = 1) (hnn : n ≠ none)
     (hM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM Mt1 a = imgM Mt0 a) :
-    DivKF live S Q R0 Mt1 (FreedRest [] L y) q sp W n where
+    DivKF live S X Q R0 Mt1 (FreedRest [] L y) q sp W n where
   ret m hm R' Mt' H F L' y' hkp h10 hp := hk.ret m hm R' Mt' H F L' y' hkp h10
     { heap := hp.heap
       rest := by
@@ -106,12 +106,12 @@ theorem NumAt.setDigits {Mt Mt' : Mem} {o : NumRep} (h : NumAt Mt o) {ds : List 
 
 /-- **The head object's digits rewritten** (it owns its buffer): the heap
 holds it with the digits `ds`. -/
-theorem BcHeap.setDigits {S : Nat → Prop} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (x :: L)) (ho : x.Owns) {ds : List Nat}
+theorem BcHeap.setDigits {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x : NumObj} (h : BcHeap S X Mt H F (x :: L)) (ho : x.Owns) {ds : List Nat}
     (hl : ds.length = x.rep.len + x.rep.scale) (hd : Digits ds)
     (hfr : MemOnly (fun a => x.rep.val ≤ a ∧ a < x.rep.val + x.rep.len + x.rep.scale) Mt' Mt)
     (hb : ∀ i, i < x.rep.len + x.rep.scale → imgM Mt' (x.rep.val + i) = BitVec.ofNat 8 (ds.getD i 0)) :
-    BcHeap S Mt' H F (withDs x ds :: L) := by
+    BcHeap S X Mt' H F (withDs x ds :: L) := by
   have hn := h.nums x List.mem_cons_self
   have hxb := h.blocks x List.mem_cons_self
   have hdf := hxb.dFit; have hdl := hxb.dLo
@@ -206,13 +206,13 @@ structure DvOne (Mt0 : Mem) (L0 : List NumObj) (Fr : List NumObj → Prop) (x1 x
 /-- **Back into the general path** at `0x80005954`: the detour's quotient
 `y` in the slot, the operands found again in what freeing the old number
 left; `dv_body` with `y` as the slot's number. -/
-theorem dvone_enter {live : Nat → Prop} {S : Nat → Prop}
+theorem dvone_enter {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 L : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
     (one : DvOne Mt0 L0 Fr x1 x2 z n k)
-    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: L))
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S X M H F (y :: L))
     (hfr : Fr L) (hyr : y.rep.refs = 1)
     (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
@@ -277,13 +277,13 @@ theorem dvone_enter {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **After the detour's `bc_free_num (quot)`** at `0x80005ebc`: `n2`'s scale
 (zero) reloaded, the quotient stored in the slot, then `dvone_enter`. -/
-theorem dvone_after {live : Nat → Prop} {S : Nat → Prop}
+theorem dvone_after {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 L : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
     (one : DvOne Mt0 L0 Fr x1 x2 z n k)
-    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: L))
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S X M H F (y :: L))
     (hfr : Fr L) (hyr : y.rep.refs = 1)
     (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
@@ -316,13 +316,13 @@ theorem dvone_after {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The detour's `bc_free_num (quot)`** at `0x80005eb4`: the slot's old
 number loses a reference or is released, then `dvone_after`. -/
-theorem dvone_free {live : Nat → Prop} {S : Nat → Prop}
+theorem dvone_free {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
     (one : DvOne Mt0 L0 Fr x1 x2 z n k)
-    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: L0))
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S X M H F (y :: L0))
     (hr : QSlot M q L0 Fr) (hyr : y.rep.refs = 1) (hyo : y.Owns)
     (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
@@ -355,7 +355,7 @@ theorem dvone_free {live : Nat → Prop} {S : Nat → Prop}
     bc_run hlive hS [h22, h2] at 0x800048c0
     have hsf' : StackFrame S (sp - 208) 32 :=
       ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
-    have e : FreeEntry S M H F (y :: L1) L2 xr q (sp - 208) :=
+    have e : FreeEntry S X M H F (y :: L1) L2 xr q (sp - 208) :=
       FreeEntry.of_slot hb hr (hr.noView_cons hb hyo) hq cx.slotOut hsf' (by simp only [heapEnd]; omega)
         (by omega)
     refine bc_free_num_spec hlive e _ (by bsimp [h22]) (by bsimp [h2]) (by bsimp [])
@@ -397,13 +397,13 @@ theorem dvone_free {live : Nat → Prop} {S : Nat → Prop}
 
 /-- **The detour's `memcpy`** from `0x80005ea0` (`a4 = min (scale1, k)`):
 `n1`'s first `len1 + a4` digits into the quotient, then `dvone_free`. -/
-theorem dvone_copy {live : Nat → Prop} {S : Nat → Prop}
+theorem dvone_copy {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
     (one : DvOne Mt0 L0 Fr x1 x2 z n k)
-    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: L0))
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S X M H F (y :: L0))
     (hr : QSlot M q L0 Fr) (hyr : y.rep.refs = 1) (hyo : y.Owns)
     (hyl : y.rep.len = x1.rep.len) (hys : y.rep.scale = k)
     (hyz : y.rep.ds = List.replicate (x1.rep.len + k) 0)
@@ -473,13 +473,13 @@ theorem dvone_copy {live : Nat → Prop} {S : Nat → Prop}
 
 
 /-- **`min (scale1, k)`** at `0x80005e90`, then `dvone_copy`. -/
-theorem dvone_min {live : Nat → Prop} {S : Nat → Prop}
+theorem dvone_min {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
     (one : DvOne Mt0 L0 Fr x1 x2 z n k)
-    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: L0))
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S X M H F (y :: L0))
     (hr : QSlot M q L0 Fr) (hyr : y.rep.refs = 1) (hyo : y.Owns)
     (hyl : y.rep.len = x1.rep.len) (hys : y.rep.scale = k)
     (hyz : y.rep.ds = List.replicate (x1.rep.len + k) 0)
@@ -511,13 +511,13 @@ theorem dvone_min {live : Nat → Prop} {S : Nat → Prop}
 /-- **The detour's sign and `memset`** from `0x80005e60` (`bc_new_num`
 returned `y`, all zeros): `n1.sign != n2.sign` stored, the `k` fraction
 digits from `len1` zeroed, then `dvone_min`. -/
-theorem dvone_fill {live : Nat → Prop} {S : Nat → Prop}
+theorem dvone_fill {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z y : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
     (one : DvOne Mt0 L0 Fr x1 x2 z n k)
-    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S M H F (y :: L0))
+    (sv : SavedWords M (sp - 208) divSlots R0) (hb : BcHeap S X M H F (y :: L0))
     (hr : QSlot M q L0 Fr) (hrep : y.rep = zeroRep y.sb.pay y.db.pay x1.rep.len k)
     (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
@@ -589,12 +589,12 @@ theorem dvone_fill {live : Nat → Prop} {S : Nat → Prop}
 /-- **The divide-by-one detour** at `0x80005e54` (`n2 = 1`):
 `bc_new_num (len1, k)` for the quotient, then `dvone_fill`. GNU bc 1.07 falls
 through from here into the general division. -/
-theorem dv_one {live : Nat → Prop} {S : Nat → Prop}
+theorem dv_one {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L0 : List NumObj} {Fr : List NumObj → Prop}
     {x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {k : Nat}
-    (cx : DivCtx S R0 sp q W) (hk : DivKF live S Q R0 Mt0 Fr q sp W n)
-    (one : DvOne Mt0 L0 Fr x1 x2 z n k) (core : DvCore S Mt0 M R0 sp W H F L0)
+    (cx : DivCtx S R0 sp q W) (hk : DivKF live S X Q R0 Mt0 Fr q sp W n)
+    (one : DvOne Mt0 L0 Fr x1 x2 z n k) (core : DvCore S X Mt0 M R0 sp W H F L0)
     (hr0 : QSlot Mt0 q L0 Fr)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
     (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h21 : R 21 = BitVec.ofNat 64 k)

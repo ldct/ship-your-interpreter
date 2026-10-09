@@ -72,14 +72,14 @@ theorem OnAt.sub {S G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {
 
 /-! ## The tail call (`0x80007090`) -/
 
-theorem on_zero {live S : Nat → Prop}
+theorem on_zero {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {pre : List Nat} {t : String}
     (cb : CharFn live S Q (R0 12) d G I) (cx : OnCtx S R0 sp W d)
-    (st : OnAt S G Mt0 M R0 R sp W onSlots0) (hb : BcHeap S M H F L) (hI : I pre t M)
+    (st : OnAt S G Mt0 M R0 R sp W onSlots0) (hb : BcHeap S X M H F L) (hI : I pre t M)
     (hs : ∀ z ∈ [8, 19, 22, 24, 25, 26, 27], R z = R0 z)
-    (hK : OnK live S Q I G R0 Mt0 L sp W (pre ++ [48])) :
+    (hK : OnK live S X Q I G R0 Mt0 L sp W (pre ++ [48])) :
     DWO live S Q t 0x80007090#64 R M := by
   on_facts cx
   have hsf := cx.cc.frame
@@ -128,11 +128,11 @@ theorem on_zero {live S : Nat → Prop}
 /-- **The branch for a base other than 10** at `0x800070b8`, as a premise:
 from the frame with `s0`–`s7` saved, the heap, the sign sent, `s2` the
 nonzero number, `a0` `_zero_`, `s4` its global, `s5` zero, `s7` the base. -/
-def OnBaseGo (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+def OnBaseGo (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (I : List Nat → String → Mem → Prop) (G : Nat → Prop) (Mt0 : Mem) (R0 : Nat → BitVec 64)
     (sp W : Nat) (L : List NumObj) (x z : NumObj) (ob : Nat) (cs : List Nat) : Prop :=
   ∀ (R : Nat → BitVec 64) (M : Mem) (t : String) (H : Heap) (F : List Blk),
-    OnAt S G Mt0 M R0 R sp W onSlots2 → BcHeap S M H F L → I (cs ++ signOut x.rep.num) t M →
+    OnAt S G Mt0 M R0 R sp W onSlots2 → BcHeap S X M H F L → I (cs ++ signOut x.rep.num) t M →
     R 18 = BitVec.ofNat 64 x.rep.p → R 10 = BitVec.ofNat 64 z.rep.p →
     R 20 = BitVec.ofNat 64 zeroAddr → R 21 = 0#64 → R 23 = BitVec.ofNat 64 ob →
     (∀ r ∈ [24, 25, 26, 27], R r = R0 r) → x.rep.num.mag ≠ 0 → ob ≠ 10 →
@@ -148,23 +148,23 @@ abbrev onSlots1 : List (Nat × Nat) := (19, 136) :: (22, 112) :: onSlots0
 
 /-- The fixed facts of the entry: the callback, the frame, the operands, the
 continuation for `x`'s characters after `cs`, and the other branch. -/
-structure OnFix (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+structure OnFix (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (I : List Nat → String → Mem → Prop) (G : Nat → Prop) (Mt0 : Mem) (R0 : Nat → BitVec 64)
     (sp W d : Nat) (L : List NumObj) (x z o : NumObj) (ob : Nat) (cs : List Nat) : Prop where
   cb : CharFn live S Q (R0 12) d G I
   cx : OnCtx S R0 sp W d
   ha : OnArgs S Mt0 L x z o ob
-  hK : OnK live S Q I G R0 Mt0 L sp W (cs ++ Num.outChars x.rep.num ob)
-  go : OnBaseGo live S Q I G Mt0 R0 sp W L x z ob cs
+  hK : OnK live S X Q I G R0 Mt0 L sp W (cs ++ Num.outChars x.rep.num ob)
+  go : OnBaseGo live S X Q I G Mt0 R0 sp W L x z ob cs
 
 /-- **The base dispatch** at `0x80006fc8` for a nonzero number: `s0` saved,
 then base 10 (`on_dec`) or the other branch. -/
-theorem on_found {live S : Nat → Prop}
+theorem on_found {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d ob : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x z o : NumObj}
-    {cs : List Nat} {t : String} (fx : OnFix live S Q I G Mt0 R0 sp W d L x z o ob cs)
-    (st : OnAt S G Mt0 M R0 R sp W onSlots1) (hb : BcHeap S M H F L)
+    {cs : List Nat} {t : String} (fx : OnFix live S X Q I G Mt0 R0 sp W d L x z o ob cs)
+    (st : OnAt S G Mt0 M R0 R sp W onSlots1) (hb : BcHeap S X M H F L)
     (hI : I (cs ++ signOut x.rep.num) t M) (hmag : x.rep.num.mag ≠ 0)
     (h18 : R 18 = BitVec.ofNat 64 x.rep.p) (h10 : R 10 = BitVec.ofNat 64 z.rep.p)
     (h20 : R 20 = BitVec.ofNat 64 zeroAddr) (h23 : R 23 = BitVec.ofNat 64 ob) (h21 : R 21 = 0#64)
@@ -211,14 +211,14 @@ theorem on_found {live S : Nat → Prop}
     simp [upd_apply, h15, hhi r hr]
 
 /-- **All digits zero** (`0x80007088`): `s3` and `s6` restored, the tail call. -/
-theorem on_none {live S : Nat → Prop}
+theorem on_none {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {pre : List Nat} {t : String}
     (cb : CharFn live S Q (R0 12) d G I) (cx : OnCtx S R0 sp W d)
-    (st : OnAt S G Mt0 M R0 R sp W onSlots1) (hb : BcHeap S M H F L) (hI : I pre t M)
+    (st : OnAt S G Mt0 M R0 R sp W onSlots1) (hb : BcHeap S X M H F L) (hI : I pre t M)
     (hs : ∀ z ∈ [8, 24, 25, 26, 27], R z = R0 z)
-    (hK : OnK live S Q I G R0 Mt0 L sp W (pre ++ [48])) :
+    (hK : OnK live S X Q I G R0 Mt0 L sp W (pre ++ [48])) :
     DWO live S Q t 0x80007088#64 R M := by
   on_facts cx
   have hsf := cx.cc.frame
@@ -236,12 +236,12 @@ theorem on_none {live S : Nat → Prop}
 
 /-- **The zero scan** from `0x80006f8c` (a number other than `_zero_`):
 `s6`, `s3` saved, the digits scanned, then `on_found` or `on_none`. -/
-theorem on_scan {live S : Nat → Prop}
+theorem on_scan {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d ob : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x z o : NumObj}
-    {cs : List Nat} {t : String} (fx : OnFix live S Q I G Mt0 R0 sp W d L x z o ob cs)
-    (st : OnAt S G Mt0 M R0 R sp W onSlots0) (hb : BcHeap S M H F L)
+    {cs : List Nat} {t : String} (fx : OnFix live S X Q I G Mt0 R0 sp W d L x z o ob cs)
+    (st : OnAt S G Mt0 M R0 R sp W onSlots0) (hb : BcHeap S X M H F L)
     (hI : I (cs ++ signOut x.rep.num) t M) (h18 : R 18 = BitVec.ofNat 64 x.rep.p)
     (h10 : R 10 = BitVec.ofNat 64 z.rep.p) (h20 : R 20 = BitVec.ofNat 64 zeroAddr)
     (h23 : R 23 = BitVec.ofNat 64 ob) (h21 : R 21 = 0#64)
@@ -308,12 +308,12 @@ theorem on_scan {live S : Nat → Prop}
 
 /-- **After the sign** (`0x80006f7c`): the number at `_zero_`'s address
 prints `0`, any other is scanned (`on_scan`). -/
-theorem on_post {live S : Nat → Prop}
+theorem on_post {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d ob : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x z o : NumObj}
-    {cs : List Nat} {t : String} (fx : OnFix live S Q I G Mt0 R0 sp W d L x z o ob cs)
-    (st : OnAt S G Mt0 M R0 R sp W onSlots0) (hb : BcHeap S M H F L)
+    {cs : List Nat} {t : String} (fx : OnFix live S X Q I G Mt0 R0 sp W d L x z o ob cs)
+    (st : OnAt S G Mt0 M R0 R sp W onSlots0) (hb : BcHeap S X M H F L)
     (hI : I (cs ++ signOut x.rep.num) t M) (h18 : R 18 = BitVec.ofNat 64 x.rep.p)
     (h23 : R 23 = BitVec.ofNat 64 ob) (h21 : R 21 = 0#64)
     (hs : ∀ r ∈ [8, 19, 22, 24, 25, 26, 27], R r = R0 r) :
@@ -383,12 +383,12 @@ theorem OnAt.pro {S G : Nat → Prop} {Mt0 : Mem} {R0 R : Nat → BitVec 64} {sp
 
 /-- The minus sign of a negative `num` (`li a0,45; jalr a2`), then the
 zero test. -/
-theorem on_neg {live S : Nat → Prop}
+theorem on_neg {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
     {sp W d ob : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x z o : NumObj}
-    {cs : List Nat} {t : String} (fx : OnFix live S Q I G Mt0 R0 sp W d L x z o ob cs)
-    (st : OnAt S G Mt0 M R0 R sp W onSlots0) (hb : BcHeap S M H F L) (hI : I cs t M)
+    {cs : List Nat} {t : String} (fx : OnFix live S X Q I G Mt0 R0 sp W d L x z o ob cs)
+    (st : OnAt S G Mt0 M R0 R sp W onSlots0) (hb : BcHeap S X M H F L) (hI : I cs t M)
     (hneg : x.rep.neg = true) (h12 : R 12 = R0 12) (h18 : R 18 = BitVec.ofNat 64 x.rep.p)
     (h23 : R 23 = BitVec.ofNat 64 ob) (h21 : R 21 = 0#64)
     (hs : ∀ r ∈ [8, 19, 22, 24, 25, 26, 27], R r = R0 r) :
@@ -413,12 +413,12 @@ theorem on_neg {live S : Nat → Prop}
 
 /-- **`bc_out_num (num, o_base, out_char, 0)`** from its entry, given the
 branch for a base other than 10 (`OnFix.go`). -/
-theorem on_entry {live S : Nat → Prop}
+theorem on_entry {live S : Nat → Prop} {X : Raws}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
     {sp W d ob : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x z o : NumObj}
-    {cs : List Nat} {t : String} (fx : OnFix live S Q I G Mt0 R0 sp W d L x z o ob cs)
-    (hb : BcHeap S Mt0 H F L) (hI : I cs t Mt0) (h10 : R0 10 = BitVec.ofNat 64 x.rep.p)
+    {cs : List Nat} {t : String} (fx : OnFix live S X Q I G Mt0 R0 sp W d L x z o ob cs)
+    (hb : BcHeap S X Mt0 H F L) (hI : I cs t Mt0) (h10 : R0 10 = BitVec.ofNat 64 x.rep.p)
     (h11 : R0 11 = BitVec.ofNat 64 ob) :
     DWO live S Q t 0x80006f3c#64 R0 Mt0 := by
   have cx := fx.cx

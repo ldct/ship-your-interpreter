@@ -55,6 +55,30 @@ theorem OgSt.outHeap {live S : Nat → Prop} {X X' : Raws} {G : Nat → Prop}
       nd := st.nd
       inv := cb.stab _ _ _ _ st.inv fun a hg => hm a (cb.off a hg).2.1 }
 
+/-- **The callback** from the state: the characters grow by `c`, the heap,
+the handles and their words stay. -/
+theorem OgSt.call {live S : Nat → Prop} {X : Raws} {G : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {I : List Nat → String → Mem → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
+    {sp W d c : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {hs : List RH}
+    {os : List Nat} {sent : List Nat} {t : String}
+    (st : OgSt S X G I Mt0 M R0 R sp W H F L hs os sent t)
+    (cx : OnCtx S R0 sp W d) (cb : CharFn live S Q (R0 12) d G I)
+    (h10 : R 10 = BitVec.ofNat 64 c) (hc : c < 256) (h1 : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' t', Keeps cClob R' R →
+      OgSt S X G I Mt0 M' R0 R' sp W H F L hs os (sent ++ [c]) t' → DWO live S Q t' (R 1) R' M') :
+    DWO live S Q t (R0 12) R M := by
+  on_facts cx
+  have hsf := cx.cc.frame
+  have hsl := hsf.lo
+  exact on_call cb cx st.on (by decide) (by decide) st.heap st.inv h10 hc h1
+    fun R' M' t' hk' hI' on' hb' hfr => hk R' M' t' hk'
+      ⟨on', hb', st.own, st.words.transport fun o ho => by
+          have := st.offs o ho
+          exact ldv_congr .ld fun j hj => hfr _ (fun hg => by
+            have := (cb.off _ hg).1; simp only [heapStart] at this; omega) (.inr (by omega)),
+        st.offs, st.nd, hI'⟩
+
 /-- Through register changes off `sp` and `s1`. -/
 theorem OgSt.regs {S : Nat → Prop} {X : Raws} {G : Nat → Prop}
     {I : List Nat → String → Mem → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64}

@@ -59,33 +59,35 @@ structure CharFn (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) →
   /-- the invariant reads only the footprint -/
   stab : ∀ cs t M M', I cs t M → (∀ a, G a → imgM M' a = imgM M a) → I cs t M'
 
-/-- Below the heap's end, nothing outside `G` changed since `Mb`. -/
-def Frozen (G : Nat → Prop) (Mb M : Mem) : Prop := ∀ a, ¬ G a → a < heapEnd → imgM M a = imgM Mb a
+/-- Below `lo` (the heap and the stack below a window), nothing outside `G`
+changed since `Mb`. -/
+def Frozen (G : Nat → Prop) (lo : Nat) (Mb M : Mem) : Prop :=
+  ∀ a, ¬ G a → a < lo → imgM M a = imgM Mb a
 
-theorem Frozen.refl (G : Nat → Prop) (M : Mem) : Frozen G M M := fun _ _ _ => rfl
+theorem Frozen.refl (G : Nat → Prop) (lo : Nat) (M : Mem) : Frozen G lo M M := fun _ _ _ => rfl
 
 /-- **The `CharCb` a `CharFn` gives** (`bc_out_long`'s callback contract), its
-invariant carrying the globals frozen since `Mb`. -/
+invariant carrying the bytes below `lo` frozen since `Mb`. -/
 theorem CharFn.cb {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {f : BitVec 64} {d : Nat} {G : Nat → Prop} {I : List Nat → String → Mem → Prop}
-    (h : CharFn live S Q f d G I) (Mb : Mem) :
-    CharCb live S Q f d (fun cs t M => I cs t M ∧ Frozen G Mb M) where
+    (h : CharFn live S Q f d G I) (Mb : Mem) {lo : Nat} (hlo : heapEnd ≤ lo) :
+    CharCb live S Q f d (fun cs t M => I cs t M ∧ Frozen G lo Mb M) lo where
   call := fun cs c t sp R M hI hsf hab h2 h10 hc hal hk =>
-    h.call cs c t sp R M hI.1 hsf hab h2 h10 hc hal fun R' M' t' hk' hI' hfr =>
+    h.call cs c t sp R M hI.1 hsf (by omega) h2 h10 hc hal fun R' M' t' hk' hI' hfr =>
       hk R' M' t' hk' ⟨hI', fun a hg ha => (hfr a hg (.inl (by omega))).trans (hI.2 a hg ha)⟩
         fun a ha => hfr a (fun hg => by
-          have := (h.off a hg).1; simp only [heapStart, heapEnd] at this hab; omega) (.inr ha)
+          have := (h.off a hg).1; simp only [heapStart, heapEnd] at this hab hlo; omega) (.inr ha)
 
 /-- `bc_out_long`'s stack writes keep that invariant. -/
 theorem CharFn.olStable {live S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {f : BitVec 64} {d : Nat} {G : Nat → Prop} {I : List Nat → String → Mem → Prop}
-    (h : CharFn live S Q f d G I) (Mb : Mem) {sp : Nat} (hab : heapEnd + 416 ≤ sp) :
-    OLStable (fun cs t M => I cs t M ∧ Frozen G Mb M) sp := fun cs t M M' hI hm =>
+    (h : CharFn live S Q f d G I) (Mb : Mem) {sp lo : Nat} (hlo : heapEnd ≤ lo)
+    (hab : lo + 416 ≤ sp) :
+    OLStable (fun cs t M => I cs t M ∧ Frozen G lo Mb M) sp := fun cs t M M' hI hm =>
   ⟨h.stab cs t M M' hI.1 fun a hg => hm a fun hf => by
-      have := (h.off a hg).1; simp only [heapStart, heapEnd, frameIn] at this hab hf; omega,
-    fun a hg ha => (hm a fun hf => by simp only [frameIn, heapEnd] at hf ha hab; omega).trans
-      (hI.2 a hg ha)⟩
+      have := (h.off a hg).1; simp only [heapStart, heapEnd, frameIn] at this hab hf hlo; omega,
+    fun a hg ha => (hm a fun hf => by simp only [frameIn] at hf; omega).trans (hI.2 a hg ha)⟩
 
 /-! ## The contract -/
 
@@ -250,7 +252,7 @@ theorem on_call {live S : Nat → Prop} {X : Raws}
     (hb : BcHeap S X M H F L) (hI : I cs t M) (h10 : R 10 = BitVec.ofNat 64 c) (hc : c < 256)
     (h1 : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' t', Keeps cClob R' R → I (cs ++ [c]) t' M' → OnAt S G Mt0 M' R0 R' sp W slots →
-      BcHeap S X M' H F L → (∀ a, ¬ G a → a < heapEnd → imgM M' a = imgM M a) →
+      BcHeap S X M' H F L → (∀ a, ¬ G a → (a < heapEnd ∨ sp - 176 ≤ a) → imgM M' a = imgM M a) →
       DWO live S Q t' (R 1) R' M') :
     DWO live S Q t (R0 12) R M := by
   on_facts cx
@@ -268,7 +270,7 @@ theorem on_call {live S : Nat → Prop} {X : Raws}
           rcases ha with hg | hf
           · exact (cb.off a hg).2.1
           · apply outHeap_of_ge; simp only [frameIn, heapEnd] at hf ⊢; omega))
-      fun a hg ha => hfr a hg (.inl (by simp only [heapEnd] at ha; omega))
+      fun a hg ha => hfr a hg (ha.elim (fun h => .inl (by simp only [heapEnd] at h; omega)) .inr)
 
 /-- **The epilogue** at `0x80007434`: `s0`–`s7` and `ra` restored (`s8`–`s11`
 already the caller's), `sp` raised, the return. -/

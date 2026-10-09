@@ -128,9 +128,9 @@ bytes of stack: from `I cs t M` (the characters `cs` sent so far, the console
 `t`, the memory), a call with the byte `c` in `a0` returns to `ra` with
 `I (cs ++ [c])`, keeping `sp`, `s0`–`s11` and every byte at or above `sp`. -/
 structure CharCb (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
-    (f : BitVec 64) (d : Nat) (I : List Nat → String → Mem → Prop) : Prop where
+    (f : BitVec 64) (d : Nat) (I : List Nat → String → Mem → Prop) (lo : Nat) : Prop where
   call : ∀ cs c t sp (R : Nat → BitVec 64) M, I cs t M → StackFrame S sp d →
-    heapEnd + d ≤ sp → R 2 = BitVec.ofNat 64 sp → R 10 = BitVec.ofNat 64 c → c < 256 →
+    lo + d ≤ sp → R 2 = BitVec.ofNat 64 sp → R 10 = BitVec.ofNat 64 c → c < 256 →
     (R 1).toNat % 4 = 0 →
     (∀ R' M' t', Keeps cClob R' R → I (cs ++ [c]) t' M' → (∀ a, sp ≤ a → imgM M' a = imgM M a) →
       DWO live S Q t' (R 1) R' M') →
@@ -148,9 +148,11 @@ abbrev olAll : List Nat :=
 /-- `bc_out_long`'s fixed context: its 96-byte frame, `snprintf`'s 320 bytes
 and the callback's `d` below it, all above the heap; the entry's `sp`,
 return address and callback (4-aligned). -/
-structure OLCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp d : Nat) : Prop where
+structure OLCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp d lo : Nat) : Prop where
   frame : StackFrame S sp (416 + d)
   above : heapEnd + 416 + d ≤ sp
+  /-- the callback's frames lie above `lo` -/
+  lo : lo + 416 + d ≤ sp
   sp0 : R0 2 = BitVec.ofNat 64 sp
   al : (R0 1).toNat % 4 = 0
   fal : (R0 13).toNat % 4 = 0
@@ -200,9 +202,9 @@ theorem ol_restore {R' R R0 : Nat → BitVec 64} (h1 : R' 1 = R0 1) (h2 : R' 2 =
 
 theorem ol_epi {live : Nat → Prop} {S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d : Nat}
+    {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d lo : Nat}
     {target : List Nat} {t : String}
-    (cx : OLCtx S R0 sp d) (hk : OLK live S Q I R0 M0 sp target) (st : OLAt M0 R0 R sp M)
+    (cx : OLCtx S R0 sp d lo) (hk : OLK live S Q I R0 M0 sp target) (st : OLAt M0 R0 R sp M)
     (hI : I target t M) : DWO live S Q t 0x80006584#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -247,22 +249,22 @@ theorem zext8_ofNat {c : Nat} (h : c < 256) :
   omega
 
 /-- The callback's frame below `bc_out_long`'s. -/
-theorem ol_cbFrame {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp d : Nat} (cx : OLCtx S R0 sp d) :
+theorem ol_cbFrame {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp d lo : Nat} (cx : OLCtx S R0 sp d lo) :
     StackFrame S (sp - 96) d := by
   have hsf := cx.frame
   have := hsf.lo; have := hsf.hi; have := hsf.al
   exact ⟨fun a h1 h2 => hsf.own a (by omega) (by omega), by omega, by omega, by omega⟩
 
-theorem ol_cbAbove {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp d : Nat} (cx : OLCtx S R0 sp d) :
-    heapEnd + d ≤ sp - 96 := by
-  have := cx.above; omega
+theorem ol_cbAbove {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp d lo : Nat}
+    (cx : OLCtx S R0 sp d lo) : lo + d ≤ sp - 96 := by
+  have := cx.lo; omega
 
 /-! ## The output loop (`0x80006574`) -/
 
 theorem ol_out {live : Nat → Prop} {S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {I : List Nat → String → Mem → Prop} {M0 : Mem} {R0 : Nat → BitVec 64} {sp d : Nat}
-    {pre text : List Nat} (cb : CharCb live S Q (R0 13) d I) (cx : OLCtx S R0 sp d)
+    {I : List Nat → String → Mem → Prop} {M0 : Mem} {R0 : Nat → BitVec 64} {sp d lo : Nat}
+    {pre text : List Nat} (cb : CharCb live S Q (R0 13) d I lo) (cx : OLCtx S R0 sp d lo)
     (hk : OLK live S Q I R0 M0 sp (pre ++ text)) (hl40 : text.length < 40)
     (hch : ∀ c ∈ text, c < 256) :
     ∀ k i (R : Nat → BitVec 64) (M : Mem) (t : String), text.length - i = k → i < text.length →
@@ -317,8 +319,8 @@ theorem ol_out {live : Nat → Prop} {S : Nat → Prop}
 
 theorem ol_start {live : Nat → Prop} {S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d : Nat}
-    {pre text : List Nat} {t : String} (cb : CharCb live S Q (R0 13) d I) (cx : OLCtx S R0 sp d)
+    {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d lo : Nat}
+    {pre text : List Nat} {t : String} (cb : CharCb live S Q (R0 13) d I lo) (cx : OLCtx S R0 sp d lo)
     (hk : OLK live S Q I R0 M0 sp (pre ++ text)) (hl1 : 1 ≤ text.length) (hl40 : text.length < 40)
     (hch : ∀ c ∈ text, c < 256) (st : OLAt M0 R0 R sp M) (hbuf : BufAt M (sp - 88) text)
     (hI : I pre t M) (h18 : R 18 = BitVec.ofNat 64 text.length)
@@ -344,8 +346,8 @@ theorem ol_start {live : Nat → Prop} {S : Nat → Prop}
 per step. -/
 theorem ol_pad {live : Nat → Prop} {S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {I : List Nat → String → Mem → Prop} {M0 : Mem} {R0 : Nat → BitVec 64} {sp d size : Nat}
-    {pre text : List Nat} (cb : CharCb live S Q (R0 13) d I) (cx : OLCtx S R0 sp d)
+    {I : List Nat → String → Mem → Prop} {M0 : Mem} {R0 : Nat → BitVec 64} {sp d lo size : Nat}
+    {pre text : List Nat} (cb : CharCb live S Q (R0 13) d I lo) (cx : OLCtx S R0 sp d lo)
     (hk : OLK live S Q I R0 M0 sp (pre ++ List.replicate (size - text.length) 48 ++ text))
     (hl1 : 1 ≤ text.length) (hl40 : text.length < 40) (hch : ∀ c ∈ text, c < 256)
     (hsz : size < 2 ^ 31) :
@@ -412,8 +414,8 @@ def OLStable (I : List Nat → String → Mem → Prop) (sp : Nat) : Prop :=
 
 theorem ol_mid {live : Nat → Prop} {S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d v size : Nat}
-    {pre : List Nat} {t : String} (cb : CharCb live S Q (R0 13) d I) (cx : OLCtx S R0 sp d)
+    {I : List Nat → String → Mem → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} {sp d lo v size : Nat}
+    {pre : List Nat} {t : String} (cb : CharCb live S Q (R0 13) d I lo) (cx : OLCtx S R0 sp d lo)
     (hv : v < 2 ^ 63) (hsz : size < 2 ^ 31) (hstab : OLStable I sp)
     (hk : OLK live S Q I R0 M0 sp
       (pre ++ List.replicate (size - (Num.decText v).length) 48 ++ Num.decText v))
@@ -504,9 +506,9 @@ invariant `I` survives `bc_out_long`'s own stack writes (`OLStable`): sends
 `size` digits) through `out_char`. -/
 theorem bc_out_long_spec {live : Nat → Prop} {S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {I : List Nat → String → Mem → Prop} {M : Mem} {R : Nat → BitVec 64} {sp d v size : Nat}
+    {I : List Nat → String → Mem → Prop} {M : Mem} {R : Nat → BitVec 64} {sp d lo v size : Nat}
     {space : Bool} {cs : List Nat} {t : String}
-    (cb : CharCb live S Q (R 13) d I) (cx : OLCtx S R sp d) (hstab : OLStable I sp)
+    (cb : CharCb live S Q (R 13) d I lo) (cx : OLCtx S R sp d lo) (hstab : OLStable I sp)
     (h10 : R 10 = BitVec.ofNat 64 v) (hv : v < 2 ^ 63) (h11 : R 11 = BitVec.ofNat 64 size)
     (hsz : size < 2 ^ 31) (h12 : R 12 = boolWord space) (hI : I cs t M)
     (hk : OLK live S Q I R M sp (cs ++ Num.outLong v size space)) :

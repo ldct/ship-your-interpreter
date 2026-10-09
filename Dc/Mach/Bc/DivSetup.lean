@@ -60,6 +60,62 @@ theorem DvBase.slots {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64
     out := fun a ho hf => (hm a (by simp only [frameIn] at hf; omega)).trans (bs.out a ho hf) }
 
 
+/-- A live payload byte is at least 16 bytes into the heap. -/
+theorem live_pay_lo {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H) {b : Blk}
+    (hb : b ∈ H.live) {a : Nat} (ha : b.In a) : heapStart + 16 ≤ a := by
+  have h1 : 2147603920 ≤ b.h := (hi.blk (List.mem_append_right _ hb)).lo
+  simp only [Blk.In, Blk.pay] at ha
+  simp only [heapStart]; omega
+
+/-- The bytes the setup's buffer work may change: the three raw buffers and
+the stack below the frame. -/
+abbrev DvRawBytes (sp W : Nat) (D : DvData) (a : Nat) : Prop :=
+  D.b1.In a ∨ D.b2.In a ∨ D.b3.In a ∨ (sp - W ≤ a ∧ a < sp - 208)
+
+/-- `DvBase` through stores to the raw buffers and below the frame. -/
+theorem DvBase.raw {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
+    {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
+    (bs : DvBase S Mt0 M R0 sp W D H F Lh y) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
+    (hm : MemOnly (DvRawBytes sp W D) M' M) : DvBase S Mt0 M' R0 sp W D H F Lh y := by
+  have hi := bs.heap.heap
+  have inH : ∀ b, b ∈ H.live → ∀ a, b.In a → a < heapEnd := fun b hb a ha =>
+    (live_in_heap hi hb ha).2
+  have hfr : ∀ a, sp - 208 ≤ a → imgM M' a = imgM M a := fun a ha => hm a fun h => by
+    rcases h with h | h | h | h
+    · have := inH _ bs.b1l a h; omega
+    · have := inH _ bs.b2l a h; omega
+    · have := inH _ bs.b3l a h; omega
+    · omega
+  refine { bs with
+    saved := bs.saved.transport (lo := 0) (top := 208) (hag := fun a h1 _ => hfr a (by omega))
+    s8 := by rw [ldv_congr .ld fun j _ => hfr _ (by omega)]; exact bs.s8
+    heap := bs.heap.transportOwn
+      (fun a ha => hm a fun h => by
+        rcases h with h | h | h | h
+        · exact live_not_alloc hi bs.b1l h ha
+        · exact live_not_alloc hi bs.b2l h ha
+        · exact live_not_alloc hi bs.b3l h ha
+        · have := (AllocByte.bound hi ha).2; omega)
+      (fun c hc a ha => hm a fun h => by
+        have hcl := bs.heap.owned_live hc
+        rcases h with h | h | h | h
+        · exact live_apart hi bs.b1l hcl (fun e => bs.b1n (e ▸ hc)) h ha
+        · exact live_apart hi bs.b2l hcl (fun e => bs.b2n (e ▸ hc)) h ha
+        · exact live_apart hi bs.b3l hcl (fun e => bs.b3n (e ▸ hc)) h ha
+        · have := live_in_heap hi hcl ha; omega)
+      (fun j hj => hm _ fun h => by
+        rcases h with h | h | h | h
+        · have := live_in_heap hi bs.b1l h; simp only [bcFreeAddr, heapStart, heapEnd] at this; omega
+        · have := live_in_heap hi bs.b2l h; simp only [bcFreeAddr, heapStart, heapEnd] at this; omega
+        · have := live_in_heap hi bs.b3l h; simp only [bcFreeAddr, heapStart, heapEnd] at this; omega
+        · simp only [bcFreeAddr, heapEnd] at h hab; omega)
+    out := fun a ho hn => (hm a fun h => by
+        rcases h with h | h | h | h
+        · exact ho.1 (live_in_heap hi bs.b1l h)
+        · exact ho.1 (live_in_heap hi bs.b2l h)
+        · exact ho.1 (live_in_heap hi bs.b3l h)
+        · exact hn ⟨by omega, by omega⟩).trans (bs.out a ho hn) }
+
 /-- `subw` of two small naturals, the first not below the second. -/
 theorem subw_ofNat_le {a b : Nat} (h : b ≤ a) (ha : a < 2 ^ 30) :
     BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) -
@@ -250,6 +306,324 @@ theorem dvs_init {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [h9]) (by bsimp [h18]) (by bsimp [h19]) (by bsimp [h21, hqv]) (by bsimp [h22])
       (by bsimp [h23]) (by bsimp [h24]) (by bsimp [h20]) (by bsimp [h16]) (by bsimp [h17])
       (by bsimp [hoff]) (by keeps_tac hkp) hnext
+
+
+/-! ## Normalisation (`0x80005be0`) -/
+
+/-- The registers the normalisation may change. -/
+abbrev normClob : List Nat := [1, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 27, 28, 29, 30, 31]
+
+/-- The second `_one_mult` at `0x80005c24`: the divisor's `L` digits at `N`
+times `norm`, in place; then `a7 = vs[0]`, `a6 = L + 1`. -/
+theorem dvs_norm2 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
+    {Lh : List NumObj} {y : NumObj} {vs0 : List Nat} {nm : Nat}
+    (cx : DvCtx S sp W) (bs : DvBase S Mt0 M R0 sp W D H F Lh y)
+    (hv0l : vs0.length = D.L) (hv0d : IsDigits vs0) (hv00 : 0 < vs0.getD 0 0)
+    (hnm : nm = 10 / (vs0.getD 0 0 + 1)) (hn1 : nm ≠ 1)
+    (hV : D.vs = digBE (dvalBE vs0 * nm) D.L) (hL1 : 1 ≤ D.L) (hLs : D.L < 2 ^ 30)
+    (hv : ∀ i, i < D.L → imgM M (D.N + i) = BitVec.ofNat 8 (vs0.getD i 0))
+    (hsent : imgM M (D.N + D.L) = 0#8)
+    (s16 : ldv .ld M (sp - 208 + 16) = BitVec.ofNat 64 (D.L + 1))
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h23 : R 23 = BitVec.ofNat 64 D.L)
+    (h24 : R 24 = BitVec.ofNat 64 D.N) (h27 : R 27 = BitVec.ofNat 64 nm)
+    (hnext : ∀ R' M', DvBase S Mt0 M' R0 sp W D H F Lh y →
+      (∀ a, ¬ D.b2.In a → ¬ (sp - W ≤ a ∧ a < sp - 208) → imgM M' a = imgM M a) →
+      (∀ i, i < D.L → imgM M' (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0)) →
+      imgM M' (D.N + D.L) = 0#8 → R' 17 = BitVec.ofNat 64 (D.vs.getD 0 0) →
+      R' 16 = BitVec.ofNat 64 (D.L + 1) → Keeps normClob R' R →
+      DW live S Q 0x80005c40#64 R' M') :
+    DW live S Q 0x80005c24#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hi := bs.heap.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hn0 := live_pay_lo hi bs.b2l (bs.nIn 0 (Nat.zero_le _))
+  have hnL := live_in_heap hi bs.b2l (bs.nIn D.L (Nat.le_refl _))
+  simp only [heapStart, heapEnd, Nat.add_zero] at hn0 hnL hab
+  have hd0 := hv0d.getD 0
+  obtain ⟨hnp, hn5⟩ := norm_pos hv00 hd0
+  have hnm10 : nm < 10 := by omega
+  bc_run hlive hS [h2, h23, h24, h27] at 0x80003ebc
+  have hoa : OmArgs M D.N D.L nm D.N vs0 :=
+    ⟨hv0l, hv0d, hv, hnm10, by omega, by simp only [heapStart]; omega, by simp only [heapEnd]; omega,
+      by simp only [heapStart]; omega, by simp only [heapEnd]; omega, .inl rfl, fun h => absurd h hn1⟩
+  refine one_mult_spec hlive (cx.om hS (by bsimp [h2]) (by bsimp [])) hoa (by bsimp [])
+    (by bsimp []) (by bsimp []) (by bsimp []) fun R1 M1 hk1 hp => ?_
+  bsimp []
+  -- the product fits: no carry
+  have hV0 : dvalBE vs0 * nm < 10 ^ D.L := by
+    have hsp := dvalBE_digit hv0d (i := 0) (by omega)
+    rw [hv0l, Nat.sub_zero] at hsp
+    have hlt := dvalBE_lt hv0d
+    rw [hv0l] at hlt
+    have hE : 0 < 10 ^ (D.L - 1) := Nat.pow_pos (by decide)
+    have hpw : 10 ^ D.L = 10 * 10 ^ (D.L - 1) := by
+      rw [← Nat.pow_succ']; congr 1; omega
+    have htop : dvalBE vs0 / 10 ^ (D.L - 1) < 10 := by
+      rw [Nat.div_lt_iff_lt_mul hE]; omega
+    rw [Nat.mod_eq_of_lt htop] at hsp
+    have hb := (norm_bounds (E := 10 ^ (D.L - 1)) (Vr := dvalBE vs0 % 10 ^ (D.L - 1)) hv00 hd0
+      (Nat.mod_lt _ hE)).1
+    have e : dvalBE vs0 * nm = (vs0.getD 0 0 * 10 ^ (D.L - 1) + dvalBE vs0 % 10 ^ (D.L - 1)) *
+        (10 / (vs0.getD 0 0 + 1)) := by
+      rw [← hnm, ← hsp, Nat.mul_comm (dvalBE vs0 / _), Nat.div_add_mod]
+    rw [e, hpw]; exact hb
+  have hc0 : dvalBE vs0 * nm / 10 ^ D.L = 0 := Nat.div_eq_of_lt hV0
+  have hfr : ∀ a, ¬ D.b2.In a → ¬ (sp - W ≤ a ∧ a < sp - 208) → imgM M1 a = imgM M a := by
+    intro a h2' h3
+    rcases Nat.lt_or_ge (a + 1) D.N with h | h
+    · exact hp.rest a (.inl h) (by simp only [frameIn]; omega)
+    rcases Nat.lt_or_ge a (D.N + D.L) with h' | h'
+    · rcases Nat.lt_or_ge a D.N with h'' | h''
+      · rw [show a = D.N - 1 by omega]; exact hp.keep hc0
+      · exfalso; apply h2'
+        have := bs.nIn (a - D.N) (by omega)
+        rwa [show D.N + (a - D.N) = a by omega] at this
+    · exact hp.rest a (.inr h') (by simp only [frameIn]; omega)
+  have bs1 := bs.raw (by simp only [heapEnd]; omega) (by omega) fun a ha =>
+    hfr a (fun h => ha (.inr (.inl h))) (fun h => ha (.inr (.inr (.inr h))))
+  have hvs : ∀ i, i < D.L → imgM M1 (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0) := fun i hi' => by
+    rw [hp.digits i hi', hV, digBE_getD hi']
+  have hn00 := live_in_heap hi bs.b2l (bs.nIn 0 (Nat.zero_le _))
+  have hl0 : ldv .lbu M1 D.N = BitVec.ofNat 64 (D.vs.getD 0 0) := by
+    have := hvs 0 (by omega); rw [Nat.add_zero] at this
+    exact lbu_digit (by rw [hV, digBE_getD (by omega)]; exact Nat.mod_lt _ (by decide)) this
+  have s16' : ldv .ld M1 (sp - 208 + 16) = BitVec.ofNat 64 (D.L + 1) := by
+    rw [ldv_congr .ld fun j hj => hp.rest _ (.inr (by simp only [widthOfM] at hj; omega))
+      (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+    exact s16
+  have h24' : R1 24 = BitVec.ofNat 64 D.N := by rw [hk1.get 24]; bsimp [h24]
+  have h2' : R1 2 = BitVec.ofNat 64 (sp - 208) := by rw [hk1.get 2]; bsimp [h2]
+  bc_run hlive hS [h24', h2', hl0, s16'] at 0x80005c40
+  all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+  exact hnext _ _ bs1 hfr hvs
+    ((hp.rest _ (.inr (Nat.le_refl _)) (by simp only [frameIn]; omega)).trans hsent)
+    (by bsimp []) (by bsimp []) (by
+      keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps normClob _ R)))
+
+
+/-- The dividend buffer's value with its last digit zero: ten times its
+first `T - 1` digits, and those below `10^(T-2)` when the first digit is zero. -/
+theorem dvx_split {xs : List Nat} (hd : IsDigits xs) (hl : 2 ≤ xs.length)
+    (h0 : xs.getD 0 0 = 0) (hz : xs.getD (xs.length - 1) 0 = 0) :
+    dvalBE xs = 10 * dvalBE (xs.take (xs.length - 1)) ∧
+      dvalBE (xs.take (xs.length - 1)) < 10 ^ (xs.length - 2) := by
+  have ht := dvalBE_take hd (xs.length - 1)
+  rw [show xs.length - (xs.length - 1) = 1 by omega, Nat.pow_one] at ht
+  have hlast := dvalBE_digit hd (i := xs.length - 1) (by omega)
+  rw [show xs.length - 1 - (xs.length - 1) = 0 by omega, Nat.pow_zero, Nat.div_one, hz] at hlast
+  have hfirst := dvalBE_digit hd (i := 0) (by omega)
+  rw [Nat.sub_zero, h0] at hfirst
+  have hlt := dvalBE_lt hd
+  have hp : 10 ^ xs.length = 10 * 10 ^ (xs.length - 1) := by rw [← Nat.pow_succ']; congr 1; omega
+  have hp2 : 10 ^ (xs.length - 1) = 10 * 10 ^ (xs.length - 2) := by
+    rw [← Nat.pow_succ']; congr 1; omega
+  have hE : 0 < 10 ^ (xs.length - 1) := Nat.pow_pos (by decide)
+  have htop : dvalBE xs / 10 ^ (xs.length - 1) < 10 := by rw [Nat.div_lt_iff_lt_mul hE]; omega
+  rw [Nat.mod_eq_of_lt htop] at hfirst
+  have hX : dvalBE xs < 10 ^ (xs.length - 1) := by
+    have := Nat.div_add_mod (dvalBE xs) (10 ^ (xs.length - 1))
+    rw [hfirst, Nat.mul_zero, Nat.zero_add] at this
+    rw [← this]; exact Nat.mod_lt _ hE
+  rw [ht]
+  constructor
+  · have := Nat.div_add_mod (dvalBE xs) 10; omega
+  · rw [Nat.div_lt_iff_lt_mul (by decide)]; omega
+
+/-- The normalised dividend's digits from `_one_mult` of the first `T - 1`. -/
+theorem dvx_norm_digit {xs : List Nat} (hd : IsDigits xs) (hl : 2 ≤ xs.length)
+    (h0 : xs.getD 0 0 = 0) (hz : xs.getD (xs.length - 1) 0 = 0) (nm : Nat) {i : Nat}
+    (hi : i < xs.length - 1) :
+    (digBE (dvalBE xs * nm) xs.length).getD i 0 =
+      dvalBE (xs.take (xs.length - 1)) * nm / 10 ^ (xs.length - 1 - 1 - i) % 10 := by
+  obtain ⟨e, -⟩ := dvx_split hd hl h0 hz
+  rw [digBE_getD (by omega), e, show xs.length - 1 - i = (xs.length - 1 - 1 - i) + 1 by omega,
+    Nat.pow_succ, Nat.mul_comm 10, Nat.mul_assoc, Nat.mul_comm 10 nm, ← Nat.mul_assoc,
+    Nat.mul_div_mul_right _ _ (by decide)]
+
+theorem dvx_norm_last {xs : List Nat} (hd : IsDigits xs) (hl : 2 ≤ xs.length)
+    (h0 : xs.getD 0 0 = 0) (hz : xs.getD (xs.length - 1) 0 = 0) (nm : Nat) :
+    (digBE (dvalBE xs * nm) xs.length).getD (xs.length - 1) 0 = 0 := by
+  obtain ⟨e, -⟩ := dvx_split hd hl h0 hz
+  rw [digBE_getD (by omega), e, show xs.length - 1 - (xs.length - 1) = 0 by omega, Nat.pow_zero,
+    Nat.div_one, Nat.mul_assoc, Nat.mul_mod_right]
+
+
+/-- **The normalisation** at `0x80005be0`: `norm = 10 / (v0 + 1)`; unless it
+is `1`, `_one_mult` of the dividend's first `T - 1` digits and of the
+divisor's `L` digits, in place. -/
+theorem dvs_norm {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
+    {Lh : List NumObj} {y : NumObj} {xs0 vs0 : List Nat}
+    (cx : DvCtx S sp W) (bs : DvBase S Mt0 M R0 sp W D H F Lh y)
+    (hx0l : xs0.length = D.xs.length) (hx0d : IsDigits xs0) (hx2 : 2 ≤ xs0.length)
+    (hx00 : xs0.getD 0 0 = 0) (hx0z : xs0.getD (xs0.length - 1) 0 = 0)
+    (hv0l : vs0.length = D.L) (hv0d : IsDigits vs0) (hv00 : 0 < vs0.getD 0 0)
+    (hX : D.xs = digBE (dvalBE xs0 * (10 / (vs0.getD 0 0 + 1))) xs0.length)
+    (hV : D.vs = digBE (dvalBE vs0 * (10 / (vs0.getD 0 0 + 1))) D.L) (hL1 : 1 ≤ D.L)
+    (hLs : D.L < 2 ^ 30) (hTs : xs0.length < 2 ^ 30)
+    (hx : ∀ i, i < xs0.length → imgM M (D.P + i) = BitVec.ofNat 8 (xs0.getD i 0))
+    (hv : ∀ i, i < D.L → imgM M (D.N + i) = BitVec.ofNat 8 (vs0.getD i 0))
+    (hsent : imgM M (D.N + D.L) = 0#8)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h16 : R 16 = BitVec.ofNat 64 (D.L + 1))
+    (h18 : R 18 = BitVec.ofNat 64 D.P) (h23 : R 23 = BitVec.ofNat 64 D.L)
+    (h24 : R 24 = BitVec.ofNat 64 D.N) (h25 : R 25 = BitVec.ofNat 64 (xs0.length - 2))
+    (hnext : ∀ R' M', DvBase S Mt0 M' R0 sp W D H F Lh y →
+      (∀ i, i < D.xs.length → imgM M' (D.P + i) = BitVec.ofNat 8 (D.xs.getD i 0)) →
+      (∀ i, i < D.L → imgM M' (D.N + i) = BitVec.ofNat 8 (D.vs.getD i 0)) →
+      imgM M' (D.N + D.L) = 0#8 → R' 17 = BitVec.ofNat 64 (D.vs.getD 0 0) →
+      R' 16 = BitVec.ofNat 64 (D.L + 1) → Keeps normClob R' R →
+      DW live S Q 0x80005c40#64 R' M') :
+    DW live S Q 0x80005be0#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hi := bs.heap.heap
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  have hn0 := live_pay_lo hi bs.b2l (bs.nIn 0 (Nat.zero_le _))
+  have hnL := live_in_heap hi bs.b2l (bs.nIn D.L (Nat.le_refl _))
+  simp only [heapStart, heapEnd, Nat.add_zero] at hn0 hnL hab
+  have hd0 := hv0d.getD 0
+  obtain ⟨hnp, hn5⟩ := norm_pos hv00 hd0
+  have hl0 : ldv .lbu M D.N = BitVec.ofNat 64 (vs0.getD 0 0) := by
+    have := hv 0 hL1; rw [Nat.add_zero] at this; exact lbu_digit hd0 this
+  bc_run hlive hS [h2, h16, h24, hl0] at 0x80007908
+  all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+  refine divdi3_spec hlive _ (by bsimp []) fun R1 hk1 hr1 => ?_
+  bsimp [] at hr1 ⊢
+  rw [sdiv_small (by omega) (by omega) (by omega)] at hr1
+  generalize hnm : 10 / (vs0.getD 0 0 + 1) = nm at hr1 hX hV hnp hn5
+  have s16 : ldv .ld (writeLog (writeLog M [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+      [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))]) (sp - 208 + 16) =
+      BitVec.ofNat 64 (vs0.getD 0 0) := by simp (disch := omega) only [ldv_ld_miss, ldv_store_hit]
+  have s24 : ldv .ld (writeLog (writeLog M [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+      [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))]) (sp - 208 + 24) =
+      BitVec.ofNat 64 (D.L + 1) := by simp (disch := omega) only [ldv_ld_miss, ldv_store_hit]
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 208) := by rw [hk1.get 2]; bsimp [h2]
+  bc_run hlive hS [hr1, q2, sxw_ofNat] at 0x80005c40 0x80005c0c
+  all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+  all_goals simp (disch := omega) only [ldv_ld_miss, ldv_store_hit]
+  have hm2 : ∀ a, (a < sp - 208 + 16 ∨ sp - 208 + 104 ≤ a) →
+      imgM (writeLog (writeLog M [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+        [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))]) a = imgM M a := fun a ha => by
+    simp (disch := omega) only [imgM_store_miss]
+  have bs2 := bs.slots (by simp only [heapEnd]; omega) (by omega) hm2
+  have inH : ∀ b, b ∈ H.live → ∀ a, b.In a →
+      imgM (writeLog (writeLog M [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+        [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))]) a = imgM M a := fun b hb a ha =>
+    hm2 a (.inl (by have := (live_in_heap hi hb ha).2; simp only [heapEnd] at this; omega))
+  have hv2 : ∀ i, i < D.L → imgM (writeLog (writeLog M [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+      [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))]) (D.N + i) =
+      BitVec.ofNat 8 (vs0.getD i 0) := fun i hi' =>
+    (inH _ bs.b2l _ (bs.nIn i (by omega))).trans (hv i hi')
+  have hsent2 := (inH _ bs.b2l _ (bs.nIn _ (Nat.le_refl _))).trans hsent
+  have hx2' : ∀ i, i < xs0.length → imgM (writeLog (writeLog M
+      [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+      [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))]) (D.P + i) =
+      BitVec.ofNat 8 (xs0.getD i 0) := fun i hi' =>
+    (inH _ bs.b1l _ (bs.pIn i (by omega))).trans (hx i hi')
+  have K1 : Keeps normClob (upd (upd (upd (upd R1 27 (BitVec.ofNat 64 nm)) 13 1#64) 17
+        (BitVec.ofNat 64 (vs0.getD 0 0))) 16 (BitVec.ofNat 64 (D.L + 1))) R := by
+    keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps normClob _ R))
+  · intro he
+    have hn1 : nm = 1 := ofNat64_eq (by omega) (by omega) he
+    subst hn1
+    rw [Nat.mul_one, digBE_self hx0d] at hX
+    rw [Nat.mul_one, ← hv0l, digBE_self hv0d] at hV
+    refine hnext _ _ bs2 (fun i hi' => ?_) (fun i hi' => ?_) hsent2 (by bsimp [hV]) (by bsimp []) K1
+    · rw [hX] at hi' ⊢; exact hx2' i hi'
+    · rw [hV]; exact hv2 i hi'
+  · intro hne
+    have hn1 : nm ≠ 1 := fun h => hne (by rw [h])
+    have h18' : R1 18 = BitVec.ofNat 64 D.P := by rw [hk1.get 18]; bsimp [h18]
+    have h25' : R1 25 = BitVec.ofNat 64 (xs0.length - 2) := by rw [hk1.get 25]; bsimp [h25]
+    bc_run hlive hS [q2, h18', h25']
+      at 0x80003ebc
+    all_goals first | dc_frame cx.frame | skip
+    have hp0 := live_pay_lo hi bs.b1l (bs.pIn 0 (by omega))
+    have hpT := live_in_heap hi bs.b1l (bs.pIn (xs0.length - 1) (by omega))
+    simp only [heapStart, heapEnd, Nat.add_zero] at hp0 hpT
+    obtain ⟨hX0, hX'⟩ := dvx_split hx0d hx2 hx00 hx0z
+    have hpw : 10 ^ (xs0.length - 1) = 10 * 10 ^ (xs0.length - 2) := by
+      rw [← Nat.pow_succ']; congr 1; omega
+    have hc0 : dvalBE (xs0.take (xs0.length - 1)) * nm / 10 ^ (xs0.length - 1) = 0 := by
+      refine Nat.div_eq_of_lt ?_
+      rw [hpw]
+      have : dvalBE (xs0.take (xs0.length - 1)) * nm ≤ dvalBE (xs0.take (xs0.length - 1)) * 5 :=
+        Nat.mul_le_mul_left _ hn5
+      omega
+    refine one_mult_spec hlive (cx.om hS (by bsimp [q2]) (by bsimp [])) (n := xs0.length - 1)
+      (d := nm) (p := D.P) (r := D.P) (xs := xs0.take (xs0.length - 1))
+      ⟨by rw [List.length_take]; omega, hx0d.take _, fun i hi' => ?_, by omega, by omega,
+        by simp only [heapStart]; omega, by simp only [heapEnd]; omega,
+        by simp only [heapStart]; omega, by simp only [heapEnd]; omega, .inl rfl,
+        fun h => absurd h hn1⟩
+      (by bsimp [h18']) (by bsimp [h25']; congr 1; omega) (by bsimp []) (by bsimp [h18'])
+      fun R3 M3 hk3 hp => ?_
+    · simp (disch := omega) only [imgM_store_miss]
+      rw [List.getD_eq_getElem?_getD, List.getElem?_take_of_lt hi', ← List.getD_eq_getElem?_getD]
+      exact hx i (by omega)
+    bsimp []
+    have hm3 : ∀ a, (a < sp - 208 + 16 ∨ sp - 208 + 104 ≤ a) →
+        imgM (writeLog (writeLog (writeLog M [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+          [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))])
+          [(sp - 208 + 16, 8, BitVec.ofNat 64 (D.L + 1))]) a = imgM M a := fun a ha => by
+      simp (disch := omega) only [imgM_store_miss]
+    have bs3 := bs.slots (by simp only [heapEnd]; omega) (by omega) hm3
+    have hfr : ∀ a, ¬ D.b1.In a → ¬ (sp - W ≤ a ∧ a < sp - 208) → imgM M3 a = imgM
+        (writeLog (writeLog (writeLog M [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+          [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))])
+          [(sp - 208 + 16, 8, BitVec.ofNat 64 (D.L + 1))]) a := by
+      intro a h1 h3
+      have hrest : ∀ a, (a + 1 < D.P ∨ D.P + (xs0.length - 1) ≤ a) → ¬ (sp - W ≤ a ∧ a < sp - 208) →
+          imgM M3 a = imgM (writeLog (writeLog (writeLog M [(sp - 208 + 24, 8, BitVec.ofNat 64 (D.L + 1))])
+          [(sp - 208 + 16, 8, BitVec.ofNat 64 (vs0.getD 0 0))])
+          [(sp - 208 + 16, 8, BitVec.ofNat 64 (D.L + 1))]) a := fun a h h' => hp.rest a h (by simp only [frameIn]; omega)
+      rcases Nat.lt_or_ge (a + 1) D.P with h | h
+      · exact hrest a (.inl h) h3
+      rcases Nat.lt_or_ge a (D.P + (xs0.length - 1)) with h' | h'
+      · rcases Nat.lt_or_ge a D.P with h'' | h''
+        · rw [show a = D.P - 1 by omega, hp.keep hc0]
+        · exfalso; apply h1
+          have := bs.pIn (a - D.P) (by omega)
+          rwa [show D.P + (a - D.P) = a by omega] at this
+      · exact hrest a (.inr h') h3
+    have bs4 := bs3.raw (by simp only [heapEnd]; omega) (by omega) (M' := M3) fun a ha =>
+      hfr a (fun h => ha (.inl h)) (fun h => ha (.inr (.inr (.inr h))))
+    have K1' : Keeps normClob R1 R :=
+      (hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _ : Keeps normClob _ R)
+    have hb12 := fun a => live_apart (a := a) hi bs.b1l bs.b2l bs.b12
+    have hN : ∀ i, i ≤ D.L → D.N + i < heapEnd := fun i hi' =>
+      (live_in_heap hi bs.b2l (bs.nIn i hi')).2
+    simp only [heapEnd] at hN
+    refine dvs_norm2 hlive cx bs4 hv0l hv0d hv00 hnm.symm hn1 hV hL1 hLs
+      (fun i hi' => (hfr _ (fun h => hb12 _ h (bs.nIn i (by omega)))
+        (by have := hN i (by omega); omega)).trans
+        ((hm3 _ (.inl (by have := hN i (by omega); omega))).trans (hv i hi')))
+      ((hfr _ (fun h => hb12 _ h (bs.nIn _ (Nat.le_refl _))) (by have := hN _ (Nat.le_refl _); omega)).trans
+        ((hm3 _ (.inl (by have := hN _ (Nat.le_refl _); omega))).trans hsent))
+      (by rw [ldv_congr .ld fun j hj => hp.rest _ (.inr (by simp only [widthOfM] at hj; omega))
+            (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+          simp (disch := omega) only [ldv_ld_miss, ldv_store_hit])
+      (by rw [hk3.get 2]; bsimp [q2]) (by rw [hk3.get 23]; bsimp [hk1.get 23, h23])
+      (by rw [hk3.get 24]; bsimp [hk1.get 24, h24]) (by rw [hk3.get 27]; bsimp [])
+      fun R4 M4 bs5 hfr4 hvs4 hsent4 h17 h16 K4 => hnext R4 M4 bs5 (fun i hi' => ?_) hvs4 hsent4 h17 h16
+        (K4.trans (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac K1'))))
+    have hiT : i < xs0.length := by rw [hx0l]; exact hi'
+    have hP := live_in_heap hi bs.b1l (bs.pIn i hi')
+    simp only [heapEnd] at hP
+    rw [hfr4 _ (fun h => hb12 _ (bs.pIn i hi') h) (by omega), hX]
+    rcases Nat.lt_or_ge i (xs0.length - 1) with h | h
+    · rw [hp.digits i h, dvx_norm_digit hx0d hx2 hx00 hx0z nm h]
+    · rw [show i = xs0.length - 1 by omega, dvx_norm_last hx0d hx2 hx00 hx0z nm,
+        hp.rest _ (.inr (Nat.le_refl _)) (by simp only [frameIn]; omega), hm3 _ (.inl (by omega)),
+        hx _ (by omega), hx0z]
 
 end
 

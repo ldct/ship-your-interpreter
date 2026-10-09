@@ -50,4 +50,33 @@ theorem quot_digits_val {ds : List Nat} {off K Q : Nat} (hl : ds.length = off + 
     rw [show off + (i - off) = i by omega] at e
     rw [e, hl]; congr 3; omega
 
+
+/-! ## Big-endian digits of a value -/
+
+/-- The `n` low digits of `X`, big-endian. -/
+abbrev digBE (X n : Nat) : List Nat := (digLE X n).reverse
+
+theorem digBE_length (X n : Nat) : (digBE X n).length = n := by
+  rw [List.length_reverse, digLE_length]
+
+theorem digBE_digits (X n : Nat) : IsDigits (digBE X n) := fun d hd =>
+  digLE_digits X n d (List.mem_reverse.mp hd)
+
+theorem digBE_getD {X n i : Nat} (hi : i < n) : (digBE X n).getD i 0 = X / 10 ^ (n - 1 - i) % 10 := by
+  have hl := digLE_length X n
+  rw [List.getD_eq_getElem?_getD, List.getElem?_reverse (by omega), hl, ← List.getD_eq_getElem?_getD,
+    digLE_getD _ _ _ (by omega)]
+
+theorem digBE_val (X n : Nat) : dvalBE (digBE X n) = X % 10 ^ n := by
+  rw [dvalBE_reverse, digLE_val]
+
+/-- A digit list is the big-endian digits of its value. -/
+theorem digBE_self {xs : List Nat} (h : IsDigits xs) : digBE (dvalBE xs) xs.length = xs := by
+  apply List.ext_getElem (digBE_length _ _)
+  intro i h1 h2
+  have e := digBE_getD (X := dvalBE xs) (n := xs.length) (i := i) h2
+  rw [dvalBE_digit h h2, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h1,
+    List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h2] at e
+  simpa using e
+
 end Dc.BcModel

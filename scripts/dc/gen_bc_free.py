@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generate inlined `bc_free_num` sites on a register with an `auipc` free-list push.
+"""Generate inlined `bc_free_num` sites on a register, with an `auipc` free-list push
+or a push through a register holding `&_bc_Free_list`.
 
 Each site (`Dc/Mach/Bc/FreeSite.lean`) is described by its program points:
 
@@ -12,7 +13,9 @@ Each site (`Dc/Mach/Bc/FreeSite.lean`) is described by its program points:
     Uv  the push for a view, ending at Nv
 
 and gets `ffree_<P0>` (one `FreeK cl` continuation per route) plus, with a
-null test, `fnull_<P0>`.
+null test, `fnull_<P0>`. A site whose push reads `_bc_Free_list` through a base
+register (`ld a5,0(b)`; `sd r,0(b)`; `sd a5,16(r)`) names it; its lemmas take
+`R b = &_bc_Free_list`.
 
 Output (do not hand-edit): `Dc/Mach/Bc/FreeSites.lean`.
 
@@ -24,8 +27,9 @@ import sys
 BASE_CL = [1, 10, 14, 15]
 
 # name, P0, register, null test target (or None), P, D, J, Uo, No, Uv, Nv, Nd, extra clobbers,
-# and whether the refcount part (P0 to D) is generated: `False` for a site whose
-# decrement interleaves another instruction (its caller steps to D by hand)
+# whether the refcount part (P0 to D) is generated (`False` for a site whose
+# decrement interleaves another instruction: its caller steps to D by hand),
+# and the push's base register (None: `auipc`)
 SITES = [
     # `bc_divmod`: `temp` after `bc_sub`, quotient wanted
     ("temp (quotient path)", 0x800060a8, 9, 0x8000611c, 0x800060ac, 0x800060bc, 0x800060c4,
@@ -41,6 +45,21 @@ SITES = [
      0x800063d8, 0x800063ec, 0x800063d8, 0x800063ec, 0x800063ec, [], True),
     ("exponent (`bc_raisemod`)", 0x800063ec, 24, 0x80006420, 0x800063f0, 0x80006400, 0x80006408,
      0x8000640c, 0x80006420, 0x8000640c, 0x80006420, 0x80006420, [], True),
+    # `bc_sqrt`: `guess1` after the initial `bc_raise`
+    ("guess1 (`bc_sqrt` start)", 0x80006b24, 8, None, 0x80006b24, 0x80006b34, 0x80006b3c,
+     0x80006b40, 0x80006b54, 0x80006b40, 0x80006b54, 0x80006b54, [], True),
+    # `bc_sqrt`: the previous guess at the loop head (push through `s7`)
+    ("guess1 (`bc_sqrt` loop)", 0x80006b74, 26, 0x80006ba0, 0x80006b78, 0x80006b88, 0x80006b90,
+     0x80006b94, 0x80006ba0, 0x80006b94, 0x80006ba0, 0x80006ba0, [], True, 23),
+    # `bc_sqrt`: `guess`, `guess1`, `point5`, `diff` at the exit
+    ("guess (`bc_sqrt` exit)", 0x80006d88, 25, 0x80006dbc, 0x80006d8c, 0x80006d9c, 0x80006da4,
+     0x80006da8, 0x80006dbc, 0x80006da8, 0x80006dbc, 0x80006dbc, [], True),
+    ("guess1 (`bc_sqrt` exit)", 0x80006dbc, 8, None, 0x80006dbc, 0x80006dcc, 0x80006dd4,
+     0x80006dd8, 0x80006dec, 0x80006dd8, 0x80006dec, 0x80006dec, [], True),
+    ("point5 (`bc_sqrt` exit)", 0x80006dec, 20, None, 0x80006dec, 0x80006dfc, 0x80006e04,
+     0x80006e08, 0x80006e1c, 0x80006e08, 0x80006e1c, 0x80006e1c, [], True),
+    ("diff (`bc_sqrt` exit)", 0x80006e1c, 26, None, 0x80006e1c, 0x80006e2c, 0x80006e34,
+     0x80006e38, 0x80006e4c, 0x80006e38, 0x80006e4c, 0x80006e4c, [], True),
 ]
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "Dc/Mach/Bc/FreeSites.lean"
@@ -95,6 +114,38 @@ theorem fpush_{P0}_{U} {live : Nat → Prop} {S : Nat → Prop}
 
 """
 
+PUSH_B = """/-- The struct pushed on `_bc_Free_list` at `0x{U}` (site `0x{P0}`, through `x{b}`). -/
+theorem fpush_{P0}_{U} {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M0 M1 : Mem} {R0 R : Nat → BitVec 64} {H H' : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (hr1 : x.rep.refs = 1)
+    (hpost : BcHeap S (writeLog (writeLog M1 [(bcFreeAddr, 8, BitVec.ofNat 64 x.rep.p)])
+      [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))]) H' (x.sb :: F) (L1 ++ L2))
+    (hout : ∀ a, OutHeap a → imgM M1 a = imgM M0 a)
+    (wg : ldv .ld M1 bcFreeAddr = BitVec.ofNat 64 (deadHead F))
+    (hS : HeapOwn S) (hgl : ∀ a, bcFreeAddr ≤ a → a < bcFreeAddr + 8 → S a)
+    (hp : 2147603920 ≤ x.rep.p) (hp' : x.rep.p + 40 ≤ 2273312768) (hpa : x.rep.p % 8 = 0)
+    (hkp : Keeps {CL} R R0) (hx : R {r} = BitVec.ofNat 64 x.rep.p) {HBS}
+    (hk : FreeK {CL} live S Q 0x{N}#64 R0 M0 fr H F L1 L2 x) :
+    DW live S Q 0x{U}#64 R M1 := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hgl' : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hgl b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
+  simp only [bcFreeAddr] at wg hpost hb ⊢
+  apply st_{U} hlive
+  · bsimp [hb]; bc_addr
+  · bsimp [hb]; exact hgl'
+  bsimp [hb, wg]
+  bc_run hlive hS [hx, hb] at 0x{N}
+  all_goals first | exact hgl' | (simp only [StOK, and_true]; omega) | skip
+  refine hk _ _ _ _ _ (by keeps_tac hkp) (.rel hr1) hpost fun a ha _ => ?_
+  have ha' := ha
+  simp only [OutHeap, heapStart, heapEnd, bcFreeAddr] at ha'
+  rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), hout a ha]
+
+"""
+
 TEMPLATE = """/-- An owner's buffer freed, from `0x{D}` (`n_refs` now `0`). -/
 theorem ffree_owner_{P0} {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
@@ -104,7 +155,7 @@ theorem ffree_owner_{P0} {live : Nat → Prop} {S : Nat → Prop}
     (hM1 : M1 = writeLog M [(x.rep.p + 12, 4, v)])
     (hi1 : HeapInv S M1 H) (wg : ldv .ld M1 2147601840 = BitVec.ofNat 64 (deadHead F))
     (hfr1 : ∀ a, OutHeap a → imgM M1 a = imgM M a) (hkp : Keeps {CL} R R0)
-    (hx : R {r} = BitVec.ofNat 64 x.rep.p)
+    (hx : R {r} = BitVec.ofNat 64 x.rep.p) {HBS}
     (hk : FreeK {CL} live S Q 0x{No}#64 R0 M fr H F L1 L2 x) :
     DW live S Q 0x{D}#64 R M1 := by
   have hi := h.heap
@@ -140,7 +191,7 @@ theorem ffree_owner_{P0} {live : Nat → Prop} {S : Nat → Prop}
   exact fpush_{P0}_{Uo} hlive hr1 (h.freeOwner ho (hnv ho) hl hfp)
     (fun a ha => (hfp.frame a (OutHeap.not_alloc hi ha)).trans (hfr1 a ha)) wg3 hS h.globOwn
     (by omega) (by omega) (by omega) (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac hkp)))
-    (by rw [hk1.get {r}]; bsimp [hx]) hk
+    (by rw [hk1.get {r}]; bsimp [hx]) {HBO}hk
 
 /-- A view's struct released, from `0x{D}` (`n_refs` now `0`). -/
 theorem ffree_view_{P0} {live : Nat → Prop} {S : Nat → Prop}
@@ -148,7 +199,7 @@ theorem ffree_view_{P0} {live : Nat → Prop} {S : Nat → Prop}
     {M : Mem} {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hv : ¬ x.Owns)
     (hr1 : x.rep.refs = 1) (v : BitVec 64) (hkp : Keeps {CL} R R0)
-    (hx : R {r} = BitVec.ofNat 64 x.rep.p)
+    (hx : R {r} = BitVec.ofNat 64 x.rep.p) {HBS}
     (hk : FreeK {CL} live S Q 0x{Nv}#64 R0 M fr H F L1 L2 x) :
     DW live S Q 0x{D}#64 R (writeLog M [(x.rep.p + 12, 4, v)]) := by
   have hi := h.heap
@@ -166,7 +217,7 @@ theorem ffree_view_{P0} {live : Nat → Prop} {S : Nat → Prop}
   exact fpush_{P0}_{Uv} hlive hr1 (h.freeView hv v)
     (fun a ha => by simp only [OutHeap, heapStart, heapEnd] at ha; exact imgM_store_miss _ _ (by omega))
     (by rw [ldv_ld_miss _ _ (by simp only [bcFreeAddr]; omega)]; exact h.dead.head) hS h.globOwn
-    (by omega) (by omega) (by omega) (by keeps_tac hkp) (by bsimp [hx]) hk
+    (by omega) (by omega) (by omega) (by keeps_tac hkp) (by bsimp [hx]) {HBV}hk
 
 """
 
@@ -175,7 +226,7 @@ theorem ffree_rel_{P0} {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr1 : x.rep.refs = 1)
-    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (hx : R {r} = BitVec.ofNat 64 x.rep.p)
+    (hnv : x.Owns → ∀ y ∈ L1, y.db ≠ x.db) (hx : R {r} = BitVec.ofNat 64 x.rep.p) {HBS}
     (hko : FreeK {CL} live S Q 0x{No}#64 R M fr H F L1 L2 x)
     (hkv : FreeK {CL} live S Q 0x{Nv}#64 R M fr H F L1 L2 x) :
     DW live S Q 0x{P}#64 R M := by
@@ -200,15 +251,15 @@ theorem ffree_rel_{P0} {live : Nat → Prop} {S : Nat → Prop}
         simp only [Blk.fin] at hc ⊢; omega)
       (by rw [ldv_ld_miss _ _ (by omega)]; exact h.dead.head)
       (fun a ha => by simp only [OutHeap, heapStart, heapEnd] at ha; exact imgM_store_miss _ _ (by omega))
-      (by keeps_tac Keeps.refl _ _) (by bsimp [hx]) hko
-  · exact ffree_view_{P0} hlive h ho hr1 _ (by keeps_tac Keeps.refl _ _) (by bsimp [hx]) hkv
+      (by keeps_tac Keeps.refl _ _) (by bsimp [hx]) {HBV}hko
+  · exact ffree_view_{P0} hlive h ho hr1 _ (by keeps_tac Keeps.refl _ _) (by bsimp [hx]) {HBV}hkv
 
 /-- One reference fewer at `0x{P}`. -/
 theorem ffree_dec_{P0} {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr2 : 2 ≤ x.rep.refs)
-    (hx : R {r} = BitVec.ofNat 64 x.rep.p)
+    (hx : R {r} = BitVec.ofNat 64 x.rep.p) {HBS}
     (hk : FreeK {CL} live S Q 0x{Nd}#64 R M fr H F L1 L2 x) :
     DW live S Q 0x{P}#64 R M := by
   have hi := h.heap
@@ -237,14 +288,14 @@ theorem ffree_{P0} {live : Nat → Prop} {S : Nat → Prop}
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
     {x : NumObj} (h : BcHeap S M H F (L1 ++ x :: L2)) (hr : 1 ≤ x.rep.refs)
     (hnv : x.rep.refs = 1 → x.Owns → ∀ y ∈ L1, y.db ≠ x.db)
-    (hx : R {r} = BitVec.ofNat 64 x.rep.p)
+    (hx : R {r} = BitVec.ofNat 64 x.rep.p) {HBS}
     (hkd : FreeK {CL} live S Q 0x{Nd}#64 R M fr H F L1 L2 x)
     (hko : FreeK {CL} live S Q 0x{No}#64 R M fr H F L1 L2 x)
     (hkv : FreeK {CL} live S Q 0x{Nv}#64 R M fr H F L1 L2 x) :
     DW live S Q 0x{P0}#64 R M := by
 {NULLSTEP}  rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
-  · exact ffree_rel_{P0} hlive h hr1 (hnv hr1) hx hko hkv
-  · exact ffree_dec_{P0} hlive h hr2 hx hkd
+  · exact ffree_rel_{P0} hlive h hr1 (hnv hr1) hx {HBA}hko hkv
+  · exact ffree_dec_{P0} hlive h hr2 hx {HBA}hkd
 
 """
 
@@ -276,16 +327,16 @@ def hx(v):
     return "%08x" % v
 
 
-def site(name, p0, r, nn, p, d, j, uo, no, uv, nv, nd, extra, full):
+def site(name, p0, r, nn, p, d, j, uo, no, uv, nv, nd, extra, full, base=None):
     cl = "[" + ", ".join(str(z) for z in sorted(BASE_CL + extra)) + "]"
     sub = {"P0": p0, "P": p, "D": d, "J": j, "Uo": uo, "No": no, "Uv": uv, "Nv": nv,
            "Nd": nd}
     out = []
     for (u, n) in sorted({(uo, no), (uv, nv)}):
-        s = PUSH
+        s = PUSH if base is None else PUSH_B
         for k, v in {"P0": p0, "U": u, "U4": u + 4, "N": n}.items():
             s = s.replace("{" + k + "}", hx(v))
-        out.append(s.replace("{r}", str(r)).replace("{CL}", cl))
+        out.append(holes(s, base).replace("{r}", str(r)).replace("{CL}", cl))
     s = TEMPLATE + (TEMPLATE_P.replace("{NULLSTEP}", NULLSTEP if nn is not None else "")
                     if full else "")
     if nn is not None:
@@ -293,8 +344,18 @@ def site(name, p0, r, nn, p, d, j, uo, no, uv, nv, nd, extra, full):
         sub["Nn"] = nn
     for k, v in sorted(sub.items(), key=lambda kv: -len(kv[0])):
         s = s.replace("{" + k + "}", hx(v))
-    out.append(s.replace("{r}", str(r)).replace("{CL}", cl).replace("{name}", name))
+    out.append(holes(s, base).replace("{r}", str(r)).replace("{CL}", cl).replace("{name}", name))
     return "".join(out)
+
+
+def holes(s, base):
+    """The base register's premise and its uses (empty for an `auipc` push)."""
+    if base is None:
+        return (s.replace(" {HBS}", "").replace("{HBA}", "").replace("{HBV}", "")
+                .replace("{HBO}", ""))
+    return (s.replace("{HBS}", "(hb : R %d = BitVec.ofNat 64 bcFreeAddr)" % base)
+            .replace("{HBA}", "hb ").replace("{HBV}", "(by bsimp [hb]) ")
+            .replace("{HBO}", "(by rw [hk1.get %d]; bsimp [hb]) " % base).replace("{b}", str(base)))
 
 
 def render():

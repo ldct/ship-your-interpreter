@@ -98,19 +98,17 @@ theorem RxAt.below {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec
 /-! ## After the references -/
 
 /-- The state after the references at `0x80006298` on: the handles `[power,
-exponent, temp, parity] = [base, hE, _one_, _zero_]`, the exponent `hE`
-holding the integer `m`; `s0` `base`, `s8` the exponent, `s1` `&_zero_`, `s2`
-`mod`, `s3` `scale`, `s4` `&_one_`, `s5` `_one_`, `s7` the result slot. -/
-structure RxW (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
-    (H : Heap) (F : List Blk) (L : List NumObj) (xb xm z o : NumObj) (k Ee : Nat) (hE : RH)
-    (m : Nat) : Prop where
+exponent, temp, parity] = [base, hE, _one_, _zero_]`; `s0` `base`, `s8` the
+exponent, `s1` `&_zero_`, `s2` `mod`, `s3` `scale`, `s4` `&_one_`, `s5`
+`_one_`, `s7` the result slot. -/
+structure RxB (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+    (H : Heap) (F : List Blk) (L : List NumObj) (xb xm z o : NumObj) (k : Nat) (hE : RH) :
+    Prop where
   ra : RxAt S Mt0 M R0 R sp W rxSlots1
   r22 : R 22 = R0 22
   heap : BcHeap S M H F (RList [.ref xb, hE, .ref o, .ref z] L)
   own : RHOwn [.ref xb, hE, .ref o, .ref z] L
   okE : RHOK L hE
-  vE : RxNum hE ⟨false, m, 0⟩ Ee 0
-  nE : hE.base.rep.Norm
   w0 : ldv .ld M (sp - 112 + 0) = BitVec.ofNat 64 xb.rep.p
   w8 : ldv .ld M (sp - 112 + 8) = BitVec.ofNat 64 hE.p
   w16 : ldv .ld M (sp - 112 + 16) = BitVec.ofNat 64 z.rep.p
@@ -124,14 +122,21 @@ structure RxW (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W 
   r21 : R 21 = BitVec.ofNat 64 o.rep.p
   r23 : R 23 = BitVec.ofNat 64 q
 
+/-- With the exponent `hE` holding the integer `m` (at most `Ee` digits). -/
+structure RxW (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+    (H : Heap) (F : List Blk) (L : List NumObj) (xb xm z o : NumObj) (k Ee : Nat) (hE : RH)
+    (m : Nat) : Prop extends RxB S Mt0 M R0 R sp W q H F L xb xm z o k hE where
+  vE : RxNum hE ⟨false, m, 0⟩ Ee 0
+  nE : hE.base.rep.Norm
+
 /-- Through register changes off the state's. -/
-theorem RxW.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
-    {H : Heap} {F : List Blk} {L : List NumObj} {xb xm z o : NumObj} {k Ee : Nat} {hE : RH}
-    {m : Nat} (h : RxW S Mt0 M R0 R sp W q H F L xb xm z o k Ee hE m) {ks : List Nat}
+theorem RxB.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xm z o : NumObj} {k : Nat} {hE : RH}
+    (h : RxB S Mt0 M R0 R sp W q H F L xb xm z o k hE) {ks : List Nat}
     (hk : Keeps ks R' R)
     (hks : ∀ z ∈ ks, z ∈ [1, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 28, 29, 30, 31] :=
       by decide) :
-    RxW S Mt0 M R0 R' sp W q H F L xb xm z o k Ee hE m :=
+    RxB S Mt0 M R0 R' sp W q H F L xb xm z o k hE :=
   { h with
     ra := h.ra.regs hk fun z hz => by have := hks z hz; simp only [rxAll, List.mem_cons, List.not_mem_nil, or_false] at this ⊢; omega
     r22 := by rw [hk.get 22 fun hm => by have := hks 22 hm; simp at this]; exact h.r22
@@ -144,6 +149,16 @@ theorem RxW.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} 
     r21 := by rw [hk.get 21 fun hm => by have := hks 21 hm; simp at this]; exact h.r21
     r23 := by rw [hk.get 23 fun hm => by have := hks 23 hm; simp at this]; exact h.r23 }
 
+/-- Through register changes off the state's. -/
+theorem RxW.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xm z o : NumObj} {k Ee : Nat} {hE : RH}
+    {m : Nat} (h : RxW S Mt0 M R0 R sp W q H F L xb xm z o k Ee hE m) {ks : List Nat}
+    (hk : Keeps ks R' R)
+    (hks : ∀ z ∈ ks, z ∈ [1, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 28, 29, 30, 31] :=
+      by decide) :
+    RxW S Mt0 M R0 R' sp W q H F L xb xm z o k Ee hE m :=
+  { h.toRxB.regs hk hks with vE := h.vE, nE := h.nE }
+
 /-- A caller's number referenced. -/
 theorem RHOK.ofMem {L : List NumObj} {y : NumObj} (hy : y ∈ L) (hr : 1 ≤ y.rep.refs) :
     RHOK L (.ref y) := by
@@ -153,10 +168,10 @@ theorem RHOK.ofMem {L : List NumObj} {y : NumObj} (hy : y ∈ L) (hr : 1 ≤ y.r
 /-- **The exponent `_zero_` itself** at `0x800063bc`: the result `_one_`. -/
 theorem rx_one {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k Ee m : Nat} {H : Heap} {F : List Blk}
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
     {L : List NumObj} {xb xe xm z o t xr : NumObj} {hE : RH} (cx : RxCtx S R0 sp W q)
     (ha : RxArgs S Mt0 L xb xe xm z o t k) (hs0 : RxSlot Mt0 L xr q) (hoz : o.rep.p ≠ z.rep.p)
-    (st : RxW S Mt0 M R0 R sp W q H F L xb xm z o k Ee hE m)
+    (st : RxB S Mt0 M R0 R sp W q H F L xb xm z o k hE)
     (hret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
       RxPost S Mt0 Mt' H' F' L xr q sp W Num.one Lf y → DW live S Q (R0 1) R' Mt') :
     DW live S Q 0x800063bc#64 R M :=
@@ -311,7 +326,7 @@ theorem rx_go {live : Nat → Prop} {S : Nat → Prop}
     have h0 := hz ((ofNat_eq_iff (by omega) (by omega)).mp he).symm
     subst h0
     rw [Dc.BcModel.raisemodLoop_zero] at hret
-    exact rx_one hlive cx ha hs0 hoz (st.regs (ks := [15]) (by keeps_tac Keeps.refl _ _)) hret
+    exact rx_one hlive cx ha hs0 hoz (st.toRxB.regs (ks := [15]) (by keeps_tac Keeps.refl _ _)) hret
   intro hne
   have hne' : hE.p ≠ z.rep.p := fun e => hne (by rw [e])
   have hxs : ldv .lw M (xb.rep.p + 8) = BitVec.ofNat 64 xb.rep.scale :=
@@ -343,5 +358,145 @@ theorem rx_go {live : Nat → Prop} {S : Nat → Prop}
     bc_run hlive hS [] at 0x800062cc
     exact rx_start hlive cx ha hs0 hoz hmag hEe hoom st hne' (by keeps_tac Keeps.refl _ _)
       (by bsimp []; congr 1; omega) (by bsimp []) hret
+
+/-! ## The scale warnings -/
+
+/-- What `bc_raisemod` leaves in the result slot: the loop on the exponent's
+integer part (`Dc.BcModel.raisemod_eq`). -/
+abbrev rxVal (xb xe xm : NumObj) (k : Nat) : Num :=
+  Num.raisemodLoop xm.rep.num k (max k xb.rep.scale) (xe.rep.num.intPart + 1)
+    ⟨false, xe.rep.num.intPart, 0⟩ xb.rep.num Num.one
+
+/-- The entry's fixed facts once the `-1` returns are past: the context, the
+operands, the result slot, `_one_` apart from `_zero_`, a nonzero modulus, an
+exponent at `_zero_`'s pointer of integer part `0`, and the continuations. -/
+structure RxGo (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (t0 : String) (R0 : Nat → BitVec 64) (Mt0 : Mem) (sp W q k : Nat) (L : List NumObj)
+    (xb xe xm z o t xr : NumObj) : Prop where
+  cx : RxCtx S R0 sp W q
+  ha : RxArgs S Mt0 L xb xe xm z o t k
+  hs : RxSlot Mt0 L xr q
+  oz : o.rep.p ≠ z.rep.p
+  mag : xm.rep.num.mag ≠ 0
+  zx : xe.rep.p = z.rep.p → xe.rep.num.intPart = 0
+  oom : RaOom live S (DQ live S Q t0) Mt0 sp W q
+  ret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
+    RxPost S Mt0 Mt' H' F' L xr q sp W (rxVal xb xe xm k) Lf y →
+    DW live S (DQ live S Q t0) (R0 1) R' Mt'
+
+set_option maxRecDepth 100000 in
+/-- "non-zero scale in base". -/
+theorem rxBaseMsg : RtMsg 0x80007e48 22 :=
+  ⟨by decide, by decide, by decide, by decide, by decide⟩
+
+set_option maxRecDepth 100000 in
+/-- "non-zero scale in modulus". -/
+theorem rxModMsg : RtMsg 0x80007e80 25 :=
+  ⟨by decide, by decide, by decide, by decide, by decide⟩
+
+/-- **`rt_warn (msg)`** from `bc_raisemod`'s frame: stderr only, off it the
+bytes below the frame changed. -/
+theorem rx_warn {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k p n : Nat} {L : List NumObj}
+    {xb xe xm z o t : NumObj} (cx : RxCtx S R0 sp W q) (ha : RxArgs S Mt0 L xb xe xm z o t k)
+    (hm : RtMsg p n) (hn : n < 2 ^ 60)
+    (hout : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (h2 : (R 2).toNat = sp - 112) (h10 : (R 10).toNat = p) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps raCallClob R' R →
+      (∀ a, (a < sp - W ∨ sp - 112 ≤ a) → imgM M' a = imgM M a) →
+      DW live S (DQ live S Q t0) (R 1) R' M') :
+    DW live S (DQ live S Q t0) 0x80002c50#64 R M := by
+  rx_facts cx
+  have hsf := cx.frame
+  have hfar := cx.far
+  exact rt_warn_spec hlive hm hn ((hsf.shrink (m := 112 + 416) (by omega)).sub (by decide))
+    (by omega) (ha.fdAt cx hout) R h2 h10 hal fun R1 M1 hk1 ho1 =>
+      hk R1 M1 (hk1.mono (by decide)) fun a h => ho1 a (by omega)
+
+/-- The state through `rt_warn`. -/
+theorem RxB.warn {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xm z o : NumObj} {k : Nat} {hE : RH}
+    (cx : RxCtx S R0 sp W q) (st : RxB S Mt0 M R0 R sp W q H F L xb xm z o k hE)
+    (hkc : Keeps raCallClob R' R)
+    (hag : ∀ a, (a < sp - W ∨ sp - 112 ≤ a) → imgM M' a = imgM M a) :
+    RxB S Mt0 M' R0 R' sp W q H F L xb xm z o k hE := by
+  rx_facts cx
+  have hw : ∀ o', ldv .ld M' (sp - 112 + o') = ldv .ld M (sp - 112 + o') := fun o' =>
+    ldv_congr .ld fun j _ => hag _ (.inr (by omega))
+  exact
+    { ra := st.ra.below hkc (by omega) hag
+      r22 := by rw [hkc.get 22 (by decide)]; exact st.r22
+      heap := st.heap.out_frame (P := fun a => sp - W ≤ a ∧ a < sp - 112)
+        (fun a h => hag a (by omega))
+        fun a h => by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+      own := st.own
+      okE := st.okE
+      w0 := by rw [hw]; exact st.w0
+      w8 := by rw [hw]; exact st.w8
+      w16 := by rw [hw]; exact st.w16
+      w24 := by rw [hw]; exact st.w24
+      r8 := by rw [hkc.get 8 (by decide)]; exact st.r8
+      r24 := by rw [hkc.get 24 (by decide)]; exact st.r24
+      r9 := by rw [hkc.get 9 (by decide)]; exact st.r9
+      r18 := by rw [hkc.get 18 (by decide)]; exact st.r18
+      r19 := by rw [hkc.get 19 (by decide)]; exact st.r19
+      r20 := by rw [hkc.get 20 (by decide)]; exact st.r20
+      r21 := by rw [hkc.get 21 (by decide)]; exact st.r21
+      r23 := by rw [hkc.get 23 (by decide)]; exact st.r23 }
+
+/-- **"non-zero scale in modulus"** at `0x800064bc`, then `rx_go`. -/
+theorem rx_wm {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj} {hE : RH}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxW S Mt0 M R0 R sp W q H F L xb xm z o k (xe.rep.len + xe.rep.scale + 1) hE
+      xe.rep.num.intPart) (hz : hE.p = z.rep.p → xe.rep.num.intPart = 0) :
+    DW live S (DQ live S Q t0) 0x800064bc#64 R M := by
+  have cx := g.cx
+  rx_facts cx
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  have h2 := st.ra.r2
+  bc_run hlive hS [h2] at 0x80002c50
+  refine rx_warn hlive cx g.ha rxModMsg (by decide) st.ra.out (by bsimp [h2]) (by bsimp [])
+    (by bsimp []; try decide) fun R1 M1 hk1 ho1 => ?_
+  bsimp []
+  bc_run hlive hS [] at 0x800062ac
+  exact rx_go hlive cx g.ha g.hs g.oz g.mag rfl g.oom.dm
+    { st.toRxB.warn cx (hk1.trans (by keeps_tac Keeps.refl _ _)) ho1 with vE := st.vE, nE := st.nE }
+    hz g.ret
+
+/-- **The modulus's scale** at `0x800062a4`: a warning (`rx_wm`) or none,
+then `rx_go`. -/
+theorem rx_wmod {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj} {hE : RH}
+    (g : RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr)
+    (st : RxW S Mt0 M R0 R sp W q H F L xb xm z o k (xe.rep.len + xe.rep.scale + 1) hE
+      xe.rep.num.intPart) (hz : hE.p = z.rep.p → xe.rep.num.intPart = 0) :
+    DW live S (DQ live S Q t0) 0x800062a4#64 R M := by
+  have cx := g.cx
+  rx_facts cx
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hxn := hb.nums _ (RList.mem_caller [.ref xb, hE, .ref o, .ref z] g.ha.mm)
+  have hms : ldv .lw M (xm.rep.p + 8) = BitVec.ofNat 64 xm.rep.scale := hxn.scale
+  have hpm : xm.rep.p + 40 ≤ heapEnd := hxn.shape.pHi
+  have hpm' : heapStart ≤ xm.rep.p := hxn.shape.pLo
+  simp only [heapEnd, heapStart] at hpm hpm'
+  have hx8 : (BitVec.ofNat 64 (xm.rep.p + 8)).toNat = xm.rep.p + 8 := by
+    simp only [BitVec.toNat_ofNat]; omega
+  bc_run hlive hS [st.r18, hx8, hms] at 0x800064bc 0x800062ac
+  all_goals first | exact acc_heap hS (by omega) (by omega) | (simp only [LdOK, tohostAddr]; omega) | skip
+  · intro _
+    exact rx_wm hlive g (st.regs (ks := [15]) (by keeps_tac Keeps.refl _ _)) hz
+  · intro _
+    exact rx_go hlive cx g.ha g.hs g.oz g.mag rfl g.oom.dm
+      (st.regs (ks := [15]) (by keeps_tac Keeps.refl _ _)) hz g.ret
 
 end Dc.Mach

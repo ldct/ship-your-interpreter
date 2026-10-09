@@ -167,4 +167,34 @@ theorem raisemodLoop_zero (md : Num) (k rs f : Nat) (p t : Num) :
     Num.raisemodLoop md k rs (f + 1) ⟨false, 0, 0⟩ p t = t := by
   unfold Num.raisemodLoop; rfl
 
+/-- `expo / 1` at scale 0 of a non-negative `expo`: its integer part. -/
+theorem div_one_int (e : Num) (hn : e.neg = false) :
+    Num.div e Num.one 0 = some ⟨false, e.intPart, 0⟩ := by
+  rcases e with ⟨en, em, es⟩
+  cases hn
+  simp only [Num.div, Num.one, Num.intPart, Nat.add_zero, Nat.pow_zero, Nat.mul_one, Nat.one_mul]
+  rw [if_neg (by decide)]
+  split <;> rfl
+
+/-- **`bc_raisemod` on a nonzero modulus and a non-negative exponent**: the
+loop on the exponent's integer part. -/
+theorem raisemod_eq (b e md : Num) (k : Nat) (hm : md.mag ≠ 0) (hn : e.neg = false) :
+    Num.raisemod b e md k = some (Num.raisemodLoop md k (max k b.scale) (e.intPart + 1)
+      ⟨false, e.intPart, 0⟩ b Num.one) := by
+  have hz : md.isZero = false := by simpa [Num.isZero] using hm
+  unfold Num.raisemod
+  simp only [hz, hn, Bool.false_eq_true, ↓reduceIte]
+  by_cases hs : e.scale = 0
+  · have he : e = ⟨false, e.intPart, 0⟩ := by
+      rcases e with ⟨en, em, es⟩
+      simp only at hn hs
+      subst hn hs
+      simp [Num.intPart]
+    simp only [hs, bne_self_eq_false, Bool.false_eq_true, ↓reduceIte]
+    conv => lhs; rw [he]
+    simp [Num.intPart]
+  · simp only [hs, bne_iff_ne, ne_eq, not_false_eq_true, ↓reduceIte, div_one_int e hn,
+      Option.getD_some]
+    simp [Num.intPart]
+
 end Dc.BcModel

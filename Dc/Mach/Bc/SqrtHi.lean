@@ -197,7 +197,7 @@ theorem sq_hiTen {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have h2 := st.fr.sa.r2
   bc_run hlive hS [h2] at 0x8000690c
-  refine sq_i2nS hlive (hs1 := [.own p5, .ref z]) (h := .ref z) (hs2 := [.ref z]) (o := 24)
+  refine sq_i2nS (X := X) hlive (hs1 := [.own p5, .ref z]) (h := .ref z) (hs2 := [.ref z]) (o := 24)
     (v := 10) (rs := rs) (x := x) (z := z) (p5 := p5) (H := H) (F := F) cx g.oom ?_ (by omega) (by omega) (by decide) (st.fr.ok _ (by simp)) st.w24
     (by bsimp []; try decide) (by bsimp []) (by bsimp []; rfl) (by decide) (by decide)
     fun R1 M1 H1 F1 y st1 hn hN hr hw hag => ?_
@@ -244,7 +244,7 @@ theorem sq_hiLen {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   have h2 := st.fr.sa.r2
   bc_run hlive hS [h2, st.r19, st.wq, hxl, hx] at 0x8000690c
   all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hq.acc | skip
-  refine sq_i2nS hlive (hs1 := [.own p5, .ref z, .own gg]) (h := .ref z) (hs2 := []) (o := 32)
+  refine sq_i2nS (X := X) hlive (hs1 := [.own p5, .ref z, .own gg]) (h := .ref z) (hs2 := []) (o := 32)
     (v := (x.rep.len : Int)) (rs := rs) (x := x) (z := z) (p5 := p5) (H := H) (F := F) cx g.oom ?_
     (by omega) (by omega) (by decide) (st.fr.ok _ (by simp)) w32 (by bsimp []; try decide)
     (by bsimp []) (by rw [BitVec.ofInt_natCast]; bsimp []) (by omega) (by omega)

@@ -5220,6 +5220,8 @@ Checked so far:
 - `dc_dup_spec`, `dc_dup_num_spec`, `dc_dup_str_spec` (`DcDup.lean`) over `DcAt.bumpNum`/`DcAt.bumpStr` (`DcRefOps.lean`); the returned type word is read back from the 16-byte frame (`ld_lo32_sw`).
 - `dc_free_num_spec` (`DcFree.lean`): a handle in a stack slot through `bc_free_num_spec`; the state after `DcAt.decNum` (one reference fewer) or `DcAt.relNum` (released).
 - `dc_free_str_spec` (`DcFree.lean`): `DcAt.decStr` (over `DcAt.strRefsTo`, shared with `bumpStr`), or `DcAt.dropStr` then both blocks freed (`free_str_rel`).
+- Ghost-side reference moves are `DcDen.dec`/`.rel`/`.addNum` (`DcFree.lean`); `DcAt.freeEntry` builds `bc_free_num`'s entry from a handle in a stack slot.
+- `dc_int2data_spec` (`DcInt.lean`): `dc_init_num_spec` (one more `_zero_` reference held by the slot), then `dc_int2num_spec`, whose post is `DcAt.newNum` (the freed handle replaced by the fresh number's).
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come
 from counting live blocks (heap below `2^27` bytes).

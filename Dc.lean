@@ -112,3 +112,4 @@ import Dc.Mach.DcRefs
 import Dc.Mach.DcRefOps
 import Dc.Mach.DcDup
 import Dc.Mach.DcFree
+import Dc.Mach.DcInt

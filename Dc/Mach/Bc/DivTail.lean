@@ -771,6 +771,54 @@ theorem dvt_sign {live : Nat → Prop} {S : Nat → Prop}
       (by keeps_tac Keeps.refl _ _))
     hb' (by bsimp [h21]) (by bsimp []) hnum hnum0 hpos hrefs hyo (hraw.head rfl)
 
+
+/-- The slot keeps its word while only the heap and the window change. -/
+theorem ResSlot.of_dvFix {S : Nat → Prop} {Mt0 M : Mem} {R0 : Nat → BitVec 64} {sp q W : Nat}
+    {D : DvData} {H : Heap} {F : List Blk} {Lh L1 : List NumObj} {y x : NumObj} {ds : List Nat}
+    (cx : DivCtx S R0 sp q W) (fx : DvFix S Mt0 M R0 sp W D H F Lh y ds)
+    (h : ResSlot Mt0 L1 x q) : ResSlot M L1 x q := by
+  have hap := cx.slotApart
+  refine ⟨h.refs, ?_, h.noView⟩
+  rw [ldv_congr .ld fun j hj => fx.out _ (cx.slotOut _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩)
+    (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+  exact h.word
+
+/-- **The loop's exit** at `0x80005e2c`: `s5`, `s3`, `s1`, `s0`, `s6` reloaded
+(the quotient, `num2`, both operands, the slot), then the sign. -/
+theorem dvt_exit {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr y x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {m : Num}
+    {D : DvData} {ds : List Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
+    (ex : DvExit S Mt0 M R0 R sp W D H F (L1 ++ xr :: L2) y ds)
+    (hr0 : ResSlot Mt0 L1 xr q) (hqv : D.qv = y.sb.pay) (hn1 : D.n1p = x1.rep.p)
+    (hn2 : D.n2p = x2.rep.p) (hrs : D.rs = q)
+    (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2) (hz : z ∈ L1 ++ xr :: L2)
+    (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (hnum : dval ds ≠ 0 → ({ y.rep with ds := ds, neg := x1.rep.neg != x2.rep.neg } : NumRep).num = m)
+    (hnum0 : dval ds = 0 → ({ y.rep with ds := ds, neg := false } : NumRep).num = m)
+    (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) :
+    DW live S Q 0x80005e2c#64 R M := by
+  have fx := ex.fix
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => fx.heap.heap.own a h1 h2
+  have h2 := ex.r2
+  have s56 := fx.s56; have s64 := fx.s64; have s72 := fx.s72; have s80 := fx.s80; have s88 := fx.s88
+  rw [hqv] at s56; rw [hn2] at s72; rw [hn1] at s80; rw [hrs] at s88
+  bc_run hlive hS [h2, s56, s64, s72, s80, s88] at 0x80005a90
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine dvt_sign (y := withDs y ds) hlive cx hk hn ⟨fx.saved, by rw [fx.s8, fx.mPay],
+      ResSlot.of_dvFix cx fx hr0, fun a ha _ hf => fx.out a ha hf, by bsimp [h2], by bsimp [],
+      by bsimp [ex.r18, fx.pPay], by bsimp [], ?_⟩
+    fx.heap hx1 hx2 hz hzg (by bsimp []) (by bsimp []) (by bsimp []) hnum hnum0 hpos hrefs fx.owns
+    (DvRaw.head ⟨fx.b1l, fx.b2l, fx.b3l, fx.b1n, fx.b2n, fx.b3n, fx.b12, fx.b13, fx.b23⟩ rfl)
+  exact (by keeps_tac Keeps.refl _ _ : Keeps divAll _ R).trans ex.regs
+
 end
 
 end Dc.Mach

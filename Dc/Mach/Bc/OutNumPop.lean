@@ -402,4 +402,222 @@ theorem og_hexNext {live S : Nat → Prop} {X0 : Raws}
       simp
     · intro h; exact absurd hne h
 
+/-- The long loop from `0x800074d0` (the `bnez s4` after a free) for the
+stack `cells`. -/
+def OgLongNext (live S : Nat → Prop) (X0 : Raws) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (I : List Nat → String → Mem → Prop) (G : Nat → Prop) (Mt0 : Mem) (R0 : Nat → BitVec 64)
+    (sp W : Nat) (L : List NumObj) (x : NumObj) (ob : Nat) (cs : List Nat)
+    (fr bs mx : NumObj) (cells : List Blk) : Prop :=
+  ∀ (ds : List Nat) (q : Nat) (t : String) (R : Nat → BitVec 64) (M : Mem) (H : Heap)
+    (F : List Blk) (ip : NumObj) (cur : RH) (Mc : Mem) (sent : List Nat),
+    OgPH S X0 G I Mt0 M R0 R sp W H F L x ob cs sent t ip fr bs mx cur cells ds Mc q →
+    R 20 = BitVec.ofNat 64 q → DWO live S Q t 0x800074d0#64 R M
+
+/-- **One digit above base 16** from `0x800074b8`: `bc_out_long` with the
+width of `max_o_digit`, then the cell freed. -/
+theorem og_longStep {live S : Nat → Prop} {X0 : Raws}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
+    {sp W d ob : Nat} {L : List NumObj} {x z o : NumObj} {cs : List Nat}
+    (fx : OgFix live S X0 Q I G Mt0 R0 sp W d L x z o ob cs) {fr bs mx : NumObj}
+    (hmx : NewNum (Num.ofInt (ob - 1 : Nat)) mx) (h16 : ¬ ob ≤ 16) {cells : List Blk}
+    (ih : OgLongNext live S X0 Q I G Mt0 R0 sp W L x ob cs fr bs mx cells)
+    {c : Blk} {dg : Nat} {ds : List Nat} {t : String} {R : Nat → BitVec 64} {M : Mem} {H : Heap}
+    {F : List Blk} {ip : NumObj} {cur : RH} {Mc : Mem} {sent : List Nat}
+    (ph : OgPH S X0 G I Mt0 M R0 R sp W H F L x ob cs sent t ip fr bs mx cur (c :: cells)
+      (dg :: ds) Mc c.pay)
+    (h25 : R 25 = BitVec.ofNat 64 c.pay) (h10 : R 10 = BitVec.ofNat 64 dg)
+    (h20 : R 20 = BitVec.ofNat 64 (ldv .ld Mc (c.pay + 8)).toNat) :
+    DWO live S Q t 0x800074b8#64 R M := by
+  have cx := fx.cx
+  have cb := fx.cb
+  have hob := fx.ha.obHi
+  on_facts cx
+  have hsf := cx.cc.frame
+  have hS : HeapOwn S := fun a h1 h2 => ph.st.heap.heap.own a h1 h2
+  have hdg : dg < ob := ph.dlt dg List.mem_cons_self
+  have h9 := ph.st.on.cb
+  have hmxm : mx ∈ RList [.own ip, .own fr, cur, .own bs, .own mx] L := by
+    simp [RList, rTemps, RH.tmp]
+  have hmxn := ph.st.heap.nums mx hmxm
+  have hmxs := hmxn.shape
+  have hsz := hmxs.size
+  have hp1 := hmxs.pHi
+  have hp2 := hmxs.pLo
+  simp only [heapEnd, heapStart] at hp1 hp2
+  have hl := hmxn.len
+  have h24 := ph.regs.r24
+  bc_run hlive hS [h24, hl, h9] at 0x800064ec
+  all_goals first | exact acc_heap hS (by omega) (by omega) | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+  refine OgSt.long hlive (ph.st.regs (ks := [1, 11, 12, 13]) (by keeps_tac Keeps.refl _ _)) cx cb
+    (v := dg) (size := mx.rep.len) (by bsimp [h9]) (by bsimp [h10]) (by omega) (by bsimp [])
+    (by omega) (by bsimp []) (by bsimp []) fun R' M' t' hk' st' => ?_
+  have kk : Keeps cClob R' R := hk'.trans (by keeps_tac Keeps.refl _ _)
+  have g25 : R' 25 = BitVec.ofNat 64 c.pay := by rw [kk.get 25 (by decide)]; exact h25
+  bsimp []
+  bc_run hlive hS [g25] at 0x80000a0c
+  refine OgSt.freeCell hlive (st'.regs (ks := [1, 10]) (by keeps_tac Keeps.refl _ _)) ph.stk cx cb
+    (by bsimp [g25]) (by bsimp []) fun R2 M2 H2 hk2 st2 sk2 => ?_
+  have kk2 : Keeps cClob R2 R := (hk2.mono (by decide)).trans
+    ((by keeps_tac Keeps.refl _ _ : Keeps cClob _ _).trans kk)
+  bsimp []
+  have hw := mx_len hmx hmxs fx.ha.obLo
+  exact ih ds _ t' R2 M2 H2 F ip cur Mc (sent ++ Num.outLong dg mx.rep.len true)
+    ⟨st2, ph.curOK, sk2, ph.ipn, BitVec.isLt _,
+      by rw [← ph.tgt, hw]; simp [ogDigI, h16], fun d hd => ph.dlt d (List.mem_cons_of_mem _ hd),
+      ph.regs.keep kk2⟩
+    (by rw [kk2.get 20 (by decide)]; exact h20)
+
+/-- **The long loop** from `0x800074d0` for every stack, by induction on the
+cells. -/
+theorem og_longNext {live S : Nat → Prop} {X0 : Raws}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
+    {sp W d ob : Nat} {L : List NumObj} {x z o : NumObj} {cs : List Nat}
+    (fx : OgFix live S X0 Q I G Mt0 R0 sp W d L x z o ob cs) {fr bs mx : NumObj}
+    (hmx : NewNum (Num.ofInt (ob - 1 : Nat)) mx)
+    (hk6 : OgK6 live S X0 Q I G Mt0 R0 sp W L x ob cs fr bs mx) (h16 : ¬ ob ≤ 16) :
+    ∀ cells, OgLongNext live S X0 Q I G Mt0 R0 sp W L x ob cs fr bs mx cells := by
+  have cx := fx.cx
+  have cb := fx.cb
+  on_facts cx
+  intro cells
+  induction cells with
+  | nil =>
+    intro ds q t R M H F ip cur Mc sent ph h20
+    have hS : HeapOwn S := fun a h1 h2 => ph.st.heap.heap.own a h1 h2
+    have hq : q = 0 := ph.stk.cells.zero_iff.mpr rfl
+    have hl := ph.stk.cells.length
+    match ds, hl with
+    | [], _ =>
+    subst hq
+    bc_run hlive hS [h20] at 0x8000721c
+    bc_run hlive hS [h20] at 0x8000721c
+    exact hk6 t R M H F ip cur (ph.done cx cb) ph.curOK ph.ipn ph.regs
+  | cons c cs ih =>
+    intro ds q t R M H F ip cur Mc sent ph h20
+    have hS : HeapOwn S := fun a h1 h2 => ph.st.heap.heap.own a h1 h2
+    have hq0 : q ≠ 0 := fun h => by cases ph.stk.cells.zero_iff.mp h
+    obtain ⟨c', cs', dg, ds', hq, tp⟩ := ph.top hq0
+    obtain ⟨rfl, rfl⟩ := List.cons.inj tp.cells
+    subst hq
+    have hds := tp.ds
+    subst hds
+    have hlo := tp.lo
+    have hhi := tp.hi
+    have hsz := tp.sz
+    have hbp : c.pay = c.h + 16 := rfl
+    have hbf : c.fin = c.h + 16 + c.sz := rfl
+    have hb0 : (BitVec.ofNat 64 c.pay).toNat = c.pay := by rw [BitVec.toNat_ofNat]; omega
+    have hb8 : (BitVec.ofNat 64 (c.pay + 8)).toNat = c.pay + 8 := by rw [BitVec.toNat_ofNat]; omega
+    have hw := tp.word
+    have hn := tp.next
+    have hne : BitVec.ofNat 64 c.pay ≠ 0#64 := fun he => by
+      have e := congrArg BitVec.toNat he
+      rw [hb0] at e; simp at e <;> omega
+    bc_run hlive hS [h20] at 0x800074b8
+    · intro _
+      bc_run hlive hS [h20, hb0, hb8, hw, hn] at 0x800074b8
+      all_goals first | (have e6 : c.pay = c.h + 16 := rfl; have e7 : c.fin = c.h + 16 + c.sz := rfl; exact acc_heap hS (by omega) (by omega)) | (have e6 : c.pay = c.h + 16 := rfl; have e7 : c.fin = c.h + 16 + c.sz := rfl; simp only [StOK, LdOK, tohostAddr]; omega) | skip
+      refine og_longStep hlive fx hmx h16 ih (ph.keep (ks := [10, 20, 25]) (by keeps_tac Keeps.refl _ _))
+        (by bsimp [h20]) (by bsimp []) ?_
+      bsimp []
+      apply BitVec.eq_of_toNat_eq
+      simp
+    · intro h; exact absurd hne h
+
+/-- **The integer digits printed** from `0x80007214`: `cur_dig` reloaded,
+then the stack popped by the hex or the long loop. -/
+theorem og_s6 {live S : Nat → Prop} {X0 : Raws}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
+    {sp W d ob : Nat} {L : List NumObj} {x z o : NumObj} {cs : List Nat} {t : String}
+    (fx : OgFix live S X0 Q I G Mt0 R0 sp W d L x z o ob cs) {fr bs mx : NumObj}
+    (hmx : NewNum (Num.ofInt (ob - 1 : Nat)) mx)
+    (hk6 : OgK6 live S X0 Q I G Mt0 R0 sp W L x ob cs fr bs mx) :
+    OgK5 live S X0 Q I G Mt0 R0 sp W L x ob cs t fr bs mx := by
+  intro R M H F ip cur cells ds Mc p lh
+  have cx := fx.cx
+  have cb := fx.cb
+  have hob := fx.ha.obHi
+  have hob2 := fx.ha.obLo
+  on_facts cx
+  have hsf := cx.cc.frame
+  have hS : HeapOwn S := fun a h1 h2 => lh.st.heap.heap.own a h1 h2
+  have h2 := lh.st.on.r2
+  have hw40 : ldv .ld M (sp - 176 + 40) = BitVec.ofNat 64 cur.p :=
+    lh.st.words.get (hs1 := [_, _]) (os1 := [16, 24]) (hs2 := [_, _]) (os2 := [32, 56]) rfl
+  have hdig := lh.dig
+  rw [show Num.digits ob 0 = [] from rfl, List.nil_append] at hdig
+  have mk : ∀ R', Keeps [5, 8, 10, 20, 25, 26] R' R → R' 26 = BitVec.ofNat 64 cur.p →
+      OgPH S X0 G I Mt0 M R0 R' sp W H F L x ob cs (cs ++ signOut x.rep.num) t ip fr bs mx cur
+        cells ds Mc p := fun R' hk h26 =>
+    { st := lh.st.regs hk
+      curOK := lh.curOK
+      stk := lh.stk
+      ipn := lh.ipn
+      p64 := lh.p64
+      tgt := by rw [ogIntOut, hdig]
+      dlt := fun dg hd => digits_lt (by omega) _ dg (by rw [hdig]; exact hd)
+      regs :=
+        ⟨by rw [hk.get 18 (by decide)]; exact lh.regs.r18,
+          by rw [hk.get 19 (by decide)]; exact lh.r19,
+          by rw [hk.get 23 (by decide)]; exact lh.regs.r23,
+          by rw [hk.get 24 (by decide)]; exact lh.r24, h26,
+          by rw [hk.get 27 (by decide)]; exact lh.regs.r27⟩ }
+  have h21 := lh.r21
+  bc_run hlive hS [h2, hw40, h21] at 0x8000721c 0x80007460
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  · intro hne
+    have hp : p ≠ 0 := fun e => hne (by rw [e])
+    have ph0 := mk (upd R 26 (BitVec.ofNat 64 cur.p)) (by keeps_tac Keeps.refl _ _) (by bsimp [])
+    obtain ⟨c, cs', dg, ds', hq, tp⟩ := ph0.top hp
+    have hc := tp.cells
+    have hd := tp.ds
+    subst hc hd hq
+    have hlo := tp.lo
+    have hhi := tp.hi
+    have hsz := tp.sz
+    have hbp : c.pay = c.h + 16 := rfl
+    have hbf : c.fin = c.h + 16 + c.sz := rfl
+    have hb0 : (BitVec.ofNat 64 c.pay).toNat = c.pay := by rw [BitVec.toNat_ofNat]; omega
+    have hb8 : (BitVec.ofNat 64 (c.pay + 8)).toNat = c.pay + 8 := by rw [BitVec.toNat_ofNat]; omega
+    have hw := tp.word
+    have hn := tp.next
+    have h23 := lh.regs.r23
+    bc_run hlive hS [h21, hb0, hb8, hw, hn, h23] at 0x8000748c 0x800074b8
+    all_goals first | (have e6 : c.pay = c.h + 16 := rfl; have e7 : c.fin = c.h + 16 + c.sz := rfl; exact acc_heap hS (by omega) (by omega)) | (have e6 : c.pay = c.h + 16 := rfl; have e7 : c.fin = c.h + 16 + c.sz := rfl; simp only [StOK, LdOK, tohostAddr]; omega) | skip
+    · intro hc
+      have h16 : ¬ ob ≤ 16 := by
+        rw [toInt_ofNat_small (k := ob) (by omega)] at hc; simp at hc; omega
+      refine og_longStep hlive fx hmx h16 (og_longNext hlive fx hmx hk6 h16 cs')
+        (ph0.keep (ks := [5, 10, 15, 20, 25]) (by keeps_tac Keeps.refl _ _)) (by bsimp [h21]) (by bsimp []) ?_
+      bsimp []
+      apply BitVec.eq_of_toNat_eq
+      simp
+    · intro hc
+      have h16 : ob ≤ 16 := by
+        rw [toInt_ofNat_small (k := ob) (by omega)] at hc; simp at hc; omega
+      bc_run hlive hS [h21, hb0, hb8, hw, hn, h23] at 0x8000748c
+      refine og_hexStep hlive fx h16 (og_hexNext hlive fx hk6 h16 cs')
+        (ph0.keep (ks := [5, 8, 10, 15, 20, 25]) (by keeps_tac Keeps.refl _ _)) (by bsimp [h21]) (by bsimp []) ?_
+        (by bsimp [])
+      bsimp []
+      apply BitVec.eq_of_toNat_eq
+      simp
+  · intro hz
+    have hp : p = 0 := by
+      have e := congrArg BitVec.toNat (Classical.not_not.mp hz)
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt lh.p64] at e
+      simpa using e
+    subst hp
+    have hc := lh.stk.cells
+    have hcl : cells = [] := hc.zero_iff.mp rfl
+    subst hcl
+    have hl := hc.length
+    match ds, hl with
+    | [], _ =>
+    refine hk6 t _ M H F ip cur ((mk _ ?_ ?_).done cx cb) lh.curOK lh.ipn (mk _ ?_ ?_).regs
+    all_goals first | (keeps_tac Keeps.refl _ _) | bsimp [hw40]
+
 end Dc.Mach

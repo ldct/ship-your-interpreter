@@ -354,6 +354,139 @@ theorem dvt_freenum {live : Nat → Prop} {S : Nat → Prop}
       ((hk1.mono (by decide)).trans (by keeps_tac hkp)) (hraw.rel hrp)
       (binPost_rel cx.slotOut hout hb hrp cx.above ⟨by omega, by omega⟩ hnum hnorm hpos hrefs hyo hx1)
 
+
+/-! ## The quotient's leading-zero trim, inlined (`0x80005ae4`) -/
+
+/-- The trim loop at `0x80005b0c` (rotated: `n_value` advanced first, the
+stores after the length test): `j` leading zeros dropped from the object in
+`s5`, digit `j` zero too. -/
+theorem dvtrim_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt : Mem} {Rb : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (hS : HeapOwn S) (hr : Rb 21 = BitVec.ofNat 64 x.rep.p)
+    (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [11, 13, 14, 15] R' Rb →
+      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      lzCount (x.rep.len - 1) x.rep.ds = j →
+      MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' Mt →
+      DW live S Q 0x80005b14#64 R' M') :
+    ∀ n j (R : Nat → BitVec 64) (M : Mem), x.rep.len - 1 - j = n → j < x.rep.len →
+      Keeps [11, 13, 14, 15] R Rb →
+      BcHeap S M H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M Mt →
+      R 15 = BitVec.ofNat 64 (x.rep.val + j) → R 13 = BitVec.ofNat 64 (x.rep.len - j) →
+      R 11 = BitVec.ofNat 64 1 → (∀ i, i ≤ j → x.rep.ds.getD i 0 = 0) →
+      DW live S Q 0x80005b0c#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  intro n
+  induction n with
+  | zero =>
+    intro j R M hn hj kk hb hmo h15 h13 h11 hz
+    have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
+    num_facts hn0
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
+    have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
+    have vl := hn0.shape.dsLen
+    simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
+    bc_run hlive hS [h15, h13, h11, toInt_ofNat_small] at 0x80005b14 0x80005af8
+    · intro hc; exfalso; omega
+    · intro _
+      exact hnext _ _ j (by keeps_tac kk) hb
+        (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => hz i (by omega)) (.inl (by omega))) hmo
+  | succ n ih =>
+    intro j R M hn hj kk hb hmo h15 h13 h11 hz
+    have hn0 := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
+    num_facts hn0
+    have v5 := hn0.shape.vHi; have v7 := hn0.shape.size
+    have v8 : 1 ≤ x.rep.len := by omega
+    have v9 := hn0.shape.vLo; have v6 := hn0.shape.ptrLe
+    have vl := hn0.shape.dsLen
+    simp only [NumRep.drop, List.length_drop, heapEnd, heapStart] at v5 v7 v8 v9 v6 vl
+    have hrr : R 21 = BitVec.ofNat 64 x.rep.p := by rw [kk.get 21 (by decide)]; exact hr
+    have hpl := hn0.shape.pLo; have hph := hn0.shape.pHi
+    simp only [NumRep.drop, heapStart, heapEnd] at hpl hph
+    bc_run hlive hS [h15, h13, h11, toInt_ofNat_small] at 0x80005b14 0x80005af8
+    · intro hc
+      have hb' := hb.advanceAt (v1 := BitVec.ofNat 64 (x.rep.len - j - 1))
+        (v2 := BitVec.ofNat 64 (x.rep.val + j + 1)) (by simp only [NumRep.drop]; omega)
+        (by simp only [NumRep.drop]; rw [toNat_ofNat_mod32 (by omega)])
+        (by simp only [NumRep.drop])
+      simp only [NumRep.drop_drop] at hb'
+      have hp' : ({ x with rep := x.rep.drop j } : NumObj).rep.p = x.rep.p := rfl
+      rw [hp'] at hb'
+      have hmo' : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd)
+          (writeLog (writeLog M [(x.rep.p + 4, 4, BitVec.ofNat 64 (x.rep.len - j - 1))])
+            [(x.rep.p + 32, 8, BitVec.ofNat 64 (x.rep.val + j + 1))]) Mt := fun a ha => by
+        rw [imgM_store_miss _ _ (by simp only [heapStart, heapEnd] at ha; omega),
+          imgM_store_miss _ _ (by simp only [heapStart, heapEnd] at ha; omega)]
+        exact hmo a ha
+      have hn1 := hb'.nums _ (List.mem_append_right _ List.mem_cons_self)
+      have hl1 := hn1.lbu (i := 0) (by simp only [NumRep.drop]; omega)
+      simp only [NumRep.drop, Nat.add_zero, List.getD_eq_getElem?_getD, List.getElem?_drop,
+        ← Nat.add_assoc] at hl1
+      have hd := hn1.getD_lt 0
+      simp only [NumRep.drop, List.getD_eq_getElem?_getD, List.getElem?_drop, Nat.add_zero] at hd
+      bc_run hlive hS [h15, h13, h11, hrr] at 0x80005b04
+      bc_run hlive hS [h11, hl1] at 0x80005b14 0x80005b0c
+      · intro hne
+        bv_nat at hne
+        rw [Nat.mod_eq_of_lt (by omega)] at hne
+        exact hnext _ _ (j + 1) (by keeps_tac kk) hb'
+          (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => by
+              rcases Nat.lt_or_ge i (j + 1) with h | h
+              · exact hz i (by omega)
+              · rw [show i = j by omega]; exact hz j (by omega))
+            (.inr (by rw [List.getD_eq_getElem?_getD]; exact hne))) hmo'
+      · intro he
+        bv_nat at he
+        rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
+        refine ih (j + 1) _ _ (by omega) (by omega) (by keeps_tac kk) hb' hmo'
+          (by bsimp [Nat.add_assoc]) (by bsimp [Nat.sub_sub]) (by bsimp [h11]) fun i hi => ?_
+        rcases Nat.lt_or_ge i (j + 1) with h | h
+        · exact hz i (by omega)
+        · rw [show i = j + 1 by omega, List.getD_eq_getElem?_getD]; exact he
+    · intro hc; exfalso; omega
+
+
+/-- **The quotient's leading-zero trim at `0x80005ae4`** (`a5 = n_value`,
+the struct in `s5`): `NumRep.rmLeadingZeros` as `drop j`. -/
+theorem dvtrim {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
+    {x : NumObj} (hb : BcHeap S M H F (L1 ++ x :: L2)) (hr : R 21 = BitVec.ofNat 64 x.rep.p)
+    (h15 : R 15 = BitVec.ofNat 64 x.rep.val) (hpos : 1 ≤ x.rep.len)
+    (hnext : ∀ (R' : Nat → BitVec 64) (M' : Mem) (j : Nat), Keeps [11, 13, 14, 15] R' R →
+      BcHeap S M' H F (L1 ++ { x with rep := x.rep.drop j } :: L2) →
+      lzCount (x.rep.len - 1) x.rep.ds = j →
+      MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M' M →
+      DW live S Q 0x80005b14#64 R' M') :
+    DW live S Q 0x80005ae4#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hb0 : BcHeap S M H F (L1 ++ { x with rep := x.rep.drop 0 } :: L2) := by
+    rw [NumRep.drop_zero]; exact hb
+  have hn := hb.nums _ (List.mem_append_right _ List.mem_cons_self)
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  num_facts hn
+  have hlen := hn.len
+  have hmo0 : MemOnly (fun a => heapStart ≤ a ∧ a < heapEnd) M M := fun a _ => rfl
+  have vl := hn.shape.dsLen
+  have hl0 := hn.lbu (i := 0) (by omega)
+  have hd := hn.getD_lt 0
+  simp only [Nat.add_zero] at hl0 hd
+  bc_run hlive hS [hr, h15, hl0] at 0x80005b14 0x80005aec
+  · intro hne
+    bv_nat at hne
+    rw [Nat.mod_eq_of_lt (by omega)] at hne
+    exact hnext _ _ 0 (by keeps_tac Keeps.refl _ _) hb0
+      (lzCount_eq _ _ _ (by omega) (by omega) (fun i hi => absurd hi (by omega)) (.inr hne)) hmo0
+  · intro he
+    bv_nat at he
+    rw [Classical.not_not, Nat.mod_eq_of_lt (by omega)] at he
+    bc_run hlive hS [hr, h15, hlen] at 0x80005b0c
+    exact dvtrim_loop hlive hS hr hnext _ 0 _ _ rfl (by omega)
+      (by keeps_tac Keeps.refl _ _) hb0 hmo0 (by bsimp [h15]) (by bsimp []) (by bsimp [])
+      fun i hi => by rw [show i = 0 by omega]; exact he
+
 end
 
 end Dc.Mach

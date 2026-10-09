@@ -43,7 +43,8 @@ set_option linter.unusedSimpArgs false
 characters `cs` sent so far, the console `t`, the memory), a call with the
 byte `c` in `a0`, using `d` bytes below `sp`, returns to `ra` with
 `I (cs ++ [c])`, keeping `sp` and `s0`–`s11`, and changing only the `d` bytes
-below `sp` and the footprint `G`, which lies among the globals. -/
+below `sp` and the footprint `G`, which lies among the globals apart from the
+heap's and the number constants (`constBytes`); `I` reads only `G`. -/
 structure CharFn (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (f : BitVec 64) (d : Nat) (G : Nat → Prop) (I : List Nat → String → Mem → Prop) : Prop where
   call : ∀ cs c t sp (R : Nat → BitVec 64) M, I cs t M → StackFrame S sp d →
@@ -200,6 +201,33 @@ abbrev onSlots2 : List (Nat × Nat) :=
 abbrev onSlots3 : List (Nat × Nat) :=
   [(25, 88), (26, 80), (24, 96), (27, 72), (8, 160), (19, 136), (22, 112), (9, 152), (18, 144),
     (21, 120), (23, 104), (1, 168), (20, 128)]
+
+/-- A save of `r` (the caller's value `v`) at `sp - 176 + o`. -/
+theorem OnAt.store {S G : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
+    {slots : List (Nat × Nat)} (h : OnAt S G Mt0 M R0 R sp W slots) (r o : Nat) {v : BitVec 64}
+    (hv : v = R0 r) (hd : ∀ p ∈ slots, p.2 + 8 ≤ o ∨ o + 8 ≤ p.2 := by decide)
+    (ho : o + 8 ≤ 176) (hsp : 176 ≤ sp) (hW : 176 ≤ W) :
+    OnAt S G Mt0 (writeLog M [(sp - 176 + o, 8, v)]) R0 R sp W ((r, o) :: slots) :=
+  { h with
+    saved := by rw [hv]; exact h.saved.store r o hd
+    out := fun a ha hg hf => by
+      rw [imgM_store_miss _ _ (by simp only [frameIn] at hf; omega)]; exact h.out a ha hg hf }
+
+/-- A store into the frame keeps the heap. -/
+theorem BcHeap.frameStore {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    (hb : BcHeap S M H F L) {sp o : Nat} (v : BitVec 64) (hsp : heapEnd + 176 ≤ sp)
+    (ho : o + 8 ≤ 176) : BcHeap S (writeLog M [(sp - 176 + o, 8, v)]) H F L :=
+  hb.out_frame (P := fun a => sp - 176 + o ≤ a ∧ a < sp - 176 + o + 8)
+    (fun a hp => imgM_store_miss _ _ (by omega)) (fun a hp => outHeap_of_ge (by omega))
+
+/-- A store above the heap keeps the callback's invariant. -/
+theorem CharFn.frameStore {live S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {f : BitVec 64} {d : Nat} {G : Nat → Prop} {I : List Nat → String → Mem → Prop}
+    (h : CharFn live S Q f d G I) {cs : List Nat} {t : String} {M : Mem} (hI : I cs t M)
+    {b : Nat} (v : BitVec 64) (hb : heapEnd ≤ b) : I cs t (writeLog M [(b, 8, v)]) :=
+  h.stab cs t M _ hI fun a hg => imgM_store_miss _ _ (.inl (by
+    have := (h.off a hg).1; simp only [heapStart, heapEnd] at this hb; omega))
 
 /-- The callback's frame below `bc_out_num`'s. -/
 theorem OnCtx.cbFrame {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp W d : Nat}

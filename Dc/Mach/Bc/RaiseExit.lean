@@ -333,4 +333,64 @@ theorem ra_neg2 {live : Nat → Prop} {S : Nat → Prop}
       rw [ho3 a h1, hag a h3]
       exact ra.out a h1 h3
 
+/-! ## The positive exponent's result -/
+
+/-- `y` cut to the scale `k` when it has more (`MIN (…, rscale)`). -/
+def NumObj.cutTo (k : Nat) (y : NumObj) : NumObj :=
+  if k < y.rep.scale then { y with rep := y.rep.cutScale k } else y
+
+/-- **`*result = temp`, `temp` cut to `rscale`** from `0x80006898` (`temp`
+in `s4`, `rscale` in `s6`, the slot in `s7`); `power` reloaded into `s2`. -/
+theorem ra_store {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {Ya Yb : List NumObj} {y : NumObj} {pw : BitVec 64} (cx : RaCtx S R0 sp W q)
+    (hb : BcHeap S M H F (Ya ++ y :: Yb)) (hk31 : k < 2 ^ 31)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (h20 : R 20 = BitVec.ofNat 64 y.rep.p)
+    (h22 : R 22 = BitVec.ofNat 64 k) (h23 : R 23 = BitVec.ofNat 64 q)
+    (hwP : ldv .ld M (sp - 96 + 8) = pw)
+    (hk : ∀ R' M', Keeps [15, 18] R' R → R' 18 = pw → BcHeap S M' H F (Ya ++ y.cutTo k :: Yb) →
+      ldv .ld M' q = BitVec.ofNat 64 y.rep.p →
+      (∀ a, OutHeap a → ¬ slotBytes q a → imgM M' a = imgM M a) → DW live S Q 0x80006798#64 R' M') :
+    DW live S Q 0x80006898#64 R M := by
+  ra_facts cx
+  have hsf := cx.frame
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+  have hap := hsl.apart
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hym : y ∈ Ya ++ y :: Yb := List.mem_append_right _ List.mem_cons_self
+  have hn := hb.nums y hym
+  num_facts hn
+  have hsc := hn.scale
+  have hb1 := hb.out_frame (P := slotBytes q) (MemOnly.store M q 8 (BitVec.ofNat 64 y.rep.p)) hsl.out
+  have hsz := hn.shape.size
+  have hq0 := hsl.out q ⟨Nat.le_refl _, by omega⟩
+  have hq7 := hsl.out (q + 7) ⟨by omega, by omega⟩
+  simp only [OutHeap, heapStart, heapEnd] at hq0 hq7
+  bc_run hlive hS [h2, h20, h22, h23, hsc]
+  all_goals first | exact hq.acc | skip
+  · exact frame_acc hsf (by omega) (by omega)
+  · intro hge
+    rw [toInt_ofNat_small (by omega), toInt_ofNat_small (by omega)] at hge
+    have hc : y.cutTo k = y := by
+      simp only [NumObj.cutTo, show ¬ k < y.rep.scale by omega, ite_false]
+    refine hk _ _ (by keeps_tac Keeps.refl _ _)
+      (by bsimp [hwP]; rw [ldv_ld_miss _ _ (by omega)]; exact hwP) (by rw [hc]; exact hb1)
+      (ldv_store_hit _ _ _) fun a _ hs => imgM_store_miss _ _ (by simp only [slotBytes] at hs; omega)
+  · intro hlt
+    rw [toInt_ofNat_small (by omega), toInt_ofNat_small (by omega)] at hlt
+    have hc : y.cutTo k = { y with rep := y.rep.cutScale k } := by
+      simp only [NumObj.cutTo, show k < y.rep.scale by omega, ite_true]
+    bc_run hlive hS [h20, h22] at 0x80006798
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    refine hk _ _ (by keeps_tac Keeps.refl _ _)
+      (by bsimp [hwP])
+      (by rw [hc]; exact hb1.setScale (toNat_ofNat_mod32 (by omega)) (by omega))
+      (by rw [ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _) fun a ha hs => ?_
+    simp only [slotBytes] at hs
+    simp only [OutHeap, heapStart, heapEnd] at ha
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
+
 end Dc.Mach

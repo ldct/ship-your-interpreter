@@ -800,4 +800,70 @@ theorem sq_cmpOne {live : Nat → Prop} {S : Nat → Prop}
       (by keeps_tac Keeps.refl _ _) (hag := fun a h => imgM_store_miss _ _ (by omega))) hgt
       (by rw [ldv_store_hit]; try rfl) (by bsimp [st.r9]) (by bsimp []) (by bsimp []) (by bsimp [])
 
+/-- After `_bc_do_compare (x, _zero_, 1)` returned to `0x80006c8c`: equal
+returns `_zero_` (`sq_glob`), greater compares with `1` (`sq_cmpOne`). -/
+theorem sq_cmpZeroRes {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {n : Option Num}
+    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (h8 : R 8 = 0#64) (h10 : R 10 = ordWord (Num.cmp x.rep.num (Num.zero 0))) :
+    DW live S (DQ live S Q t) 0x80006c8c#64 R M := by
+  have cx := c.cx
+  have ha := c.ha
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hzl := ha.zero.len
+  cases hc0 : Num.cmp x.rep.num (Num.zero 0)
+  case lt =>
+    rw [Num.cmp_zero_pos (by rw [NumRep.num_neg]; exact c.xneg)] at hc0
+    exact absurd hc0 (Num.cmpMag_zero_ne_lt _)
+  case eq =>
+    rw [hc0] at h10
+    simp only [ordWord] at h10
+    bc_run hlive hS [h10] at 0x80006eb4 0x80006c98 0x80006c50
+    try (bc_run hlive hS [h10] at 0x80006eb4 0x80006c98 0x80006c50)
+    exact sq_glob hlive cx ha (st.step cx (ks := [15]) (by keeps_tac Keeps.refl _ _)
+      (hag := fun _ _ => rfl)) (.inr ⟨rfl, rfl, trivial⟩) ha.mz ha.zero.glob ha.zeroRef
+      (.inl (by omega)) (by omega) fun R' M' H' F' Lf y' hk h10' hp =>
+        c.ret _ (SqOut.of_zero c.out hc0) R' M' H' F' Lf y' hk h10' (by
+          rw [KZero.num ha.zero] at hp; exact hp)
+  case gt =>
+    rw [hc0] at h10
+    simp only [ordWord] at h10
+    bc_run hlive hS [h10] at 0x80006eb4 0x80006c98 0x80006c50
+    try (bc_run hlive hS [h10] at 0x80006eb4 0x80006c98 0x80006c50)
+    exact sq_cmpOne hlive c (st.step cx (ks := [15]) (by keeps_tac Keeps.refl _ _)
+      (hag := fun _ _ => rfl)) (by bsimp [h8]) hc0
+
+/-- **`_bc_do_compare (x, _zero_, 1)`** from `0x80006c7c` (`x`'s sign that
+of `_zero_`). -/
+theorem sq_cmpZero {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {n : Option Num}
+    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (h8 : R 8 = 0#64) :
+    DW live S (DQ live S Q t) 0x80006c7c#64 R M := by
+  have ha := c.ha
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hx1 := ha.lenx; have hzl := ha.zero.len
+  have hxneg := c.xneg
+  have hcm : cmpRes true x.rep.neg (Num.cmpMag x.rep.num z.rep.num) =
+      Num.cmp x.rep.num (Num.zero 0) := by
+    rw [KZero.num ha.zero, Num.cmp_zero_pos (by rw [NumRep.num_neg]; exact hxneg)]
+    simp [cmpRes, hxneg]
+  bc_run hlive hS [st.r9, st.r26] at 0x80003fb0
+  refine do_compare_spec hlive hS (hb.nums x ha.mx) (hb.nums z ha.mz) ha.nx (.inl (by omega))
+    (fun h => absurd h (by omega)) (fun h => absurd h (by omega)) (u := true) _ (by bsimp [st.r9])
+    (by bsimp [st.r26]) (by bsimp []) (by bsimp []; try decide) fun R1 hk1 h10 => ?_
+  rw [hcm] at h10
+  bsimp []
+  exact sq_cmpZeroRes hlive c (st.step c.cx (ks := [1, 6, 10, 11, 12, 13, 14, 15, 16, 17])
+    ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) (hag := fun _ _ => rfl))
+    (by rw [hk1.get 8 (by decide)]; bsimp [h8]) h10
+
 end Dc.Mach

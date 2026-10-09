@@ -1276,4 +1276,93 @@ theorem dv_after_sub {live : Nat → Prop} {S : Nat → Prop}
       (by bsimp [st.r24]) (by bsimp [st.r27]) (by bsimp [st.r26]) (by keeps_tac st.regs)) ?_ hk
     bsimp [st.r22]; rw [hs.digit hkb, hdig]
 
+/-- The subtract loop from its first position. -/
+theorem dsub_start {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    (hS : HeapOwn S) {M : Mem} {R : Nat → BitVec 64} {A B L : Nat} {w m : List Nat}
+    (ha : DsArgs M A B L w m) (h11 : R 11 = BitVec.ofNat 64 (A + L))
+    (h13 : R 13 = BitVec.ofNat 64 (B + L)) (h10 : R 10 = 0#64)
+    (h17 : R 17 = BitVec.ofNat 64 (B - 1))
+    (hexit : ∀ R' M', DsPost M M' R R' A L w m → DW live S Q 0x80005e18#64 R' M') :
+    DW live S Q 0x80005de8#64 R M :=
+  dsub_loop hlive hS ha hexit _ 0 R M rfl
+    ⟨h11, h13, by rw [h10, borrowAt_zero], h17, Keeps.refl _ _, Nat.zero_le _,
+      fun i hi => absurd hi (Nat.not_lt_zero _), MemOnly.refl _ _⟩
+
+/-- The state after `_one_mult`, at `0x80005db8`: the window untouched, the
+product `V g` in the `L + 1` bytes from `Bm`. -/
+structure DvMuld (S : Nat → Prop) (Mt0 M0 M : Mem) (R0 Rh R : Nat → BitVec 64) (sp W : Nat)
+    (D : DvData) (H : Heap) (F : List Blk) (Lh : List NumObj) (y : NumObj) (ds : List Nat)
+    (k : Nat) : Prop where
+  head : DvAt S Mt0 M0 R0 Rh sp W D H F Lh y ds k
+  g0 : 1 ≤ D.g k
+  touch : MemOnly (DvTouch sp W D k) M M0
+  win : ∀ i, i ≤ D.L → imgM M (D.P + k + i) = imgM M0 (D.P + k + i)
+  prod : ∀ j, j ≤ D.L → imgM M (D.Bm + D.L - j) = BitVec.ofNat 8 ((D.mL k).getD j 0)
+  r22 : R 22 = BitVec.ofNat 64 (D.g k)
+  r25 : R 25 = BitVec.ofNat 64 k
+  r2 : R 2 = BitVec.ofNat 64 (sp - 208)
+  r9 : R 9 = BitVec.ofNat 64 k
+  r21 : R 21 = BitVec.ofNat 64 (k + 1)
+  r18 : R 18 = BitVec.ofNat 64 D.P
+  r24 : R 24 = BitVec.ofNat 64 D.N
+  r27 : R 27 = BitVec.ofNat 64 (y.rep.val + D.off + k)
+  r26 : R 26 = BitVec.ofNat 64 D.Kb
+  regs : Keeps divAll R R0
+
+/-- **The subtraction** from `0x80005db8`: the window minus the product,
+with borrow, then its exits. -/
+theorem dv_sub {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M0 M : Mem} {R0 Rh R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
+    {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
+    (cx : DvCtx S sp W) (hs : DvShape D)
+    (st : DvMuld S Mt0 M0 M R0 Rh R sp W D H F Lh y ds k)
+    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    DW live S Q 0x80005db8#64 R M := by
+  have hf := st.head.fix_touch hs cx st.touch
+  have hS := hf.heapOwn
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hkb := st.head.kb
+  have hl1 := hs.l1; have hxl := hs.xl; have hsm := hs.small
+  have hi := hf.heap.heap
+  have hp0 := live_in_heap hi hf.b1l (hf.pIn k (by omega))
+  have hpL := live_in_heap hi hf.b1l (hf.pIn (k + D.L) (by omega))
+  have hm0 := live_in_heap hi hf.b3l (hf.mIn 0 (Nat.zero_le _))
+  have hmL := live_in_heap hi hf.b3l (hf.mIn D.L (Nat.le_refl _))
+  simp only [heapStart, heapEnd] at hp0 hpL hm0 hmL
+  have hsp := cx.frame.lo; have hsp2 := cx.frame.hi; have hab := cx.above; have hW := cx.big
+  simp only [heapEnd, htx] at hab hsp
+  have h2 := st.r2; have h25 := st.r25; have h18 := st.r18
+  have s40 := hf.s40; have s16 := hf.s16; have s8 := hf.s8; have s48 := hf.s48
+  bc_run hlive hS [h2, h25, h18, s40, s16, s8, s48, sub_ofNat (show D.L + 1 ≤ D.Bm + D.L by omega)
+    (by omega)] at 0x80005de8 0x80005e20
+  all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+  · intro h0; exact absurd (ofNat64_eq (by omega) (by decide) h0) (by omega)
+  intro _
+  bc_run hlive hS [h2, h25, h18, s40, s16, s8, s48, sub_ofNat (show D.L + 1 ≤ D.Bm + D.L by omega)
+    (by omega)] at 0x80005de8
+  all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+  have hwW := hs.winW st.head.win hkb
+  have hds : DsArgs M (D.P + k) D.Bm D.L (D.wL k) (D.mL k) := by
+    refine ⟨by simp only [DvData.wL, BcModel.digLE_length],
+      by simp only [DvData.mL, BcModel.digLE_length], BcModel.digLE_digits _ _,
+      BcModel.digLE_digits _ _, fun j hj => ?_, st.prod, by omega, by omega, by omega, by omega,
+      live_ranges_apart hi hf.b1l hf.b3l hf.b13 (x := D.P + k) (n := D.L) (y := D.Bm) (m := D.L)
+        (fun i hi => by rw [Nat.add_assoc]; exact hf.pIn _ (by omega)) hf.mIn⟩
+    rw [show D.P + k + D.L - j = D.P + k + (D.L - j) by omega, st.win _ (by omega),
+      hwW _ (by omega), show D.L - (D.L - j) = j by omega]
+    simp only [DvData.wL]; rw [BcModel.digLE_getD _ _ _ (by omega)]
+  refine dsub_start hlive hS hds (by bsimp []; congr 1; omega) (by bsimp [])
+    (by bsimp []) (by bsimp []; congr 1; omega) fun R3 M3 dp => ?_
+  have touch3 : MemOnly (DvTouch sp W D k) M3 M0 :=
+    (dp.only.mono fun a ha => .inl ⟨by omega, by omega⟩).trans st.touch
+  exact dv_after_sub hlive cx hs ⟨st.head, st.g0, touch3, dp.done, dp.r10,
+    by rw [dp.regs.get 22]; bsimp [st.r22], by rw [dp.regs.get 25]; bsimp [h25],
+    by rw [dp.regs.get 2]; bsimp [h2], by rw [dp.regs.get 9]; bsimp [st.r9],
+    by rw [dp.regs.get 21]; bsimp [st.r21], by rw [dp.regs.get 18]; bsimp [h18],
+    by rw [dp.regs.get 24]; bsimp [st.r24], by rw [dp.regs.get 27]; bsimp [st.r27],
+    by rw [dp.regs.get 26]; bsimp [st.r26],
+    (dp.regs.mono (by decide)).trans (by keeps_tac st.regs)⟩ hk
+
 end Dc.Mach

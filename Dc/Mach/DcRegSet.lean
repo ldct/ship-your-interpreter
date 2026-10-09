@@ -604,7 +604,7 @@ theorem reg_set_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (by rw [ldv_ld_miss _ _ (by omega)]; exact hptr)
     (StackFrame.sub (m := 48) (n := 32) hsf (by decide)) (by simp only [heapEnd]; omega)
     (Or.inl (by omega)) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
-    fun R1 M3 H' F' L' C' hk1 h3 _ hfr _ => ?_
+    fun R1 M3 H' F' L' C' hk1 h3 _ hfr _ _ => ?_
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk1.get 2]; bsimp [h2]
   have hfs : ∀ k, k + 8 ≤ 48 → ldv .ld M3 (sp - 48 + k) =
       ldv .ld (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 (regAddr r))]) (sp - 48 + k) :=
@@ -681,7 +681,7 @@ theorem reg_set_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (by rw [ldv_ld_miss _ _ (by omega)]; exact hptr)
     (StackFrame.sub (m := 48) (n := 32) hsf (by decide)) (by simp only [heapEnd]; omega)
     _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
-    fun R1 M3 H' G' hk1 hsn3 h3 hfr _ => ?_
+    fun R1 M3 H' G' hk1 hsn3 h3 hfr _ _ => ?_
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk1.get 2]; bsimp [h2]
   have hfs : ∀ k, k + 8 ≤ 48 → ldv .ld M3 (sp - 48 + k) =
       ldv .ld (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 (regAddr r))]) (sp - 48 + k) :=

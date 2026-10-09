@@ -1,11 +1,14 @@
 import Dc.Mach.Bc.DivAlloc
 
 /-!
-# `bc_divide`'s operand buffers (`0x800059d0` to `0x80005a50`)
+# `bc_divide`'s operand buffers (`0x80005954` to `0x80005a50`)
 
 - `count_rec`: induction on a loop's remaining count with the body taking
   the next iteration only when one remains (the shape of every scan loop).
 - `dvn_skip`: the leading-zero skip over `num2` at `0x80005a34`.
+- `dv1_setup`/`dv1_alloc`: `num1` (padding `dvExtra`, allocation, zeroing, copy)
+  from `0x80005954`.
+- `dvs_disp`: the quotient-length dispatch at `0x80005a50`.
 - `dvn_head`: `num2`'s first digit at `0x80005a24`.
 - `dvn_setup`: `num2` (allocation, copy, sentinel, skip) from `0x800059d0`.
 -/
@@ -126,6 +129,30 @@ theorem dvn_head {live : Nat → Prop} {S : Nat → Prop}
     exact hexit R' ((kk.mono (by decide) : Keeps [14, 15, 16, 23, 24, 27] R' _).trans
       (by keeps_tac Keeps.refl _ _)) e24 e23 e16 e27
 
+/-- **The quotient-length dispatch** at `0x80005a50`: `len1 + k ≥ L` goes to
+the quotient's allocation `0x80005b94`, otherwise to the zero quotient
+`0x80005a5c`. -/
+theorem dvs_disp {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} (hS : HeapOwn S) {len1 k L : Nat}
+    (hsz : len1 + k < 2 ^ 30) (hL : L < 2 ^ 30)
+    (h21 : R 21 = BitVec.ofNat 64 k) (h23 : R 23 = BitVec.ofNat 64 L)
+    (h26 : R 26 = BitVec.ofNat 64 len1)
+    (hge : ∀ R', L ≤ len1 + k → Keeps [12, 20] R' R → R' 12 = BitVec.ofNat 64 (k + 1) →
+      R' 20 = BitVec.ofNat 64 (len1 + k) → DW live S Q 0x80005b94#64 R' M)
+    (hlt : ∀ R', len1 + k < L → Keeps [12, 20] R' R → R' 12 = BitVec.ofNat 64 (k + 1) →
+      R' 20 = BitVec.ofNat 64 (len1 + k) → DW live S Q 0x80005a5c#64 R' M) :
+    DW live S Q 0x80005a50#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have e1 := addw_ofNat (a := k) (b := len1) (by omega)
+  have e2 := addw_ofNat (a := k) (b := 1) (by omega)
+  have e3 := sxw_ofNat (k := k + 1) (by omega)
+  bc_run hlive hS [h21, h23, h26, e1, e2, e3] at 0x80005b94 0x80005a5c
+  · intro h
+    exact hge _ (by omega) (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp []; exact congrArg _ (by omega))
+  · intro h
+    exact hlt _ (by omega) (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp []; exact congrArg _ (by omega))
+
 /-- The frame, the number heap and `num1` (`b1`) before `num2` is allocated. -/
 structure DvBuf1 (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
     (H : Heap) (F : List Blk) (Lh : List NumObj) : Prop extends DvCore S Mt0 M R0 sp W H F Lh where
@@ -142,6 +169,246 @@ theorem range_apart {s d n : Nat} (h : ∀ a, s ≤ a → a < s + n → d ≤ a 
   rcases Nat.lt_or_ge s d with hl | hl
   · exact .inl (Nat.le_of_not_lt fun h' => h d (by omega) h' (Nat.le_refl d) (by omega))
   · exact .inr (Nat.le_of_not_lt fun h' => h s (Nat.le_refl s) (by omega) hl h')
+
+/-- The dividend buffer's zero padding past `n1`'s digits:
+`max 0 (k - (n1->n_scale - scale2))`. -/
+abbrev dvExtra (k s2 sc1 : Nat) : Nat := k + s2 - sc1
+
+/-- The raw dividend buffer: a zero, `n1`'s digits, `e` zeros. -/
+theorem dvx_getD (ds : List Nat) (e i : Nat) :
+    (0 :: ds ++ List.replicate e 0).getD i 0 =
+      if 1 ≤ i ∧ i ≤ ds.length then ds.getD (i - 1) 0 else 0 := by
+  rcases i with _ | j
+  · simp
+  · simp only [List.getD_eq_getElem?_getD, List.cons_append, List.getElem?_cons_succ, Nat.add_sub_cancel]
+    by_cases h : j < ds.length
+    · rw [List.getElem?_append_left h, if_pos (by omega)]
+    · rw [List.getElem?_append_right (by omega), if_neg (by omega), List.getElem?_replicate]
+      split <;> rfl
+
+/-- **`num1`'s allocation** from `0x80005970` (`s4 = extra`): `malloc`, `memset`,
+`memcpy (num1 + 1, n1->n_value, len + scale)`, landing at `0x800059d0`. -/
+theorem dv1_alloc {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {H : Heap} {F : List Blk}
+    {Lh : List NumObj} {x1 : NumObj} {E s2 : Nat}
+    (cx : DvCtx S sp W) (core : DvCore S Mt0 M R0 sp W H F Lh) (hx1 : x1 ∈ Lh)
+    (hsz : x1.rep.len + x1.rep.scale + E < 2 ^ 29)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h15 : R 15 = BitVec.ofNat 64 x1.rep.scale) (h20 : R 20 = BitVec.ofNat 64 E)
+    (h25 : R 25 = BitVec.ofNat 64 x1.rep.len) (h26 : R 26 = BitVec.ofNat 64 (x1.rep.len + s2))
+    (hoom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+      (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
+      DW live S Q 0x80002bcc#64 R' Mt')
+    (hnext : ∀ R' M' H' b,
+      (∀ D : DvData, D.b1 = b → D.P = b.pay → D.xs.length = x1.rep.len + x1.rep.scale + E + 2 →
+        DvBuf1 S Mt0 M' R0 sp W D H' F Lh) →
+      (∀ i, i < x1.rep.len + x1.rep.scale + E + 2 → imgM M' (b.pay + i) =
+        BitVec.ofNat 8 ((0 :: x1.rep.ds ++ List.replicate (E + 1) 0).getD i 0)) →
+      R' 18 = BitVec.ofNat 64 b.pay → R' 25 = BitVec.ofNat 64 (x1.rep.len + x1.rep.scale + E) →
+      R' 26 = BitVec.ofNat 64 (x1.rep.len + s2) →
+      Keeps [1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 25, 26] R' R →
+      DW live S Q 0x800059d0#64 R' M') :
+    DW live S Q 0x80005970#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => core.heap.heap.own a h1 h2
+  have hn1 := core.heap.nums x1 hx1
+  num_facts hn1
+  have ea := addw_ofNat (a := x1.rep.len) (b := x1.rep.scale) (by omega)
+  have eb := addw_ofNat (a := x1.rep.len + x1.rep.scale) (b := E) (by omega)
+  have ec := sxw_ofNat (k := x1.rep.len + x1.rep.scale + E + 2) (by omega)
+  have ed := shl_shr32 (n := x1.rep.len + x1.rep.scale + E + 2) (by omega)
+  bc_run hlive hS [h2, h8, h15, h20, h25, h26, ea, eb, ec, ed] at 0x8000096c
+  all_goals first | exact acc_heap hS (by omega) (by omega) | exact frame_acc hsf (by omega) (by omega) | skip
+  refine malloc_spec hlive core.heap.heap (n := x1.rep.len + x1.rep.scale + E + 2) (by omega) _
+    (by bsimp []) (by bsimp []) fun R1 M1 H1 hk1 hpost => ?_
+  bsimp []
+  have hMa : ∀ a, OutHeap a → imgM M1 a = imgM M a := fun a ho =>
+    hpost.frame a (OutHeap.not_alloc core.heap.heap ho)
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 208) := by rw [hk1.get 2]; bsimp [h2]
+  cases hres : hpost.res with
+  | null e1 e2 e3 =>
+    iterate 2 all_goals (try bc_run hlive hS [e1, q2] at 0x80002bcc)
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    exact hoom _ _ (sp - 208) (by omega) (by omega) (by bsimp [q2]) fun a ha hf => by
+      rw [hMa a ha]
+      exact core.out a ha hf
+  | block b e1 e2 e3 e4 e5 =>
+    have hp' : MallocPost S M M1 H H1 (x1.rep.len + x1.rep.scale + E + 2) (BitVec.ofNat 64 b.pay) :=
+      e1 ▸ hpost
+    have hbl : b ∈ H1.live := by rw [e3]; exact List.mem_cons_self
+    have hne := hp'.pay_ne hbl
+    have fbb := hpost.inv.blk (List.mem_append_right _ hbl)
+    have hblo : 2147603920 ≤ b.h := fbb.lo
+    have hbhi : b.fin ≤ 2273312768 := Nat.le_trans fbb.fin fbb.top
+    have hbp : b.pay = b.h + 16 := rfl
+    have hbf : b.fin = b.h + 16 + b.sz := rfl
+    have hb1 := core.heap.malloc hp'
+    have hn1' := hb1.nums x1 hx1
+    have h81 : R1 8 = BitVec.ofNat 64 x1.rep.p := by rw [hk1.get 8]; bsimp [h8]
+    have h201 : R1 20 = BitVec.ofNat 64 E := by rw [hk1.get 20]; bsimp [h20]
+    have ef := addw_ofNat (a := x1.rep.scale) (b := x1.rep.len) (by omega)
+    have eg := sxw_ofNat (k := x1.rep.scale + x1.rep.len + 2) (by omega)
+    have eh := addw_ofNat (a := x1.rep.scale + x1.rep.len + 2) (b := E) (by omega)
+    have ei := shl_shr32 (n := x1.rep.scale + x1.rep.len + 2 + E) (by omega)
+    bc_run hlive hS [e1, q2, h81, h201, hn1'.len, hn1'.scale, ef, eg, eh, ei] at 0x80000890
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | skip
+    · intro hc; exact absurd hc hne
+    intro _
+    bc_run hlive hS [e1, q2, h81, h201, hn1'.len, hn1'.scale, ef, eg, eh, ei] at 0x80000890
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | skip
+    have hbp' : b.pay = b.h + 16 := rfl
+    have hbf' : b.fin = b.h + 16 + b.sz := rfl
+    have hob : OwnedBytes S b.pay (x1.rep.len + x1.rep.scale + E + 2) :=
+      ⟨fun i hi => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+        by omega⟩
+    refine memset_spec hlive hob _ (by bsimp []) (by bsimp []; exact congrArg _ (by omega)) (by bsimp [])
+      fun R2 M2 hk2 hf2 => ?_
+    bsimp [] at hf2 ⊢
+    have hfo : ∀ a, x1.rep.Foot a → a < b.pay ∨ b.pay + (x1.rep.len + x1.rep.scale + E + 2) ≤ a :=
+      fun a h => by
+        rcases Nat.lt_or_ge a b.h with h1 | h1
+        · exact .inl (by omega)
+        rcases Nat.lt_or_ge a b.fin with h2 | h2
+        · exact absurd (e5 a h1 h2) (core.heap.foot_not_alloc hx1 h)
+        · exact .inr (by omega)
+    have l4 : ldv .lw M2 (x1.rep.p + 4) = BitVec.ofNat 64 x1.rep.len := by
+      rw [ldv_congr .lw fun j hj => hf2.rest _ (hfo _ (.inl ⟨by omega, by simp only [widthOfM] at hj; omega⟩))]
+      exact hn1'.len
+    have l8 : ldv .lw M2 (x1.rep.p + 8) = BitVec.ofNat 64 x1.rep.scale := by
+      rw [ldv_congr .lw fun j hj => hf2.rest _ (hfo _ (.inl ⟨by omega, by simp only [widthOfM] at hj; omega⟩))]
+      exact hn1'.scale
+    have l32 : ldv .ld M2 (x1.rep.p + 32) = BitVec.ofNat 64 x1.rep.val := by
+      rw [ldv_congr .ld fun j hj => hf2.rest _ (hfo _ (.inl ⟨by omega, by simp only [widthOfM] at hj; omega⟩))]
+      exact hn1'.value
+    have h82 : R2 8 = BitVec.ofNat 64 x1.rep.p := by rw [hk2.get 8]; bsimp [h81]
+    have h182 : R2 18 = BitVec.ofNat 64 b.pay := by rw [hk2.get 18]; bsimp []
+    bc_run hlive hS [h82, h182, l4, l8, l32, ef] at 0x8000086c
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    have hbp2 : b.pay = b.h + 16 := rfl
+    have hbf2 : b.fin = b.h + 16 + b.sz := rfl
+    have hv4 := hn1.shape.vLo
+    have hv5 := hn1.shape.vHi
+    simp only [heapStart, heapEnd] at hv4 hv5
+    have hca : CopyArgs S (b.pay + 1) x1.rep.val (x1.rep.len + x1.rep.scale) :=
+      ⟨⟨fun i hi => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+          by omega⟩,
+        ⟨fun i hi => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+          by omega⟩,
+        range_apart fun a h1 h2 h3 h4 => by
+          rcases hfo a (.inr ⟨h1, by omega⟩) with h | h <;> omega⟩
+    refine memcpy_spec hlive hca _ (by bsimp []) (by bsimp []) (by bsimp []; exact congrArg _ (by omega))
+      (by bsimp []) fun R3 M3 hk3 hf3 => ?_
+    bsimp []
+    have hbp3 : b.pay = b.h + 16 := rfl
+    have hbf3 : b.fin = b.h + 16 + b.sz := rfl
+    have m3 : ∀ a, ¬ b.In a → imgM M3 a = imgM M1 a := fun a h => by
+      simp only [Blk.In] at h
+      rw [hf3.rest a (by omega), hf2.rest a (by omega)]
+    have hbn := core.heap.fresh_not_owned (b := b) (by omega) e5
+    have core' : DvCore S Mt0 M3 R0 sp W H1 F Lh :=
+      { saved := core.saved.transport (lo := 104) (top := 208) (hag := fun a h1 h2 => by
+          rw [m3 a (by simp only [Blk.In]; omega)]
+          exact hMa a (outHeap_of_ge (by simp only [heapEnd]; omega)))
+        heap := hb1.scratch hbl hbn hbl hbn fun a h => m3 a fun h' => h (.inl h')
+        out := fun a ho hf => by
+          have hoh := ho.1
+          simp only [heapStart, heapEnd] at hoh
+          rw [m3 a (by simp only [Blk.In]; omega), hMa a ho]
+          exact core.out a ho hf }
+    have hdl := hn1.shape.dsLen
+    have hdig : ∀ i, i < x1.rep.len + x1.rep.scale + E + 2 → imgM M3 (b.pay + i) =
+        BitVec.ofNat 8 ((0 :: x1.rep.ds ++ List.replicate (E + 1) 0).getD i 0) := fun i hi => by
+      rw [dvx_getD, hdl]
+      by_cases h1 : 1 ≤ i ∧ i ≤ x1.rep.len + x1.rep.scale
+      · rw [if_pos h1, show b.pay + i = b.pay + 1 + (i - 1) by omega, hf3.fill (i - 1) (by omega),
+          hf2.rest _ (hfo _ (.inr ⟨by omega, by omega⟩))]
+        exact hn1'.digit (i - 1) (by omega)
+      · rw [if_neg h1, hf3.rest _ (by omega), hf2.fill i hi]; rfl
+    have r18 : R3 18 = BitVec.ofNat 64 b.pay := by rw [hk3.get 18]; exact h182
+    have r25 : R3 25 = BitVec.ofNat 64 (x1.rep.len + x1.rep.scale + E) := by
+      rw [hk3.get 25]; bsimp [hk2.get 25, hk1.get 25]
+    have r26 : R3 26 = BitVec.ofNat 64 (x1.rep.len + s2) := by
+      rw [hk3.get 26]; bsimp [hk2.get 26, hk1.get 26, h26]
+    have hK : Keeps [1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 25, 26] R3 R :=
+      (hk3.mono (by decide)).trans (by
+        keeps_tac ((hk2.mono (by decide)).trans (by
+          keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))))
+    exact hnext R3 M3 H1 b (fun D hb hP hl =>
+      { toDvCore := core'
+        b1l := hb ▸ hbl
+        b1n := hb ▸ hbn
+        pPay := by rw [hP, hb]
+        pIn := fun i hi => by rw [hl] at hi; rw [hb, hP]; simp only [Blk.In]; omega })
+      hdig r18 r25 r26 hK
+
+/-- **`num1`** from `0x80005954`: `extra = max (0, k - (n1->n_scale - scale2))`,
+`malloc (len + scale + extra + 2)`, zeroed, `n1`'s digits copied from its
+second byte, landing at `0x800059d0`. -/
+theorem dv1_setup {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {H : Heap} {F : List Blk}
+    {Lh : List NumObj} {x1 : NumObj} {s2 k : Nat}
+    (cx : DvCtx S sp W) (core : DvCore S Mt0 M R0 sp W H F Lh) (hx1 : x1 ∈ Lh)
+    (hsz : x1.rep.len + x1.rep.scale + k + s2 < 2 ^ 28)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h19 : R 19 = BitVec.ofNat 64 s2) (h21 : R 21 = BitVec.ofNat 64 k)
+    (hoom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+      (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
+      DW live S Q 0x80002bcc#64 R' Mt')
+    (hnext : ∀ R' M' H' b,
+      (∀ D : DvData, D.b1 = b → D.P = b.pay →
+        D.xs.length = x1.rep.len + x1.rep.scale + dvExtra k s2 x1.rep.scale + 2 →
+        DvBuf1 S Mt0 M' R0 sp W D H' F Lh) →
+      (∀ i, i < x1.rep.len + x1.rep.scale + dvExtra k s2 x1.rep.scale + 2 → imgM M' (b.pay + i) =
+        BitVec.ofNat 8 ((0 :: x1.rep.ds ++ List.replicate (dvExtra k s2 x1.rep.scale + 1) 0).getD i 0)) →
+      R' 18 = BitVec.ofNat 64 b.pay →
+      R' 25 = BitVec.ofNat 64 (x1.rep.len + x1.rep.scale + dvExtra k s2 x1.rep.scale) →
+      R' 26 = BitVec.ofNat 64 (x1.rep.len + s2) →
+      Keeps [1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 25, 26] R' R →
+      DW live S Q 0x800059d0#64 R' M') :
+    DW live S Q 0x80005954#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => core.heap.heap.own a h1 h2
+  have hn1 := core.heap.nums x1 hx1
+  num_facts hn1
+  generalize hE : dvExtra k s2 x1.rep.scale = E at hnext
+  have hEv : E = k + s2 - x1.rep.scale := by rw [← hE]
+  suffices hmain : ∀ R', R' 20 = BitVec.ofNat 64 E → R' 25 = BitVec.ofNat 64 x1.rep.len →
+      R' 15 = BitVec.ofNat 64 x1.rep.scale → R' 26 = BitVec.ofNat 64 (x1.rep.len + s2) →
+      Keeps [14, 15, 20, 25, 26] R' R → DW live S Q 0x80005970#64 R' M by
+    have e1 := subw_nat (a := x1.rep.scale) (b := s2) (by omega) (by omega)
+    have e2 := addw_ofNat (a := x1.rep.len) (b := s2) (by omega)
+    have t1 : (BitVec.ofNat 64 k).toInt = k := by
+      rw [← ofInt_natCast64, toInt_ofInt64 (by omega) (by omega)]
+    have t2 : (BitVec.ofInt 64 ((x1.rep.scale : Int) - s2)).toInt = (x1.rep.scale : Int) - s2 :=
+      toInt_ofInt64 (by omega) (by omega)
+    have e3 : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 k) -
+        BitVec.extractLsb 31 0 (BitVec.ofInt 64 ((x1.rep.scale : Int) - s2))) =
+          BitVec.ofInt 64 ((k : Int) - ((x1.rep.scale : Int) - s2)) := by
+      rw [← ofInt_natCast64 k, subw_int (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)]
+    bc_run hlive hS [h2, h8, h19, h21, hn1.len, hn1.scale, e1, e2, t1, t2, e3] at 0x80005970
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    · intro h
+      exact hmain _ (by bsimp []; exact congrArg _ (by omega)) (by bsimp []) (by bsimp []) (by bsimp [])
+        (by keeps_tac Keeps.refl _ _)
+    · intro h
+      bc_run hlive hS [h21, e3] at 0x80005970
+      refine hmain _ ?_ (by bsimp []) (by bsimp []) (by bsimp []) (by keeps_tac Keeps.refl _ _)
+      bsimp []
+      rw [show (k : Int) - ((x1.rep.scale : Int) - s2) = ((E : Nat) : Int) by omega, ofInt_natCast64]
+  intro R1 r20 r25 r15 r26 K1
+  exact dv1_alloc hlive cx core hx1 (by omega) (by rw [K1.get 2]; exact h2) (by rw [K1.get 8]; exact h8)
+    r15 r20 r25 r26 hoom fun R' M' H' b hD hd r18 r25' r26' K2 =>
+      hnext R' M' H' b hD hd r18 r25' r26' (by keeps_tac (K2.trans (K1.mono (by decide))))
 
 /-- **`num2`** from `0x800059d0`: `len2 = n2->n_len + scale2`, `malloc (len2 + 1)`,
 `memcpy (num2, n2->n_value, len2)`, the zero sentinel, the leading-zero skip

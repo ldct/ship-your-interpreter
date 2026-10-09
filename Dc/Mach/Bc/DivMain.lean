@@ -1365,4 +1365,143 @@ theorem dv_sub {live : Nat → Prop} {S : Nat → Prop}
     by rw [dp.regs.get 26]; bsimp [st.r26],
     (dp.regs.mono (by decide)).trans (by keeps_tac st.regs)⟩ hk
 
+/-- `_one_mult`'s context: its frame below the loop's. -/
+theorem DvCtx.om {S : Nat → Prop} {sp W : Nat} (cx : DvCtx S sp W) (hS : HeapOwn S)
+    {R : Nat → BitVec 64} (h2 : R 2 = BitVec.ofNat 64 (sp - 208))
+    (hal : (R 1).toNat % 4 = 0) : OmCtx S R (sp - 208) where
+  frame := { own := fun a h1 h2 => cx.frame.own a (by have := cx.big; omega) (by omega)
+             lo := by have := cx.frame.lo; have := cx.big; omega
+             hi := by have := cx.frame.hi; omega
+             al := by have := cx.frame.al; omega }
+  above := by have := cx.above; have := cx.big; omega
+  heap := hS
+  sp0 := h2
+  al := hal
+
+/-- **The product** from `0x80005d9c`: `mval[0] = 0`, then
+`_one_mult(N, L, g, mval + 1)`, then the subtraction. -/
+theorem dv_mult {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M0 : Mem} {R0 Rh R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
+    {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
+    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S Mt0 M0 R0 Rh sp W D H F Lh y ds k)
+    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) (hg : D.g k ≠ 0)
+    (K : Keeps guessClob R Rh) (h21 : R 21 = BitVec.ofNat 64 (k + 1))
+    (h22 : R 22 = BitVec.ofNat 64 (D.g k)) (h25 : R 25 = BitVec.ofNat 64 k) :
+    DW live S Q 0x80005d9c#64 R M0 := by
+  have hf := st.fix
+  have hS := hf.heapOwn
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hkb := st.kb
+  have hl1 := hs.l1; have hxl := hs.xl; have hsm := hs.small
+  have hg9 := (hs.g_bounds k).2.2
+  have hi := hf.heap.heap
+  have hn0 := live_in_heap hi hf.b2l (hf.nIn 0 (Nat.zero_le _))
+  have hnL := live_in_heap hi hf.b2l (hf.nIn D.L (Nat.le_refl _))
+  have hm0 := live_in_heap hi hf.b3l (hf.mIn 0 (Nat.zero_le _))
+  have hmL := live_in_heap hi hf.b3l (hf.mIn D.L (Nat.le_refl _))
+  simp only [heapStart, heapEnd] at hn0 hnL hm0 hmL
+  have hsp := cx.frame.lo; have hsp2 := cx.frame.hi; have hab := cx.above; have hW := cx.big
+  simp only [heapEnd, htx] at hab hsp
+  have h2 : R 2 = BitVec.ofNat 64 (sp - 208) := by rw [K.get 2]; exact st.r2
+  have h24 : R 24 = BitVec.ofNat 64 D.N := by rw [K.get 24]; exact st.r24
+  have s8 := hf.s8; have s32 := hf.s32; have s24 := hf.s24
+  bc_run hlive hS [h2, h22, h24, s8, s32, s24] at 0x80005db4
+  all_goals first | exact acc_heap hS (by omega) (by omega) | dc_frame cx.frame | skip
+  have hNB := live_ranges_apart hi hf.b2l hf.b3l hf.b23 (x := D.N) (n := D.L) (y := D.Bm)
+    (m := D.L) hf.nIn hf.mIn
+  have hoa : OmArgs (writeLog M0 [(D.Bm, 1, 0#64)]) D.N D.L (D.g k) (D.Bm + 1) D.vs :=
+    ⟨hs.vl, hs.vd, fun i hi => by
+      rw [imgM_store_miss _ _ (by omega)]; exact hf.div i hi, by omega, by omega,
+      by simp only [heapStart]; omega, by simp only [heapEnd]; omega,
+      by simp only [heapStart]; omega, by simp only [heapEnd]; omega,
+      by rcases hNB with h | h
+         · exact .inr (.inl (by omega))
+         · exact .inr (.inr (by omega)),
+      fun _ => by omega⟩
+  apply st_80005db4 hlive
+  refine one_mult_spec hlive (cx.om hS (by bsimp [h2]) (by bsimp [])) hoa (by bsimp [])
+    (by bsimp []) (by bsimp []) (by bsimp []) fun R2 M2 hk2 hp => ?_
+  bsimp []
+  have hun : ∀ a, ¬ D.b3.In a → ¬ (sp - W ≤ a ∧ a < sp - 208) → imgM M2 a = imgM M0 a := by
+    intro a h3 hst
+    have hout : a < D.Bm ∨ D.Bm + D.L < a := by
+      rcases Nat.lt_or_ge a D.Bm with h | h
+      · exact .inl h
+      · rcases Nat.lt_or_ge (D.Bm + D.L) a with h' | h'
+        · exact .inr h'
+        · exfalso; apply h3
+          have := hf.mIn (a - D.Bm) (by omega)
+          rwa [show D.Bm + (a - D.Bm) = a by omega] at this
+    rw [hp.rest a (by omega) (by simp only [frameIn]; omega), imgM_store_miss _ _ (by omega)]
+  have hb1 : ∀ i, i ≤ D.L → D.b1.In (D.P + k + i) := fun i hi => by
+    rw [Nat.add_assoc]; exact hf.pIn _ (by omega)
+  have touch : MemOnly (DvTouch sp W D k) M2 M0 := fun a ha =>
+    hun a (fun h => ha (.inr (.inl h))) (fun h => ha (.inr (.inr h)))
+  have win : ∀ i, i ≤ D.L → imgM M2 (D.P + k + i) = imgM M0 (D.P + k + i) := fun i hiL =>
+    hun _ (fun h => live_apart hi hf.b1l hf.b3l hf.b13 (hb1 i hiL) h) (fun h => by
+      have := live_in_heap hi hf.b1l (hb1 i hiL); simp only [heapEnd] at this; omega)
+  have hVg : D.V * D.g k / 10 ^ D.L < 10 := by
+    obtain ⟨-, hV, -⟩ := hs.vtop
+    refine (Nat.div_lt_iff_lt_mul (Nat.pow_pos (by decide))).mpr ?_
+    have : D.V * D.g k ≤ D.V * 9 := Nat.mul_le_mul_left _ hg9
+    omega
+  have prod : ∀ j, j ≤ D.L → imgM M2 (D.Bm + D.L - j) = BitVec.ofNat 8 ((D.mL k).getD j 0) := by
+    intro j hj
+    simp only [DvData.mL]; rw [BcModel.digLE_getD _ _ _ (by omega)]
+    rcases Nat.lt_or_ge j D.L with h | h
+    · have := hp.digits (D.L - 1 - j) (by omega)
+      rwa [show D.Bm + 1 + (D.L - 1 - j) = D.Bm + D.L - j by omega,
+        show D.L - 1 - (D.L - 1 - j) = j by omega] at this
+    · have e : j = D.L := by omega
+      subst e
+      rw [show D.Bm + D.L - D.L = D.Bm by omega, Nat.mod_eq_of_lt hVg]
+      by_cases hc : D.V * D.g k / 10 ^ D.L = 0
+      · have := hp.keep hc
+        rw [show D.Bm + 1 - 1 = D.Bm by omega, imgM_sb] at this
+        rw [this, hc]; rfl
+      · have := hp.carry hc
+        rwa [show D.Bm + 1 - 1 = D.Bm by omega] at this
+  exact dv_sub hlive cx hs ⟨st, Nat.pos_of_ne_zero hg, touch, win, prod,
+    by rw [hk2.get 22]; bsimp [h22], by rw [hk2.get 25]; bsimp [h25],
+    by rw [hk2.get 2]; bsimp [h2], by rw [hk2.get 9]; bsimp [K.get 9, st.r9],
+    by rw [hk2.get 21]; bsimp [h21], by rw [hk2.get 18]; bsimp [K.get 18, st.r18],
+    by rw [hk2.get 24]; bsimp [h24], by rw [hk2.get 27]; bsimp [K.get 27, st.r27],
+    by rw [hk2.get 26]; bsimp [K.get 26, st.r26],
+    (hk2.mono (by decide)).trans (by keeps_tac ((K.mono (by decide)).trans st.regs))⟩ hk
+
+/-- **One iteration** from the loop head: guess, multiply, subtract, add
+back, store. -/
+theorem dv_iter {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
+    {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
+    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F Lh y ds k)
+    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) :
+    DW live S Q 0x80005d4c#64 R M :=
+  dv_guess hlive hs st
+    ⟨fun hg _ K h20 h21 _ _ => dv_zero hlive cx hs st hk hg K h20 h21,
+     fun hg _ K h21 h22 h25 => dv_mult hlive cx hs st hk hg K h21 h22 h25⟩
+
+/-- **The digit loop** from iteration `k` to its exit. -/
+theorem dv_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
+    {F : List Blk} {Lh : List NumObj} {y : NumObj}
+    (cx : DvCtx S sp W) (hs : DvShape D)
+    (hexit : ∀ R' M' ds', DvExit S Mt0 M' R0 R' sp W D H F Lh y ds' →
+      DW live S Q 0x80005e2c#64 R' M') :
+    ∀ n k R M ds, D.Kb - k = n → DvAt S Mt0 M R0 R sp W D H F Lh y ds k →
+      DW live S Q 0x80005d4c#64 R M := by
+  intro n
+  induction n with
+  | zero =>
+    intro k R M ds hn st
+    exact dv_iter hlive cx hs st ⟨fun h => absurd h (by have := st.kb; omega),
+      fun _ => hexit⟩
+  | succ n ih =>
+    intro k R M ds hn st
+    exact dv_iter hlive cx hs st ⟨fun _ R' M' ds' st' => ih (k + 1) R' M' ds' (by omega) st',
+      fun h => absurd h (by omega)⟩
+
 end Dc.Mach

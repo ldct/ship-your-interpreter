@@ -67,7 +67,7 @@ structure DmArgs (M : Mem) (L : List NumObj) (x1 x2 z : NumObj) (k : Nat) : Prop
   n2 : x2.rep.Norm
   /-- `bc_new_num` takes a positive integer length -/
   len1 : 1 ≤ x1.rep.len
-  size : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27
+  size : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 24
   zero : KZero M z (2 ^ 30)
   mulBase : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80
   owns : ∀ y ∈ L, y.Owns
@@ -1031,5 +1031,27 @@ theorem dm_rmul {live : Nat → Prop} {S : Nat → Prop}
     (by rw [hp.num, hyq.num]; exact hbv) (by omega) hp.slot hun'
     (by rw [hk'.get 8]; bsimp [h8]) (by rw [hk'.get 18]; bsimp [h18])
     (by rw [hk'.get 19]; bsimp [h19]) (by rw [hk'.get 21]; bsimp [h21])
+
+/-- The quotient of `bc_divmod` has at most the dividend's digits, the
+divisor's scale and `k`, and one. -/
+theorem div_size_le {o1 o2 o : NumRep} (h1 : NumShape o1) (hs : NumShape o) (hn : o.Norm)
+    {k : Nat} {q : Num} (hd : Num.div o1.num o2.num k = some q) (ho : o.num = q) :
+    o.len + o.scale ≤ o1.len + o1.scale + o2.scale + k + 1 := by
+  have m1 := NumRep.mag_lt h1
+  unfold Num.div at hd
+  split at hd
+  · exact absurd hd (by simp)
+  rename_i h0
+  simp only [Option.some.injEq] at hd
+  subst hd
+  have hsc : o.scale = k := by have := congrArg Num.scale ho; exact this
+  have hm : o.num.mag < 10 ^ (o1.len + o1.scale + (o2.scale + k)) := by
+    rw [ho, Nat.pow_add, NumRep.num_mag, NumRep.num_scale, ← Nat.pow_add]
+    refine Nat.lt_of_le_of_lt (Nat.div_le_self _ _) ?_
+    have hp : 0 < 10 ^ (o2.scale + k) := Nat.pos_of_ne_zero (by simp)
+    rw [Nat.pow_add 10 (o1.len + o1.scale)]
+    exact Nat.mul_lt_mul_of_pos_right m1 hp
+  have := NumRep.size_le hs hn hm
+  omega
 
 end Dc.Mach

@@ -709,4 +709,60 @@ theorem ra_body {live : Nat → Prop} {S : Nat → Prop}
       (by rw [hk1.get 8 (by decide)]; bsimp []) (by rw [hkk.get 22 (by decide)]; exact h22)
       (by rw [h10']; bsimp [mul_ofNat])
 
+/-! ## The entry -/
+
+/-- A zero exponent raises to `1`. -/
+theorem raise_zero_fst {a b : Num} {k : Nat} (h : b.toLong = 0) : (Num.raise a b k).1 = Num.one := by
+  simp [Num.raise, h]
+
+/-- **`exponent = bc_num2long (num2)`** from `0x8000663c` (`s0` = `num2`),
+then a zero exponent (`ra_zero`) or a nonzero one (`ra_body`). -/
+theorem ra_num {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H H0 : Heap}
+    {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
+    (cx : RaCtx S R0 sp W q)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
+    (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots0) (h9 : R 9 = R0 9) (h20 : R 20 = R0 20)
+    (h21 : R 21 = R0 21) (h24 : R 24 = R0 24)
+    (hb : BcHeap S M H F (A ++ x1 :: B))
+    (h8 : R 8 = BitVec.ofNat 64 x2.rep.p) (h18 : R 18 = BitVec.ofNat 64 x1.rep.p)
+    (h22 : R 22 = BitVec.ofNat 64 k) :
+    DW live S (DQ live S Q t) 0x8000663c#64 R M := by
+  ra_facts cx
+  have hal := cx.al
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn2 := hb.nums x2 ha.m2
+  have hsz := ha.size
+  have hu24 : (raExp x2).natAbs < 2 ^ 24 := by
+    have := Nat.mul_le_mul (show (raExp x2).natAbs + 1 ≤ (raExp x2).natAbs + 1 by omega)
+      (show 1 ≤ x1.rep.len + x1.rep.scale + 1 by omega)
+    omega
+  bc_run hlive hS [h8] at 0x800065a0
+  refine bc_num2long_spec hlive hS hn2 ha.len2 _ (by bsimp [h8]) (by bsimp []) fun R1 hk1 h10 => ?_
+  bsimp [hk1.get 1]
+  have hkk : Keeps raCallClob R1 R :=
+    (hk1.mono (ks' := raCallClob) (by decide)).trans (by keeps_tac Keeps.refl _ _)
+  have hre : raExp x2 = x2.rep.num.toLong := rfl
+  have ez : BitVec.ofInt 64 x2.rep.num.toLong = 0#64 ↔ raExp x2 = 0 := by
+    constructor
+    · intro h
+      have := congrArg BitVec.toInt h
+      rwa [toInt_ofInt64 (by omega) (by omega), BitVec.toInt_zero] at this
+    · intro h; rw [show x2.rep.num.toLong = 0 from h]; rfl
+  bc_run hlive hS [h10, ez] at 0x8000681c 0x80006648
+  · intro hz
+    rw [raise_zero_fst hz] at hK
+    exact ra_zero hlive cx hK (ra.regs hkk) (by rw [hkk.get 9 (by decide)]; exact h9)
+      (by rw [hkk.get 20 (by decide)]; exact h20) (by rw [hkk.get 21 (by decide)]; exact h21)
+      (by rw [hkk.get 24 (by decide)]; exact h24) hb ha hs0 (by rw [hkk.get 8 (by decide)]; exact h8)
+  · intro hnz
+    exact ra_body hlive cx hK ha hs0 hb0 hr1 (ra.regs hkk) (by rw [hkk.get 9 (by decide)]; exact h9)
+      (by rw [hkk.get 20 (by decide)]; exact h20) (by rw [hkk.get 21 (by decide)]; exact h21)
+      (by rw [hkk.get 24 (by decide)]; exact h24) hb (by rw [hkk.get 18 (by decide)]; exact h18)
+      (by rw [hkk.get 22 (by decide)]; exact h22) h10 hnz
+
 end Dc.Mach

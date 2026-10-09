@@ -23,14 +23,19 @@ import sys
 
 BASE_CL = [1, 10, 14, 15]
 
-# name, P0, register, null test target (or None), P, D, J, Uo, No, Uv, Nv, Nd, extra clobbers
+# name, P0, register, null test target (or None), P, D, J, Uo, No, Uv, Nv, Nd, extra clobbers,
+# and whether the refcount part (P0 to D) is generated: `False` for a site whose
+# decrement interleaves another instruction (its caller steps to D by hand)
 SITES = [
     # `bc_divmod`: `temp` after `bc_sub`, quotient wanted
     ("temp (quotient path)", 0x800060a8, 9, 0x8000611c, 0x800060ac, 0x800060bc, 0x800060c4,
-     0x800060c8, 0x800060dc, 0x80006108, 0x8000611c, 0x8000611c, []),
+     0x800060c8, 0x800060dc, 0x80006108, 0x8000611c, 0x8000611c, [], True),
     # `bc_divmod`: `temp` after `bc_sub`, no quotient (`li s4,0` before the branch)
     ("temp (remainder path)", 0x80006168, 9, 0x800060e0, 0x8000616c, 0x8000617c, 0x800060c4,
-     0x800060c8, 0x800060dc, 0x80006188, 0x800060e0, 0x800060e0, [20]),
+     0x800060c8, 0x800060dc, 0x80006188, 0x800060e0, 0x800060e0, [20], True),
+    # `bc_raise`: `temp` after the negative exponent's `bc_divide` (`ld s5` interleaved)
+    ("temp (`bc_raise`)", 0x80006760, 20, None, 0x80006764, 0x80006778, 0x80006780,
+     0x80006784, 0x80006798, 0x80006784, 0x80006798, 0x80006798, [], False),
 ]
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "Dc/Mach/Bc/FreeSites.lean"
@@ -158,7 +163,9 @@ theorem ffree_view_{P0} {live : Nat → Prop} {S : Nat → Prop}
     (by rw [ldv_ld_miss _ _ (by simp only [bcFreeAddr]; omega)]; exact h.dead.head) hS h.globOwn
     (by omega) (by omega) (by omega) (by keeps_tac hkp) (by bsimp [hx]) hk
 
-/-- The last reference dropped at `0x{P}`. -/
+"""
+
+TEMPLATE_P = """/-- The last reference dropped at `0x{P}`. -/
 theorem ffree_rel_{P0} {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {fr : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
@@ -264,7 +271,7 @@ def hx(v):
     return "%08x" % v
 
 
-def site(name, p0, r, nn, p, d, j, uo, no, uv, nv, nd, extra):
+def site(name, p0, r, nn, p, d, j, uo, no, uv, nv, nd, extra, full):
     cl = "[" + ", ".join(str(z) for z in sorted(BASE_CL + extra)) + "]"
     sub = {"P0": p0, "P": p, "D": d, "J": j, "Uo": uo, "No": no, "Uv": uv, "Nv": nv,
            "Nd": nd}
@@ -274,7 +281,8 @@ def site(name, p0, r, nn, p, d, j, uo, no, uv, nv, nd, extra):
         for k, v in {"P0": p0, "U": u, "U4": u + 4, "N": n}.items():
             s = s.replace("{" + k + "}", hx(v))
         out.append(s.replace("{r}", str(r)).replace("{CL}", cl))
-    s = TEMPLATE.replace("{NULLSTEP}", NULLSTEP if nn is not None else "")
+    s = TEMPLATE + (TEMPLATE_P.replace("{NULLSTEP}", NULLSTEP if nn is not None else "")
+                    if full else "")
     if nn is not None:
         s += NULL
         sub["Nn"] = nn

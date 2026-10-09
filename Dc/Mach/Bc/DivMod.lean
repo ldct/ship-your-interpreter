@@ -792,4 +792,244 @@ theorem dm_qmul {live : Nat → Prop} {S : Nat → Prop}
     (by rw [hk'.get 19]; bsimp [h19]) (by rw [hk'.get 20]; bsimp [h20])
     (by rw [hk'.get 21]; bsimp [h21])
 
+/-! ## Without the quotient (`bc_modulo`) -/
+
+/-- The remainder returned from `0x800060e0` (`a0 = 0`, the epilogue). -/
+theorem dm_rend {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W qr : Nat} {L Lf : List NumObj}
+    {xr yr : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {b : Num}
+    (cx : DmCtx S R0 sp W) (hk : DmKR live S Q R0 Mt0 L xr qr sp W n) (hn : n = some b)
+    (sv : SavedWords M (sp - 80) dmSlots R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 80))
+    (hkp : Keeps dmAll R R0) (hp : DmPostR S Mt0 M H F L xr qr sp W b Lf yr) :
+    DW live S Q 0x800060e0#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hp.heap.heap.own a h1 h2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [] at 0x800060e4
+  exact dm_epi hlive cx hS sv (by bsimp [h2]) (by keeps_tac hkp) fun R' hk' h10 =>
+    hk.ret _ hn R' M H F Lf yr hk' (by rw [h10]; bsimp []) hp
+
+/-- After the inlined free of `temp` (no quotient): the product released. -/
+theorem dm_rafter {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W qr : Nat} {L Lm L' : List NumObj}
+    {xr yr ym : NumObj} {H H' : Heap} {F F' : List Blk} {n : Option Num} {b : Num}
+    (cx : DmCtx S R0 sp W) (sr : DmSlot S sp W qr) (hk : DmKR live S Q R0 Mt0 L xr qr sp W n)
+    (hn : n = some b)
+    (sv : SavedWords M (sp - 80) dmSlots R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 80))
+    (hkp : Keeps dmAll R R0) (hm1 : ym.rep.refs = 1)
+    (hkf : KFreed H F [yr] Lm ym H' F' L') (hb : BcHeap S M' H' F' L')
+    (hof : OutFrame (fun _ => False) M' M) (hR : Keeps [1, 10, 14, 15, 20] R' R)
+    (hmid : DropAt L xr.rep.p Lm) (hyr : ResNum M qr b yr)
+    (hout : ∀ a, OutHeap a → ¬ slotBytes qr a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :
+    DW live S Q 0x800060e0#64 R' M' := by
+  cases hkf with
+  | dec h => omega
+  | rel _ =>
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have hrm : 224 ≤ rmStack (2 ^ 30) := by unfold rmStack; omega
+  simp only [heapEnd] at hab
+  have hun : ∀ a, OutHeap a → imgM M' a = imgM M a := fun a ha => hof a ha id
+  have hstk : ∀ a, sp - 80 ≤ a → OutHeap a := fun a h => by
+    simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+  have hsr := hyr.slot
+  have hsr1 : ldv .ld M' qr = BitVec.ofNat 64 yr.sb.pay := by
+    rw [ldv_congr .ld fun j hj => hun _ (sr.out _ ⟨by omega, by
+      simp only [widthOfM] at hj; omega⟩)]; exact hsr
+  exact dm_rend hlive cx hk hn
+    (sv.transport (lo := 24) (top := 80) (hag := fun a h1 h2' => hun a (hstk a (by omega))))
+    (by rw [hR.get 2]; exact h2) ((hR.mono (by decide)).trans hkp)
+    ⟨hb, hmid, { hyr with slot := hsr1 }, fun a ha hs hf => (hun a ha).trans (hout a ha hs hf)⟩
+
+/-- `bnez s3` at `0x800060dc` without a quotient slot. -/
+theorem dm_r60dc {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} (hS : HeapOwn S) (h19 : R 19 = 0#64)
+    (hk : DW live S Q 0x800060e0#64 R M) : DW live S Q 0x800060dc#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h19] at 0x800060e0
+  all_goals first | exact hk | (intro hc; exact absurd rfl hc) | skip
+
+/-- **The free of `temp`** at `0x80006168` (no quotient): the product, one
+reference, released. -/
+theorem dm_rsite {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W qr : Nat} {L Lm : List NumObj}
+    {xr yr ym : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {b : Num}
+    (cx : DmCtx S R0 sp W) (sr : DmSlot S sp W qr) (hk : DmKR live S Q R0 Mt0 L xr qr sp W n)
+    (hn : n = some b)
+    (sv : SavedWords M (sp - 80) dmSlots R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 80))
+    (hkp : Keeps dmAll R R0) (hb : BcHeap S M H F (yr :: ym :: Lm))
+    (hm1 : ym.rep.refs = 1) (hmo : ym.Owns)
+    (hmid : DropAt L xr.rep.p Lm) (hyr : ResNum M qr b yr)
+    (hout : ∀ a, OutHeap a → ¬ slotBytes qr a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (h9 : R 9 = BitVec.ofNat 64 ym.rep.p) (h19 : R 19 = 0#64) :
+    DW live S Q 0x80006168#64 R M := by
+  have hb' : BcHeap S M H F ([yr] ++ ym :: Lm) := hb
+  refine ffree_80006168 (fr := fun _ => False) hlive hb' (by omega)
+    (fun _ hxo y hy => hb'.owner_db_ne hxo hy (by
+      rcases List.mem_singleton.mp hy with rfl; exact hyr.owns)) h9
+    (fun R' M' H' F' L' hR hkf hb1 hof => ?_) (fun R' M' H' F' L' hR hkf hb1 hof => ?_)
+    (fun R' M' H' F' L' hR hkf hb1 hof => ?_)
+  · exact dm_rafter hlive cx sr hk hn sv h2 hkp hm1 hkf hb1 hof hR hmid hyr hout
+  · exact dm_r60dc hlive (fun a h1 h2 => hb1.heap.own a h1 h2) (by rw [hR.get 19]; exact h19)
+      (dm_rafter hlive cx sr hk hn sv h2 hkp hm1 hkf hb1 hof hR hmid hyr hout)
+  · exact dm_rafter hlive cx sr hk hn sv h2 hkp hm1 hkf hb1 hof hR hmid hyr hout
+
+/-- **`bc_sub (num1, temp, rem, rscale)`** from `0x80006150` (no
+quotient): the remainder, then the free of `temp`. -/
+theorem dm_rsub {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W qr rs : Nat} {L : List NumObj}
+    {xr x1 ym : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {b c : Num}
+    (cx : DmCtx S R0 sp W) (sr : DmSlot S sp W qr) (hmr : xr ∈ L) (hrr : 1 ≤ xr.rep.refs)
+    (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p)
+    (hk : DmKR live S Q R0 Mt0 L xr qr sp W n) (hn : n = some b)
+    (sv : SavedWords M (sp - 80) dmSlots R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 80))
+    (hkp : Keeps dmAll R R0) (hb : BcHeap S M H F (ym :: L))
+    (hown : ∀ y ∈ L, y.Owns) (hx1 : x1 ∈ L) (hn1 : x1.rep.Norm) (hl1 : 1 ≤ x1.rep.len)
+    (hym : NewNum c ym) (hbv : Num.sub x1.rep.num c rs = b)
+    (hsz : ym.rep.len + ym.rep.scale + x1.rep.len + x1.rep.scale + rs < 2 ^ 30)
+    (hslot : ldv .ld M (sp - 80 + 8) = BitVec.ofNat 64 ym.sb.pay)
+    (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (h8 : R 8 = BitVec.ofNat 64 x1.rep.p) (h18 : R 18 = BitVec.ofNat 64 rs)
+    (h19 : R 19 = 0#64) (h21 : R 21 = BitVec.ofNat 64 qr) :
+    DW live S Q 0x80006150#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have hrm : 224 ≤ rmStack (2 ^ 30) := by unfold rmStack; omega
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hapr := sr.apart
+  have hrh := sr.slot.hi
+  obtain ⟨A0, B0, rfl⟩ := List.append_of_mem hmr
+  have hb' : BcHeap S M H F ((ym :: A0) ++ xr :: B0) := hb
+  have hymp : ym.rep.p = ym.sb.pay := (hb.blocks ym List.mem_cons_self).sPay
+  have hymn := hb.nums ym List.mem_cons_self
+  num_facts hymn
+  have hx1n := hb.nums x1 (List.mem_cons_of_mem _ hx1)
+  num_facts hx1n
+  have hstk : ∀ a, sp - 80 ≤ a → OutHeap a := fun a h => by
+    simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+  have hwr : ldv .ld M qr = BitVec.ofNat 64 xr.rep.p := by
+    rw [ldv_congr .ld fun j hj => houtM _ (sr.out _ ⟨by omega, by
+      simp only [widthOfM] at hj; omega⟩) (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
+    exact hwr0
+  have hl1' := hym.pos
+  have hnvr : xr.rep.refs = 1 → xr.Owns → ∀ z ∈ ym :: A0, z.db ≠ xr.db := fun _ hxo z hz =>
+    hb'.owner_db_ne hxo hz (by
+      rcases List.mem_cons.mp hz with rfl | hz
+      · exact hym.owns
+      exact hown z (List.mem_append_left _ hz))
+  bc_run hlive hS [h2, hslot, h18, h21, h8] at 0x80004ac4
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine dm_subCall (x1 := x1) (x2 := ym) (smin := rs) hlive cx sr hk.oom houtM
+    ⟨List.mem_cons_of_mem _ hx1, List.mem_cons_self, hn1, hym.norm,
+      by omega, fun h => absurd h (by omega), fun h => absurd h (by omega)⟩
+    (fun _ => ⟨hl1, hl1'⟩) hb' ⟨hrr, hwr, hnvr⟩ (by bsimp [h2]) (by bsimp []; try decide)
+    (by bsimp [h8]) (by bsimp [hymp]) (by bsimp [h21]) (by bsimp [h18]) ?_
+  intro R' M' H' F' Lr y hk' hp
+  bsimp []
+  have ⟨Lm, hLr, hfr⟩ : ∃ Lm, Lr = ym :: Lm ∧ FreedRest A0 B0 xr Lm := by
+    cases hp.rest with
+    | dec h => exact ⟨_, rfl, .dec h⟩
+    | rel h => exact ⟨_, rfl, .rel h⟩
+  subst hLr
+  have hpo := hp.out
+  have hun : ∀ a, OutHeap a → ¬ slotBytes qr a → ¬ frameIn (sp - 80) 176 a →
+      imgM M' a = imgM M a := hpo
+  have hc := hym.num
+  exact dm_rsite hlive cx sr hk hn
+    (sv.transport (lo := 24) (top := 80) (hag := fun a h1 h2' => hun a (hstk a (by omega))
+      (by simp only [slotBytes]; omega) (by simp only [frameIn]; omega)))
+    (by rw [hk'.get 2]; bsimp [h2]) ((hk'.mono (by decide)).trans (by keeps_tac hkp)) hp.heap
+    hym.refs hym.owns ⟨A0, B0, xr, rfl, rfl, hfr⟩
+    ⟨⟨by rw [hp.num, NumRep.num_eq ym.rep, ← NumRep.num_eq, hc, hbv], hp.norm, hp.pos,
+      hp.refs, hp.owns⟩, hp.slot⟩
+    (fun a ha hs hf => by
+      rw [hun a ha hs (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
+      exact houtM a ha hf)
+    (by rw [hk'.get 9]; bsimp [hymp]) (by rw [hk'.get 19]; bsimp [h19])
+
+/-- **`bc_multiply (temp, num2, &temp, rscale)`** from `0x8000613c` (no
+quotient: `temp` released by the call). -/
+theorem dm_rmul {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W qr rs : Nat} {L : List NumObj}
+    {xr x1 x2 z yq : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {a b : Num}
+    (cx : DmCtx S R0 sp W) (sr : DmSlot S sp W qr) (hmr : xr ∈ L) (hrr : 1 ≤ xr.rep.refs)
+    (hwr0 : ldv .ld Mt0 qr = BitVec.ofNat 64 xr.rep.p)
+    (hk : DmKR live S Q R0 Mt0 L xr qr sp W n) (hn : n = some b)
+    (sv : SavedWords M (sp - 80) dmSlots R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 80))
+    (hkp : Keeps dmAll R R0) (hb : BcHeap S M H F (yq :: L))
+    (hown : ∀ y ∈ L, y.Owns) (hx1 : x1 ∈ L) (hn1 : x1.rep.Norm) (hl1 : 1 ≤ x1.rep.len)
+    (hx2 : x2 ∈ L) (hp2 : 1 ≤ x2.rep.len + x2.rep.scale) (hz : z ∈ L)
+    (hzk : KZero M z (2 ^ 30)) (hmb : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80)
+    (hyq : NewNum a yq) (hbv : Num.sub x1.rep.num (Num.mul a x2.rep.num rs) rs = b)
+    (hsz : yq.rep.len + yq.rep.scale + 2 * (x2.rep.len + x2.rep.scale) + x1.rep.len +
+      x1.rep.scale + rs < 2 ^ 27)
+    (hslot : ldv .ld M (sp - 80 + 8) = BitVec.ofNat 64 yq.sb.pay)
+    (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
+    (h8 : R 8 = BitVec.ofNat 64 x1.rep.p) (h9 : R 9 = BitVec.ofNat 64 x2.rep.p)
+    (h18 : R 18 = BitVec.ofNat 64 rs) (h19 : R 19 = 0#64)
+    (h20 : R 20 = BitVec.ofNat 64 yq.sb.pay) (h21 : R 21 = BitVec.ofNat 64 qr) :
+    DW live S Q 0x8000613c#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  have hrm : 224 ≤ rmStack (2 ^ 30) := by unfold rmStack; omega
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hyp : yq.rep.p = yq.sb.pay := (hb.blocks yq List.mem_cons_self).sPay
+  have hyn := hb.nums yq List.mem_cons_self
+  num_facts hyn
+  have h20' : R 20 = BitVec.ofNat 64 yq.rep.p := by rw [h20, hyp]
+  have hb0 : BcHeap S M H F ([] ++ yq :: L) := hb
+  have hx2n := hb.nums x2 (List.mem_cons_of_mem _ hx2)
+  num_facts hx2n
+  have hstk : ∀ a, sp - 80 ≤ a → OutHeap a := fun a h => by
+    simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+  bc_run hlive hS [h2, h20', h9, h18] at 0x8000573c
+  refine dm_mulCall (x1 := yq) (x2 := x2) (z := z) (k := rs) hlive cx hk.oom houtM
+    ⟨List.mem_cons_self, List.mem_cons_of_mem _ hx2, List.mem_cons_of_mem _ hz,
+      by have := hyq.pos; omega, hp2, by omega, by omega,
+      { hzk with room := by have := hzk.room; omega }, hmb⟩
+    hb0 ⟨by rw [hyq.refs]; omega, by rw [hslot, hyp], fun _ _ z hz => absurd hz List.not_mem_nil⟩
+    (by bsimp [h2]) (by bsimp []; try decide) (by bsimp [h20']) (by bsimp [h9])
+    (by bsimp [h2]) (by bsimp [h18]) ?_
+  intro R' M' H' F' Lr ym hk' hp
+  bsimp []
+  have hLr : Lr = L := by
+    cases hp.rest with
+    | dec h => rw [hyq.refs] at h; omega
+    | rel h => rfl
+  subst hLr
+  have hpo := hp.out
+  have hun : ∀ a, OutHeap a → ¬ slotBytes (sp - 80 + 8) a → ¬ frameIn (sp - 80) (W - 80) a →
+      imgM M' a = imgM M a := hpo
+  have hun' : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M' a = imgM Mt0 a := fun a ha hf => by
+    rw [hun a ha (by simp only [slotBytes, frameIn] at hf ⊢; omega)
+      (by simp only [frameIn] at hf ⊢; omega)]
+    exact houtM a ha hf
+  have hbm := hp.heap
+  have hymn := hbm.nums ym List.mem_cons_self
+  have hx1n := hbm.nums x1 (List.mem_cons_of_mem _ hx1)
+  num_facts hx1n
+  have hmz := mul_size_le hyn.shape hx2n.shape hymn.shape hp.norm (k := rs) hp.num
+  have hsx := hyn.shape.size
+  exact dm_rsub hlive cx sr hmr hrr hwr0 hk hn
+    (sv.transport (lo := 24) (top := 80) (hag := fun a h1 h2' => by
+      rw [hun a (hstk a (by omega)) (by simp only [slotBytes]; omega)
+        (by simp only [frameIn]; omega)]))
+    (by rw [hk'.get 2]; bsimp [h2]) ((hk'.mono (by decide)).trans (by keeps_tac hkp)) hbm
+    hown hx1 hn1 hl1 ⟨rfl, hp.norm, hp.pos, hp.refs, hp.owns⟩
+    (by rw [hp.num, hyq.num]; exact hbv) (by omega) hp.slot hun'
+    (by rw [hk'.get 8]; bsimp [h8]) (by rw [hk'.get 18]; bsimp [h18])
+    (by rw [hk'.get 19]; bsimp [h19]) (by rw [hk'.get 21]; bsimp [h21])
+
 end Dc.Mach

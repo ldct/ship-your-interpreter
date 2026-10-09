@@ -1,4 +1,5 @@
 import Dc.Mach.Bc.DivSub
+import Dc.BcModel.DivGuess
 
 /-!
 # `bc_divide`'s main loop (`0x80005d4c`)
@@ -462,5 +463,235 @@ theorem dv_store' {live : Nat → Prop} {S : Nat → Prop}
     have hk1 : k = D.Kb := by omega
     subst hk1
     exact hk.exit rfl _ _ _ ⟨hf', hw', st.r2, st.r18, by keeps_tac st.regs⟩
+
+/-! ## The guess -/
+
+/-- `slliw` of a small word. -/
+theorem slliw_ofNat {a k : Nat} (h : a * 2 ^ k < 2 ^ 31) :
+    BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) <<< k) =
+      BitVec.ofNat 64 (a * 2 ^ k) := by
+  have ha : a < 2 ^ 31 := Nat.lt_of_le_of_lt (Nat.le_mul_of_pos_right _ (Nat.pow_pos (by decide))) h
+  have e : BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) <<< k = BitVec.ofNat 32 (a * 2 ^ k) := by
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_shiftLeft, BitVec.extractLsb_toNat, BitVec.toNat_ofNat,
+      Nat.shiftLeft_eq, Nat.shiftRight_zero]
+    rw [Nat.mod_eq_of_lt (show a < 2 ^ 64 by omega), Nat.mod_eq_of_lt (show a < 2 ^ (31 - 0 + 1) by
+      simp only [Nat.sub_zero, Nat.reduceAdd]; omega)]
+  rw [e]
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_signExtend]
+  simp [msb32_small h]
+  omega
+
+/-- `addw` of a small integer word and a small natural, with a natural sum. -/
+theorem addw_int_nat {u : Int} {b : Nat} (hu1 : -2 ^ 30 ≤ u) (hu2 : u < 2 ^ 30) (hb : b < 2 ^ 30)
+    (h0 : 0 ≤ u + b) :
+    BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofInt 64 u) +
+      BitVec.extractLsb 31 0 (BitVec.ofNat 64 b)) = BitVec.ofNat 64 (u + b).toNat := by
+  rw [← ofInt_natCast64 b, ← ofInt_natCast64, Int.toNat_of_nonneg h0]
+  apply BitVec.eq_of_toInt_eq
+  rw [BitVec.toInt_signExtend_of_le (by decide), toInt_ofInt64 (by omega) (by omega)]
+  have e : BitVec.extractLsb 31 0 (BitVec.ofInt 64 u) + BitVec.extractLsb 31 0 (BitVec.ofInt 64 (b : Int)) =
+      BitVec.ofInt 32 (u + b) := by
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_add, BitVec.extractLsb_toNat, BitVec.toNat_ofInt]
+    omega
+  rw [e, BitVec.toInt_ofInt]; exact Int.bmod_eq_of_le (by omega) (by omega)
+
+/-- `subw` then `addw` of small naturals with a natural result. -/
+theorem subw_addw {a b c : Nat} (ha : a < 2 ^ 29) (hb : b < 2 ^ 29) (hc : c < 2 ^ 29)
+    (h : b ≤ a + c) :
+    BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.signExtend 64
+      (BitVec.extractLsb 31 0 (BitVec.ofNat 64 a) - BitVec.extractLsb 31 0 (BitVec.ofNat 64 b))) +
+      BitVec.extractLsb 31 0 (BitVec.ofNat 64 c)) = BitVec.ofNat 64 (a + c - b) := by
+  rw [subw_nat (by omega) (by omega), addw_int_nat (by omega) (by omega) (by omega) (by omega)]
+  congr 1; omega
+
+theorem se12_ffe : sign_extend (m := 64) (0xffe#12) = 18446744073709551614#64 := by decide
+
+/-- `addi r, r, -2` on a word of at least 2. -/
+theorem word_sub2 {k : Nat} (h : 2 ≤ k) :
+    BitVec.ofNat 64 k + 18446744073709551614#64 = BitVec.ofNat 64 (k - 2) := by
+  change BitVec.ofNat 64 k + -(2#64) = _
+  rw [BitVec.add_neg_eq_sub]
+  exact BitVec.ofNat_sub_ofNat_of_le k 2 (by decide) h
+
+theorem guess0_mul_le (w0 w1 v1 : Nat) : v1 * guess0 w0 w1 v1 ≤ 10 * w0 + w1 := by
+  unfold guess0
+  split
+  · subst w0; omega
+  · exact Nat.mul_div_le _ _
+
+/-- The guess's continuations: a zero digit (`0x80005d38`, `s4 = 0`) or a
+nonzero one (`0x80005d9c`), in `s6`. -/
+structure GuessK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (M : Mem) (R : Nat → BitVec 64) (g : Nat) : Prop where
+  zero : g = 0 → ∀ R', Keeps [1, 8, 10, 11, 12, 13, 15, 16, 19, 20, 22] R' R →
+    R' 22 = BitVec.ofNat 64 g → R' 20 = 0#64 → DW live S Q 0x80005d38#64 R' M
+  pos : g ≠ 0 → ∀ R', Keeps [1, 8, 10, 11, 12, 13, 15, 16, 19, 20, 22] R' R →
+    R' 22 = BitVec.ofNat 64 g → DW live S Q 0x80005d9c#64 R' M
+
+/-- The guess's tests from `0x80005cbc` (first guess `g0` in `a2`). -/
+theorem dv_guess_test {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    (hS : HeapOwn S) {M : Mem} {R : Nat → BitVec 64} {P N k w0 w1 w2 v1 v2 : Nat}
+    (hw0 : w0 ≤ 9) (hw1 : w1 < 10) (hw2 : w2 < 10) (hv1 : v1 < 10) (hv2 : v2 < 10)
+    (hP : 2147603920 ≤ P + k + 2) (hP2 : P + k + 2 < 2273312768)
+    (hN : 2147603920 ≤ N + 1) (hN2 : N + 1 < 2273312768) (hk : k + 2 < 2 ^ 31)
+    (lw2 : ldv .lbu M (P + k + 2) = BitVec.ofNat 64 w2)
+    (lv2 : ldv .lbu M (N + 1) = BitVec.ofNat 64 v2)
+    (h12 : R 12 = BitVec.ofNat 64 (guess0 w0 w1 v1)) (h20 : R 20 = BitVec.ofNat 64 v1)
+    (h23 : R 23 = BitVec.ofNat 64 (10 * w0 + w1)) (h24 : R 24 = BitVec.ofNat 64 N)
+    (h9 : R 9 = BitVec.ofNat 64 k) (h18 : R 18 = BitVec.ofNat 64 P)
+    (hc : GuessK live S Q M R (guess w0 w1 w2 v1 v2)) :
+    DW live S Q 0x80005cbc#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hg0 := guess0_mul_le w0 w1 v1
+  bc_run hlive hS [h12, h20, h23, h24, lv2] at 0x80005ccc
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  apply st_80005ccc hlive
+  refine muldi3_spec hlive _ (by bsimp []) fun R1 hk1 hr1 => ?_
+  bsimp [] at hr1 ⊢
+  rw [mul_ofNat] at hr1
+  have hg9 : guess0 w0 w1 v1 ≤ 99 := by
+    unfold guess0; split
+    · omega
+    · exact Nat.le_trans (Nat.div_le_self _ _) (by omega)
+  have hvg : v2 * guess0 w0 w1 v1 ≤ 9 * 99 := Nat.mul_le_mul (by omega) hg9
+  have hvg1 : v1 * guess0 w0 w1 v1 ≤ 9 * 99 := Nat.mul_le_mul (by omega) hg9
+  have q20 : R1 20 = BitVec.ofNat 64 v1 := by rw [hk1.get 20]; bsimp [h20]
+  have q22 : R1 22 = BitVec.ofNat 64 (guess0 w0 w1 v1) := by rw [hk1.get 22]; bsimp [h12]
+  have q9 : R1 9 = BitVec.ofNat 64 k := by rw [hk1.get 9]; bsimp [h9]
+  have q18 : R1 18 = BitVec.ofNat 64 P := by rw [hk1.get 18]; bsimp [h18]
+  have q23 : R1 23 = BitVec.ofNat 64 (10 * w0 + w1) := by rw [hk1.get 23]; bsimp [h23]
+  bc_run hlive hS [hr1, q20, q22, sxw_ofNat] at 0x80005cdc
+  apply st_80005cdc hlive
+  refine muldi3_spec hlive _ (by bsimp []) fun R2 hk2 hr2 => ?_
+  bsimp [] at hr2 ⊢
+  rw [mul_ofNat] at hr2
+  have r9 : R2 9 = BitVec.ofNat 64 k := by rw [hk2.get 9]; bsimp [q9]
+  have r18 : R2 18 = BitVec.ofNat 64 P := by rw [hk2.get 18]; bsimp [q18]
+  have r23 : R2 23 = BitVec.ofNat 64 (10 * w0 + w1) := by rw [hk2.get 23]; bsimp [q23]
+  have r19 : R2 19 = BitVec.ofNat 64 (v2 * guess0 w0 w1 v1) := by
+    rw [hk2.get 19]; bsimp [hr1]
+  have lw2' : ldv .lbu M (P + (k + 2)) = BitVec.ofNat 64 w2 := by rw [← Nat.add_assoc]; exact lw2
+  bc_run hlive hS [hr2, r9, r18, r23, r19, lw2', sxw_ofNat, addw_ofNat, shl_shr32,
+    subw_ofNat hg0, slliw_ofNat] at 0x80005d0c 0x80005d30
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro hnot
+    have hg : guess w0 w1 w2 v1 v2 = guess0 w0 w1 v1 := by
+      unfold guess
+      simp only [guessHigh, decide_eq_true_eq]
+      rw [if_neg (by omega)]
+    have r22 : R2 22 = BitVec.ofNat 64 (guess0 w0 w1 v1) := by rw [hk2.get 22]; bsimp [q22]
+    bc_run hlive hS [r22] at 0x80005d9c 0x80005d38
+    · intro hne
+      exact hc.pos (by rw [hg]; intro h0; exact hne (by rw [h0])) _ (by
+        keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
+          (by keeps_tac Keeps.refl _ _))))) (by bsimp [r22, hg])
+    · intro he
+      have h0 : guess0 w0 w1 v1 = 0 := ofNat64_eq (by omega) (by omega) (by rw [Classical.not_not.mp he])
+      exact hc.zero (by rw [hg, h0]) _ (by
+        keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
+          (by keeps_tac Keeps.refl _ _))))) (by bsimp [r22, hg]) (by bsimp [])
+  · intro hhigh
+    have hg1 : 1 ≤ guess0 w0 w1 v1 := by
+      refine Nat.pos_of_ne_zero fun h0 => hhigh ?_
+      rw [h0, Nat.mul_zero]; exact Nat.zero_le _
+    have hv2g : v2 ≤ v2 * guess0 w0 w1 v1 := Nat.le_mul_of_pos_right _ hg1
+    have r20 : R2 20 = BitVec.ofNat 64 v1 := by rw [hk2.get 20]; bsimp [q20]
+    have q8 : R1 8 = BitVec.ofNat 64 v2 := by rw [hk1.get 8]; bsimp []
+    have r8 : R2 8 = BitVec.ofNat 64 v2 := by rw [hk2.get 8]; bsimp [q8]
+    have hle : v1 * guess0 w0 w1 v1 ≤ v1 + (10 * w0 + w1) := by omega
+    have e1 : v1 * (guess0 w0 w1 v1 - 1) = v1 * guess0 w0 w1 v1 - v1 := Nat.mul_sub_one _ _
+    have e2 : v2 * (guess0 w0 w1 v1 - 1) = v2 * guess0 w0 w1 v1 - v2 := Nat.mul_sub_one _ _
+    bc_run hlive hS [r20, r8, r19, hr2, r23, subw_addw (show v1 < 2 ^ 29 by omega)
+      (show v1 * guess0 w0 w1 v1 < 2 ^ 29 by omega) (show 10 * w0 + w1 < 2 ^ 29 by omega) hle,
+      subw_ofNat hv2g, slliw_ofNat, addw_ofNat] at 0x80005d90 0x80005d2c
+    all_goals have r22 : R2 22 = BitVec.ofNat 64 (guess0 w0 w1 v1) := by rw [hk2.get 22]; bsimp [q22]
+    all_goals have K : Keeps [1, 8, 10, 11, 12, 13, 15, 16, 19, 20, 22] R2 R :=
+      (hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
+        (by keeps_tac Keeps.refl _ _)))
+    · intro hhigh2
+      have hg2 : 2 ≤ guess0 w0 w1 v1 := by
+        refine Nat.lt_of_not_le fun h1 => ?_
+        have : guess0 w0 w1 v1 = 1 := by omega
+        rw [this] at hhigh2; omega
+      have hg : guess w0 w1 w2 v1 v2 = guess0 w0 w1 v1 - 2 := by
+        unfold guess guessStep
+        simp only [guessHigh, decide_eq_true_eq, e1, e2]
+        have hv1g : v1 ≤ v1 * guess0 w0 w1 v1 := Nat.le_mul_of_pos_right _ hg1
+        generalize v1 * guess0 w0 w1 v1 = X at *
+        generalize v2 * guess0 w0 w1 v1 = Y at *
+        rw [if_pos (by omega), if_pos (by omega)]; omega
+      bc_run hlive hS [r22, se12_ffe, word_sub2 hg2, sxw_ofNat] at 0x80005d38 0x80005d9c
+      · intro he
+        have h0 : guess0 w0 w1 v1 - 2 = 0 := ofNat64_eq (by omega) (by omega) he
+        exact hc.zero (by rw [hg, h0]) _ (by keeps_tac K) (by bsimp [hg]) (by bsimp [])
+      · intro hne
+        exact hc.pos (by rw [hg]; intro h0; exact hne (by rw [h0])) _ (by keeps_tac K)
+          (by bsimp [hg])
+    · intro hlow
+      have hg : guess w0 w1 w2 v1 v2 = guess0 w0 w1 v1 - 1 := by
+        unfold guess guessStep
+        simp only [guessHigh, decide_eq_true_eq, e1, e2]
+        have hv1g : v1 ≤ v1 * guess0 w0 w1 v1 := Nat.le_mul_of_pos_right _ hg1
+        generalize v1 * guess0 w0 w1 v1 = X at *
+        generalize v2 * guess0 w0 w1 v1 = Y at *
+        rw [if_pos (by omega), if_neg (by omega)]
+      bc_run hlive hS [r22, se12_fff, word_pred hg1, sxw_ofNat] at 0x80005d9c 0x80005d38
+      · intro hne
+        exact hc.pos (by rw [hg]; intro h0; exact hne (by rw [h0])) _ (by keeps_tac K)
+          (by bsimp [hg])
+      · intro he
+        have h0 : guess0 w0 w1 v1 - 1 = 0 :=
+          ofNat64_eq (by omega) (by omega) (by rw [Classical.not_not.mp he])
+        exact hc.zero (by rw [hg, h0]) _ (by keeps_tac K) (by bsimp [hg]) (by bsimp [])
+
+/-- Signed division of small naturals. -/
+theorem sdiv_small {a b : Nat} (ha : a < 2 ^ 63) (hb : b < 2 ^ 63) (hb0 : 0 < b) :
+    sdivV (BitVec.ofNat 64 a) (BitVec.ofNat 64 b) = BitVec.ofNat 64 (a / b) := by
+  rw [sdivV_pp (msb_ofNat_small ha) (msb_ofNat_small hb)]
+  unfold udivV
+  rw [if_neg (fun h => by
+    have := congrArg BitVec.toNat h
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)] at this
+    simp at this; omega)]
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_udiv, BitVec.toNat_ofNat, BitVec.toNat_ofNat, BitVec.toNat_ofNat,
+    Nat.mod_eq_of_lt (show a < 2 ^ 64 by omega), Nat.mod_eq_of_lt (show b < 2 ^ 64 by omega),
+    Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (Nat.div_le_self _ _) (show a < 2 ^ 64 by omega))]
+
+/-- The window entering iteration `k`: the remainder so far, then the next
+dividend digit. -/
+abbrev DvData.W (D : DvData) (k : Nat) : Nat := 10 * (D.pre k % D.V) + D.xs.getD (k + D.L) 0
+
+/-- The window's third digit (the byte after the window when `L = 1`). -/
+abbrev DvData.w2 (D : DvData) (k : Nat) : Nat :=
+  if 2 ≤ D.L then D.W k / 10 ^ (D.L - 2) % 10 else D.xs.getD (k + 2) 0
+
+/-- The divisor's second digit (the sentinel `0` when `L = 1`). -/
+abbrev DvData.v2 (D : DvData) : Nat := if 2 ≤ D.L then D.V / 10 ^ (D.L - 2) % 10 else 0
+
+/-- Iteration `k`'s guess. -/
+abbrev DvData.g (D : DvData) (k : Nat) : Nat :=
+  guess (D.W k / 10 ^ D.L) (D.W k / 10 ^ (D.L - 1) % 10) (D.w2 k) (D.V / 10 ^ (D.L - 1)) D.v2
+
+/-- The registers the guess changes. -/
+abbrev guessClob : List Nat := [1, 8, 10, 11, 12, 13, 15, 16, 19, 20, 21, 22, 23, 25]
+
+/-- The digits the guess reads, from the window, the divisor and the sentinel. -/
+structure GuessBytes (M : Mem) (D : DvData) (k : Nat) : Prop where
+  w0 : ldv .lbu M (D.P + k) = BitVec.ofNat 64 (D.W k / 10 ^ D.L)
+  w1 : ldv .lbu M (D.P + (k + 1)) = BitVec.ofNat 64 (D.W k / 10 ^ (D.L - 1) % 10)
+  w2 : ldv .lbu M (D.P + k + 2) = BitVec.ofNat 64 (D.w2 k)
+  v1 : ldv .lbu M D.N = BitVec.ofNat 64 (D.V / 10 ^ (D.L - 1))
+  v2 : ldv .lbu M (D.N + 1) = BitVec.ofNat 64 D.v2
+  w0d : D.W k / 10 ^ D.L ≤ 9
+  w2d : D.w2 k < 10
+  v1d : D.V / 10 ^ (D.L - 1) < 10
+  v1p : 5 ≤ D.V / 10 ^ (D.L - 1)
+  v2d : D.v2 < 10
+  w0v : D.W k / 10 ^ D.L ≤ D.V / 10 ^ (D.L - 1)
 
 end Dc.Mach

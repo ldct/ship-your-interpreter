@@ -183,12 +183,13 @@ theorem NumAt.relabel {Mt : Mem} {o : NumRep} (h : NumAt Mt o) {l ps : Nat} {v1 
 
 /-- The relabelling on the heap's head object. -/
 theorem BcHeap.relabel {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (x :: L)) {l ps : Nat} {v1 v2 : BitVec 64}
-    (hl : 1 ≤ l) (hle : l + ps ≤ x.rep.len + x.rep.scale)
+    {L : List NumObj} {x : NumObj} (h : BcHeap S Mt H F (x :: L)) {l ps a : Nat} {v1 v2 : BitVec 64}
+    (ha : x.rep.p = a) (hl : 1 ≤ l) (hle : l + ps ≤ x.rep.len + x.rep.scale)
     (h1 : v1.toNat % 2 ^ 32 = ps) (h2 : v2.toNat % 2 ^ 32 = l) :
-    BcHeap S (writeLog (writeLog (writeLog Mt [(x.rep.p + 8, 4, v1)]) [(x.rep.p + 4, 4, v2)])
-      [(x.rep.p + 32, 8, BitVec.ofNat 64 x.rep.val)]) H F
+    BcHeap S (writeLog (writeLog (writeLog Mt [(a + 8, 4, v1)]) [(a + 4, 4, v2)])
+      [(a + 32, 8, BitVec.ofNat 64 x.rep.val)]) H F
       ({ x with rep := { x.rep with len := l, scale := ps, ds := x.rep.ds.take (l + ps) } } :: L) := by
+  subst ha
   have h' : BcHeap S Mt H F ([] ++ x :: L) := h
   have hx : x ∈ x :: L := List.mem_cons_self
   have hn := h.nums x hx
@@ -587,5 +588,160 @@ theorem bmul_trim {live : Nat → Prop} {S : Nat → Prop}
       (by simpa only [List.nil_append] using hb') hr0 hz (hzg' hmo) hj
       (by rw [kk.get 8 (by decide)]; bsimp [h8]) (by rw [kk.get 19 (by decide)]; bsimp [h9]) h15'
       hnum hnum0 hdl hpos hrefs hyo
+
+/-! ## After `_bc_rec_mul` -/
+
+/-- The relabelled product (sign `b`, `l` integer digits, scale `ps`). -/
+abbrev mulObj (y : NumObj) (b : Bool) (l ps : Nat) : NumObj :=
+  { y with rep := { y.rep with neg := b, len := l, scale := ps, ds := y.rep.ds.take (l + ps) } }
+
+/-- The relabelled product denotes `n`: with its sign if nonzero, positive
+if zero. -/
+structure MulNum (y : NumObj) (b : Bool) (l ps : Nat) (n : Num) : Prop where
+  nz : dval (y.rep.ds.take (l + ps)) ≠ 0 → (mulObj y b l ps).rep.num = n
+  z : dval (y.rep.ds.take (l + ps)) = 0 → (mulObj y false l ps).rep.num = n
+
+/-- `_bc_rec_mul`'s product relabelled denotes `Num.mul`. -/
+theorem MulNum.of_prod {y : NumObj} {u v : NumRep} {k : Nat} (hs : NumShape y.rep)
+    (hu : u.ds.length = u.len + u.scale) (hv : v.ds.length = v.len + v.scale)
+    (hy : KProd u v (u.len + u.scale) (v.len + v.scale) y) :
+    MulNum y (u.neg != v.neg) (u.len + v.len + 1) (mulScale u.scale v.scale k) (Num.mul u.num v.num k) := by
+  have hps : mulScale u.scale v.scale k ≤ u.scale + v.scale := by simp only [mulScale]; omega
+  have hval : dval y.rep.ds = u.num.mag * v.num.mag := by
+    have e := hy.val
+    rw [List.take_of_length_le (by omega), List.take_of_length_le (by omega)] at e
+    exact e
+  have hm := mulRep_mag (b := u.neg != v.neg) (a1 := u.num) (a2 := v.num)
+    (l1 := u.len) (l2 := v.len) hs (by rw [hy.len]; rfl) hy.scale hval hps
+  have hmag : dval (y.rep.ds.take (u.len + v.len + 1 + mulScale u.scale v.scale k)) =
+      (Num.mul u.num v.num k).mag := by
+    rw [num_mul_mag]
+    refine hm.trans ?_
+    show _ / 10 ^ (u.scale + v.scale - _) = _ / 10 ^ (u.scale + v.scale - _)
+    congr 2
+    simp only [mulScale, NumRep.num]; omega
+  have hsc : (Num.mul u.num v.num k).scale = mulScale u.scale v.scale k := by
+    rw [num_mul_scale]; simp only [mulScale, NumRep.num]; omega
+  have hneg : (Num.mul u.num v.num k).neg =
+      if (Num.mul u.num v.num k).mag == 0 then false else (u.neg != v.neg) := rfl
+  have key : ∀ (N : Dc.Num) (b : Bool) (m s : Nat), N.neg = b → N.mag = m → N.scale = s →
+      (⟨b, m, s⟩ : Dc.Num) = N := by
+    rintro ⟨_, _, _⟩ b m s rfl rfl rfl; rfl
+  refine ⟨fun h0 => key _ _ _ _ ?_ hmag.symm hsc, fun h0 => key _ _ _ _ ?_ hmag.symm hsc⟩
+  · rw [hneg, ← hmag]
+    simp only [beq_iff_eq, h0, if_false]
+  · rw [hneg, ← hmag, h0]; rfl
+
+/-- The four stores at `0x800057ec`: sign, `n_scale`, `n_len`, `n_value`;
+then the trim. -/
+theorem bmul_store {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W l ps : Nat} {L1 L2 : List NumObj}
+    {xr y z : NumObj} {H : Heap} {F : List Blk} {b : Bool} {n : Num}
+    (cx : MulCtx S R0 sp q W) (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
+    (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (hyo : y.Owns) (hyr : y.rep.refs = 1) (hyv : y.rep.val = y.rep.ptr)
+    (hl : 1 ≤ l) (hle : l + ps ≤ y.rep.len + y.rep.scale)
+    (hnum : MulNum y b l ps n)
+    (h8 : R 8 = BitVec.ofNat 64 y.sb.pay) (h12 : R 12 = signWord b)
+    (h9 : R 9 = BitVec.ofNat 64 ps) (h14 : R 14 = BitVec.ofNat 64 l)
+    (h15 : R 15 = BitVec.ofNat 64 y.rep.val) :
+    DW live S Q 0x800057ec#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hyn := hb.nums y List.mem_cons_self
+  num_facts hyn
+  have hyp := (hb.blocks y List.mem_cons_self).sPay
+  have yp1 := hyn.shape.pLo; have yp2 := hyn.shape.pHi; have yp3 := hyn.shape.pAl
+  rw [hyp] at yp1 yp2 yp3
+  simp only [heapStart, heapEnd] at yp1 yp2
+  bc_run hlive hS [h8, h12, h9, h14, h15] at 0x800057fc
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  have hb1 := BcHeap.setSign (L1 := []) hb b (signWord_toNat b)
+  rw [hyp] at hb1
+  simp only [List.nil_append] at hb1
+  have hb2 := hb1.relabel (l := l) (ps := ps) hyp hl hle (toNat_ofNat_mod32 (by omega))
+    (toNat_ofNat_mod32 (by omega))
+  have hb3 : BcHeap S (writeLog (writeLog (writeLog (writeLog M [(y.sb.pay, 4, signWord b)])
+      [(y.sb.pay + 8, 4, BitVec.ofNat 64 ps)]) [(y.sb.pay + 4, 4, BitVec.ofNat 64 l)])
+      [(y.sb.pay + 32, 8, BitVec.ofNat 64 y.rep.val)]) H F
+      (mulObj y b l ps :: (L1 ++ xr :: L2)) := hb2
+  have hmo : ∀ a, (a < y.sb.pay ∨ y.sb.pay + 40 ≤ a) →
+      imgM (writeLog (writeLog (writeLog (writeLog M [(y.sb.pay, 4, signWord b)])
+        [(y.sb.pay + 8, 4, BitVec.ofNat 64 ps)]) [(y.sb.pay + 4, 4, BitVec.ofNat 64 l)])
+        [(y.sb.pay + 32, 8, BitVec.ofNat 64 y.rep.val)]) a = imgM M a := fun a ha => by
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+      imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
+  exact bmul_trim (y := mulObj y b l ps) hlive cx hk
+    (st.mem (fun a h1 h2 => hmo a (.inr (by omega)))
+      fun a ha _ => hmo a (by simp only [OutHeap, heapStart, heapEnd] at ha; omega))
+    hb3 hr0 hz
+    (by rw [ldv_congr .ld fun j hj => hmo _ (by simp only [zeroAddr, widthOfM] at hj ⊢; omega)]; exact hzg)
+    (by bsimp [h8]) (by bsimp [h9]) (by bsimp [h14]) (by bsimp [h15])
+    hnum.nz hnum.z hl hyr hyo
+
+/-- After `_bc_rec_mul` at `0x800057c0`: the operands' signs, the product's
+`n_ptr`, `len1 + len2 + 1`. -/
+theorem bmul_ret {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W k : Nat} {L1 L2 : List NumObj}
+    {x1 x2 xr y z : NumObj} {H : Heap} {F : List Blk}
+    (cx : MulCtx S R0 sp q W)
+    (hk : BinKW live S Q R0 Mt0 L1 L2 xr q sp W (Num.mul x1.rep.num x2.rep.num k))
+    (st : MulAt S Mt0 M R0 R sp q W) (hb : BcHeap S M H F (y :: (L1 ++ xr :: L2)))
+    (hr0 : ResSlot Mt0 L1 xr q) (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2)
+    (hz : z ∈ L1 ++ xr :: L2) (hzg : ldv .ld M zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (hy : KProd x1.rep x2.rep (x1.rep.len + x1.rep.scale) (x2.rep.len + x2.rep.scale) y)
+    (hsz : x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) + 1 < 2 ^ 30)
+    (s0 : ldv .ld M (sp - 96) = BitVec.ofNat 64 x1.rep.p)
+    (s8 : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 (x1.rep.len + x1.rep.scale))
+    (s24 : ldv .ld M (sp - 96 + 24) = BitVec.ofNat 64 y.sb.pay)
+    (h9 : R 9 = BitVec.ofNat 64 (mulScale x1.rep.scale x2.rep.scale k))
+    (h20 : R 20 = BitVec.ofNat 64 (x2.rep.len + x2.rep.scale)) (h21 : R 21 = BitVec.ofNat 64 x2.rep.p)
+    (h22 : R 22 = BitVec.ofNat 64 (x1.rep.scale + x2.rep.scale)) :
+    DW live S Q 0x800057c0#64 R M := by
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW := cx.big
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hn1 := hb.nums x1 (List.mem_cons_of_mem _ hx1)
+  num_facts hn1
+  have hn2 := hb.nums x2 (List.mem_cons_of_mem _ hx2)
+  num_facts hn2
+  have hyn := hb.nums y List.mem_cons_self
+  num_facts hyn
+  have hyp := (hb.blocks y List.mem_cons_self).sPay
+  have hpt : ldv .ld M (y.sb.pay + 24) = BitVec.ofNat 64 y.rep.val := by
+    rw [← hyp, hyn.ptr, hy.vptr]
+  have yp1 := hyn.shape.pLo; have yp2 := hyn.shape.pHi; have yp3 := hyn.shape.pAl
+  rw [hyp] at yp1 yp2 yp3
+  simp only [heapStart, heapEnd] at yp1 yp2
+  have h2 := st.r2
+  have hd1 := hn1.shape.dsLen; have hd2 := hn2.shape.dsLen
+  have hys := hy.scale; have hyl := hy.len
+  have hnum := MulNum.of_prod (k := k) hyn.shape hd1 hd2 hy
+  have hsx := sxw_ofNat (show x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) + 1 < 2 ^ 31 by omega)
+  have hsub := subw_nat (show x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) + 1 < 2 ^ 30 by omega)
+    (show x1.rep.scale + x2.rep.scale < 2 ^ 30 by omega)
+  have hl : ((↑(x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) + 1) : Int) -
+      ↑(x1.rep.scale + x2.rep.scale)) = ↑(x1.rep.len + x2.rep.len + 1) := by omega
+  rw [hl, ofInt_natCast64] at hsub
+  bc_run hlive hS [h2, s0, s8, s24, hn1.sign, hn2.sign, hpt, h20, h21, h22, snez_signs,
+    addw_ofNat (show x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) < 2 ^ 31 by omega), hsx,
+    hsub] at 0x800057ec
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | skip
+  have hps : mulScale x1.rep.scale x2.rep.scale k ≤ x1.rep.scale + x2.rep.scale := by
+    simp only [mulScale]; omega
+  exact bmul_store hlive cx hk (st.keeps (by keeps_tac Keeps.refl _ _)) hb hr0 hz hzg hy.owns hy.refs
+    hy.vptr (by omega) (by rw [hyl, hys]; omega) hnum (by bsimp []) (by bsimp [])
+    (by bsimp [h9]) (by bsimp []) (by bsimp [])
 
 end Dc.Mach

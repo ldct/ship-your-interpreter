@@ -5214,6 +5214,7 @@ Checked so far:
 - `StateOps.lean`: `DcAt.malloc` (a fresh block outside the ghost, `DcFresh`),
   `.rawWrite`, `.outWrite`, `.pushNode`, `.stkAcc`.
 - `dc_push_spec` (`DcStack.lean`, with `push_tail`/`push_post`).
+- `dc_pop_spec` (`DcPop.lean`): empty path (`pop_empty`, the "stack empty" message via `fprintf_prog_spec`) and node path (`pop_mid`/`pop_tail`/`pop_some` over `DcAt.popNode`/`DcAt.free`).
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come
 from counting live blocks (heap below `2^27` bytes).

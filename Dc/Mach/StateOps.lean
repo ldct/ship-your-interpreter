@@ -25,6 +25,12 @@ theorem DcGlob.lt {a : Nat} (h : DcGlob a) : 0x8001ad14 ≤ a ∧ a < heapStart 
 theorem DcGlob.outHeap {a : Nat} (h : DcGlob a) : OutHeap a := by
   simp only [DcGlob, OutHeap, dc_addrs, heapStart, heapEnd, freeListAddr] at h ⊢; omega
 
+/-- The type word of a datum, as `lw` reads it. -/
+theorem DatAt.lw {Mt : Mem} {a : Nat} {g : GV} (h : DatAt Mt a g) :
+    ldv .lw Mt a = BitVec.ofNat 64 g.tag :=
+  VsaIris.Interp.ldv_lw_kind (by rw [← VsaIris.Interp.ldv_ld_imgW]; exact h.tag)
+    (by cases g <;> simp [GV.tag])
+
 /-- A byte of the ghost's blocks is a live payload byte. -/
 theorem DcAt.inBlocks {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st) {a : Nat}
@@ -297,5 +303,27 @@ theorem stOK_dcStack : StOK dcStackAddr 8 := by
   simp only [StOK, dc_addrs, tohostAddr]
   refine ⟨by omega, by omega, by omega, ?_⟩
   decide
+
+end Dc.Mach
+
+/-! ## Side conditions of dc runs
+
+`dx_run` cannot close an access to dc's globals, owned through
+`hG : ∀ a, DcGlob a → S a` in context (`dc_glob_side`), or a side condition
+given as a hypothesis (a `.rodata` word's
+`∀ b ∈ accAddrs a 8, (b, dcROImg b) ∈ dcRO`, by `decide +kernel`). A file
+running dc code adds `dc_side` (both) as its own rule, so it is tried first:
+
+    local macro_rules | `(tactic| sx_side) => `(tactic| dc_side)
+-/
+
+namespace Dc.Mach
+
+/-- An access to dc's globals, owned through `hG : ∀ a, DcGlob a → S a`. -/
+macro "dc_glob_side" : tactic =>
+  `(tactic| (intro b hb; have hb' := VsaIris.Sym.of_mem_accAddrs hb; apply ‹∀ a, DcGlob a → _›; simp only [DcGlob, dc_addrs] at hb' ⊢; omega))
+
+/-- `dc_glob_side` or a hypothesis. -/
+macro "dc_side" : tactic => `(tactic| first | assumption | dc_glob_side)
 
 end Dc.Mach

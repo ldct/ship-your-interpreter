@@ -75,7 +75,7 @@ theorem SqCst.transport {S : Nat → Prop} {Mt0 M : Mem} {R0 : Nat → BitVec 64
 
 /-- The loop's fixed facts: the context, the caller's heap `Lb` (the leak
 taken) of owners with `x` (positive, normalized) and `_zero_` (`zb`) in it,
-`rscale` (`rs`), `point5` (`p5`). -/
+`rscale` (`rs`), `point5` (`p5`); `_one_` (`o`) for the exit. -/
 structure SqEnv (S : Nat → Prop) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q : Nat)
     (Lb : List NumObj) (x zb o p5 : NumObj) (k rs : Nat) : Prop where
   cx : SqCtx S R0 sp W q
@@ -94,6 +94,14 @@ structure SqEnv (S : Nat → Prop) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q 
   p5scale : p5.rep.scale = 1
   p5norm : p5.rep.Norm
   p5ok : RHOK Lb (.own p5)
+  rx : 1 ≤ x.rep.refs
+  mo : o ∈ Lb
+  oneNum : o.rep.num = Num.one
+  oneSize : o.rep.len + o.rep.scale ≤ 2
+  xo : x.rep.p ≠ o.rep.p
+  xz : x.rep.p ≠ zb.rep.p
+  /-- the slot apart from `_one_`'s global -/
+  qone : q + 8 ≤ oneAddr ∨ oneAddr + 8 ≤ q
 
 /-! ## The frame of the loop -/
 
@@ -861,8 +869,9 @@ theorem sq_back {live : Nat → Prop} {S : Nat → Prop}
       r26 := by bsimp []; rfl }
 
 /-- **The Newton loop** against `Dc.SqrtLoop`: from the head with the
-model's guess `g` at `cs`, out at `0x80006d68` with the last guess `y`,
-`rscale < cs'`, and the loop's result `Num.sqrtFinish y rscale`. -/
+model's guess `g` at `cs`, out at `0x80006d68` with the last guess `y`
+(its digits bounded), `rscale < cs'`, and the loop's result
+`Num.sqrtFinish y rscale`. -/
 theorem sq_loop {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q : Nat}
@@ -871,6 +880,7 @@ theorem sq_loop {live : Nat → Prop} {S : Nat → Prop}
     {g : Num} {cs : Nat} {r : Num} (hL : Dc.SqrtLoop x.rep.num rs g cs r)
     (hexit : ∀ R' M' H' F' cs' G d y g',
       SqN S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs' G d y g' → rs < cs' →
+      y.rep.len + y.rep.scale ≤ sqB x k →
       r = Num.sqrtFinish y.rep.num rs → DW live S Q 0x80006d68#64 R' M') :
     ∀ R M H F D G G1, SqL S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G G1 g →
       DW live S Q 0x80006b74#64 R M := by
@@ -881,7 +891,11 @@ theorem sq_loop {live : Nat → Prop} {S : Nat → Prop}
     intro hexit R M H F D G G1 st
     refine sq_step hlive env hoom st (fun R' M' H' F' d y hy hd st' hz => ?_)
       (fun R' M' H' F' d y hy hd st' hz => ?_)
-    · exact sq_near hlive env st' (fun hlt => hexit _ _ _ _ _ _ _ _ _ st' hlt (by rw [hy]))
+    · have hsy : y.rep.len + y.rep.scale ≤ sqB x k :=
+        env.gsize (env.xmag st'.heap)
+          (st'.heap.nums _ (RH.obj_mem (h := .own y) (by simp) st'.oky)).shape st'.ny hy
+          (Dc.BcModel.sqG_step env.xneg env.xsc st'.model)
+      exact sq_near hlive env st' (fun hlt => hexit _ _ _ _ _ _ _ _ _ st' hlt hsy (by rw [hy]))
         (fun hle => absurd hle (by omega))
     · rw [hd, hn] at hz; exact absurd hz (by decide)
   | @refine g cs r hn hc _ ih =>

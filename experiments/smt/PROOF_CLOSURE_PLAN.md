@@ -4925,4 +4925,15 @@ Interface changes this required:
 - `KDiffSpec` takes the differences' `Norm` and `NumShape` (the length of a
   difference is fixed by its value only when normalised).
 
-Remaining for M6: `bc_multiply` against `Num.mul`.
+### M6 `bc_multiply` (checked)
+
+`bc_multiply_spec` (`Dc/Mach/Bc/BcMul.lean`): from `0x8000573c`, for
+operands with a digit each (`MulArgs`) and a window `W` with
+`96 + rmStack (la + lb) ≤ W`, the slot holds the number for
+`Num.mul n1 n2 scale` (`BinKW.ret`, `BinPostW` over `W`) or
+`out_of_memory` (`BinKW.oom`). `bmul_jal` calls `rm_spec` on all digits;
+`MulNum.of_prod` relabels `_bc_rec_mul`'s product (`mulObj`: `len1 + len2 + 1`
+integer digits, scale `mulScale`) and shows its value is `Num.mul`; the trim
+reuses the generated `ktrimLoop_8000580c`; a zero product is made positive.
+`BinPostW`/`BinKW` (`AddSub.lean`) generalize `BinPost`/`BinK` to a window
+parameter. M6 is closed.

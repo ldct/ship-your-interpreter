@@ -935,4 +935,136 @@ theorem DvMid.of_touch {S : Nat → Prop} {Mt0 M0 M : Mem} {R0 R R' : Nat → Bi
       ← Nat.div_div_eq_div_mul, Nat.add_comm (10 * _), Nat.add_mul_div_left _ _ (by decide : 0 < 10),
       Nat.div_eq_of_lt hd, Nat.zero_add]
 
+/-- **The guess's bounds**: the true digit `W k / V` or one more, at most `9`. -/
+theorem DvShape.g_bounds {D : DvData} (hs : DvShape D) (k : Nat) :
+    D.W k / D.V ≤ D.g k ∧ D.g k ≤ D.W k / D.V + 1 ∧ D.g k ≤ 9 := by
+  obtain ⟨hv0, hV, -⟩ := hs.vtop
+  have h5 : 5 ≤ D.V / 10 ^ (D.L - 1) := hv0 ▸ hs.v1
+  have hV1 : 5 * 10 ^ (D.L - 1) ≤ D.V :=
+    (Nat.le_div_iff_mul_le (Nat.pow_pos (by decide))).mp h5
+  exact guess_window (b := D.xs.getD (k + 2) 0) hs.l1 hV1 hV (hs.W_lt k)
+
+/-- **The guess** at iteration `k`'s loop head. -/
+theorem dv_guess {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk}
+    {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
+    (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F Lh y ds k)
+    (hc : DvGuessK live S Q M R k (D.g k)) :
+    DW live S Q 0x80005d4c#64 R M := by
+  have gb := GuessBytes.of_at hs st
+  have hf := st.fix
+  have hi := hf.heap.heap
+  have hl := hs.xl; have hsm := hs.small; have hkb := st.kb; have hl1 := hs.l1
+  have hp0 := live_in_heap hi hf.b1l (hf.pIn 0 (by omega))
+  have hp2 := live_in_heap hi hf.b1l (hf.pIn (k + 2) (by omega))
+  have hn0 := live_in_heap hi hf.b2l (hf.nIn 0 (Nat.zero_le _))
+  have hn1 := live_in_heap hi hf.b2l (hf.nIn 1 hl1)
+  simp only [heapStart, heapEnd] at hp0 hp2 hn0 hn1
+  have hw1 : D.W k / 10 ^ (D.L - 1) % 10 < 10 := Nat.mod_lt _ (by decide)
+  have hv1 : 0 < D.V / 10 ^ (D.L - 1) := by have := gb.v1p; omega
+  exact dv_guess_head hlive hf.heapOwn gb.w0v hw1 gb.w2d gb.v1d hv1 gb.v2d (by omega) (by omega)
+    (by omega) (by omega) (by omega) gb.w0 gb.w1 gb.w2 gb.v2 st.r9
+    (by rw [st.r17, hs.vtop.1]) st.r18 st.r24 hc
+
+/-- **A zero digit**: the window already below the divisor; the remainder
+is the window, unchanged. -/
+theorem dv_zero {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W : Nat} {D : DvData} {H : Heap}
+    {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat} {k : Nat}
+    (cx : DvCtx S sp W) (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F Lh y ds k)
+    (hk : DvK live S Q Mt0 R0 sp W D H F Lh y k) (hg : D.g k = 0)
+    (K : Keeps guessClob R' R) (h20 : R' 20 = 0#64) (h21 : R' 21 = BitVec.ofNat 64 (k + 1)) :
+    DW live S Q 0x80005d38#64 R' M := by
+  have hb := (hs.g_bounds k).1
+  rw [hg] at hb
+  have hq : D.W k / D.V = 0 := Nat.le_zero.mp hb
+  have hlt : D.W k < D.V := by
+    rcases (Nat.lt_or_ge (D.W k) D.V) with h | h
+    · exact h
+    · have := Nat.div_pos h hs.vpos; omega
+  have hwW := hs.winW st.win st.kb
+  refine dv_store hlive cx hs (DvMid.of_touch hs cx st (MemOnly.refl _ _) (fun i hi => ?_)
+    (by rw [K.get 2]; exact st.r2) (by rw [K.get 9]; exact st.r9) h21
+    (by rw [K.get 18]; exact st.r18) (by rw [K.get 24]; exact st.r24)
+    (by rw [K.get 27]; exact st.r27) (by rw [K.get 26]; exact st.r26)
+    ((K.mono (by decide)).trans st.regs)) ?_ hk
+  · rw [Nat.mod_eq_of_lt hlt, show D.P + (k + 1) + i = D.P + k + (i + 1) by omega,
+      hwW (i + 1) (by omega), show D.L - (i + 1) = D.L - 1 - i by omega]
+  · rw [h20, (hs.pre_succ_div st.kb).1, hq, Nat.add_zero, Nat.mul_mod_right]
+
+/-- The low digits of an add-back are the addition's. -/
+theorem addBack_getD_lt {s v : List Nat} (hs : s.length = v.length + 1) {j : Nat}
+    (hj : j < v.length) : (addBack s v).getD j 0 = (addLE (s.take v.length) v 0).getD j 0 := by
+  have hl : (addLE (s.take v.length) v 0).length = v.length + 1 :=
+    by rw [addLE_length _ _ _ (by simp only [List.length_take]; omega)]; simp only [List.length_take]; omega
+  unfold addBack
+  rw [List.getD_eq_getElem?_getD, List.getElem?_append_left (by simp only [List.length_take]; omega),
+    List.getElem?_take_of_lt hj, ← List.getD_eq_getElem?_getD]
+
+/-- Two runs of bytes in distinct live blocks do not overlap. -/
+theorem live_ranges_apart {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H)
+    {b c : Blk} (hb : b ∈ H.live) (hc : c ∈ H.live) (hne : b ≠ c) {x y n m : Nat}
+    (hx : ∀ i, i ≤ n → b.In (x + i)) (hy : ∀ i, i ≤ m → c.In (y + i)) :
+    x + n < y ∨ y + m < x := by
+  rcases Nat.lt_or_ge (x + n) y with h | h
+  · exact .inl h
+  rcases Nat.lt_or_ge (y + m) x with h' | h'
+  · exact .inr h'
+  exfalso
+  rcases Nat.le_total x y with h2 | h2
+  · have e1 := hx (y - x) (by omega)
+    have e2 := hy 0 (Nat.zero_le _)
+    rw [show x + (y - x) = y by omega] at e1; rw [Nat.add_zero] at e2
+    exact live_apart hi hb hc hne e1 e2
+  · have e1 := hx 0 (Nat.zero_le _)
+    have e2 := hy (x - y) (by omega)
+    rw [show y + (x - y) = x by omega] at e2; rw [Nat.add_zero] at e1
+    exact live_apart hi hb hc hne e1 e2
+
+/-- The loop's state at a memory changed only on the iteration's scratch. -/
+theorem DvAt.fix_touch {S : Nat → Prop} {Mt0 M0 M : Mem} {R0 R : Nat → BitVec 64}
+    {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
+    {ds : List Nat} {k : Nat} (hs : DvShape D) (cx : DvCtx S sp W)
+    (st : DvAt S Mt0 M0 R0 R sp W D H F Lh y ds k) (hm : MemOnly (DvTouch sp W D k) M M0) :
+    DvFix S Mt0 M R0 sp W D H F Lh y ds := by
+  have hkb := st.kb
+  have hl := hs.xl
+  refine st.fix.scratch cx.above (by have := cx.big; omega) (hm.mono fun a ha => ?_)
+  rcases ha with ha | ha | ha
+  · refine .inl ?_
+    have := st.fix.pIn (a - D.P) (by omega)
+    rwa [show D.P + (a - D.P) = a by omega] at this
+  · exact .inr (.inl ha)
+  · exact .inr (.inr ha)
+
+/-- The window's digits, low first. -/
+abbrev DvData.wL (D : DvData) (k : Nat) : List Nat := BcModel.digLE (D.W k) (D.L + 1)
+
+/-- The product's digits, low first. -/
+abbrev DvData.mL (D : DvData) (k : Nat) : List Nat := BcModel.digLE (D.V * D.g k) (D.L + 1)
+
+/-- The divisor's digits, low first. -/
+abbrev DvData.vL (D : DvData) : List Nat := BcModel.digLE D.V D.L
+
+/-- **Iteration `k`'s step**, in the window's, product's and divisor's
+digit lists. -/
+theorem DvShape.step {D : DvData} (hs : DvShape D) (k : Nat) :
+    dvalLE (D.wL k) = D.W k ∧ dvalLE D.vL = D.V ∧ StepRes (D.wL k) (D.mL k) D.vL (D.g k) := by
+  obtain ⟨-, hV, -⟩ := hs.vtop
+  obtain ⟨hlo, hhi, h9⟩ := hs.g_bounds k
+  have hW := hs.W_lt k
+  have hp : 10 ^ (D.L + 1) = 10 * 10 ^ D.L := Nat.pow_succ'
+  have hw : dvalLE (D.wL k) = D.W k := by
+    simp only [DvData.wL]; rw [BcModel.digLE_val, Nat.mod_eq_of_lt (by omega)]
+  have hv : dvalLE D.vL = D.V := by simp only [DvData.vL]; rw [BcModel.digLE_val, Nat.mod_eq_of_lt hV]
+  have hVg : D.V * D.g k ≤ D.V * 9 := Nat.mul_le_mul_left _ h9
+  have hm : dvalLE (D.mL k) = D.V * D.g k := by
+    simp only [DvData.mL]; rw [BcModel.digLE_val, Nat.mod_eq_of_lt (by omega)]
+  refine ⟨hw, hv, step_spec (BcModel.digLE_digits _ _) (BcModel.digLE_digits _ _) (BcModel.digLE_digits _ _)
+    (by simp only [DvData.wL, DvData.vL, BcModel.digLE_length]) (by simp only [DvData.mL, DvData.vL, BcModel.digLE_length])
+    (by rw [hm, hv]) (by rw [hv]; exact hs.vpos) (by rw [hw, hv]; exact hlo)
+    (by rw [hw, hv]; exact hhi)⟩
+
 end Dc.Mach

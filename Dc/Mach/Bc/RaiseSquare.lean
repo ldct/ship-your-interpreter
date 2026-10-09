@@ -185,7 +185,7 @@ theorem ra_p2_tail {live : Nat → Prop} {S : Nat → Prop}
     (hloop : ∀ R' M' H' F' Pw' hT' T', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P T' (e / 2) rs nf →
       R' 18 = BitVec.ofNat 64 Pw'.rep.p → T' = (if e % 2 = 1 then T + P else T) → 1 ≤ e / 2 →
       DW live S Q 0x800066f0#64 R' M')
-    (hexit : ∀ R' M' H' F' Pw' hT', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     DW live S Q 0x80006708#64 R M := by
   have cx := env.cx
@@ -330,7 +330,7 @@ theorem ra_p2_tail {live : Nat → Prop} {S : Nat → Prop}
         rw [hinv, this, Nat.mul_one]
       have := hst (upd R1 20 (BitVec.ofNat 64 y.rep.p)) (by keeps_tac Keeps.refl _ _) (by bsimp [])
       rw [hu', he2] at this
-      exact hexit _ M1 H1 F1 Pw (some y) this
+      exact hexit _ M1 H1 F1 Pw y this
   · -- even: the loop again
     bc_run hlive hS [h2, st.w8, st.r8, shr_ofNat, hsr] at 0x800066f0
     all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
@@ -351,7 +351,7 @@ theorem ra_p2_loop {live : Nat → Prop} {S : Nat → Prop}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q u rs nf : Nat} {A B : List NumObj} {x1 z o : NumObj}
     (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
-    (hexit : ∀ R' M' H' F' Pw' hT' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P' u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     ∀ e P T {M : Mem} {R : Nat → BitVec 64} {H : Heap} {F : List Blk} {Pw : NumObj} {hT : Hd},
       RaP2 S Mt0 M R0 R sp W q H F A B x1 Pw hT P T e rs nf → R 18 = BitVec.ofNat 64 Pw.rep.p →
@@ -400,7 +400,7 @@ theorem ra_p2_first {live : Nat → Prop} {S : Nat → Prop}
     (h22 : R 22 = BitVec.ofNat 64 rs) (h24 : R 24 = BitVec.ofNat 64 nf)
     (hw8 : ldv .ld M (sp - 96 + 8) = BitVec.ofNat 64 (Hd.p x1 hW))
     (hw0 : ldv .ld M (sp - 96) = BitVec.ofNat 64 (Hd.p x1 hT))
-    (hexit : ∀ R' M' H' F' Pw' hT' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P' u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     DW live S Q 0x800066f0#64 R M := by
   have hPu : 2 * P ≤ u := by
@@ -547,7 +547,7 @@ theorem ra_copy {live : Nat → Prop} {S : Nat → Prop}
     (he : e % 2 = 1) (h15 : R 15 = BitVec.ofNat 64 (Hd.objIn [hP] x1 hP).rep.refs)
     (hpow2 : ∀ R' M' H' F', RaC S Mt0 M' R0 R' sp W q H' F' A B x1 hP i rs nf → e = 1 →
       DW live S Q 0x800068cc#64 R' M')
-    (hexit : ∀ R' M' H' F' Pw' hT' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' hT' P' u 0 rs nf →
+    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
       DW live S Q 0x80006740#64 R' M') :
     DW live S Q 0x800066d0#64 R M := by
   have cx := env.cx
@@ -636,5 +636,109 @@ theorem ra_copy {live : Nat → Prop} {S : Nat → Prop}
       (by rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
         Hd.cpW_p]; exact st.w8)
       (by rw [ldv_ld_miss _ _ (by omega), ldv_store_hit, hyp]) hexit
+
+/-- **Both loops** from `0x8000668c` (`power = num1` with one more
+reference, the exponent `u` in `s0`): to `0x800068cc` for `u = 2^i`, or to
+the second loop's exit at `0x80006740`. -/
+theorem ra_loops {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q u rs nf : Nat} {H : Heap}
+    {F : List Blk} {A B : List NumObj} {x1 z o : NumObj}
+    (env : RaEnv S Mt0 R0 sp W q A B x1 z o u) (hoom : RaOom live S Q Mt0 sp W q)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
+    (hb : BcHeap S M H F (A ++ x1 :: B))
+    (h18 : R 18 = BitVec.ofNat 64 x1.rep.p) (h9 : R 9 = BitVec.ofNat 64 x1.rep.scale)
+    (h8 : R 8 = BitVec.ofNat 64 u) (h22 : R 22 = BitVec.ofNat 64 rs)
+    (h24 : R 24 = BitVec.ofNat 64 nf)
+    (hpow2 : ∀ R' M' H' F' hP i, RaC S Mt0 M' R0 R' sp W q H' F' A B x1 hP i rs nf → u = 2 ^ i →
+      DW live S Q 0x800068cc#64 R' M')
+    (hexit : ∀ R' M' H' F' Pw' T' P', RaP2 S Mt0 M' R0 R' sp W q H' F' A B x1 Pw' (some T') P' u 0 rs nf →
+      DW live S Q 0x80006740#64 R' M') :
+    DW live S Q 0x8000668c#64 R M := by
+  have cx := env.cx
+  ra_facts cx
+  have hsf := cx.frame
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have h2 := ra.r2
+  have hxm : x1 ∈ A ++ x1 :: B := List.mem_append_right _ List.mem_cons_self
+  have hn := hb.nums x1 hxm
+  num_facts hn
+  have hrf := hn.refs
+  have hr1 := env.refs1
+  have hu64 : u < 2 ^ 64 := by
+    have : u ≤ u * (x1.rep.len + x1.rep.scale + 1) := Nat.le_mul_of_pos_right u (by omega)
+    have : u * (x1.rep.len + x1.rep.scale + 1) < 2 ^ 24 :=
+      Nat.lt_of_le_of_lt (Nat.mul_le_mul_right _ (Nat.le_succ u)) env.size
+    omega
+  have hsx : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (x1.rep.refs + 1))) =
+      BitVec.ofNat 64 (x1.rep.refs + 1) := sxw_ofNat (by omega)
+  have hpH : x1.rep.p + 16 ≤ sp - 96 := by
+    have := hn.shape.pHi; simp only [heapEnd] at this; omega
+  have hb1 := (hb.out_frame (MemOnly.store _ (sp - 96 + 8) 8 (BitVec.ofNat 64 x1.rep.p))
+    (fun a ha => outHeap_of_ge (by simp only [heapEnd] at *; omega))).setRefs (k := x1.rep.refs + 1)
+    (toNat_ofNat_mod32 (by omega)) (by omega)
+  have hp0 : RaPow x1.rep.num (2 ^ 0) (Hd.objIn [none] x1 none) :=
+    ⟨by rw [Nat.pow_zero, Dc.BcModel.powRaise_one]; rfl, env.n1, env.len1,
+      env.owns x1 hxm⟩
+  have st : ∀ R', Keeps [14, 15] R' R → R' 8 = BitVec.ofNat 64 u →
+      RaP1 S Mt0 (writeLog (writeLog M [(sp - 96 + 8, 8, BitVec.ofNat 64 x1.rep.p)])
+        [(x1.rep.p + 12, 4, BitVec.ofNat 64 (x1.rep.refs + 1))]) R0 R' sp W q H F A B x1 none 0 u rs nf :=
+    fun R' hk h8' =>
+    { ra := ((ra.lowStore cx (a := sp - 96 + 8) (by omega) (by omega)
+        (BitVec.ofNat 64 x1.rep.p)).heapStore (a := x1.rep.p + 12) (w := 4)
+        (v := BitVec.ofNat 64 (x1.rep.refs + 1))
+        (by have := hn.shape.pLo; omega) (by have := hn.shape.pHi; omega)
+        (by simp only [heapEnd]; omega)).regsA hk
+      r21 := by rw [hk.get 21 (by decide)]; exact h21
+      heap := by
+        simp only [KList, zeroCount, temps, List.filterMap, List.nil_append]; exact hb1
+      pow := hp0
+      fresh := fun P h => nomatch h
+      base := fun _ => rfl
+      r18 := by rw [hk.get 18 (by decide)]; exact h18
+      r9 := by rw [hk.get 9 (by decide), Nat.pow_zero, Nat.mul_one]; exact h9
+      r8 := h8'
+      r22 := by rw [hk.get 22 (by decide)]; exact h22
+      r24 := by rw [hk.get 24 (by decide)]; exact h24
+      w8 := by rw [ldv_ld_miss _ _ (by omega)]; exact ldv_store_hit _ _ _ }
+  have hcopy : ∀ R' M' H' F' hP i e, RaP1 S Mt0 M' R0 R' sp W q H' F' A B x1 hP i e rs nf →
+      u = 2 ^ i * e → e % 2 = 1 →
+      R' 15 = BitVec.ofNat 64 (Hd.objIn [hP] x1 hP).rep.refs → DW live S Q 0x800066d0#64 R' M' :=
+    fun R' M' H' F' hP i e st' hu he h15 =>
+      ra_copy hlive env hoom st' hu he h15
+        (fun R'' M'' H'' F'' sc he1 => hpow2 R'' M'' H'' F'' hP i sc (by rw [hu, he1, Nat.mul_one]))
+        hexit
+  bc_run hlive hS [h2, h18, hrf, hsx, h8, and1_ofNat hu64] at 0x800066a4 0x800066d0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals intro hz
+  all_goals rcases Nat.mod_two_eq_zero_or_one u with hpar | hpar <;> rw [hpar] at hz ⊢
+  all_goals first | exact absurd hz (by decide) | skip
+  · exact hcopy _ _ H F none 0 u (st _ (by keeps_tac Keeps.refl _ _) (by bsimp [h8]))
+      (by rw [Nat.pow_zero, Nat.one_mul]) hpar (by bsimp [Hd.objIn, zeroCount, NumObj.withRefs_refs])
+  · refine ra_p1_loop hlive env hoom ?_ u 0 (st _ (by keeps_tac Keeps.refl _ _) (by bsimp [h8]))
+      (by rw [Nat.pow_zero, Nat.one_mul]) hpar
+    intro R' M' H' F' P i e st' hu' he'
+    have cx' := env.cx
+    have hb' := st'.heap
+    have hS' : HeapOwn S := fun a h1 h2 => hb'.heap.own a h1 h2
+    have hPm : P ∈ KList [] [some P] A B x1 :=
+      Hd.objIn_mem (hs := [some P]) (List.mem_singleton_self _) [] A B x1
+    have hPn := hb'.nums _ hPm
+    num_facts hPn
+    have hPr := hPn.refs
+    have h18' := st'.r18
+    simp only [Hd.p] at h18'
+    bc_run hlive hS' [h18', hPr] at 0x800066d0
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    refine hcopy _ M' H' F' (some P) i e ?_ hu' he' ?_
+    · exact { st' with
+        ra := st'.ra.regsA (ks := [15]) (by keeps_tac Keeps.refl _ _)
+        r21 := by bsimp [st'.r21]
+        r18 := by bsimp [st'.r18]
+        r9 := by bsimp [st'.r9]
+        r8 := by bsimp [st'.r8]
+        r22 := by bsimp [st'.r22]
+        r24 := by bsimp [st'.r24] }
+    · bsimp [Hd.objIn]
 
 end Dc.Mach

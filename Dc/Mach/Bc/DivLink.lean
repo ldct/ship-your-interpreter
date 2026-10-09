@@ -286,6 +286,122 @@ theorem dv_num2 {live : Nat → Prop} {S : Nat → Prop}
     r16 (by rw [K.get 18]; exact h18) r19 (by rw [K.get 21]; exact h21) (by rw [K.get 22]; exact h22)
     r23 r24 (by rw [K.get 25]; exact h25) (by rw [K.get 26]; exact h26) r27 ((K.mono (by decide)).trans hkp)
 
+/-- **`bc_divide` from `0x80005954`** (the trimmed scale `s2` in `s3`): `num1`
+(`dv1_setup`), then `dv_num2`. -/
+theorem dv_body {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {s2 z0 k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (hn : n = Num.div x1.rep.num x2.rep.num k) (core : DvCore S Mt0 M R0 sp W H F (L1 ++ xr :: L2))
+    (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2) (hdv : DvDivisor x2 s2 z0)
+    (hsz : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27)
+    (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
+    (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h19 : R 19 = BitVec.ofNat 64 s2)
+    (h21 : R 21 = BitVec.ofNat 64 k) (h22 : R 22 = BitVec.ofNat 64 q) (hkp : Keeps divAll R R0) :
+    DW live S Q 0x80005954#64 R M := by
+  have hl1 := (core.heap.nums x1 hx1).shape.dsLen
+  have hl2 := (core.heap.nums x2 hx2).shape.dsLen
+  have hs2 := hdv.s2le
+  refine dv1_setup hlive cx.dv core hx1 (by omega) h2 h8 h19 h21 hk.oom
+    fun R' M' H' b hD hd r18 r25 r26 K => ?_
+  exact dv_num2 hlive cx hk hn hD hd hx1 hx2 hdv hl1 hl2 hsz hr0 hz hzg (by rw [K.get 2]; exact h2)
+    (by rw [K.get 8]; exact h8) (by rw [K.get 9]; exact h9) r18 (by rw [K.get 19]; exact h19)
+    (by rw [K.get 21]; exact h21) (by rw [K.get 22]; exact h22) r25 r26 ((K.mono (by decide)).trans hkp)
+
+/-- `a - 1 + b` as words, the `- 1` wrapping when `a = 0`. -/
+theorem pred_add_word {a b : Nat} (h : 1 ≤ a + b) (hb : a + b < 2 ^ 63) :
+    BitVec.ofNat 64 a + 18446744073709551615#64 + BitVec.ofNat 64 b = BitVec.ofNat 64 (a + b - 1) := by
+  rw [show (18446744073709551615#64) = BitVec.ofNat 64 18446744073709551615 from rfl, ofNat_add_ofNat,
+    ofNat_add_ofNat, show a + 18446744073709551615 + b = (a + b - 1) + 2 ^ 64 by omega]
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.add_mod_right]
+
+/-- **`n2`'s first nonzero digit found** at `0x80005924` (`z0`): the
+trailing-zero trim (`dvz_trim`) or, at scale zero, the test for `n2 = 1`
+(`hone`, the divide-by-one detour at `0x80005e54`); then `dv_body`. -/
+theorem dv_found {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {z0 k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (hn : n = Num.div x1.rep.num x2.rep.num k) (core : DvCore S Mt0 M R0 sp W H F (L1 ++ xr :: L2))
+    (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2)
+    (hlz : ∀ i, i < z0 → x2.rep.ds.getD i 0 = 0) (hnz : x2.rep.ds.getD z0 0 ≠ 0)
+    (hzl : z0 < x2.rep.len + x2.rep.scale)
+    (hsz : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27)
+    (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
+    (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h11 : R 11 = BitVec.ofNat 64 x2.rep.len)
+    (h15 : R 15 = BitVec.ofNat 64 x2.rep.val)
+    (h16 : R 16 = BitVec.ofNat 64 (x2.rep.len + x2.rep.scale))
+    (h19 : R 19 = BitVec.ofNat 64 x2.rep.scale) (h21 : R 21 = BitVec.ofNat 64 k)
+    (h22 : R 22 = BitVec.ofNat 64 q) (hkp : Keeps divAll R R0)
+    (hone : ∀ R', x2.rep.len = 1 → x2.rep.scale = 0 → x2.rep.ds.getD 0 0 = 1 →
+      R' 2 = BitVec.ofNat 64 (sp - 208) → R' 8 = BitVec.ofNat 64 x1.rep.p →
+      R' 9 = BitVec.ofNat 64 x2.rep.p → R' 21 = BitVec.ofNat 64 k → R' 22 = BitVec.ofNat 64 q →
+      Keeps divAll R' R0 → DW live S Q 0x80005e54#64 R' M) :
+    DW live S Q 0x80005924#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => core.heap.heap.own a h1 h2
+  have hn2 := core.heap.nums x2 hx2
+  num_facts hn2
+  have hd2 : IsDigits x2.rep.ds := hn2.shape.dig
+  have hb2 : ∀ j, j < x2.rep.len + x2.rep.scale →
+      imgM M (x2.rep.val + j) = BitVec.ofNat 8 (x2.rep.ds.getD j 0) := hn2.digit
+  -- `s2 = 0`: straight to `dv_body`
+  have hzero : ∀ R', R' 2 = BitVec.ofNat 64 (sp - 208) → R' 8 = BitVec.ofNat 64 x1.rep.p →
+      R' 9 = BitVec.ofNat 64 x2.rep.p → R' 19 = 0#64 → R' 21 = BitVec.ofNat 64 k →
+      R' 22 = BitVec.ofNat 64 q → Keeps divAll R' R0 → x2.rep.scale = 0 →
+      DW live S Q 0x80005954#64 R' M := fun R' r2 r8 r9 r19 r21 r22 kk hs0 =>
+    dv_body (s2 := 0) (z0 := z0) hlive cx hk hn core hx1 hx2
+      ⟨by omega, fun j h1 h2 => absurd h2 (by omega), hlz, by omega, hnz⟩ hsz hr0 hz hzg r2 r8 r9 r19 r21 r22 kk
+  have e1 := ofNat_eq_zero_iff (show x2.rep.scale < 2 ^ 64 by omega)
+  bc_run hlive hS [h19, e1] at 0x80005b78 0x80005948
+  · intro hs0
+    -- scale zero: `n2 = 1`?
+    have e2 := ofNat_eq_iff (show x2.rep.len + x2.rep.scale < 2 ^ 64 by omega) (show 1 < 2 ^ 64 by omega)
+    bc_run hlive hS [h16, e2] at 0x80005e4c 0x80005b80
+    · intro hl1
+      have hd0 := hb2 0 (by omega)
+      rw [Nat.add_zero] at hd0
+      have hl0 := lbu_digit (hd2.getD 0) hd0
+      have e3 := ofNat_eq_iff (show x2.rep.ds.getD 0 0 < 2 ^ 64 by have := hd2.getD 0; omega)
+        (show 1 < 2 ^ 64 by omega)
+      bc_run hlive hS [h15, h16, hl0, e3, hl1] at 0x80005b80 0x80005e54
+      · intro h1
+        bc_run hlive hS [] at 0x80005954
+        exact hzero _ (by bsimp [h2]) (by bsimp [h8]) (by bsimp [h9]) (by bsimp []) (by bsimp [h21])
+          (by bsimp [h22]) (by keeps_tac hkp) hs0
+      · intro h1
+        have h1' : x2.rep.ds.getD 0 0 = 1 := e3.mp (Classical.not_not.mp h1)
+        exact hone _ (by omega) hs0 h1' (by bsimp [h2]) (by bsimp [h8]) (by bsimp [h9]) (by bsimp [h21])
+          (by bsimp [h22]) (by keeps_tac hkp)
+    · intro hl1
+      bc_run hlive hS [] at 0x80005954
+      exact hzero _ (by bsimp [h2]) (by bsimp [h8]) (by bsimp [h9]) (by bsimp []) (by bsimp [h21])
+        (by bsimp [h22]) (by keeps_tac hkp) hs0
+  · intro hs0
+    have e4 := shl_shr32 (n := x2.rep.scale) (by omega)
+    have e5 := pred_add_word (a := x2.rep.len) (b := x2.rep.scale) (by omega) (by omega)
+    bc_run hlive hS [h11, h15, h19, e4, e5] at 0x80005948
+    refine dvz_trim hlive hS hd2 hb2 (by omega) (by omega) (by omega) ?_ (x2.rep.scale - 1) 0 _ (by omega)
+      (fun j h1 h2 => absurd h2 (by omega)) (Keeps.refl _ _) (by bsimp [h19])
+      (by bsimp []; try exact congrArg _ (by omega))
+    intro R' s2 hs2 htz kk r19
+    have hzl2 : z0 < x2.rep.len + s2 := by
+      rcases Nat.lt_or_ge z0 (x2.rep.len + s2) with h | h
+      · exact h
+      · have := htz (z0 - x2.rep.len) (by omega) (by omega)
+        rw [show x2.rep.len + (z0 - x2.rep.len) = z0 by omega] at this
+        exact absurd this hnz
+    exact dv_body (s2 := s2) (z0 := z0) hlive cx hk hn core hx1 hx2 ⟨hs2, htz, hlz, hzl2, hnz⟩ hsz hr0 hz
+      hzg (by rw [kk.get 2]; bsimp [h2]) (by rw [kk.get 8]; bsimp [h8]) (by rw [kk.get 9]; bsimp [h9]) r19
+      (by rw [kk.get 21]; bsimp [h21]) (by rw [kk.get 22]; bsimp [h22])
+      ((kk.mono (by decide)).trans (by keeps_tac hkp))
+
 end
 
 end Dc.Mach

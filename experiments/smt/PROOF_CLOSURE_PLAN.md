@@ -5153,3 +5153,8 @@ callee frames its caller's raw blocks. The central transports
 (`BcHeap.rebase`, `.transportOwn`, `.malloc`, `.rawWrite`, `.freeRaw`,
 `.update`, `.unlink`, `NewNumPost.insert`) discharge the field once. The
 scratch buffers of `bc_divide` carry their separation from `X.bs`.
+
+Status: landed. Every file from `Heap.lean` through `OutNumEntry.lean`
+compiles over `BcHeap S X`; the axioms of `on_entry`, `bc_divide_spec`,
+`bc_divmod_spec`, `bc_multiply_spec` and `rm_spec` are within
+{propext, Classical.choice, Quot.sound}.

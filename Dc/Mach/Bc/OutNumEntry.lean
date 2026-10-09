@@ -411,6 +411,61 @@ theorem on_neg {live S : Nat → Prop} {X : Raws}
   have h10 : r ≠ 10 := by simp only [List.mem_cons, List.not_mem_nil, or_false] at hr; omega
   simp only [upd_apply, h1, h10, if_false, hs r hr]
 
+theorem on_entry_pos {live S : Nat → Prop} {X : Raws}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
+    {sp W d ob : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x z o : NumObj}
+    {cs : List Nat} {t : String} (fx : OnFix live S X Q I G Mt0 R0 sp W d L x z o ob cs)
+    (hb' : BcHeap S X (onPro Mt0 sp R0) H F L) (hI' : I cs t (onPro Mt0 sp R0))
+    (h10 : R0 10 = BitVec.ofNat 64 x.rep.p) (h11 : R0 11 = BitVec.ofNat 64 ob)
+    (hxg : x.rep.neg = false) :
+    DWO live S Q t 0x80006f3c#64 R0 Mt0 := by
+  have cx := fx.cx
+  on_facts cx
+  have hsf := cx.cc.frame
+  have hS : HeapOwn S := fun a h1 h2 => hb'.heap.own a h1 h2
+  have hxn := hb'.nums x fx.ha.mx
+  num_facts hxn
+  have hxs := hxn.sign
+  have hlz := cx.lz
+  rw [hxg] at hxs
+  bc_run hlive hS [h10, h11, cx.sp0, word_sub176 (show 176 ≤ sp by omega), hxs, signWord_false,
+    hlz] at 0x80006f7c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine on_post hlive fx (OnAt.pro (by bsimp []) (by keeps_tac Keeps.refl _ _) (by bsimp [])
+    (by omega) (by omega)) hb' (by simpa only [signOut, NumRep.num_neg, hxg, Bool.false_eq_true, if_false,
+      List.append_nil] using hI')
+    (by bsimp [h10]) (by bsimp [h11]) (by bsimp [hlz]) fun r hr => ?_
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> bsimp []
+
+theorem on_entry_neg {live S : Nat → Prop} {X : Raws}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {I : List Nat → String → Mem → Prop} {G : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64}
+    {sp W d ob : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {x z o : NumObj}
+    {cs : List Nat} {t : String} (fx : OnFix live S X Q I G Mt0 R0 sp W d L x z o ob cs)
+    (hb' : BcHeap S X (onPro Mt0 sp R0) H F L) (hI' : I cs t (onPro Mt0 sp R0))
+    (h10 : R0 10 = BitVec.ofNat 64 x.rep.p) (h11 : R0 11 = BitVec.ofNat 64 ob)
+    (hxg : x.rep.neg = true) :
+    DWO live S Q t 0x80006f3c#64 R0 Mt0 := by
+  have cx := fx.cx
+  on_facts cx
+  have hsf := cx.cc.frame
+  have hS : HeapOwn S := fun a h1 h2 => hb'.heap.own a h1 h2
+  have hxn := hb'.nums x fx.ha.mx
+  num_facts hxn
+  have hxs := hxn.sign
+  have hlz := cx.lz
+  rw [hxg] at hxs
+  bc_run hlive hS [h10, h11, cx.sp0, word_sub176 (show 176 ≤ sp by omega), hxs, signWord_true,
+    hlz] at 0x80006f7c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine on_neg hlive fx (OnAt.pro (by bsimp []) (by keeps_tac Keeps.refl _ _) (by bsimp [])
+    (by omega) (by omega)) hb' hI' hxg (by bsimp []) (by bsimp [h10]) (by bsimp [h11])
+    (by bsimp [hlz]) fun r hr => ?_
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> bsimp []
+
 /-- **`bc_out_num (num, o_base, out_char, 0)`** from its entry, given the
 branch for a base other than 10 (`OnFix.go`). -/
 theorem on_entry {live S : Nat → Prop} {X : Raws}
@@ -423,36 +478,13 @@ theorem on_entry {live S : Nat → Prop} {X : Raws}
     DWO live S Q t 0x80006f3c#64 R0 Mt0 := by
   have cx := fx.cx
   on_facts cx
-  have hsf := cx.cc.frame
-  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
-  have hxn := hb.nums x fx.ha.mx
-  num_facts hxn
-  have hxs := hxn.sign
-  have hlz := cx.lz
   have hmo : MemOnly (fun a => sp - 176 ≤ a ∧ a < sp) (onPro Mt0 sp R0) Mt0 := fun a ha => by
     repeat rw [imgM_store_miss _ _ (by omega)]
   have hb' := hb.out_frame hmo fun a ha => outHeap_of_ge (by simp only [heapEnd]; omega)
   have hI' : I cs t (onPro Mt0 sp R0) := fx.cb.stab cs t Mt0 _ hI fun a hg => hmo a fun h => by
     have := (fx.cb.off a hg).1; simp only [heapStart] at this; omega
   cases hxg : x.rep.neg
-  · rw [hxg] at hxs
-    bc_run hlive hS [h10, h11, cx.sp0, word_sub176 (show 176 ≤ sp by omega), hxs, signWord_false,
-      hlz] at 0x80006f7c
-    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-    refine on_post hlive fx (OnAt.pro (by bsimp []) (by keeps_tac Keeps.refl _ _) (by bsimp [])
-      (by omega) (by omega)) hb' (by simpa only [signOut, NumRep.num_neg, hxg, Bool.false_eq_true, if_false,
-        List.append_nil] using hI')
-      (by bsimp [h10]) (by bsimp [h11]) (by bsimp [hlz]) fun r hr => ?_
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
-    rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> bsimp []
-  · rw [hxg] at hxs
-    bc_run hlive hS [h10, h11, cx.sp0, word_sub176 (show 176 ≤ sp by omega), hxs, signWord_true,
-      hlz] at 0x80006f7c
-    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-    refine on_neg hlive fx (OnAt.pro (by bsimp []) (by keeps_tac Keeps.refl _ _) (by bsimp [])
-      (by omega) (by omega)) hb' hI' hxg (by bsimp []) (by bsimp [h10]) (by bsimp [h11])
-      (by bsimp [hlz]) fun r hr => ?_
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
-    rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> bsimp []
+  · exact on_entry_pos hlive fx hb' hI' h10 h11 hxg
+  · exact on_entry_neg hlive fx hb' hI' h10 h11 hxg
 
 end Dc.Mach

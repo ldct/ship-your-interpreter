@@ -252,7 +252,7 @@ theorem DivCtx.stack_out {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp q W : N
   omega
 
 /-- The three raw buffers after the result: live, none of the heap's, apart. -/
-structure DvRaw (H : Heap) (F : List Blk) (L : List NumObj) (b1 b2 b3 : Blk) : Prop where
+structure DvRaw (H : Heap) (F : List Blk) (X : Raws) (L : List NumObj) (b1 b2 b3 : Blk) : Prop where
   l1 : b1 ∈ H.live
   l2 : b2 ∈ H.live
   l3 : b3 ∈ H.live
@@ -274,7 +274,7 @@ theorem dvt_frees {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h21 : R 21 = BitVec.ofNat 64 y.sb.pay)
     (h22 : R 22 = BitVec.ofNat 64 q) (h18 : R 18 = BitVec.ofNat 64 b1.pay)
     (h19 : R 19 = BitVec.ofNat 64 b2.pay) (hkp : Keeps divAll R R0)
-    (hraw : DvRaw H F (y :: L) b1 b2 b3)
+    (hraw : DvRaw H F X (y :: L) b1 b2 b3)
     (hp : QPost S X Mt0 (writeLog M [(q, 8, BitVec.ofNat 64 y.sb.pay)]) H F Fr q sp W m L y) :
     DW live S Q 0x80005b1c#64 R M := by
   have hsf := cx.frame
@@ -325,13 +325,13 @@ theorem dvt_frees {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
 
 /-- A block outside `L1 ++ x :: L2`'s objects is outside `L1 ++ x' :: L2`'s
 when `x'` has `x`'s blocks, and outside `L1 ++ L2`'s. -/
-theorem not_objBlocks_mid {L1 L2 : List NumObj} {x x' : NumObj} {F : List Blk} {b : Blk}
+theorem not_objBlocks_mid {X : Raws} {L1 L2 : List NumObj} {x x' : NumObj} {F : List Blk} {b : Blk}
     (hx : x'.blocks = x.blocks) (h : b ∉ F ++ objBlocks (L1 ++ x :: L2) ++ X.bs) :
     b ∉ F ++ objBlocks (L1 ++ x' :: L2) ++ X.bs := by
   simp only [objBlocks_append, objBlocks_cons, hx] at h ⊢; exact h
 
-theorem not_objBlocks_drop {L1 L2 : List NumObj} {x : NumObj} {F : List Blk} {b : Blk}
-    (h : b ∉ F ++ objBlocks (L1 ++ x :: L2) ++ X.bs) : b ∉ x.sb :: F ++ objBlocks (L1 ++ L2) ++ X.bs := by
+theorem not_objBlocks_drop0 {L1 L2 : List NumObj} {x : NumObj} {F : List Blk} {b : Blk}
+    (h : b ∉ F ++ objBlocks (L1 ++ x :: L2)) : b ∉ x.sb :: F ++ objBlocks (L1 ++ L2) := by
   intro hb
   apply h
   simp only [objBlocks_append, objBlocks_cons, List.mem_append, List.mem_cons] at hb ⊢
@@ -341,10 +341,17 @@ theorem not_objBlocks_drop {L1 L2 : List NumObj} {x : NumObj} {F : List Blk} {b 
   · exact .inr (.inl hb)
   · exact .inr (.inr (.inr hb))
 
+theorem not_objBlocks_drop {X : Raws} {L1 L2 : List NumObj} {x : NumObj} {F : List Blk} {b : Blk}
+    (h : b ∉ F ++ objBlocks (L1 ++ x :: L2) ++ X.bs) : b ∉ x.sb :: F ++ objBlocks (L1 ++ L2) ++ X.bs := by
+  intro hb
+  rcases List.mem_append.mp hb with hb | hb
+  · exact not_objBlocks_drop0 (fun h' => h (List.mem_append_left _ h')) hb
+  · exact h (List.mem_append_right _ hb)
+
 /-- The raw buffers after `bc_free_num` lowered `x`'s count. -/
-theorem DvRaw.dec {H : Heap} {F : List Blk} {L1 L2 : List NumObj} {x y : NumObj} {b1 b2 b3 : Blk}
-    (h : DvRaw H F (y :: (L1 ++ x :: L2)) b1 b2 b3) :
-    DvRaw H F (y :: (L1 ++ x.decRef :: L2)) b1 b2 b3 := by
+theorem DvRaw.dec {X : Raws} {H : Heap} {F : List Blk} {L1 L2 : List NumObj} {x y : NumObj} {b1 b2 b3 : Blk}
+    (h : DvRaw H F X (y :: (L1 ++ x :: L2)) b1 b2 b3) :
+    DvRaw H F X (y :: (L1 ++ x.decRef :: L2)) b1 b2 b3 := by
   have e : ∀ b, b ∉ F ++ objBlocks (y :: (L1 ++ x :: L2)) ++ X.bs →
       b ∉ F ++ objBlocks (y :: (L1 ++ x.decRef :: L2)) ++ X.bs := fun b hb => by
     rw [← List.cons_append] at hb ⊢; exact not_objBlocks_mid (x := x) (x' := x.decRef) rfl hb
@@ -353,16 +360,16 @@ theorem DvRaw.dec {H : Heap} {F : List Blk} {L1 L2 : List NumObj} {x y : NumObj}
 /-- The raw buffers after `bc_free_num` released `x`. -/
 theorem DvRaw.rel {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H H' : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x y : NumObj} {q sp : Nat} {b1 b2 b3 : Blk}
-    (h : DvRaw H F (y :: (L1 ++ x :: L2)) b1 b2 b3)
+    (h : DvRaw H F X (y :: (L1 ++ x :: L2)) b1 b2 b3)
     (hrp : ReleasePost S X Mt Mt' H H' F (y :: L1) L2 x q sp) :
-    DvRaw H' (x.sb :: F) (y :: (L1 ++ L2)) b1 b2 b3 := by
+    DvRaw H' (x.sb :: F) X (y :: (L1 ++ L2)) b1 b2 b3 := by
   have hl : ∀ b, b ∈ H.live → b ∉ F ++ objBlocks (y :: (L1 ++ x :: L2)) ++ X.bs → b ∈ H'.live := by
     intro b hb hn
     by_cases ho : x.Owns
     · refine ((hrp.owned ho).2.1 b).mpr ⟨hb, fun e => hn ?_⟩
       rw [e]
-      exact List.mem_append_right _ (mem_objBlocks_db (L := y :: (L1 ++ x :: L2))
-        (List.mem_cons_of_mem _ (List.mem_append_right _ List.mem_cons_self)) ho)
+      exact List.mem_append_left _ (List.mem_append_right _ (mem_objBlocks_db (L := y :: (L1 ++ x :: L2))
+        (List.mem_cons_of_mem _ (List.mem_append_right _ List.mem_cons_self)) ho))
     · rw [hrp.view ho]; exact hb
   have e : ∀ b, b ∉ F ++ objBlocks (y :: (L1 ++ x :: L2)) ++ X.bs →
       b ∉ x.sb :: F ++ objBlocks (y :: (L1 ++ L2)) ++ X.bs := fun b hb => by
@@ -380,7 +387,7 @@ theorem dvt_freenum {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (hb : BcHeap S X M H F (y :: L0)) (hr : QSlot M q L0 Fr)
     (hout : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     (hnum : y.rep.num = m) (hnorm : y.rep.Norm) (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1)
-    (hyo : y.Owns) (hraw : DvRaw H F (y :: L0) b1 b2 b3)
+    (hyo : y.Owns) (hraw : DvRaw H F X (y :: L0) b1 b2 b3)
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h21 : R 21 = BitVec.ofNat 64 y.sb.pay)
     (h22 : R 22 = BitVec.ofNat 64 q) (h18 : R 18 = BitVec.ofNat 64 b1.pay)
     (h19 : R 19 = BitVec.ofNat 64 b2.pay) (hkp : Keeps divAll R R0) :
@@ -629,8 +636,8 @@ theorem DvtAt.heap {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R : Nat → BitVec 64
   rw [ldv_congr .ld fun j hj => hst _ (by omega)]; exact st.s8
 
 /-- The raw buffers with the head relabelled on the same blocks. -/
-theorem DvRaw.head {H : Heap} {F : List Blk} {L : List NumObj} {y y' : NumObj} {b1 b2 b3 : Blk}
-    (h : DvRaw H F (y :: L) b1 b2 b3) (hx : y'.blocks = y.blocks) : DvRaw H F (y' :: L) b1 b2 b3 := by
+theorem DvRaw.head {X : Raws} {H : Heap} {F : List Blk} {L : List NumObj} {y y' : NumObj} {b1 b2 b3 : Blk}
+    (h : DvRaw H F X (y :: L) b1 b2 b3) (hx : y'.blocks = y.blocks) : DvRaw H F X (y' :: L) b1 b2 b3 := by
   have e : ∀ b, b ∉ F ++ objBlocks (y :: L) ++ X.bs → b ∉ F ++ objBlocks (y' :: L) ++ X.bs := fun b hb => by
     simpa only [objBlocks_cons, hx] using hb
   exact ⟨h.l1, h.l2, h.l3, e _ h.n1, e _ h.n2, e _ h.n3, h.d12, h.d13, h.d23⟩
@@ -645,7 +652,7 @@ theorem dvt_trimmed {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (hb : BcHeap S X M H F ({ y with rep := y.rep.drop j } :: L0))
     (hj : lzCount (y.rep.len - 1) y.rep.ds = j) (hnum : y.rep.num = m)
     (hdl : y.rep.ds.length = y.rep.len + y.rep.scale) (hpos : 1 ≤ y.rep.len)
-    (hrefs : y.rep.refs = 1) (hyo : y.Owns) (hraw : DvRaw H F (y :: L0) b1 b2 b3)
+    (hrefs : y.rep.refs = 1) (hyo : y.Owns) (hraw : DvRaw H F X (y :: L0) b1 b2 b3)
     (h21 : R 21 = BitVec.ofNat 64 y.sb.pay) :
     DW live S Q 0x80005b14#64 R M := by
   obtain ⟨hn', hnorm, -, hpos'⟩ := NumRep.rmLeadingZeros_spec hdl hpos
@@ -664,7 +671,7 @@ theorem dvt_trim {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (st : DvtAt S Mt0 M R0 R sp q W L0 Fr b1 b2 b3)
     (hb : BcHeap S X M H F (y :: L0)) (hnum : y.rep.num = m)
     (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
-    (hraw : DvRaw H F (y :: L0) b1 b2 b3)
+    (hraw : DvRaw H F X (y :: L0) b1 b2 b3)
     (h21 : R 21 = BitVec.ofNat 64 y.sb.pay) (h15 : R 15 = BitVec.ofNat 64 y.rep.val) :
     DW live S Q 0x80005ae4#64 R M := by
   have hyp := (hb.blocks y List.mem_cons_self).sPay
@@ -686,7 +693,7 @@ theorem dvt_pos {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (hb : BcHeap S X M H F (y :: L0))
     (hnum : ({ y.rep with neg := false } : NumRep).num = m)
     (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
-    (hraw : DvRaw H F (y :: L0) b1 b2 b3)
+    (hraw : DvRaw H F X (y :: L0) b1 b2 b3)
     (h21 : R 21 = BitVec.ofNat 64 y.sb.pay) (h15 : R 15 = BitVec.ofNat 64 y.rep.val) :
     DW live S Q 0x80005b8c#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
@@ -776,7 +783,7 @@ theorem dvt_test {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (hnum : dval y.rep.ds ≠ 0 → y.rep.num = m)
     (hnum0 : dval y.rep.ds = 0 → ({ y.rep with neg := false } : NumRep).num = m)
     (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
-    (hraw : DvRaw H F (y :: L0) b1 b2 b3) :
+    (hraw : DvRaw H F X (y :: L0) b1 b2 b3) :
     DW live S Q 0x80005ab4#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hyn := hb.nums y List.mem_cons_self
@@ -826,7 +833,7 @@ theorem dvt_sign {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (hnum : dval y.rep.ds ≠ 0 → ({ y.rep with neg := x1.rep.neg != x2.rep.neg } : NumRep).num = m)
     (hnum0 : dval y.rep.ds = 0 → ({ y.rep with neg := false } : NumRep).num = m)
     (hpos : 1 ≤ y.rep.len) (hrefs : y.rep.refs = 1) (hyo : y.Owns)
-    (hraw : DvRaw H F (y :: L0) b1 b2 b3) :
+    (hraw : DvRaw H F X (y :: L0) b1 b2 b3) :
     DW live S Q 0x80005a90#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have hn1 := hb.nums x1 (List.mem_cons_of_mem _ hx1)

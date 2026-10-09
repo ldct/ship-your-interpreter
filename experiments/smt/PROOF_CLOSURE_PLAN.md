@@ -5215,6 +5215,7 @@ Checked so far:
   `.rawWrite`, `.outWrite`, `.pushNode`, `.stkAcc`.
 - `dc_push_spec` (`DcStack.lean`, with `push_tail`/`push_post`).
 - `dc_pop_spec` (`DcPop.lean`): empty path (`pop_empty`, the "stack empty" message via `fprintf_prog_spec`) and node path (`pop_mid`/`pop_tail`/`pop_some` over `DcAt.popNode`/`DcAt.free`).
+- `dc_top_spec` (`DcTop.lean`): `top_empty`/`top_some`; the slot gets the top datum's words, the dc state is unchanged.
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come
 from counting live blocks (heap below `2^27` bytes).

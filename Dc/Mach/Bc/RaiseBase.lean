@@ -86,13 +86,15 @@ structure RaArgs (S : Nat → Prop) (M : Mem) (L : List NumObj) (x1 x2 z o : Num
   fd : FdAt S M stderrAddr 2
 
 /-- The result slot `q` holds `xr` of the heap. `_one_` replacing it needs a
-second reference when it is `_one_`; a division by a zero power leaves it,
-so then it is `0`. -/
-structure RaSlot (M : Mem) (L : List NumObj) (x1 o xr : NumObj) (q : Nat) : Prop where
+second reference when it is `_one_`, and `bc_divide` one when it is `_zero_`
+(the global holds one); a division by a zero power leaves it, so then it is
+`0`. -/
+structure RaSlot (M : Mem) (L : List NumObj) (x1 x2 z o xr : NumObj) (q : Nat) : Prop where
   mr : xr ∈ L
   rr : 1 ≤ xr.rep.refs
   wr : ldv .ld M q = BitVec.ofNat 64 xr.rep.p
   oneRef : xr = o → 2 ≤ xr.rep.refs
+  zeroRef : xr = z → 2 ≤ xr.rep.refs
   zr : x1.rep.num.mag = 0 → raExp x2 < 0 →
     xr.rep.num = Num.zero 0 ∧ xr.rep.Norm ∧ 1 ≤ xr.rep.len
 
@@ -110,6 +112,19 @@ structure RaPost (S : Nat → Prop) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L 
   slot : ldv .ld Mt q = BitVec.ofNat 64 y.rep.p
   out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM Mt a = imgM Mt0 a
 
+/-- `out_of_memory` from inside `bc_raise`: `sp` inside the window, off the
+heap only the result slot and the window changed. -/
+def RaOom (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) (Mt0 : Mem)
+    (sp W q : Nat) : Prop :=
+  ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+    (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
+    DW live S Q 0x80002bcc#64 R' Mt'
+
+/-- With the slot unchanged too. -/
+theorem RaOom.dm {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {Mt0 : Mem} {sp W q : Nat} (h : RaOom live S Q Mt0 sp W q) : DmOom live S Q Mt0 sp W :=
+  fun R' Mt' sp' h1 h2 h3 h4 => h R' Mt' sp' h1 h2 h3 fun a ha _ hf => h4 a ha hf
+
 /-- `bc_raise`'s continuations: the result (`Num.raise …`.1), or
 `out_of_memory`. -/
 structure RaK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
@@ -117,7 +132,7 @@ structure RaK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (N
     (q sp W : Nat) (n : Num) : Prop where
   ret : ∀ R' Mt' H F Lf y, Keeps binClob R' R0 → RaPost S Mt0 Mt' H F L xr q sp W n Lf y →
     DWO live S Q t (R0 1) R' Mt'
-  oom : DmOom live S (DQ live S Q t) Mt0 sp W
+  oom : RaOom live S (DQ live S Q t) Mt0 sp W q
 
 /-! ## Handles -/
 

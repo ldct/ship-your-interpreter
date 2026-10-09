@@ -535,4 +535,80 @@ theorem ra_zero {live : Nat → Prop} {S : Nat → Prop}
   · exact ra_err hlive cx hK (ra.regs (by keeps_tac Keeps.refl _ _)) (by bsimp [h9]) (by bsimp [h20])
       (by bsimp [h21]) (by bsimp [h24]) hb ha hs0
 
+/-! ## A nonzero exponent -/
+
+/-- **The loops and the result** from `0x8000668c`: `ra_loops`, its exits
+into `ra_endC` (a power of two) and `ra_end2`. -/
+theorem ra_go {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k u rs nf : Nat} {H H0 : Heap}
+    {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
+    (cx : RaCtx S R0 sp W q)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
+    (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
+    (hm : RaMode x1 x2 k u rs nf) (hu : u ≠ 0)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
+    (hb : BcHeap S M H F (A ++ x1 :: B))
+    (h18 : R 18 = BitVec.ofNat 64 x1.rep.p) (h9 : R 9 = BitVec.ofNat 64 x1.rep.scale)
+    (h8 : R 8 = BitVec.ofNat 64 u) (h22 : R 22 = BitVec.ofNat 64 rs)
+    (h24 : R 24 = BitVec.ofNat 64 nf) :
+    DW live S (DQ live S Q t) 0x8000668c#64 R M := by
+  have hsz := ha.size
+  rw [← hm.abs] at hsz
+  have env : RaEnv S Mt0 R0 sp W q A B x1 z o u :=
+    ⟨cx, ha.owns, ha.mz, ha.mo, RaCst.of_args ha, ha.n1, ha.len1, hr1, ha.refs1,
+      Nat.one_le_iff_ne_zero.mpr hu, by omega⟩
+  exact ra_loops hlive env hK.oom ra h21 hb h18 h9 h8 h22 h24
+    (fun _ _ _ _ _ _ st hui => ra_endC hlive env hK ha hs0 hb0 hm st hui)
+    (fun _ _ _ _ _ _ _ st => ra_end2 hlive env hK ha hs0 hm st)
+
+/-- **`rscale = MIN (scale1 · exponent, MAX (scale, scale1))`** from
+`0x8000666c` (`a0` the product), then `ra_go`. -/
+theorem ra_rscale {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k u : Nat} {H H0 : Heap}
+    {F F0 : List Blk} {A B : List NumObj} {x1 x2 z o xr : NumObj}
+    (cx : RaCtx S R0 sp W q)
+    (hK : RaK live S Q t R0 Mt0 (A ++ x1 :: B) xr q sp W (Num.raise x1.rep.num x2.rep.num k).1)
+    (ha : RaArgs S Mt0 (A ++ x1 :: B) x1 x2 z o k) (hs0 : RaSlot Mt0 (A ++ x1 :: B) x1 x2 z o xr q)
+    (hb0 : BcHeap S Mt0 H0 F0 (A ++ x1 :: B)) (hr1 : 1 ≤ x1.rep.refs)
+    (hu : u = (raExp x2).natAbs) (hpos : 0 < raExp x2)
+    (ra : RaAt S Mt0 M R0 R sp W q raSlots1) (h21 : R 21 = R0 21)
+    (hb : BcHeap S M H F (A ++ x1 :: B))
+    (h18 : R 18 = BitVec.ofNat 64 x1.rep.p) (h9 : R 9 = BitVec.ofNat 64 x1.rep.scale)
+    (h8 : R 8 = BitVec.ofNat 64 u) (h22 : R 22 = BitVec.ofNat 64 k)
+    (h10 : R 10 = BitVec.ofNat 64 (x1.rep.scale * u)) :
+    DW live S (DQ live S Q t) 0x8000666c#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hsz := ha.size
+  rw [← hu] at hsz
+  have hs1 : x1.rep.scale * u < 2 ^ 24 := by
+    have := Nat.mul_le_mul (show u ≤ u + 1 by omega)
+      (show x1.rep.scale ≤ x1.rep.len + x1.rep.scale + 1 by omega)
+    rw [Nat.mul_comm x1.rep.scale u]; omega
+  have hk : k < 2 ^ 24 := by omega
+  have hsc : x1.rep.scale < 2 ^ 24 := by
+    have := Nat.mul_le_mul (show 1 ≤ u + 1 by omega) (show x1.rep.scale ≤ x1.rep.len + x1.rep.scale + 1 by omega)
+    omega
+  have hu0 : u ≠ 0 := by omega
+  bc_run hlive hS [h9, h10, h22] at 0x8000668c
+  all_goals intro hc
+  all_goals (try rw [toInt_ofNat_small (by omega), toInt_ofNat_small (by omega)] at hc)
+  all_goals bc_run hlive hS [h9, h10, h22] at 0x8000668c
+  all_goals intro hc2
+  all_goals (try bc_run hlive hS [h9, h10, h22] at 0x8000668c)
+  all_goals first
+    | exact ra_go hlive cx hK ha hs0 hb0 hr1 (rs := x1.rep.scale * u) ⟨hu, .inl ⟨rfl, hpos, by omega⟩⟩
+        hu0 (ra.regsA (ks := [10, 15, 22, 24]) (by keeps_tac Keeps.refl _ _)) (by bsimp [h21]) hb
+        (by bsimp [h18]) (by bsimp [h9]) (by bsimp [h8]) (by bsimp []) (by bsimp [])
+    | exact ra_go hlive cx hK ha hs0 hb0 hr1 (rs := x1.rep.scale) ⟨hu, .inl ⟨rfl, hpos, by omega⟩⟩
+        hu0 (ra.regsA (ks := [10, 15, 22, 24]) (by keeps_tac Keeps.refl _ _)) (by bsimp [h21]) hb
+        (by bsimp [h18]) (by bsimp [h9]) (by bsimp [h8]) (by bsimp []) (by bsimp [])
+    | exact ra_go hlive cx hK ha hs0 hb0 hr1 (rs := k) ⟨hu, .inl ⟨rfl, hpos, by omega⟩⟩
+        hu0 (ra.regsA (ks := [10, 15, 22, 24]) (by keeps_tac Keeps.refl _ _)) (by bsimp [h21]) hb
+        (by bsimp [h18]) (by bsimp [h9]) (by bsimp [h8]) (by bsimp []) (by bsimp [])
+
 end Dc.Mach

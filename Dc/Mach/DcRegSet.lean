@@ -429,4 +429,289 @@ theorem DcAt.newLevel {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} 
     · have hne : r' ≠ r := by omega
       simp only [DcG.setReg, St.setReg, hne, ite_false]; exact hd.regsHi r' hr'
 
+/-! ## The machine -/
+
+/-- The registers `dc_register_set` may change. -/
+abbrev setClob : List Nat := [10, 11, 12, 13, 14, 15]
+
+/-- `dc_register_set`'s datum stores and return on a level with no value (`0x8000301c`, `sp` lowered by 48, `a0` the node at `a`). -/
+theorem reg_set_tail0 {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp a : Nat}
+    {w0 w1 ra : BitVec 64} (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (ha : heapStart ≤ a ∧ a + 16 ≤ heapEnd ∧ a % 8 = 0)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 48)) (h10 : R 10 = BitVec.ofNat 64 a)
+    (h16 : ldv .ld M (sp - 48 + 16) = w0) (h24 : ldv .ld M (sp - 48 + 24) = w1)
+    (hra : ldv .ld M (sp - 48 + 40) = ra) (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R', Keeps (1 :: 2 :: setClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      DW live S Q ra R' (datW M a w0 w1)) :
+    DW live S Q 0x8000301c#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  obtain ⟨ha1, ha2, ha3⟩ := ha
+  simp only [heapEnd, heapStart] at hab ha1 ha2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h2, h10, h16, h24, hra]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals first | (bsimp []; exact hal) | skip
+  refine hk _ (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp []; congr 1; omega)
+/-- `dc_register_set`'s datum stores and return on a level with no value or a
+new level (`0x80003090`, `sp` lowered by 48, `a0` the node at `a`). -/
+theorem reg_set_tailN {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp a : Nat}
+    {w0 w1 ra : BitVec 64} (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (ha : heapStart ≤ a ∧ a + 16 ≤ heapEnd ∧ a % 8 = 0)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 48)) (h10 : R 10 = BitVec.ofNat 64 a)
+    (h16 : ldv .ld M (sp - 48 + 16) = w0) (h24 : ldv .ld M (sp - 48 + 24) = w1)
+    (hra : ldv .ld M (sp - 48 + 40) = ra) (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R', Keeps (1 :: 2 :: setClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      DW live S Q ra R' (datW M a w0 w1)) :
+    DW live S Q 0x80003090#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  obtain ⟨ha1, ha2, ha3⟩ := ha
+  simp only [heapEnd, heapStart] at hab ha1 ha2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h2, h10, h16, h24, hra]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals first | (bsimp []; exact hal) | skip
+  refine hk _ (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp []; congr 1; omega)
+
+/-- `dc_register_set`'s datum stores and return after `dc_free_num` of the
+old value (`0x800030b8`, `sp` lowered by 48, the register's word saved at
+`8(sp)`, holding the node at `a`). -/
+theorem reg_set_tailF {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp a r : Nat}
+    {w0 w1 ra : BitVec 64} (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (ha : heapStart ≤ a ∧ a + 16 ≤ heapEnd ∧ a % 8 = 0) (hr : r < 256)
+    (hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 48))
+    (h8 : ldv .ld M (sp - 48 + 8) = BitVec.ofNat 64 (regAddr r))
+    (hw : ldv .ld M (regAddr r) = BitVec.ofNat 64 a)
+    (h16 : ldv .ld M (sp - 48 + 16) = w0) (h24 : ldv .ld M (sp - 48 + 24) = w1)
+    (hra : ldv .ld M (sp - 48 + 40) = ra) (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R', Keeps (1 :: 2 :: setClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      DW live S Q ra R' (datW M a w0 w1)) :
+    DW live S Q 0x800030b8#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  obtain ⟨ha1, ha2, ha3⟩ := ha
+  simp only [heapEnd, heapStart] at hab ha1 ha2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hra8 : (BitVec.ofNat 64 (regAddr r)).toNat = regAddr r := by
+    simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
+  bc_run hlive hS [h2, h8, hra8, hw, h16, h24, hra]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hrown | (simp only [LdOK, regAddr, dcRegAddr]; omega) | skip
+  all_goals first | (bsimp []; exact hal) | skip
+  refine hk _ (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp []; congr 1; omega)
+
+/-- `dc_register_set`'s datum stores and return after `dc_free_str` of the
+old value (`0x800030e8`, `sp` lowered by 48, the register's word saved at
+`8(sp)`, holding the node at `a`). -/
+theorem reg_set_tailS {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp a r : Nat}
+    {w0 w1 ra : BitVec 64} (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (ha : heapStart ≤ a ∧ a + 16 ≤ heapEnd ∧ a % 8 = 0) (hr : r < 256)
+    (hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 48))
+    (h8 : ldv .ld M (sp - 48 + 8) = BitVec.ofNat 64 (regAddr r))
+    (hw : ldv .ld M (regAddr r) = BitVec.ofNat 64 a)
+    (h16 : ldv .ld M (sp - 48 + 16) = w0) (h24 : ldv .ld M (sp - 48 + 24) = w1)
+    (hra : ldv .ld M (sp - 48 + 40) = ra) (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R', Keeps (1 :: 2 :: setClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      DW live S Q ra R' (datW M a w0 w1)) :
+    DW live S Q 0x800030e8#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  obtain ⟨ha1, ha2, ha3⟩ := ha
+  simp only [heapEnd, heapStart] at hab ha1 ha2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hra8 : (BitVec.ofNat 64 (regAddr r)).toNat = regAddr r := by
+    simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
+  bc_run hlive hS [h2, h8, hra8, hw, h16, h24, hra]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hrown | (simp only [LdOK, regAddr, dcRegAddr]; omega) | skip
+  all_goals first | (bsimp []; exact hal) | skip
+  refine hk _ (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp []; congr 1; omega)
+
+/-- Register `r`'s word points to its top level's node. -/
+theorem DcAt.regWord {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} (h : DcAt S M H F L C G hs st) (hr : r < 256)
+    (hl : G.regs r = (b, e) :: l) : ldv .ld M (regAddr r) = BitVec.ofNat 64 b.pay ∧ RLevAt M b e := by
+  have hv := h.view.regs r hr
+  rw [hl] at hv
+  cases hv with
+  | cons h0 hp _ => exact ⟨h0, hp⟩
+
+/-- A node of the state lies in the heap, 16-aligned. -/
+theorem DcAt.node_bounds {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {b : Blk} (h : DcAt S M H F L C G hs st)
+    (hb : b ∈ G.blocks) (hsz : 32 ≤ b.sz) :
+    heapStart + 16 ≤ b.pay ∧ b.pay + 32 ≤ heapEnd ∧ b.pay % 16 = 0 := by
+  have fbb := h.heap.heap.blk (List.mem_append_right _ (h.heap.raw.live b hb))
+  have a1 : 2147603920 ≤ b.h := fbb.lo
+  have a2 : b.fin ≤ 2273312768 := Nat.le_trans fbb.fin fbb.top
+  have a3 : b.h % 16 = 0 := fbb.al
+  have e1 : b.pay = b.h + 16 := rfl
+  have e2 : b.fin = b.h + 16 + b.sz := rfl
+  simp only [heapStart, heapEnd]
+  omega
+
+/-- The stack bytes of `dc_register_set` and its callees. -/
+theorem setFrame_out {sp a : Nat} (hab : heapEnd + 80 ≤ sp) (ha : frameIn sp 80 a) :
+    OutHeap a ∧ ¬ DcGlob a := by
+  simp only [frameIn] at ha
+  exact ⟨outHeap_of_ge (by simp only [heapEnd] at *; omega), fun hg => by
+    have := hg.lt; simp only [heapStart, heapEnd] at *; omega⟩
+
+/-- `dc_register_set` on a level holding a number (`0x800030ac`, `sp`
+lowered by 48, `a0` the node, `a5` the register's word): `dc_free_num` of
+the old value through its slot, then the new datum. -/
+theorem reg_set_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {v : Val} {w0 w1 ra : BitVec 64} {p sp : Nat}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hev : e.v = some (.num p)) (hd : DatRegs w0 w1 g) (hv : g.Den ⟨L, G.strs⟩ v)
+    (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 48)) (h10 : R 10 = BitVec.ofNat 64 b.pay)
+    (h15 : R 15 = BitVec.ofNat 64 (regAddr r))
+    (h16 : ldv .ld M (sp - 48 + 16) = w0) (h24 : ldv .ld M (sp - 48 + 24) = w1)
+    (hra : ldv .ld M (sp - 48 + 40) = ra) (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C' G', Keeps (1 :: 2 :: setClob) R' R → R' 1 = ra →
+      R' 2 = BitVec.ofNat 64 sp → DcAt S M' H' F' L' C' G' hs (regSet st r v) →
+      StkOut sp 80 M' M → DW live S Q ra R' M') :
+    DW live S Q 0x800030ac#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hG := h.glob
+  have hbG : b ∈ G.blocks := G.reg_mem hr (by rw [hl]; exact List.mem_cons_self)
+  obtain ⟨hw0, hn⟩ := h.regWord hr hl
+  have hsz := hn.sz
+  obtain ⟨hb1, hb2, hb3⟩ := h.node_bounds hbG hsz
+  have hdat := hn.dat
+  rw [hev] at hdat
+  have hptr : ldv .ld M (b.pay + 8) = BitVec.ofNat 64 p := hdat.ptr
+  obtain ⟨h1, hpd⟩ := h.setHead hr hl hd hv
+  rw [hev] at h1
+  simp only [Option.toList_some, List.singleton_append] at h1
+  simp only [heapEnd, heapStart] at hab hb1 hb2
+  bc_run hlive hS [h2, h10, h15] at 0x80002ba0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM2 : MemOnly (frameIn sp 80) (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 (regAddr r))]) M :=
+    fun x hx => by simp only [frameIn] at hx; rw [imgM_store_miss _ _ (by omega)]
+  have h2' := h1.outWriteP hpd hM2 fun x hx => setFrame_out (by simp only [heapEnd]; omega) hx
+  refine dc_free_num_specP hlive hpd h2' (q := b.pay + 8)
+    ⟨fun i _ => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+      by omega, by omega⟩
+    (.inl fun x hx => by simp only [datWin, slotBytes] at hx ⊢; omega)
+    (by rw [ldv_ld_miss _ _ (by omega)]; exact hptr)
+    (StackFrame.sub (m := 48) (n := 32) hsf (by decide)) (by simp only [heapEnd]; omega)
+    (Or.inl (by omega)) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
+    fun R1 M3 H' F' L' C' hk1 h3 _ hfr => ?_
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk1.get 2]; bsimp [h2]
+  have hfs : ∀ k, k + 8 ≤ 48 → ldv .ld M3 (sp - 48 + k) =
+      ldv .ld (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 (regAddr r))]) (sp - 48 + k) :=
+    fun k hk => ldv_congr .ld fun j hj => by
+      have hin : frameIn sp 80 (sp - 48 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
+      have ho := setFrame_out (by simp only [heapEnd]; omega) hin
+      exact hfr _ ho.1 ho.2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+        (by simp only [slotBytes, widthOfM] at hj ⊢; omega)
+  have hsn : ldv .ld M3 (sp - 48 + 8) = BitVec.ofNat 64 (regAddr r) := by
+    rw [hfs 8 (by omega), ldv_store_hit]
+  have hs16 : ldv .ld M3 (sp - 48 + 16) = w0 := by
+    rw [hfs 16 (by omega), ldv_ld_miss _ _ (by omega), h16]
+  have hs24 : ldv .ld M3 (sp - 48 + 24) = w1 := by
+    rw [hfs 24 (by omega), ldv_ld_miss _ _ (by omega), h24]
+  have hs40 : ldv .ld M3 (sp - 48 + 40) = ra := by
+    rw [hfs 40 (by omega), ldv_ld_miss _ _ (by omega), hra]
+  have hreg : ldv .ld M3 (regAddr r) = BitVec.ofNat 64 b.pay := by
+    have := (h3.regWord hr (show (G.setReg r ((b, e.withV g) :: l)).regs r = (b, e.withV g) :: l by simp [DcG.setReg])).1
+    rwa [ldv_ld_miss _ _ (by simp only [regAddr, dc_addrs]; omega),
+      ldv_ld_miss _ _ (by simp only [regAddr, dc_addrs]; omega)] at this
+  refine reg_set_tailF hlive hS hsf (by simp only [heapEnd]; omega)
+    ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega, by omega⟩ hr
+    (fun x hx => hG x (by have := of_mem_accAddrs hx; simp only [DcGlob, regAddr, dc_addrs] at this ⊢; omega))
+    R1 q2 hsn hreg hs16 hs24 hs40 hal fun R' hk2 e1 e2 => ?_
+  refine hk R' _ H' F' L' C' _ (hk2.trans (by keeps_tac ((hk1.mono (by decide)).trans
+    (by keeps_tac Keeps.refl _ _)))) e1 e2 h3 fun x ho hg hf => ?_
+  have hnw : x < b.pay ∨ b.pay + 16 ≤ x := by
+    have := ho.1; simp only [heapStart, heapEnd] at this; omega
+  rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+    hfr x ho hg (by simp only [frameIn] at hf ⊢; omega) (by simp only [slotBytes]; omega)]
+  exact hM2 x hf
+
+/-- `dc_register_set` on a level holding a string (`0x800030dc`, `sp`
+lowered by 48, `a0` the node, `a5` the register's word): `dc_free_str` of
+the old value through its slot, then the new datum. -/
+theorem reg_set_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {v : Val} {w0 w1 ra : BitVec 64} {p sp : Nat}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hev : e.v = some (.str p)) (hd : DatRegs w0 w1 g) (hv : g.Den ⟨L, G.strs⟩ v)
+    (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 48)) (h10 : R 10 = BitVec.ofNat 64 b.pay)
+    (h15 : R 15 = BitVec.ofNat 64 (regAddr r))
+    (h16 : ldv .ld M (sp - 48 + 16) = w0) (h24 : ldv .ld M (sp - 48 + 24) = w1)
+    (hra : ldv .ld M (sp - 48 + 40) = ra) (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C' G', Keeps (1 :: 2 :: setClob) R' R → R' 1 = ra →
+      R' 2 = BitVec.ofNat 64 sp → DcAt S M' H' F' L' C' G' hs (regSet st r v) →
+      StkOut sp 80 M' M → DW live S Q ra R' M') :
+    DW live S Q 0x800030dc#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hG := h.glob
+  have hbG : b ∈ G.blocks := G.reg_mem hr (by rw [hl]; exact List.mem_cons_self)
+  obtain ⟨hw0, hn⟩ := h.regWord hr hl
+  have hsz := hn.sz
+  obtain ⟨hb1, hb2, hb3⟩ := h.node_bounds hbG hsz
+  have hdat := hn.dat
+  rw [hev] at hdat
+  have hptr : ldv .ld M (b.pay + 8) = BitVec.ofNat 64 p := hdat.ptr
+  obtain ⟨h1, hpd⟩ := h.setHead hr hl hd hv
+  rw [hev] at h1
+  simp only [Option.toList_some, List.singleton_append] at h1
+  simp only [heapEnd, heapStart] at hab hb1 hb2
+  bc_run hlive hS [h2, h10, h15] at 0x800039a4
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM2 : MemOnly (frameIn sp 80) (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 (regAddr r))]) M :=
+    fun x hx => by simp only [frameIn] at hx; rw [imgM_store_miss _ _ (by omega)]
+  have h2' := h1.outWriteP hpd hM2 fun x hx => setFrame_out (by simp only [heapEnd]; omega) hx
+  refine dc_free_str_specP hlive hpd h2' (q := b.pay + 8)
+    ⟨fun i _ => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+      by omega, by omega⟩
+    (by rw [ldv_ld_miss _ _ (by omega)]; exact hptr)
+    (StackFrame.sub (m := 48) (n := 32) hsf (by decide)) (by simp only [heapEnd]; omega)
+    _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
+    fun R1 M3 H' G' hk1 hsn3 h3 hfr => ?_
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk1.get 2]; bsimp [h2]
+  have hfs : ∀ k, k + 8 ≤ 48 → ldv .ld M3 (sp - 48 + k) =
+      ldv .ld (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 (regAddr r))]) (sp - 48 + k) :=
+    fun k hk => ldv_congr .ld fun j hj => by
+      have hin : frameIn sp 80 (sp - 48 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
+      have ho := setFrame_out (by simp only [heapEnd]; omega) hin
+      exact hfr _ ho.1 ho.2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+  have hsn : ldv .ld M3 (sp - 48 + 8) = BitVec.ofNat 64 (regAddr r) := by
+    rw [hfs 8 (by omega), ldv_store_hit]
+  have hs16 : ldv .ld M3 (sp - 48 + 16) = w0 := by
+    rw [hfs 16 (by omega), ldv_ld_miss _ _ (by omega), h16]
+  have hs24 : ldv .ld M3 (sp - 48 + 24) = w1 := by
+    rw [hfs 24 (by omega), ldv_ld_miss _ _ (by omega), h24]
+  have hs40 : ldv .ld M3 (sp - 48 + 40) = ra := by
+    rw [hfs 40 (by omega), ldv_ld_miss _ _ (by omega), hra]
+  have hreg : ldv .ld M3 (regAddr r) = BitVec.ofNat 64 b.pay := by
+    have := (h3.regWord hr (show G'.regs r = (b, e.withV g) :: l by
+      rw [hsn3.regs]; simp [DcG.setReg])).1
+    rwa [ldv_ld_miss _ _ (by simp only [regAddr, dc_addrs]; omega),
+      ldv_ld_miss _ _ (by simp only [regAddr, dc_addrs]; omega)] at this
+  refine reg_set_tailS hlive hS hsf (by simp only [heapEnd]; omega)
+    ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega, by omega⟩ hr
+    (fun x hx => hG x (by have := of_mem_accAddrs hx; simp only [DcGlob, regAddr, dc_addrs] at this ⊢; omega))
+    R1 q2 hsn hreg hs16 hs24 hs40 hal fun R' hk2 e1 e2 => ?_
+  refine hk R' _ H' F L C _ (hk2.trans (by keeps_tac ((hk1.mono (by decide)).trans
+    (by keeps_tac Keeps.refl _ _)))) e1 e2 h3 fun x ho hg hf => ?_
+  have hnw : x < b.pay ∨ b.pay + 16 ≤ x := by
+    have := ho.1; simp only [heapStart, heapEnd] at this; omega
+  rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+    hfr x ho hg (by simp only [frameIn] at hf ⊢; omega)]
+  exact hM2 x hf
+
 end Dc.Mach

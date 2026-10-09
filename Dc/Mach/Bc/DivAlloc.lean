@@ -22,12 +22,32 @@ section
 set_option linter.unusedSimpArgs false
 set_option maxRecDepth 8000
 
-/-- The frame, the number heap and the operand buffers `num1` (`b1`) and
-`num2` (`b2`) before the quotient and `mval` are allocated. -/
-structure DvBufs (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
+/-- The frame's saved registers, the number heap, and the bytes off the heap
+outside the frame: what every setup stage of `bc_divide` keeps. -/
+structure DvCore (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat)
     (H : Heap) (F : List Blk) (Lh : List NumObj) : Prop where
   saved : SavedWords M (sp - 208) divSlots R0
   heap : BcHeap S M H F Lh
+  out : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a
+
+/-- `DvCore` through stores to the frame words `sp - 208 … + 104`. -/
+theorem DvCore.slots {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64} {sp W : Nat}
+    {H : Heap} {F : List Blk} {Lh : List NumObj}
+    (bf : DvCore S Mt0 M R0 sp W H F Lh) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
+    (hm : ∀ a, (a < sp - 208 ∨ sp - 208 + 104 ≤ a) → imgM M' a = imgM M a) :
+    DvCore S Mt0 M' R0 sp W H F Lh := by
+  have hh : ∀ a, a < heapEnd → imgM M' a = imgM M a := fun a h => hm a (.inl (by omega))
+  exact
+    { saved := bf.saved.transport (lo := 104) (top := 208) (hag := fun a h1 _ => hm a (.inr h1))
+      heap := bf.heap.transportOwn (fun a ha => hh a (AllocByte.bound bf.heap.heap ha).2)
+        (fun c hc a ha => hh a (live_in_heap bf.heap.heap (bf.heap.owned_live hc) ha).2)
+        (fun j hj => hh _ (by simp only [bcFreeAddr, heapEnd]; omega))
+      out := fun a ho hf => (hm a (by simp only [frameIn] at hf; omega)).trans (bf.out a ho hf) }
+
+/-- `DvCore` plus the operand buffers `num1` (`b1`) and `num2` (`b2`) before
+the quotient and `mval` are allocated. -/
+structure DvBufs (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W : Nat) (D : DvData)
+    (H : Heap) (F : List Blk) (Lh : List NumObj) : Prop extends DvCore S Mt0 M R0 sp W H F Lh where
   b1l : D.b1 ∈ H.live
   b2l : D.b2 ∈ H.live
   b1n : D.b1 ∉ F ++ objBlocks Lh
@@ -36,7 +56,6 @@ structure DvBufs (S : Nat → Prop) (Mt0 M : Mem) (R0 : Nat → BitVec 64) (sp W
   pPay : D.P = D.b1.pay
   pIn : ∀ i, i < D.xs.length → D.b1.In (D.P + i)
   nIn : ∀ i, i ≤ D.L → D.b2.In (D.N + i)
-  out : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a
 
 /-- **A raw buffer survives `bc_new_num`**: still live, off the extended
 heap's owned blocks, its bytes unchanged. -/
@@ -308,14 +327,8 @@ theorem DvBufs.slots {S : Nat → Prop} {Mt0 M M' : Mem} {R0 : Nat → BitVec 64
     {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj}
     (bf : DvBufs S Mt0 M R0 sp W D H F Lh) (hab : heapEnd + W ≤ sp) (hW : 208 ≤ W)
     (hm : ∀ a, (a < sp - 208 ∨ sp - 208 + 104 ≤ a) → imgM M' a = imgM M a) :
-    DvBufs S Mt0 M' R0 sp W D H F Lh := by
-  have hh : ∀ a, a < heapEnd → imgM M' a = imgM M a := fun a h => hm a (.inl (by omega))
-  refine { bf with
-    saved := bf.saved.transport (lo := 104) (top := 208) (hag := fun a h1 _ => hm a (.inr h1))
-    heap := bf.heap.transportOwn (fun a ha => hh a (AllocByte.bound bf.heap.heap ha).2)
-      (fun c hc a ha => hh a (live_in_heap bf.heap.heap (bf.heap.owned_live hc) ha).2)
-      (fun j hj => hh _ (by simp only [bcFreeAddr, heapEnd]; omega))
-    out := fun a ho hf => (hm a (by simp only [frameIn] at hf; omega)).trans (bf.out a ho hf) }
+    DvBufs S Mt0 M' R0 sp W D H F Lh :=
+  { bf with toDvCore := bf.toDvCore.slots hab hW hm }
 
 /-- **The quotient and `mval`** from `0x80005b94` (`len1 + k ≥ L`): `qdigits`,
 `bc_new_num(qdigits - k, k)`, `memset`, `malloc(L + 1)`. -/

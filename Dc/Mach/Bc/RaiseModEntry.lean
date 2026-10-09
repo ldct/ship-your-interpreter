@@ -1033,4 +1033,135 @@ theorem rx_bumps {live : Nat → Prop} {S : Nat → Prop}
       (ks := [15, 20, 21]) (by keeps_tac Keeps.refl _ _))
     (by bsimp []) (by bsimp []) (by bsimp [h14])
 
+/-! ## The `-1` returns and the entry -/
+
+/-- **`-1`** from `0x8000646c` (a zero modulus or a negative exponent), the
+frame's registers restored; off the frame nothing changed. -/
+theorem rx_m1 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat} {L : List NumObj} {xr : NumObj}
+    {n : Option Num} (cx : RxCtx S R0 sp W q) (hK : RxK live S Q t0 R0 Mt0 L xr q sp W n)
+    (hn : n = none) (hS : HeapOwn S) (ra : RxAt S Mt0 M R0 R sp W rxSlots1) (h22 : R 22 = R0 22)
+    (hout : ∀ a, ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :
+    DW live S (DQ live S Q t0) 0x8000646c#64 R M := by
+  bc_run hlive hS [] at 0x80006430
+  exact rx_epi hlive cx hS ra.saved (by bsimp [ra.r2]) (by keeps_tac ra.keep) (by bsimp [h22])
+    fun R' hk h10 => hK.fail hn R' M hk (by rw [h10]; bsimp []) hout
+
+/-- The state from `0x800061e0` to `0x8000623c`: the frame's registers
+saved, off the frame nothing changed; `s0` base, `s8` expo, `s1` `&_zero_`,
+`a2` mod, `a3` the slot, `a4` scale, `a6` `_zero_`. -/
+structure RxP (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+    (H : Heap) (F : List Blk) (L : List NumObj) (xb xe xm z : NumObj) (k : Nat) : Prop where
+  ra : RxAt S Mt0 M R0 R sp W rxSlots1
+  r22 : R 22 = R0 22
+  heap : BcHeap S M H F L
+  out : ∀ a, ¬ frameIn sp W a → imgM M a = imgM Mt0 a
+  r8 : R 8 = BitVec.ofNat 64 xb.rep.p
+  r24 : R 24 = BitVec.ofNat 64 xe.rep.p
+  r9 : R 9 = BitVec.ofNat 64 zeroAddr
+  r12 : R 12 = BitVec.ofNat 64 xm.rep.p
+  r13 : R 13 = BitVec.ofNat 64 q
+  r14 : R 14 = BitVec.ofNat 64 k
+  r16 : R 16 = BitVec.ofNat 64 z.rep.p
+
+/-- Through register changes off the state's. -/
+theorem RxP.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {xb xe xm z : NumObj} {k : Nat}
+    (st : RxP S Mt0 M R0 R sp W q H F L xb xe xm z k) {ks : List Nat} (hk : Keeps ks R' R)
+    (hks : ∀ z ∈ ks, z ∈ [1, 5, 6, 7, 10, 11, 15, 17, 28, 29, 30, 31] := by decide) :
+    RxP S Mt0 M R0 R' sp W q H F L xb xe xm z k :=
+  { st with
+    ra := st.ra.regs hk fun z hz => by have := hks z hz; simp only [rxAll, List.mem_cons, List.not_mem_nil, or_false] at this ⊢; omega
+    r22 := by rw [hk.get 22 fun hm => by have := hks 22 hm; simp at this]; exact st.r22
+    r8 := by rw [hk.get 8 fun hm => by have := hks 8 hm; simp at this]; exact st.r8
+    r24 := by rw [hk.get 24 fun hm => by have := hks 24 hm; simp at this]; exact st.r24
+    r9 := by rw [hk.get 9 fun hm => by have := hks 9 hm; simp at this]; exact st.r9
+    r12 := by rw [hk.get 12 fun hm => by have := hks 12 hm; simp at this]; exact st.r12
+    r13 := by rw [hk.get 13 fun hm => by have := hks 13 hm; simp at this]; exact st.r13
+    r14 := by rw [hk.get 14 fun hm => by have := hks 14 hm; simp at this]; exact st.r14
+    r16 := by rw [hk.get 16 fun hm => by have := hks 16 hm; simp at this]; exact st.r16 }
+
+/-- The entry's fixed facts: the context, the operands at the entry's heap,
+the result slot, the continuations. -/
+structure RxIn (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (t0 : String) (R0 : Nat → BitVec 64) (Mt0 : Mem) (sp W q k : Nat) (H0 : Heap)
+    (F0 : List Blk) (L : List NumObj) (xb xe xm z o t xr : NumObj) : Prop where
+  cx : RxCtx S R0 sp W q
+  ha : RxArgs S Mt0 L xb xe xm z o t k
+  hs : RxSlot Mt0 L xr q
+  hb : BcHeap S Mt0 H0 F0 L
+  hK : RxK live S Q t0 R0 Mt0 L xr q sp W (Num.raisemod xb.rep.num xe.rep.num xm.rep.num k)
+
+/-- The entry's facts as `RxGo` once the modulus is nonzero and the exponent
+non-negative. -/
+theorem RxIn.go {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t0 : String} {R0 : Nat → BitVec 64} {Mt0 : Mem} {sp W q k : Nat} {H0 : Heap}
+    {F0 : List Blk} {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (h : RxIn live S Q t0 R0 Mt0 sp W q k H0 F0 L xb xe xm z o t xr)
+    (hm : xm.rep.num.mag ≠ 0) (hp : xe.rep.num.neg = false) :
+    RxGo live S Q t0 R0 Mt0 sp W q k L xb xe xm z o t xr where
+  cx := h.cx
+  ha := h.ha
+  hs := h.hs
+  oz := fun e => by
+    have hoz := h.hb.eq_of_p h.ha.mo h.ha.mz e
+    have h1 := h.ha.oneNum
+    rw [hoz] at h1
+    have h0 : z.rep.num.mag = 0 := by rw [NumRep.num_mag, h.ha.zero.ds]; rfl
+    rw [h1] at h0
+    exact absurd h0 (by decide)
+  mag := hm
+  pos := hp
+  zx := fun e => by
+    have := h.hb.eq_of_p h.ha.me h.ha.mz e
+    rw [this]
+    show z.rep.num.mag / 10 ^ z.rep.num.scale = 0
+    have h0 : z.rep.num.mag = 0 := by rw [NumRep.num_mag, h.ha.zero.ds]; rfl
+    rw [h0, Nat.zero_div]
+  oom := h.hK.oom
+  ret := fun R' Mt' H' F' Lf y hk h10 hp' =>
+    h.hK.ret _ (Dc.BcModel.raisemod_eq _ _ _ _ hm hp) R' Mt' H' F' Lf y hk h10 hp'
+
+/-- **The exponent's sign** at `0x80006230` (the modulus nonzero): negative
+returns `-1` (`rx_m1`), otherwise the references (`rx_bumps`). -/
+theorem rx_sign {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H H0 : Heap} {F F0 : List Blk}
+    {L : List NumObj} {xb xe xm z o t xr : NumObj}
+    (hi : RxIn live S Q t0 R0 Mt0 sp W q k H0 F0 L xb xe xm z o t xr)
+    (hm : xm.rep.num.mag ≠ 0) (st : RxP S Mt0 M R0 R sp W q H F L xb xe xm z k) :
+    DW live S (DQ live S Q t0) 0x80006230#64 R M := by
+  have cx := hi.cx
+  have ha := hi.ha
+  rx_facts cx
+  have hS : HeapOwn S := fun a h1 h2 => st.heap.heap.own a h1 h2
+  have hn := st.heap.nums xe ha.me
+  num_facts hn
+  have hsg := hn.sign
+  cases hneg : xe.rep.neg
+  · rw [hneg] at hsg
+    bc_run hlive hS [st.r24, hsg] at 0x8000623c
+    all_goals first | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+    exact rx_bumps hlive (hi.go hm (by rw [NumRep.num_neg]; exact hneg))
+      { ra := st.ra.regs (ks := [11, 15]) (by keeps_tac Keeps.refl _ _)
+        r22 := by bsimp [st.r22]
+        heap := by rw [RList.nil]; exact st.heap
+        r8 := by bsimp [st.r8]
+        r24 := by bsimp [st.r24]
+        r9 := by bsimp [st.r9]
+        r12 := by bsimp [st.r12]
+        r13 := by bsimp [st.r13]
+        r16 := by bsimp [st.r16] } (by bsimp [st.r14])
+  · rw [hneg] at hsg
+    bc_run hlive hS [st.r24, hsg] at 0x8000646c
+    all_goals first | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
+    refine rx_m1 hlive cx hi.hK ?_ hS (st.ra.regs (ks := [11, 15]) (by keeps_tac Keeps.refl _ _))
+      (by bsimp [st.r22]) st.out
+    have hz : xm.rep.num.isZero = false := by simpa [Num.isZero] using hm
+    simp only [Num.raisemod, hz, NumRep.num_neg, hneg]
+    rfl
+
 end Dc.Mach

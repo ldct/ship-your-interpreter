@@ -4,6 +4,7 @@ import Dc.BcModel.Karatsuba
 import Dc.BcModel.Raise
 import Dc.BcModel.Out
 import Dc.BcModel.Steps
+import Dc.BcModel.DivLoop
 import Dc.Mach.DecodeTable
 import Dc.Mach.Tac
 import Dc.Mach.Strlen
@@ -61,6 +62,7 @@ import Dc.Mach.Bc.KaraHalves
 import Dc.Mach.Bc.KaraArith
 import Dc.Mach.Bc.KaraCase
 import Dc.Mach.Bc.BcMul
+import Dc.Mach.Bc.OneMult
 import Dc.Mach.Bc.KaraSubsSites
 import Dc.Mach.Bc.KaraTrim
 import Dc.Mach.Bc.KaraTrimSites

@@ -866,4 +866,157 @@ theorem sq_cmpZero {live : Nat → Prop} {S : Nat → Prop}
     ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) (hag := fun _ _ => rfl))
     (by rw [hk1.get 8 (by decide)]; bsimp [h8]) h10
 
+/-! ## The prologue and the whole function -/
+
+theorem word_sub160 {x : Nat} (h : 160 ≤ x) :
+    BitVec.ofNat 64 x + 18446744073709551456#64 = BitVec.ofNat 64 (x - 160) := by
+  change BitVec.ofNat 64 x + -(160#64) = _
+  rw [BitVec.add_neg_eq_sub]
+  exact BitVec.ofNat_sub_ofNat_of_le x 160 (by decide) h
+
+/-- The prologue's eight saved registers. -/
+abbrev sqPro (M : Mem) (sp : Nat) (R : Nat → BitVec 64) : Mem :=
+  writeLog (writeLog (writeLog (writeLog (writeLog (writeLog (writeLog (writeLog M
+    [(sp - 160 + 128, 8, R 18)]) [(sp - 160 + 136, 8, R 9)]) [(sp - 160 + 64, 8, R 26)])
+    [(sp - 160 + 144, 8, R 8)]) [(sp - 160 + 120, 8, R 19)]) [(sp - 160 + 112, 8, R 20)])
+    [(sp - 160 + 152, 8, R 1)]) [(sp - 160 + 80, 8, R 24)]
+
+theorem sqPro_saved (M : Mem) (sp : Nat) (R : Nat → BitVec 64) :
+    SavedWords (sqPro M sp R) (sp - 160) sqSlots0 R :=
+  (((((((SavedWords.nil M (sp - 160) R).store 18 128).store 9 136).store 26 64).store 8 144).store
+    19 120).store 20 112 |>.store 1 152).store 24 80
+
+theorem sqPro_frame {M : Mem} {sp : Nat} (R : Nat → BitVec 64) (hsp : 160 ≤ sp) :
+    MemOnly (frameIn sp 160) (sqPro M sp R) M := fun a ha => by
+  simp only [frameIn] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
+
+/-- **The sign dispatch** from `0x80006a3c`, after the first three saves:
+the rest of the prologue, then `_bc_do_compare (x, _zero_)` for a
+non-negative `x` and the return of `0` for a negative one. -/
+theorem sq_sign {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {n : Option Num}
+    (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hb : BcHeap S Mt0 H F L)
+    (hO : SqOut x.rep.num k n) (hK : SqK live S Q t R0 Mt0 L x z q sp W n)
+    (hk : Keeps sqAll R R0) (hs : ∀ r ∈ [1, 8, 19, 20, 24, 21, 22, 23, 25, 27], R r = R0 r)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 160)) (h9 : R 9 = BitVec.ofNat 64 x.rep.p)
+    (h18 : R 18 = BitVec.ofNat 64 zeroAddr) (h26 : R 26 = BitVec.ofNat 64 z.rep.p)
+    (h10 : R 10 = BitVec.ofNat 64 q) (h11 : R 11 = BitVec.ofNat 64 k) :
+    DW live S (DQ live S Q t) 0x80006a3c#64 R (writeLog (writeLog (writeLog Mt0
+      [(sp - 160 + 128, 8, R0 18)]) [(sp - 160 + 136, 8, R0 9)]) [(sp - 160 + 64, 8, R0 26)]) := by
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hxn := hb.nums x ha.mx
+  have hzn := hb.nums z ha.mz
+  num_facts hxn
+  num_facts hzn
+  have hzs := hzn.sign
+  rw [ha.zero.neg] at hzs
+  have hxs := hxn.sign
+  have h1 := hs 1 (by simp); have h8 := hs 8 (by simp); have h19 := hs 19 (by simp)
+  have h20 := hs 20 (by simp); have h24 := hs 24 (by simp)
+  bc_run hlive hS [h2, h9, h26, h10, h11] at 0x80006a60
+  all_goals first
+    | exact frame_acc hsf (by omega) (by omega)
+    | (guard_target =~ LdOK _ _
+       have ez : zeroAddr = 0x8001cdc8 := rfl; have htx : tohostAddr = 0x8001ad00 := rfl
+       bc_addr)
+    | skip
+  rw [h1, h8, h19, h20, h24]
+  repeat rw [ldv_lw_miss _ _ (by omega)]
+  rw [hxs, hzs]
+  have hm := sqPro_frame (M := Mt0) (sp := sp) R0 (by omega)
+  have hfz : ∀ a, ¬ frameIn sp W a → imgM (sqPro Mt0 sp R0) a = imgM Mt0 a := fun a hf =>
+    hm a fun h => hf (by simp only [frameIn] at h ⊢; omega)
+  have hcs : ∀ r ∈ [21, 22, 23, 25, 27], R r = R0 r := fun r hr => hs r (by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hr ⊢; omega)
+  cases hxg : x.rep.neg
+  · bc_run hlive hS [signWord_false] at 0x80006c7c
+    have hb' := hb.out_frame hm fun a ha' => by
+      simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha' ⊢; omega
+    refine sq_cmpZero hlive ⟨cx, ha, hK.oom, hxg, hO, hK.ret⟩
+      ⟨⟨by bsimp [h2], sqPro_saved Mt0 sp R0, by keeps_tac hk, fun a _ hf => hfz a hf⟩, hb',
+        fun r hr => ?_, by bsimp [h9], by bsimp [h18], by bsimp [h10], by bsimp [h11],
+        by bsimp [h26]⟩ (by bsimp [])
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+    rcases hr with rfl | rfl | rfl | rfl | rfl <;> (bsimp []; exact hcs _ (by decide))
+  · bc_run hlive hS [signWord_true] at 0x80006c54
+    refine sq_epi hlive cx hS (sqPro_saved Mt0 sp R0) (by bsimp [h2]) (by keeps_tac hk)
+      (fun r hr => ?_) fun R' hk' h10' => hK.fail (SqOut.of_neg hO (Num.cmp_zero_neg
+        (by rw [NumRep.num_neg]; exact hxg))) R' _ hk' (by rw [h10']; bsimp [])
+        (fun a hf => hfz a hf)
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+    rcases hr with rfl | rfl | rfl | rfl | rfl <;> (bsimp []; exact hcs _ (by decide))
+
+/-- **`bc_sqrt (num, scale)`** at `0x80006a1c`: for a negative `x` the
+return of `0` with nothing changed but the window (`SqK.fail`); otherwise
+`SqOut`'s result in `*num` and the return of `1` (`SqK.ret`), or
+`out_of_memory` (`SqK.oom`). -/
+theorem bc_sqrt_spec {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {n : Option Num}
+    (cx : SqCtx S R0 sp W q) (ha : SqArgs S Mt0 L x z o q k) (hb : BcHeap S Mt0 H F L)
+    (hO : SqOut x.rep.num k n) (hK : SqK live S Q t R0 Mt0 L x z q sp W n)
+    (h10 : R0 10 = BitVec.ofNat 64 q) (h11 : R0 11 = BitVec.ofNat 64 k) :
+    DWO live S Q t 0x80006a1c#64 R0 Mt0 := by
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hql := hq.lo; have hqh := hq.hi
+  have hxn := hb.nums x ha.mx
+  have hzn := hb.nums z ha.mz
+  num_facts hxn
+  num_facts hzn
+  have hzs := hzn.sign
+  rw [ha.zero.neg] at hzs
+  have hxs := hxn.sign
+  have hzg := ha.zero.glob
+  simp only [zeroAddr] at hzg
+  have hm := sqPro_frame (M := Mt0) (sp := sp) R0 (by omega)
+  have hfz : ∀ a, ¬ frameIn sp W a → imgM (sqPro Mt0 sp R0) a = imgM Mt0 a := fun a hf =>
+    hm a fun h => hf (by simp only [frameIn] at h ⊢; omega)
+  have hb' := hb.out_frame hm fun a ha' => by
+    simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha' ⊢; omega
+  have hsa : ∀ {R : Nat → BitVec 64}, Keeps sqAll R R0 → R 2 = BitVec.ofNat 64 (sp - 160) →
+      SqAt S Mt0 (sqPro Mt0 sp R0) R0 R sp W sqSlots0 := fun hk h2 =>
+    ⟨h2, sqPro_saved Mt0 sp R0, hk, fun a _ hf => hfz a hf⟩
+  have hap := hsl.apart
+  have hq0 := hsl.out q ⟨Nat.le_refl _, by omega⟩
+  simp only [OutHeap, heapStart, heapEnd] at hq0
+  bc_run hlive hS [cx.sp0, word_sub160 (show 160 ≤ sp by omega), h10, h11] at 0x80006a3c
+  all_goals first
+    | exact frame_acc hsf (by omega) (by omega)
+    | exact hq.acc
+    | (guard_target =~ LdOK _ _
+       have ez : zeroAddr = 0x8001cdc8 := rfl; have htx : tohostAddr = 0x8001ad00 := rfl
+       bc_addr)
+    | exact fun b hb' => cx.cc.consts b (by
+        have := of_mem_accAddrs hb'
+        have eo : oneAddr = 0x8001cdc0 := rfl; have ez : zeroAddr = 0x8001cdc8 := rfl
+        have et : twoAddr = 0x8001cdb8 := rfl
+        simp only [constBytes]; omega)
+    | skip
+  have hwq3 : ldv .ld (writeLog (writeLog (writeLog Mt0 [(sp - 160 + 128, 8, R0 18)])
+      [(sp - 160 + 136, 8, R0 9)]) [(sp - 160 + 64, 8, R0 26)]) q = BitVec.ofNat 64 x.rep.p := by
+    repeat rw [ldv_ld_miss _ _ (by omega)]
+    exact ha.wx
+  have hzg3 : ldv .ld (writeLog (writeLog (writeLog Mt0 [(sp - 160 + 128, 8, R0 18)])
+      [(sp - 160 + 136, 8, R0 9)]) [(sp - 160 + 64, 8, R0 26)]) 2147601864 =
+      BitVec.ofNat 64 z.rep.p := by
+    repeat rw [ldv_ld_miss _ _ (by omega)]
+    exact hzg
+  rw [hwq3, hzg3]
+  exact sq_sign hlive cx ha hb hO hK (by keeps_tac Keeps.refl _ _) (fun r hr => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+      rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> bsimp [])
+    (by bsimp [cx.sp0])
+    (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [h10]) (by bsimp [h11])
+
 end Dc.Mach

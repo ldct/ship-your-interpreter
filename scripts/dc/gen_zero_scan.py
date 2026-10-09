@@ -6,6 +6,10 @@ Each scan (`B: beqz c, Z`; `L: lbu t, 0(p)`; `addiw c, c, -1`; `addi p, p, 1`;
 induction on the digits left, all `n` digits zero reach `Z`, a nonzero digit
 reaches `L + 16`.
 
+A test before a scan (`E: lw r1, 4(obj)`; `lw c, 8(obj)`; `addw c, c, r1`;
+`blez c, X`; `ld p, 32(obj)`; `j L`; at `X`: `beqz c, Z`) gets `ztest_<E>`:
+a number of magnitude zero reaches `Z`, any other `L + 16`.
+
 Output (do not hand-edit): `Dc/Mach/Bc/ZeroScanSites.lean`.
 
     python3 scripts/dc/gen_zero_scan.py [--check]
@@ -18,6 +22,12 @@ SITES = [
     (0x80006220, 15, 11, 10, 0x8000646c, "`bc_raisemod`: `mod`"),
     (0x800062e8, 15, 16, 14, 0x800063b4, "`bc_raisemod`: `exponent`"),
     (0x80006338, 15, 14, 13, 0x80006378, "`bc_raisemod`: `parity`"),
+]
+
+# (entry E, obj reg, length reg r1, `blez` target X, lbu pc L of a scan above)
+TESTS = [
+    (0x800062cc, 24, 14, 0x80006464, 0x800062e8),
+    (0x8000631c, 14, 13, 0x80006474, 0x80006338),
 ]
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "Dc/Mach/Bc/ZeroScanSites.lean"
@@ -88,6 +98,48 @@ theorem zscan_@L@ {live : Nat → Prop} {S : Nat → Prop}
 """
 
 
+TEST = """/-- **The `bc_is_zero` test at `0x@E@`** of the number in `x@obj@`: magnitude
+zero reaches `0x@Z@`, any other `0x@NZ@`. -/
+theorem ztest_@E@ {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {x : NumRep} (hS : HeapOwn S) (hn : NumAt M x)
+    (hob : R @obj@ = BitVec.ofNat 64 x.p)
+    (hz : ∀ R', Keeps @K@ R' R → x.num.mag = 0 → DW live S Q 0x@Z@#64 R' M)
+    (hnz : ∀ R', Keeps @K@ R' R → x.num.mag ≠ 0 → DW live S Q 0x@NZ@#64 R' M) :
+    DW live S Q 0x@E@#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  num_facts hn
+  have hl := hn.len; have hsc := hn.scale; have hv := hn.value
+  bc_run hlive hS [hob, hl, hsc, hv, addw_ofNat] at 0x@L@ 0x@X@
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro hc
+    have he : x.scale + x.len = 0 := by
+      rw [toInt_ofNat_small (by omega)] at hc; simp at hc; omega
+    have he' : BitVec.ofNat 64 (x.scale + x.len) = 0#64 := by rw [he]
+    bc_run hlive hS [he'] at 0x@Z@
+    exact hz _ (by keeps_tac Keeps.refl _ _)
+      (NumRep.mag_zero_of hn.shape.dsLen fun j hj => by omega)
+  · intro hnb
+    have hpos : 1 ≤ x.scale + x.len := by
+      rw [toInt_ofNat_small (by omega)] at hnb; simp at hnb; omega
+    bc_run hlive hS [hob, hl, hsc, hv, addw_ofNat] at 0x@L@
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    refine zscan_@L@ hlive (Rb := upd (upd (upd (upd R @r1@ (BitVec.ofNat 64 x.len)) @c@
+      (BitVec.ofNat 64 x.scale)) @c@ (BitVec.ofNat 64 (x.scale + x.len))) @p@
+      (BitVec.ofNat 64 x.val)) hS hn.shape.dig hn.digit (by omega) (by omega) (by omega)
+      (fun R' hex kk => ?_) (fun R' hall kk => ?_) (x.len + x.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) (by bsimp []; congr 1; omega)
+      (by bsimp [])
+    · refine hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun h0 => ?_
+      obtain ⟨i0, hi0, hnz⟩ := hex
+      rw [NumRep.num_mag] at h0
+      exact hnz ((dval_eq_zero_iff _).1 h0 i0 (by rw [hn.shape.dsLen]; exact hi0))
+    · exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+        (NumRep.mag_zero_of hn.shape.dsLen hall)
+
+"""
+
+
 def hx(n):
     return f"{n:08x}"
 
@@ -99,6 +151,16 @@ def gen():
         s = SCAN
         for k, v in [("@L@", hx(L)), ("@B@", hx(L - 4)), ("@NZ@", hx(L + 16)), ("@Z@", hx(Z)),
                      ("@KS@", KS), ("@c@", str(c)), ("@p@", str(p)), ("@WHAT@", what)]:
+            s = s.replace(k, v)
+        out.append(s)
+    scans = {L: (c, p, t, Z) for (L, c, p, t, Z, _) in SITES}
+    for (E, obj, r1, X, L) in TESTS:
+        c, p, t, Z = scans[L]
+        K = "[" + ", ".join(map(str, sorted({r1, c, p, t}))) + "]"
+        s = TEST
+        for k, v in [("@E@", hx(E)), ("@L@", hx(L)), ("@X@", hx(X)), ("@Z@", hx(Z)),
+                     ("@NZ@", hx(L + 16)), ("@K@", K), ("@obj@", str(obj)), ("@r1@", str(r1)),
+                     ("@c@", str(c)), ("@p@", str(p))]:
             s = s.replace(k, v)
         out.append(s)
     out.append("end Dc.Mach\n")

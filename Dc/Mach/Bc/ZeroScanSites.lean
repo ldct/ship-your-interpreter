@@ -147,4 +147,82 @@ theorem zscan_80006338 {live : Nat → Prop} {S : Nat → Prop}
     replace h0 : ds.getD i 0 ≠ 0 := fun e => h0 (hq.mpr e)
     exact hfound _ ⟨i, by omega, h0⟩ (by keeps_tac kk)
 
+/-- **The `bc_is_zero` test at `0x800062cc`** of the number in `x24`: magnitude
+zero reaches `0x800063b4`, any other `0x800062f8`. -/
+theorem ztest_800062cc {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {x : NumRep} (hS : HeapOwn S) (hn : NumAt M x)
+    (hob : R 24 = BitVec.ofNat 64 x.p)
+    (hz : ∀ R', Keeps [14, 15, 16] R' R → x.num.mag = 0 → DW live S Q 0x800063b4#64 R' M)
+    (hnz : ∀ R', Keeps [14, 15, 16] R' R → x.num.mag ≠ 0 → DW live S Q 0x800062f8#64 R' M) :
+    DW live S Q 0x800062cc#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  num_facts hn
+  have hl := hn.len; have hsc := hn.scale; have hv := hn.value
+  bc_run hlive hS [hob, hl, hsc, hv, addw_ofNat] at 0x800062e8 0x80006464
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro hc
+    have he : x.scale + x.len = 0 := by
+      rw [toInt_ofNat_small (by omega)] at hc; simp at hc; omega
+    have he' : BitVec.ofNat 64 (x.scale + x.len) = 0#64 := by rw [he]
+    bc_run hlive hS [he'] at 0x800063b4
+    exact hz _ (by keeps_tac Keeps.refl _ _)
+      (NumRep.mag_zero_of hn.shape.dsLen fun j hj => by omega)
+  · intro hnb
+    have hpos : 1 ≤ x.scale + x.len := by
+      rw [toInt_ofNat_small (by omega)] at hnb; simp at hnb; omega
+    bc_run hlive hS [hob, hl, hsc, hv, addw_ofNat] at 0x800062e8
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    refine zscan_800062e8 hlive (Rb := upd (upd (upd (upd R 14 (BitVec.ofNat 64 x.len)) 15
+      (BitVec.ofNat 64 x.scale)) 15 (BitVec.ofNat 64 (x.scale + x.len))) 16
+      (BitVec.ofNat 64 x.val)) hS hn.shape.dig hn.digit (by omega) (by omega) (by omega)
+      (fun R' hex kk => ?_) (fun R' hall kk => ?_) (x.len + x.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) (by bsimp []; congr 1; omega)
+      (by bsimp [])
+    · refine hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun h0 => ?_
+      obtain ⟨i0, hi0, hnz⟩ := hex
+      rw [NumRep.num_mag] at h0
+      exact hnz ((dval_eq_zero_iff _).1 h0 i0 (by rw [hn.shape.dsLen]; exact hi0))
+    · exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+        (NumRep.mag_zero_of hn.shape.dsLen hall)
+
+/-- **The `bc_is_zero` test at `0x8000631c`** of the number in `x14`: magnitude
+zero reaches `0x80006378`, any other `0x80006348`. -/
+theorem ztest_8000631c {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {R : Nat → BitVec 64} {x : NumRep} (hS : HeapOwn S) (hn : NumAt M x)
+    (hob : R 14 = BitVec.ofNat 64 x.p)
+    (hz : ∀ R', Keeps [13, 14, 15] R' R → x.num.mag = 0 → DW live S Q 0x80006378#64 R' M)
+    (hnz : ∀ R', Keeps [13, 14, 15] R' R → x.num.mag ≠ 0 → DW live S Q 0x80006348#64 R' M) :
+    DW live S Q 0x8000631c#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  num_facts hn
+  have hl := hn.len; have hsc := hn.scale; have hv := hn.value
+  bc_run hlive hS [hob, hl, hsc, hv, addw_ofNat] at 0x80006338 0x80006474
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro hc
+    have he : x.scale + x.len = 0 := by
+      rw [toInt_ofNat_small (by omega)] at hc; simp at hc; omega
+    have he' : BitVec.ofNat 64 (x.scale + x.len) = 0#64 := by rw [he]
+    bc_run hlive hS [he'] at 0x80006378
+    exact hz _ (by keeps_tac Keeps.refl _ _)
+      (NumRep.mag_zero_of hn.shape.dsLen fun j hj => by omega)
+  · intro hnb
+    have hpos : 1 ≤ x.scale + x.len := by
+      rw [toInt_ofNat_small (by omega)] at hnb; simp at hnb; omega
+    bc_run hlive hS [hob, hl, hsc, hv, addw_ofNat] at 0x80006338
+    all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+    refine zscan_80006338 hlive (Rb := upd (upd (upd (upd R 13 (BitVec.ofNat 64 x.len)) 15
+      (BitVec.ofNat 64 x.scale)) 15 (BitVec.ofNat 64 (x.scale + x.len))) 14
+      (BitVec.ofNat 64 x.val)) hS hn.shape.dig hn.digit (by omega) (by omega) (by omega)
+      (fun R' hex kk => ?_) (fun R' hall kk => ?_) (x.len + x.scale - 1) 0 _ (by omega)
+      (fun j hj => absurd hj (Nat.not_lt_zero _)) (Keeps.refl _ _) (by bsimp []; congr 1; omega)
+      (by bsimp [])
+    · refine hnz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) fun h0 => ?_
+      obtain ⟨i0, hi0, hnz⟩ := hex
+      rw [NumRep.num_mag] at h0
+      exact hnz ((dval_eq_zero_iff _).1 h0 i0 (by rw [hn.shape.dsLen]; exact hi0))
+    · exact hz R' ((kk.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+        (NumRep.mag_zero_of hn.shape.dsLen hall)
+
 end Dc.Mach

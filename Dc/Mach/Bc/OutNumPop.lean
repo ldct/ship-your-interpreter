@@ -109,21 +109,21 @@ theorem OgSt.reframe {live S : Nat → Prop} {X : Raws} {G : Nat → Prop}
       nd := st.nd
       inv := hI }
 
-/-- **`bc_out_long (v, size, 1, out_char)`** from the state: the characters
+/-- **`bc_out_long (v, size, space, out_char)`** from the state: the characters
 grow by `v`'s padded text, the heap, the handles and their words stay. -/
 theorem OgSt.long {live S : Nat → Prop} {X : Raws} {G : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     {I : List Nat → String → Mem → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64}
-    {sp W d v size : Nat} {H : Heap} {F : List Blk} {L : List NumObj} {hs : List RH}
+    {sp W d v size : Nat} {sp_ : Bool} {H : Heap} {F : List Blk} {L : List NumObj} {hs : List RH}
     {os : List Nat} {sent : List Nat} {t : String}
     (st : OgSt S X G I Mt0 M R0 R sp W H F L hs os sent t)
     (cx : OnCtx S R0 sp W d) (cb : CharFn live S Q (R0 12) d G I)
     (h13 : R 13 = R0 12) (h10 : R 10 = BitVec.ofNat 64 v) (hv : v < 2 ^ 63)
-    (h11 : R 11 = BitVec.ofNat 64 size) (hsz : size < 2 ^ 31) (h12 : R 12 = boolWord true)
+    (h11 : R 11 = BitVec.ofNat 64 size) (hsz : size < 2 ^ 31) (h12 : R 12 = boolWord sp_)
     (h1 : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' t', Keeps cClob R' R →
-      OgSt S X G I Mt0 M' R0 R' sp W H F L hs os (sent ++ Num.outLong v size true) t' →
-      DWO live S Q t' (R 1) R' M') :
+      OgSt S X G I Mt0 M' R0 R' sp W H F L hs os (sent ++ Num.outLong v size sp_) t' →
+      (∀ a, sp - 176 ≤ a → imgM M' a = imgM M a) → DWO live S Q t' (R 1) R' M') :
     DWO live S Q t 0x800064ec#64 R M := by
   on_facts cx
   have hsf := cx.cc.frame
@@ -140,7 +140,7 @@ theorem OgSt.long {live S : Nat → Prop} {X : Raws} {G : Nat → Prop}
       al := h1
       fal := by rw [h13]; exact cx.fal }
   refine bc_out_long_spec hlive ccb olx (cb.olStable M hlo (by omega)) h10 hv h11 hsz h12
-    ⟨st.inv, Frozen.refl _ _ _⟩ fun R' M' t' hk' hI' hhi => hk R' M' t' hk' ?_
+    ⟨st.inv, Frozen.refl _ _ _⟩ fun R' M' t' hk' hI' hhi => hk R' M' t' hk' ?_ hhi
   exact (st.reframe cx cb (fun a hg ha => ha.elim (fun h => hI'.2 a hg h) (hhi a)) hI'.1).regs hk'
 
 /-- **`free` of the head cell** from the state: the stack is its rest. -/
@@ -331,7 +331,7 @@ theorem og_hexStep {live S : Nat → Prop} {X0 : Raws}
   refine OgSt.call (X := ⟨(c :: cells) ++ X0.bs, Mc⟩) (Mt0 := Mt0) (H := H) (F := F) (L := L)
     (hs := [.own ip, .own fr, cur, .own bs, .own mx]) (os := [16, 24, 40, 32, 56]) (sent := sent)
     ?_ cx cb (c := Num.hexChar dg) (by bsimp []) hch (by bsimp [])
-    fun R' M' t' hk' st' => ?_
+    fun R' M' t' hk' st' _ => ?_
   · exact ph.st.regs (ks := [1, 10]) (by keeps_tac Keeps.refl _ _)
   have kk : Keeps cClob R' R := hk'.trans (by keeps_tac Keeps.refl _ _)
   have g25 : R' 25 = BitVec.ofNat 64 c.pay := by rw [kk.get 25 (by decide)]; exact h25
@@ -452,8 +452,8 @@ theorem og_longStep {live S : Nat → Prop} {X0 : Raws}
   bc_run hlive hS [h24, hl, h9] at 0x800064ec
   all_goals first | exact acc_heap hS (by omega) (by omega) | (simp only [StOK, LdOK, tohostAddr]; omega) | skip
   refine OgSt.long hlive (ph.st.regs (ks := [1, 11, 12, 13]) (by keeps_tac Keeps.refl _ _)) cx cb
-    (v := dg) (size := mx.rep.len) (by bsimp [h9]) (by bsimp [h10]) (by omega) (by bsimp [])
-    (by omega) (by bsimp []) (by bsimp []) fun R' M' t' hk' st' => ?_
+    (v := dg) (size := mx.rep.len) (sp_ := true) (by bsimp [h9]) (by bsimp [h10]) (by omega) (by bsimp [])
+    (by omega) (by bsimp []) (by bsimp []) fun R' M' t' hk' st' _ => ?_
   have kk : Keeps cClob R' R := hk'.trans (by keeps_tac Keeps.refl _ _)
   have g25 : R' 25 = BitVec.ofNat 64 c.pay := by rw [kk.get 25 (by decide)]; exact h25
   bsimp []

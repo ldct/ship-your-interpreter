@@ -77,6 +77,9 @@ SITES = [
     ("max_o_digit (`bc_out_num` exit)", 0x800073f0, 24, 0x800074ec, 0x800073f4, 0x80007404,
      0x8000740c, 0x80007410, 0x80007428, 0x80007410, 0x80007428, 0x800074ec, [25], True, None,
      (25, 88)),
+    # `bc_out_num`: `t_num` when the fraction loop ends
+    ("t_num (`bc_out_num` fraction exit)", 0x80007500, 20, None, 0x80007500, 0x80007510,
+     0x80007518, 0x8000751c, 0x80007530, 0x8000751c, 0x80007530, 0x80007320, [], True),
 ]
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "Dc/Mach/Bc/FreeSites.lean"

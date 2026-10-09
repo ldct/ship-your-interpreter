@@ -66,7 +66,8 @@ theorem OgSt.call {live S : Nat → Prop} {X : Raws} {G : Nat → Prop}
     (cx : OnCtx S R0 sp W d) (cb : CharFn live S Q (R0 12) d G I)
     (h10 : R 10 = BitVec.ofNat 64 c) (hc : c < 256) (h1 : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' t', Keeps cClob R' R →
-      OgSt S X G I Mt0 M' R0 R' sp W H F L hs os (sent ++ [c]) t' → DWO live S Q t' (R 1) R' M') :
+      OgSt S X G I Mt0 M' R0 R' sp W H F L hs os (sent ++ [c]) t' →
+      (∀ a, sp - 176 ≤ a → imgM M' a = imgM M a) → DWO live S Q t' (R 1) R' M') :
     DWO live S Q t (R0 12) R M := by
   on_facts cx
   have hsf := cx.cc.frame
@@ -78,6 +79,8 @@ theorem OgSt.call {live S : Nat → Prop} {X : Raws} {G : Nat → Prop}
           exact ldv_congr .ld fun j hj => hfr _ (fun hg => by
             have := (cb.off _ hg).1; simp only [heapStart] at this; omega) (.inr (by omega)),
         st.offs, st.nd, hI'⟩
+      fun a ha => hfr a (fun hg => by
+        have := (cb.off _ hg).1; simp only [heapStart] at this; omega) (.inr ha)
 
 /-- Through register changes off `sp` and `s1`. -/
 theorem OgSt.regs {S : Nat → Prop} {X : Raws} {G : Nat → Prop}

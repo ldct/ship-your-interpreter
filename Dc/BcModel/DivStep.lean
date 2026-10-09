@@ -256,4 +256,56 @@ theorem div_snoc {P x V : Nat} (hV : 0 < V) :
   · rw [e, Nat.add_mul_div_left _ _ hV, Nat.add_comm]
   · rw [e, Nat.add_mul_mod_self_left]
 
+/-! ## Little-endian digits of a value -/
+
+/-- The `n` low digits of `X`, little-endian. -/
+def digLE (X : Nat) : Nat → List Nat
+  | 0 => []
+  | n + 1 => X % 10 :: digLE (X / 10) n
+
+theorem digLE_length (X n : Nat) : (digLE X n).length = n := by
+  induction n generalizing X with
+  | zero => rfl
+  | succ n ih => simp only [digLE, List.length_cons, ih]
+
+theorem digLE_digits (X n : Nat) : IsDigits (digLE X n) := by
+  induction n generalizing X with
+  | zero => intro d hd; simp [digLE] at hd
+  | succ n ih =>
+    intro d hd
+    simp only [digLE, List.mem_cons] at hd
+    rcases hd with rfl | hd
+    · exact Nat.mod_lt _ (by decide)
+    · exact ih _ d hd
+
+theorem digLE_val (X n : Nat) : dvalLE (digLE X n) = X % 10 ^ n := by
+  induction n generalizing X with
+  | zero => simp [digLE, dvalLE, Nat.mod_one]
+  | succ n ih =>
+    simp only [digLE, dvalLE, ih]
+    rw [Nat.pow_succ', Nat.mod_mul]
+
+theorem digLE_getD (X n j : Nat) (hj : j < n) : (digLE X n).getD j 0 = X / 10 ^ j % 10 := by
+  induction n generalizing X j with
+  | zero => omega
+  | succ n ih =>
+    cases j with
+    | zero => simp [digLE]
+    | succ j =>
+      simp only [digLE, List.getD_cons_succ]
+      rw [ih _ _ (by omega), Nat.div_div_eq_div_mul, ← Nat.pow_succ']
+
+/-- A digit of a little-endian list, read off its value. -/
+theorem dvalLE_getD : ∀ {ws : List Nat}, IsDigits ws → ∀ j, ws.getD j 0 = dvalLE ws / 10 ^ j % 10
+  | [], _, j => by simp [dvalLE]
+  | d :: ds, h, 0 => by
+    have := h d List.mem_cons_self
+    simp only [List.getD_cons_zero, dvalLE, Nat.pow_zero, Nat.div_one]; omega
+  | d :: ds, h, j + 1 => by
+    have := h d List.mem_cons_self
+    simp only [List.getD_cons_succ, dvalLE]
+    rw [dvalLE_getD (fun e he => h e (List.mem_cons_of_mem _ he)) j, Nat.pow_succ',
+      ← Nat.div_div_eq_div_mul]
+    congr 2; omega
+
 end Dc.BcModel

@@ -678,7 +678,7 @@ abbrev DvData.g (D : DvData) (k : Nat) : Nat :=
   guess (D.W k / 10 ^ D.L) (D.W k / 10 ^ (D.L - 1) % 10) (D.w2 k) (D.V / 10 ^ (D.L - 1)) D.v2
 
 /-- The registers the guess changes. -/
-abbrev guessClob : List Nat := [1, 8, 10, 11, 12, 13, 15, 16, 19, 20, 21, 22, 23, 25]
+abbrev guessClob : List Nat := [1, 5, 8, 10, 11, 12, 13, 15, 16, 19, 20, 21, 22, 23, 25]
 
 /-- The digits the guess reads, from the window, the divisor and the sentinel. -/
 structure GuessBytes (M : Mem) (D : DvData) (k : Nat) : Prop where
@@ -693,5 +693,246 @@ structure GuessBytes (M : Mem) (D : DvData) (k : Nat) : Prop where
   v1p : 5 ≤ D.V / 10 ^ (D.L - 1)
   v2d : D.v2 < 10
   w0v : D.W k / 10 ^ D.L ≤ D.V / 10 ^ (D.L - 1)
+
+
+/-- The divisor's leading digits, read off its value. -/
+theorem DvShape.vtop {D : DvData} (hs : DvShape D) :
+    D.vs.getD 0 0 = D.V / 10 ^ (D.L - 1) ∧ D.V < 10 ^ D.L ∧ D.V / 10 ^ (D.L - 1) < 10 := by
+  have hlt : D.V < 10 ^ D.L := by have := dvalBE_lt hs.vd; rwa [hs.vl] at this
+  have h0 := dvalBE_digit hs.vd (i := 0) (by rw [hs.vl]; exact hs.l1)
+  rw [hs.vl, Nat.sub_zero, top_digit hlt hs.l1] at h0
+  have hd := hs.vd.getD 0
+  exact ⟨h0.symm, hlt, by omega⟩
+
+/-- **The guess's bytes** at the loop head, from the window. -/
+theorem GuessBytes.of_at {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W : Nat}
+    {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj} {ds : List Nat}
+    {k : Nat} (hs : DvShape D) (st : DvAt S Mt0 M R0 R sp W D H F Lh y ds k) :
+    GuessBytes M D k := by
+  obtain ⟨hv0, hV, hv1d⟩ := hs.vtop
+  have hl1 := hs.l1
+  have hxl := hs.xl
+  have hkb := st.kb
+  have hv1 : 5 ≤ D.V / 10 ^ (D.L - 1) := hv0 ▸ hs.v1
+  have hRV : D.pre k % D.V < D.V := Nat.mod_lt _ (Nat.pos_of_ne_zero fun h => by
+    rw [h, Nat.zero_div] at hv1; omega)
+  have hx : D.xs.getD (k + D.L) 0 < 10 := hs.xd.getD _
+  have hx2 : D.xs.getD (k + 2) 0 < 10 := hs.xd.getD _
+  have hW0 : D.W k / 10 ^ D.L = D.pre k % D.V / 10 ^ (D.L - 1) := by
+    simp only [DvData.W]
+    generalize D.xs.getD (k + D.L) 0 = x at hx
+    have := div_shift (D.pre k % D.V) x (D.L - 1) hx
+    rwa [show D.L - 1 + 1 = D.L by omega] at this
+  have htop := top_digit (Nat.lt_trans hRV hV) hl1
+  have hwin := st.win.win
+  have hrest := st.win.rest
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, hv1d, hv1, ?_, ?_⟩
+  · rw [hW0]; apply lbu_digit (by omega)
+    have := hwin 0 hl1; rw [Nat.add_zero, Nat.sub_zero, htop] at this; exact this
+  · apply lbu_digit (Nat.mod_lt _ (by decide))
+    rcases Nat.lt_or_ge 1 D.L with h2 | h2
+    · simp only [DvData.W]; rw [win_digit hx h2]
+      have := hwin 1 h2; rwa [Nat.add_assoc] at this
+    · have e : D.L = 1 := by omega
+      simp only [DvData.W]; rw [e, Nat.sub_self, win_last (hs.xd.getD _)]
+      exact hrest (k + 1) (by omega) (by omega)
+  · have hw2 : D.w2 k < 10 := by
+      simp only [DvData.w2]; split
+      · exact Nat.mod_lt _ (by decide)
+      · exact hx2
+    apply lbu_digit hw2
+    simp only [DvData.w2]
+    rcases Nat.lt_or_ge 2 D.L with h3 | h3
+    · rw [if_pos (by omega)]; simp only [DvData.W]; rw [win_digit hx h3]
+      exact hwin 2 h3
+    · rcases Nat.lt_or_ge 1 D.L with h2 | h2
+      · have e : D.L = 2 := by omega
+        rw [if_pos (by omega)]; simp only [DvData.W]; rw [e, Nat.sub_self, win_last hx2]
+        have := hrest (k + 2) (by omega) (by omega); rwa [Nat.add_assoc]
+      · rw [if_neg (by omega)]
+        exact hrest (k + 2) (by omega) (by omega)
+  · rw [← hv0]; apply lbu_digit (hs.vd.getD 0)
+    have := st.fix.div 0 hl1; rwa [Nat.add_zero] at this
+  · simp only [DvData.v2]
+    rcases Nat.lt_or_ge 1 D.L with h2 | h2
+    · rw [if_pos (by omega)]
+      have hd := dvalBE_digit hs.vd (i := 1) (by rw [hs.vl]; exact h2)
+      rw [hs.vl, show D.L - 1 - 1 = D.L - 2 by omega] at hd
+      rw [hd]; exact lbu_digit (hs.vd.getD 1) (st.fix.div 1 h2)
+    · rw [if_neg (by omega)]
+      have := st.fix.sent; rw [show D.L = 1 by omega] at this
+      exact lbu_digit (by decide) this
+  · rw [hW0]; have := Nat.mod_lt (D.pre k % D.V / 10 ^ (D.L - 1)) (show 0 < 10 by decide)
+    rw [htop] at this; omega
+  · simp only [DvData.w2]; split
+    · exact Nat.mod_lt _ (by decide)
+    · exact hx2
+  · simp only [DvData.v2]; split
+    · exact Nat.mod_lt _ (by decide)
+    · decide
+  · rw [hW0]; exact Nat.div_le_div_right (Nat.le_of_lt hRV)
+
+/-- The continuation of the whole guess, from the loop head's registers. -/
+structure DvGuessK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (M : Mem) (R : Nat → BitVec 64) (k g : Nat) : Prop where
+  zero : g = 0 → ∀ R', Keeps guessClob R' R → R' 20 = 0#64 →
+    R' 21 = BitVec.ofNat 64 (k + 1) → R' 22 = BitVec.ofNat 64 g → R' 25 = BitVec.ofNat 64 k →
+    DW live S Q 0x80005d38#64 R' M
+  pos : g ≠ 0 → ∀ R', Keeps guessClob R' R →
+    R' 21 = BitVec.ofNat 64 (k + 1) → R' 22 = BitVec.ofNat 64 g → R' 25 = BitVec.ofNat 64 k →
+    DW live S Q 0x80005d9c#64 R' M
+
+/-- The whole guess's continuation, at the tests' entry. -/
+theorem DvGuessK.toGuessK {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {M : Mem} {R Rc : Nat → BitVec 64}
+    {k g : Nat} (hc : DvGuessK live S Q M R k g) (hK : Keeps guessClob Rc R)
+    (h21 : Rc 21 = BitVec.ofNat 64 (k + 1)) (h25 : Rc 25 = BitVec.ofNat 64 k) :
+    GuessK live S Q M Rc g where
+  zero hg R' hR h22 h20 := hc.zero hg R' ((hR.mono (by decide)).trans hK) h20
+    (by rw [hR.get 21]; exact h21) h22 (by rw [hR.get 25]; exact h25)
+  pos hg R' hR h22 := hc.pos hg R' ((hR.mono (by decide)).trans hK)
+    (by rw [hR.get 21]; exact h21) h22 (by rw [hR.get 25]; exact h25)
+
+/-- **The guess** from the loop head `0x80005d4c`: the window's top two
+digits, the first guess (`9` or a division), then the tests. -/
+theorem dv_guess_head {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    (hS : HeapOwn S) {M : Mem} {R : Nat → BitVec 64} {P N k w0 w1 w2 v1 v2 : Nat}
+    (hw0 : w0 ≤ v1) (hw1 : w1 < 10) (hw2 : w2 < 10) (hv1 : v1 < 10) (hv0 : 0 < v1) (hv2 : v2 < 10)
+    (hP0 : 2147603920 ≤ P) (hP2 : P + k + 2 < 2273312768)
+    (hN : 2147603920 ≤ N) (hN2 : N + 1 < 2273312768) (hk : k + 2 < 2 ^ 31)
+    (lw0 : ldv .lbu M (P + k) = BitVec.ofNat 64 w0)
+    (lw1 : ldv .lbu M (P + (k + 1)) = BitVec.ofNat 64 w1)
+    (lw2 : ldv .lbu M (P + k + 2) = BitVec.ofNat 64 w2)
+    (lv2 : ldv .lbu M (N + 1) = BitVec.ofNat 64 v2)
+    (h9 : R 9 = BitVec.ofNat 64 k) (h17 : R 17 = BitVec.ofNat 64 v1)
+    (h18 : R 18 = BitVec.ofNat 64 P) (h24 : R 24 = BitVec.ofNat 64 N)
+    (hc : DvGuessK live S Q M R k (guess w0 w1 w2 v1 v2)) :
+    DW live S Q 0x80005d4c#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h9, h17, h18, lw0, lw1, shl_shr32, sxw_ofNat, addw_ofNat, slliw_ofNat]
+    at 0x80005cb4 0x80005cbc
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro hne
+    have hne' : w0 ≠ v1 := fun h => hne (by rw [h])
+    have hg0 : guess0 w0 w1 v1 = (10 * w0 + w1) / v1 := by unfold guess0; rw [if_neg hne']
+    bc_run hlive hS [] at 0x80005cb4
+    apply st_80005cb4 hlive
+    refine divdi3_spec hlive _ (by bsimp []) fun R1 hk1 hr1 => ?_
+    bsimp [] at hr1 ⊢
+    rw [show w1 + (w0 * 2 ^ 2 + w0) * 2 ^ 1 = 10 * w0 + w1 by omega,
+      sdiv_small (by omega) (by omega) hv0] at hr1
+    have hq : (10 * w0 + w1) / v1 < 2 ^ 31 :=
+      Nat.lt_of_le_of_lt (Nat.div_le_self _ _) (by omega)
+    bc_run hlive hS [hr1, sxw_ofNat] at 0x80005cbc
+    have K : Keeps guessClob _ R := (hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
+    refine dv_guess_test hlive hS (by omega) hw1 hw2 hv1 hv2 (by omega) hP2 (by omega) hN2 hk lw2
+      lv2 (by bsimp [hg0]) (by bsimp []; rw [hk1.get 20]; bsimp []) (by bsimp []; rw [hk1.get 23]; bsimp []; congr 1; omega)
+      (by bsimp []; rw [hk1.get 24]; bsimp [h24]) (by bsimp []; rw [hk1.get 9]; bsimp [h9])
+      (by bsimp []; rw [hk1.get 18]; bsimp [h18])
+      (hc.toGuessK (by keeps_tac K) (by bsimp []; rw [hk1.get 21]; bsimp [])
+        (by bsimp []; rw [hk1.get 25]; bsimp []))
+  · intro he
+    have he' : w0 = v1 := ofNat64_eq (by omega) (by omega) (Classical.not_not.mp he)
+    have hg0 : guess0 w0 w1 v1 = 9 := by unfold guess0; rw [if_pos he']
+    bc_run hlive hS [] at 0x80005cbc
+    refine dv_guess_test hlive hS (by omega) hw1 hw2 hv1 hv2 (by omega) hP2 (by omega) hN2 hk lw2
+      lv2 (by bsimp [hg0]) (by bsimp []) (by bsimp []; congr 1; omega)
+      (by bsimp [h24]) (by bsimp [h9]) (by bsimp [h18])
+      (hc.toGuessK (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp []))
+
+/-- One more dividend digit. -/
+theorem DvShape.pre_succ {D : DvData} (hs : DvShape D) {k : Nat} (hk : k ≤ D.Kb) :
+    D.pre (k + 1) = 10 * D.pre k + D.xs.getD (k + D.L) 0 := by
+  have hl := hs.xl
+  have hi : D.L + k < D.xs.length := by omega
+  simp only [DvData.pre]
+  rw [show D.L + (k + 1) = D.L + k + 1 by omega, List.take_succ, List.getElem?_eq_getElem hi,
+    Option.toList_some, dvalBE_append]
+  simp only [List.length_singleton, Nat.pow_one, dvalBE, List.foldl_cons, List.foldl_nil,
+    Nat.mul_zero, Nat.zero_add]
+  rw [List.getD_eq_getElem?_getD, show k + D.L = D.L + k by omega, List.getElem?_eq_getElem hi,
+    Option.getD_some, Nat.mul_comm]
+
+/-- The divisor is positive. -/
+theorem DvShape.vpos {D : DvData} (hs : DvShape D) : 0 < D.V := by
+  obtain ⟨hv0, -, -⟩ := hs.vtop
+  have := hs.v1
+  rw [hv0] at this
+  exact Nat.pos_of_ne_zero fun h => by rw [h, Nat.zero_div] at this; omega
+
+/-- The window is below ten divisors: its quotient is one digit. -/
+theorem DvShape.W_lt {D : DvData} (hs : DvShape D) (k : Nat) : D.W k < 10 * D.V := by
+  have hR := Nat.mod_lt (D.pre k) hs.vpos
+  have hx : D.xs.getD (k + D.L) 0 < 10 := hs.xd.getD _
+  simp only [DvData.W]; omega
+
+/-- The quotient and remainder of the longer prefix, from the window. -/
+theorem DvShape.pre_succ_div {D : DvData} (hs : DvShape D) {k : Nat} (hk : k ≤ D.Kb) :
+    D.pre (k + 1) / D.V = 10 * (D.pre k / D.V) + D.W k / D.V ∧
+      D.pre (k + 1) % D.V = D.W k % D.V := by
+  rw [hs.pre_succ hk]; exact div_snoc hs.vpos
+
+/-- **The window as one number**: the `L + 1` bytes from `P + k` are the
+digits of `W k`. -/
+theorem DvShape.winW {D : DvData} {M : Mem} {ds : List Nat} {k : Nat} (hs : DvShape D)
+    (hw : DvWin M D ds k) (hk : k ≤ D.Kb) :
+    ∀ i, i ≤ D.L → imgM M (D.P + k + i) = BitVec.ofNat 8 (D.W k / 10 ^ (D.L - i) % 10) := by
+  intro i hi
+  have hx : D.xs.getD (k + D.L) 0 < 10 := hs.xd.getD _
+  have hl := hs.xl
+  have hl1 := hs.l1
+  simp only [DvData.W]
+  rcases Nat.lt_or_ge i D.L with h | h
+  · rw [win_digit hx h]; exact hw.win i h
+  · have e : i = D.L := by omega
+    subst e
+    rw [Nat.sub_self, win_last hx, Nat.add_assoc, Nat.add_comm k]
+    exact hw.rest _ (by omega) (by omega)
+
+/-- The scratch bytes of one iteration: the window, the product buffer and
+the stack below the frame. -/
+abbrev DvTouch (sp W : Nat) (D : DvData) (k a : Nat) : Prop :=
+  (D.P + k ≤ a ∧ a ≤ D.P + k + D.L) ∨ D.b3.In a ∨ (sp - W ≤ a ∧ a < sp - 208)
+
+/-- **An iteration's result**: the window replaced by the remainder `W k % V`
+(below its top byte), registers for the store. -/
+theorem DvMid.of_touch {S : Nat → Prop} {Mt0 M0 M : Mem} {R0 R R' : Nat → BitVec 64}
+    {sp W : Nat} {D : DvData} {H : Heap} {F : List Blk} {Lh : List NumObj} {y : NumObj}
+    {ds : List Nat} {k : Nat} (hs : DvShape D) (cx : DvCtx S sp W)
+    (st : DvAt S Mt0 M0 R0 R sp W D H F Lh y ds k) (hm : MemOnly (DvTouch sp W D k) M M0)
+    (hwin : ∀ i, i < D.L → imgM M (D.P + (k + 1) + i) =
+      BitVec.ofNat 8 (D.W k % D.V / 10 ^ (D.L - 1 - i) % 10))
+    (h2 : R' 2 = BitVec.ofNat 64 (sp - 208)) (h9 : R' 9 = BitVec.ofNat 64 k)
+    (h21 : R' 21 = BitVec.ofNat 64 (k + 1)) (h18 : R' 18 = BitVec.ofNat 64 D.P)
+    (h24 : R' 24 = BitVec.ofNat 64 D.N) (h27 : R' 27 = BitVec.ofNat 64 (y.rep.val + D.off + k))
+    (h26 : R' 26 = BitVec.ofNat 64 D.Kb) (hk : Keeps divAll R' R0) :
+    DvMid S Mt0 M R0 R' sp W D H F Lh y ds k := by
+  have hkb := st.kb
+  have hl := hs.xl
+  obtain ⟨hq, hr⟩ := hs.pre_succ_div hkb
+  have hd : D.W k / D.V < 10 :=
+    (Nat.div_lt_iff_lt_mul hs.vpos).mpr (by have := hs.W_lt k; omega)
+  refine ⟨st.fix.scratch cx.above (by have := cx.big; omega) (hm.mono fun a ha => ?_),
+    fun i hi => by rw [hr]; exact hwin i hi, fun i hi1 hi2 => ?_, fun j hj => ?_,
+    h2, h9, h21, h18, h24, h27, h26, hk, hkb⟩
+  · rcases ha with ha | ha | ha
+    · refine .inl ?_
+      have := st.fix.pIn (a - D.P) (by omega)
+      rwa [show D.P + (a - D.P) = a by omega] at this
+    · exact .inr (.inl ha)
+    · exact .inr (.inr ha)
+  · have hne : ¬ DvTouch sp W D k (D.P + i) := by
+      intro h
+      rcases h with h | h | h
+      · omega
+      · exact live_apart st.fix.heap.heap st.fix.b1l st.fix.b3l st.fix.b13 (st.fix.pIn _ hi2) h
+      · have := live_in_heap st.fix.heap.heap st.fix.b1l (st.fix.pIn _ hi2)
+        have := cx.above; simp only [heapEnd] at *; omega
+    rw [hm _ hne]
+    exact st.win.rest i (by omega) hi2
+  · rw [st.win.quot j hj, hq, show k - j = k - 1 - j + 1 by omega, Nat.pow_succ',
+      ← Nat.div_div_eq_div_mul, Nat.add_comm (10 * _), Nat.add_mul_div_left _ _ (by decide : 0 < 10),
+      Nat.div_eq_of_lt hd, Nat.zero_add]
 
 end Dc.Mach

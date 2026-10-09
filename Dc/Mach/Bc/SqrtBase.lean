@@ -139,54 +139,54 @@ abbrev sqSlots1 : List (Nat × Nat) :=
     (8, 144), (26, 64), (9, 136), (18, 128)]
 
 /-- Inside `bc_sqrt`: `sp` lowered by 160, the saved registers in the
-frame, and off the heap only the window and the slot changed. -/
-structure SqAt (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W q : Nat)
+frame, and off the heap only the window changed. -/
+structure SqAt (S : Nat → Prop) (Mt0 M : Mem) (R0 R : Nat → BitVec 64) (sp W : Nat)
     (slots : List (Nat × Nat)) : Prop where
   r2 : R 2 = BitVec.ofNat 64 (sp - 160)
   saved : SavedWords M (sp - 160) slots R0
   keep : Keeps sqAll R R0
-  out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a
+  out : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a
 
 /-- Through a call that changes the registers of `raCallClob`, the heap, the
 frame's first 48 bytes and the bytes below the frame. -/
 theorem SqAt.call {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64}
-    {sp W q : Nat} {slots : List (Nat × Nat)} (h : SqAt S Mt0 M R0 R sp W q slots)
+    {sp W : Nat} {slots : List (Nat × Nat)} (h : SqAt S Mt0 M R0 R sp W slots)
     (hlo : ∀ p ∈ slots, 48 ≤ p.2 := by decide) (htop : ∀ p ∈ slots, p.2 + 8 ≤ 160 := by decide)
     (hsp : 160 ≤ sp) (hW : 160 ≤ W)
     (hkp : Keeps raCallClob R' R)
     (hag : ∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) → ¬ frameIn (sp - 160) (W - 160) a →
       imgM M' a = imgM M a)
     (hst : ∀ a, sp - 112 ≤ a → a < sp → OutHeap a) :
-    SqAt S Mt0 M' R0 R' sp W q slots where
+    SqAt S Mt0 M' R0 R' sp W slots where
   r2 := by rw [hkp.get 2]; exact h.r2
   saved := h.saved.transport hlo htop fun a h1 h2 =>
     hag a (hst a (by omega) (by omega)) (by omega) (by simp only [frameIn]; omega)
   keep := (hkp.mono (by decide)).trans h.keep
-  out := fun a ha hs hf => by
+  out := fun a ha hf => by
     rw [hag a ha (fun h' => hf (by simp only [frameIn]; omega))
       (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
-    exact h.out a ha hs hf
+    exact h.out a ha hf
 
 /-- Through a change of registers outside the saved ones. -/
-theorem SqAt.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
-    {slots : List (Nat × Nat)} (h : SqAt S Mt0 M R0 R sp W q slots) {ks : List Nat}
+theorem SqAt.regs {S : Nat → Prop} {Mt0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp W : Nat}
+    {slots : List (Nat × Nat)} (h : SqAt S Mt0 M R0 R sp W slots) {ks : List Nat}
     (hk : Keeps ks R' R) (hks : ∀ z ∈ ks, z ∈ sqAll ∧ z ≠ 2 := by decide) :
-    SqAt S Mt0 M R0 R' sp W q slots :=
+    SqAt S Mt0 M R0 R' sp W slots :=
   { h with
     r2 := by rw [hk.get 2 fun hm => (hks 2 hm).2 rfl]; exact h.r2
     keep := (hk.mono fun z hz => (hks z hz).1).trans h.keep }
 
 /-- Through a change of the heap alone. -/
 theorem SqAt.heap {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R : Nat → BitVec 64} {sp W q : Nat}
-    {slots : List (Nat × Nat)} (cx : SqCtx S R0 sp W q) (h : SqAt S Mt0 M R0 R sp W q slots)
+    {slots : List (Nat × Nat)} (cx : SqCtx S R0 sp W q) (h : SqAt S Mt0 M R0 R sp W slots)
     (hlo : ∀ p ∈ slots, 48 ≤ p.2 := by decide) (htop : ∀ p ∈ slots, p.2 + 8 ≤ 160 := by decide)
-    (hag : ∀ a, OutHeap a → imgM M' a = imgM M a) : SqAt S Mt0 M' R0 R sp W q slots := by
+    (hag : ∀ a, OutHeap a → imgM M' a = imgM M a) : SqAt S Mt0 M' R0 R sp W slots := by
   sq_facts cx
   exact
     { h with
       saved := h.saved.transport hlo htop fun a h1 h2 =>
         hag a (outHeap_of_ge (by simp only [heapEnd]; omega))
-      out := fun a ha hs hf => (hag a ha).trans (h.out a ha hs hf) }
+      out := fun a ha hf => (hag a ha).trans (h.out a ha hf) }
 
 /-- A word of the frame's first 48 bytes a callee leaves. -/
 theorem sq_word {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp W q : Nat} {M M' : Mem}
@@ -244,16 +244,6 @@ theorem RList.binPost {S : Nat → Prop} {Mt0 M : Mem} {H : Heap} {F : List Blk}
   exact ⟨RList.replace hown hp.owns hp.heap (hfr L' hp.rest),
     ⟨⟨hp.num, hp.norm, hp.pos, hp.refs, hp.owns⟩, by rw [hp.slot, hyp]⟩, hown.set hp.owns⟩
 
-/-- The callee's window off `bc_sqrt`'s frame. -/
-theorem SqCtx.outM {S : Nat → Prop} {R0 : Nat → BitVec 64} {sp W q o : Nat} {M M' : Mem}
-    (cx : SqCtx S R0 sp W q) (ho : o + 8 ≤ 48)
-    (h : ∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
-      imgM M' a = imgM M a) :
-    ∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) → ¬ frameIn (sp - 160) (W - 160) a →
-      imgM M' a = imgM M a := by
-  sq_facts cx
-  exact fun a h1 h2 h3 => h a h1 (by simp only [slotBytes]; omega) h3
-
 /-- **`bc_multiply (u1, u2, &h, k)`** on the handle `h` of `bc_sqrt` (its
 word at `sp - 160 + o`): the product replaces it. -/
 theorem sq_mulH {live : Nat → Prop} {S : Nat → Prop}
@@ -272,7 +262,7 @@ theorem sq_mulH {live : Nat → Prop} {S : Nat → Prop}
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
       BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       MulRes M' (sp - 160 + o) (Num.mul u1.rep.num u2.rep.num k) y →
-      (∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) → ¬ frameIn (sp - 160) (W - 160) a →
+      (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x8000573c#64 R M := by
   sq_facts cx
@@ -285,7 +275,7 @@ theorem sq_mulH {live : Nat → Prop} {S : Nat → Prop}
     ha (by omega) hb ⟨hr1, by rw [hw, hp], hnv⟩ h10 h11 h12 h13
     ⟨fun R' M' H' F' L' y hk hp' => ?_, cx.oom hoom houtM⟩
   obtain ⟨hb', hres, hown'⟩ := RList.binPost hown hfr hp'
-  exact hret R' M' H' F' y hk hb' hown' hres (cx.outM ho hp'.out)
+  exact hret R' M' H' F' y hk hb' hown' hres hp'.out
 
 /-- A `BinK` from a handle's slot (`bc_add`, `bc_sub`). -/
 theorem sq_binK {live : Nat → Prop} {S : Nat → Prop}
@@ -299,7 +289,7 @@ theorem sq_binK {live : Nat → Prop} {S : Nat → Prop}
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
       BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       MulRes M' (sp - 160 + o) n y →
-      (∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) → ¬ frameIn (sp - 160) (W - 160) a →
+      (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     BinK live S Q R M L1 L2 x (sp - 160 + o) (sp - 160) n := by
   sq_facts cx
@@ -308,7 +298,7 @@ theorem sq_binK {live : Nat → Prop} {S : Nat → Prop}
       hout a ha fun h' => hf (by simp only [frameIn] at h' ⊢; omega)⟩
   obtain ⟨hb', hres, hown'⟩ := RList.binPost hown hfr hp'
   exact hret R' M' H' F' y hk hb' hown' hres fun a h1 h2 h3 =>
-    hp'.out a h1 (by simp only [slotBytes]; omega) fun h' => h3 (by simp only [frameIn] at h' ⊢; omega)
+    hp'.out a h1 h2 fun h' => h3 (by simp only [frameIn] at h' ⊢; omega)
 
 /-- **`bc_add (u1, u2, &h, k)`** on the handle `h` of `bc_sqrt`: the sum
 replaces it. -/
@@ -329,7 +319,7 @@ theorem sq_addH {live : Nat → Prop} {S : Nat → Prop}
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
       BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       MulRes M' (sp - 160 + o) (Num.add u1.rep.num u2.rep.num k) y →
-      (∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) → ¬ frameIn (sp - 160) (W - 160) a →
+      (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x80005634#64 R M := by
   sq_facts cx
@@ -358,7 +348,7 @@ theorem sq_subH {live : Nat → Prop} {S : Nat → Prop}
     (hret : ∀ R' M' H' F' y, Keeps binClob R' R →
       BcHeap S M' H' F' (RList (hs1 ++ .own y :: hs2) L) → RHOwn (hs1 ++ .own y :: hs2) L →
       MulRes M' (sp - 160 + o) (Num.sub u1.rep.num u2.rep.num k) y →
-      (∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) → ¬ frameIn (sp - 160) (W - 160) a →
+      (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + o) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x80004ac4#64 R M := by
   sq_facts cx
@@ -403,7 +393,7 @@ theorem sq_divH {live : Nat → Prop} {S : Nat → Prop}
       Keeps binClob R' R → R' 10 = 0#64 →
       BcHeap S M' H' F' (RList [P, D, .own y, G] L) → RHOwn [P, D, .own y, G] L →
       MulRes M' (sp - 160 + 24) m y →
-      (∀ a, OutHeap a → ¬ (sp - 160 ≤ a ∧ a < sp - 112) → ¬ frameIn (sp - 160) (W - 160) a →
+      (∀ a, OutHeap a → ¬ slotBytes (sp - 160 + 24) a → ¬ frameIn (sp - 160) (W - 160) a →
         imgM M' a = imgM M0 a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x8000589c#64 R
       (writeLog M0 [(G.p + 12, 4, BitVec.ofNat 64 ((RH.obj [P, D, G] G).rep.refs + 1))]) := by
@@ -469,7 +459,7 @@ theorem sq_divH {live : Nat → Prop} {S : Nat → Prop}
       (hb2.perm (RList.cons_perm [P, D] [G] y L) hown'.all) hown'
       ⟨⟨hp'.num, hp'.norm, hp'.pos, hp'.refs, hp'.owns⟩, by rw [hp'.slot, hyp]⟩
       fun a h1 h2' h3 => by
-        rw [hp'.out a h1 (by simp only [slotBytes]; omega) h3]
+        rw [hp'.out a h1 h2' h3]
         exact hst a h1
   · unfold Num.div at hn
     rw [if_neg (by simpa using hgm)] at hn

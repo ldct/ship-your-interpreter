@@ -267,4 +267,153 @@ theorem sq_glob {live : Nat → Prop} {S : Nat → Prop}
             ⟨hb', ⟨_, _, .inl rfl, ⟨_, _, x, rfl, rfl, .dec h⟩, AddRef.share⟩, rfl, hgN, hgl,
               hown x hg, hq', hout M' ho'⟩
 
+/-! ## The setup of the Newton loop -/
+
+/-- An owned handle first: its number heads the heap. -/
+theorem RList.own_cons (y : NumObj) (hs : List RH) (L : List NumObj) :
+    RList (.own y :: hs) L = y :: RList hs L := by
+  have h := rBump_own [] hs y
+  simp only [List.nil_append] at h
+  simp only [RList, rTemps_own, List.cons_append, h]
+
+/-- Three references to `z` of `A ++ z :: B`: its count raised by three. -/
+theorem RList.ref3 {A B : List NumObj} {z : NumObj} (hd : ∀ w ∈ A ++ B, w.rep.p ≠ z.rep.p) :
+    RList [.ref z, .ref z, .ref z] (A ++ z :: B) = A ++ z.withRefs (z.rep.refs + 3) :: B := by
+  have hc : ∀ w ∈ A ++ B, rBump [.ref z, .ref z, .ref z] w = w := fun w hw => by
+    simp only [rBump, rCnt, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, RH.cnt,
+      if_neg (Ne.symm (hd w hw)), Nat.add_zero, NumObj.withRefs_self]
+  simp only [RList, rTemps_ref, rTemps_nil, List.nil_append, List.map_append, List.map_cons]
+  rw [List.map_congr_left (fun w hw => hc w (List.mem_append_left _ hw)),
+    List.map_congr_left (fun w hw => hc w (List.mem_append_right _ hw)), List.map_id', List.map_id']
+  congr 2
+  simp only [rBump, rCnt, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, RH.cnt,
+    if_pos rfl, ite_true]
+  rfl
+
+/-- The fixed facts of the route into the Newton loop: `x > 0`, `x ≠ 1`, the
+model's root `r`, the continuations. -/
+structure SqSet (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (t : String) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q k : Nat) (L : List NumObj)
+    (x z o : NumObj) (r : Num) : Prop where
+  cx : SqCtx S R0 sp W q
+  ha : SqArgs S Mt0 L x z o q k
+  oom : RaOom live S (DQ live S Q t) Mt0 sp W q
+  xneg : x.rep.neg = false
+  x0 : x.rep.num.mag ≠ 0
+  ne1 : Num.cmp x.rep.num Num.one ≠ .eq
+  xz : x.rep.p ≠ z.rep.p
+  xo : x.rep.p ≠ o.rep.p
+  oz : o.rep.p ≠ z.rep.p
+  ilen : x.rep.num.intLen = x.rep.len
+  sqrt : Sqrt x.rep.num k r
+  ret : ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
+    SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
+
+/-- **`point5 = 0.5`** from `0x80006f20` (`bc_new_num (1, 1)` returned
+`y`): its second digit `5`, then below one to `sq_lo`, above to `sq_hi`. -/
+theorem sq_setNew {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o y : NumObj} {r : Num}
+    (g : SqSet live S Q t Mt0 R0 sp W q k L x z o r)
+    (sa : SqAt S Mt0 M R0 R sp W sqSlots1)
+    (hb : BcHeap S M H F (y :: RList [.ref z, .ref z, .ref z] L))
+    (hy : y.rep = zeroRep y.sb.pay y.db.pay 1 1) (h10 : R 10 = BitVec.ofNat 64 y.sb.pay)
+    (h8 : R 8 = ordWord (Num.cmp x.rep.num Num.one)) (h19 : R 19 = BitVec.ofNat 64 q)
+    (h24 : R 24 = BitVec.ofNat 64 (max k x.rep.scale)) (h26 : R 26 = BitVec.ofNat 64 z.rep.p)
+    (wq : ldv .ld M q = BitVec.ofNat 64 x.rep.p)
+    (w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr)
+    (w24 : ldv .ld M (sp - 160 + 24) = BitVec.ofNat 64 z.rep.p)
+    (w32 : ldv .ld M (sp - 160 + 32) = BitVec.ofNat 64 z.rep.p)
+    (w40 : ldv .ld M (sp - 160 + 40) = BitVec.ofNat 64 z.rep.p) :
+    DW live S (DQ live S Q t) 0x80006f20#64 R M := by
+  have cx := g.cx
+  have ha := g.ha
+  sq_facts cx
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hyn := hb.nums y List.mem_cons_self
+  have hyp : y.rep.p = y.sb.pay := by rw [hy]; rfl
+  have hyv : y.rep.val = y.db.pay := by rw [hy]; rfl
+  have hyl : y.rep.len = 1 := by rw [hy]; rfl
+  have hys : y.rep.scale = 1 := by rw [hy]; rfl
+  have hyr : y.rep.refs = 1 := by rw [hy]; rfl
+  have hyd : y.rep.ds = [0, 0] := by rw [hy]; rfl
+  have hyg : y.rep.neg = false := by rw [hy]; rfl
+  have hyo : y.Owns := by
+    have := hyn.shape.vLo
+    show y.rep.ptr ≠ 0
+    rw [hy]; simp only [zeroRep]; rw [← hyv]; simp only [heapStart] at this; omega
+  num_facts hyn
+  have hval := hyn.value
+  rw [← hyp] at h10
+  have hb1 := (List.nil_append (y :: RList [.ref z, .ref z, .ref z] L)).symm ▸ hb
+  have hb2 := BcHeap.setDigit (L1 := []) hb1 (fun w hw => hb.head_noView hyo w (by simpa using hw))
+    (i := 1) (d := 5) (by rw [hyl, hys]; decide) (by decide) (v := BitVec.ofNat 64 5)
+    (by rw [sbData_ofNat])
+  simp only [List.nil_append] at hb2
+  have hc := g.ne1
+  have hsl := cx.slot
+  have hq := hsl.slot
+  have hql := hq.lo; have hqh := hq.hi
+  have hq0 := hsl.out q ⟨Nat.le_refl _, by omega⟩
+  have hq7 := hsl.out (q + 7) ⟨by omega, by omega⟩
+  simp only [OutHeap, heapStart, heapEnd] at hq0 hq7
+  have hdq : ∀ a, OutHeap a → imgM (writeLog M [(y.rep.val + 1, 1, BitVec.ofNat 64 5)]) a =
+      imgM M a := fun a ha' => imgM_store_miss _ _ (by
+    simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ha'; omega)
+  have h5n : ({ y with rep := { y.rep with ds := y.rep.ds.set 1 5 } } : NumObj).rep.num =
+      Num.half := by
+    show (⟨y.rep.neg, dval (y.rep.ds.set 1 5), y.rep.scale⟩ : Num) = Num.half
+    rw [hyg, hyd, hys]; rfl
+  obtain ⟨Az, Bz, eZ⟩ := List.append_of_mem ha.mz
+  have st : SqS S Mt0 (writeLog M [(y.rep.val + 1, 1, BitVec.ofNat 64 5)]) R0
+      (upd (upd (upd (upd R 14 (BitVec.ofNat 64 y.rep.val)) 13 5#64) 15 18446744073709551615#64) 20
+        (BitVec.ofNat 64 y.rep.p)) sp W q H F L x z
+      { y with rep := { y.rep with ds := y.rep.ds.set 1 5 } } (max k x.rep.scale) :=
+    { fr :=
+        { sa := (sa.heap cx (hag := hdq)).regs (ks := [14, 13, 15, 20]) (by keeps_tac Keeps.refl _ _)
+          heap := by rw [RList.own_cons]; exact hb2
+          own := ⟨fun w hw => by
+              simp only [List.mem_cons, RH.own.injEq, reduceCtorEq, List.not_mem_nil,
+                or_false] at hw
+              subst hw; exact hyo, ha.owns⟩
+          ok := fun h hh => by
+            simp only [List.mem_cons, List.not_mem_nil, or_false] at hh
+            rcases hh with rfl | rfl | rfl | rfl
+            · exact ⟨hyr, hyo⟩
+            all_goals exact ⟨Az, Bz, eZ, ha.zero.refs⟩ }
+      r19 := by bsimp [h19]
+      r20 := by bsimp []
+      r24 := by bsimp [h24]
+      r26 := by bsimp [h26]
+      wq := by rw [ldv_ld_miss _ _ (by omega)]; exact wq
+      w8 := by rw [ldv_ld_miss _ _ (by omega)]; exact w8
+      w24 := by rw [ldv_ld_miss _ _ (by omega)]; exact w24
+      w32 := by rw [ldv_ld_miss _ _ (by omega)]; exact w32
+      w40 := by rw [ldv_ld_miss _ _ (by omega)]; exact w40 }
+  have h5N : ({ y with rep := { y.rep with ds := y.rep.ds.set 1 5 } } : NumObj).rep.Norm :=
+    .inl (by show y.rep.len ≤ 1; omega)
+  have hS0 := g.sqrt
+  unfold Sqrt at hS0
+  cases hcmp : Num.cmp x.rep.num Num.one with
+  | eq => exact absurd hcmp hc
+  | lt =>
+    rw [hcmp] at h8
+    simp only [ordWord] at h8
+    bc_run hlive hS [h10, hval, h8] at 0x80006d04
+    rw [Dc.BcModel.sqrtInit_lo hcmp] at hS0
+    exact sq_lo hlive (p5 := { y with rep := { y.rep with ds := y.rep.ds.set 1 5 } }) cx ha g.oom st h5n hyl hys h5N rfl g.xneg hcmp g.x0 g.xz g.xo g.oz hS0 g.ret
+  | gt =>
+    rw [hcmp] at h8
+    simp only [ordWord] at h8
+    bc_run hlive hS [h10, hval, h8] at 0x80006ad4
+    bc_run hlive hS [] at 0x80006ad4
+    rw [Dc.BcModel.sqrtInit_hi (by rw [hcmp]; decide) (by rw [g.ilen]; have := ha.size; omega),
+      g.ilen] at hS0
+    exact sq_hi hlive (p5 := { y with rep := { y.rep with ds := y.rep.ds.set 1 5 } })
+      { cx := cx, ha := ha, oom := g.oom, p5n := h5n, p5l := hyl, p5s := hys, p5N := h5N,
+        rsk := rfl, xneg := g.xneg, gt := hcmp, xz := g.xz, xo := g.xo, oz := g.oz,
+        loop := hS0, ret := g.ret } st
+
 end Dc.Mach

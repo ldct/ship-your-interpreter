@@ -158,17 +158,22 @@ structure DivArgs (Mt0 : Mem) (L1 L2 : List NumObj) (xr x1 x2 z : NumObj) (n : O
   /-- `bc_new_num` takes a positive integer length -/
   len1 : 1 ≤ x1.rep.len
 
-/-- `DivArgs` over a slot `QSlot`: the heap `L0`, and each operand found
-again (up to its count) in what freeing the slot leaves (`Fr`). -/
+/-- The divisor `1` at scale `0`, as the divide-by-one test reads it. -/
+def IsOneRep (o : NumRep) : Prop := o.len = 1 ∧ o.scale = 0 ∧ o.ds.getD 0 0 = 1
+
+/-- `DivArgs` over a slot `QSlot`: the heap `L0`, and, for a divisor `1`
+(the divide-by-one detour frees the slot and then reads the operands again),
+each operand found again (up to its count) in what freeing the slot leaves
+(`Fr`). Any other divisor may share the slot's number with the dividend. -/
 structure DivArgsF (Mt0 : Mem) (L0 : List NumObj) (Fr : List NumObj → Prop) (x1 x2 z : NumObj)
     (n : Option Num) (k : Nat) : Prop where
   div : n = Num.div x1.rep.num x2.rep.num k
   m1 : x1 ∈ L0
   m2 : x2 ∈ L0
   mz : z ∈ L0
-  k1 : ∀ L, Fr L → ∃ y ∈ L, ∃ r, y.rep = { x1.rep with refs := r }
-  k2 : ∀ L, Fr L → ∃ y ∈ L, ∃ r, y.rep = { x2.rep with refs := r }
-  kz : ∀ L, Fr L → ∃ y ∈ L, ∃ r, y.rep = { z.rep with refs := r }
+  k1 : IsOneRep x2.rep → ∀ L, Fr L → ∃ y ∈ L, ∃ r, y.rep = { x1.rep with refs := r }
+  k2 : IsOneRep x2.rep → ∀ L, Fr L → ∃ y ∈ L, ∃ r, y.rep = { x2.rep with refs := r }
+  kz : IsOneRep x2.rep → ∀ L, Fr L → ∃ y ∈ L, ∃ r, y.rep = { z.rep with refs := r }
   size : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27
   zero : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p
   len1 : 1 ≤ x1.rep.len
@@ -177,8 +182,9 @@ structure DivArgsF (Mt0 : Mem) (L0 : List NumObj) (Fr : List NumObj → Prop) (x
 theorem DivArgs.toF {Mt0 : Mem} {L1 L2 : List NumObj} {xr x1 x2 z : NumObj} {n : Option Num}
     {k : Nat} (h : DivArgs Mt0 L1 L2 xr x1 x2 z n k) :
     DivArgsF Mt0 (L1 ++ xr :: L2) (FreedRest L1 L2 xr) x1 x2 z n k :=
-  ⟨h.div, h.m1, h.m2, h.mz, fun _ hf => hf.keep h.m1 fun e => (h.apart e).1,
-    fun _ hf => hf.keep h.m2 fun e => (h.apart e).2.1, fun _ hf => hf.keep h.mz fun e => (h.apart e).2.2,
+  ⟨h.div, h.m1, h.m2, h.mz, fun _ _ hf => hf.keep h.m1 fun e => (h.apart e).1,
+    fun _ _ hf => hf.keep h.m2 fun e => (h.apart e).2.1,
+    fun _ _ hf => hf.keep h.mz fun e => (h.apart e).2.2,
     h.size, h.zero, h.len1⟩
 
 /-- `DivArgs` for a `NULL` slot: the heap is left as it is. -/
@@ -187,8 +193,8 @@ theorem DivArgsF.null {Mt0 : Mem} {L0 : List NumObj} {x1 x2 z : NumObj} {n : Opt
     (hsz : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27)
     (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p) (hl1 : 1 ≤ x1.rep.len) :
     DivArgsF Mt0 L0 (· = L0) x1 x2 z n k :=
-  ⟨hd, h1, h2, hz, fun _ e => e ▸ ⟨x1, h1, _, rfl⟩, fun _ e => e ▸ ⟨x2, h2, _, rfl⟩,
-    fun _ e => e ▸ ⟨z, hz, _, rfl⟩, hsz, hzg, hl1⟩
+  ⟨hd, h1, h2, hz, fun _ _ e => e ▸ ⟨x1, h1, _, rfl⟩, fun _ _ e => e ▸ ⟨x2, h2, _, rfl⟩,
+    fun _ _ e => e ▸ ⟨z, hz, _, rfl⟩, hsz, hzg, hl1⟩
 
 /-- The divide-by-one detour's facts: `n2 = 1` (scale zero). -/
 structure DvOne (Mt0 : Mem) (L0 : List NumObj) (Fr : List NumObj → Prop) (x1 x2 z : NumObj)
@@ -225,9 +231,9 @@ theorem dvone_enter {live : Nat → Prop} {S : Nat → Prop}
   simp only [heapEnd] at hab
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
-  obtain ⟨y1, hy1, r1, e1⟩ := one.k1 L hfr
-  obtain ⟨y2, hy2, r2, e2⟩ := one.k2 L hfr
-  obtain ⟨y3, hy3, r3, e3⟩ := one.kz L hfr
+  obtain ⟨y1, hy1, r1, e1⟩ := one.k1 ⟨one.len2, one.scale2, one.dig2⟩ L hfr
+  obtain ⟨y2, hy2, r2, e2⟩ := one.k2 ⟨one.len2, one.scale2, one.dig2⟩ L hfr
+  obtain ⟨y3, hy3, r3, e3⟩ := one.kz ⟨one.len2, one.scale2, one.dig2⟩ L hfr
   have s1 := SameRep.of_eq e1; have s2 := SameRep.of_eq e2; have s3 := SameRep.of_eq e3
   have hm2 : y2 ∈ y :: L := List.mem_cons_of_mem _ hy2
   have hn2 := hb.nums y2 hm2
@@ -288,7 +294,7 @@ theorem dvone_after {live : Nat → Prop} {S : Nat → Prop}
   have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
-  obtain ⟨y2, hy2, r2, e2⟩ := one.k2 L hfr
+  obtain ⟨y2, hy2, r2, e2⟩ := one.k2 ⟨one.len2, one.scale2, one.dig2⟩ L hfr
   have s2 := SameRep.of_eq e2
   have hn2 := hb.nums y2 (List.mem_cons_of_mem _ hy2)
   num_facts hn2

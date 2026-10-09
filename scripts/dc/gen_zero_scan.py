@@ -22,6 +22,8 @@ SITES = [
     (0x80006220, 15, 11, 10, 0x8000646c, "`bc_raisemod`: `mod`"),
     (0x800062e8, 15, 16, 14, 0x800063b4, "`bc_raisemod`: `exponent`"),
     (0x80006338, 15, 14, 13, 0x80006378, "`bc_raisemod`: `parity`"),
+    (0x80006fb8, 14, 15, 13, 0x80007088, "`bc_out_num`: `num`"),
+    (0x80007190, 15, 14, 13, 0x80007214, "`bc_out_num`: `int_part`"),
 ]
 
 # (entry E, obj reg, length reg r1, `blez` target X, lbu pc L of a scan above)

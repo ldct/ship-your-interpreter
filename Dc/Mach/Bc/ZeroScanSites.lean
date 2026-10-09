@@ -147,6 +147,94 @@ theorem zscan_80006338 {live : Nat → Prop} {S : Nat → Prop}
     replace h0 : ds.getD i 0 ≠ 0 := fun e => h0 (hq.mpr e)
     exact hfound _ ⟨i, by omega, h0⟩ (by keeps_tac kk)
 
+/-- **The zero test of `bc_out_num`: `num`** at `0x80006fb8` (inlined): digits `0 … i - 1`
+zero, `x14 = n - i`, `x15` at digit `i`; the first nonzero digit ends it at
+`0x80006fc8`, all `n` zero at `0x80007088`. -/
+theorem zscan_80006fb8 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {Rb : Nat → BitVec 64} (hS : HeapOwn S) {ds : List Nat} (hd : IsDigits ds)
+    {v n : Nat} (hb : ∀ i, i < n → imgM M (v + i) = BitVec.ofNat 8 (ds.getD i 0)) (hn : n < 2 ^ 30)
+    (hlo : 2147603920 ≤ v) (hhi : v + n ≤ 2273312768)
+    (hfound : ∀ R', (∃ i0, i0 < n ∧ ds.getD i0 0 ≠ 0) → Keeps [13, 14, 15] R' Rb →
+      DW live S Q 0x80006fc8#64 R' M)
+    (hnone : ∀ R', (∀ j, j < n → ds.getD j 0 = 0) → Keeps [13, 14, 15] R' Rb →
+      DW live S Q 0x80007088#64 R' M) :
+    ∀ k i R, i + 1 + k = n → (∀ j, j < i → ds.getD j 0 = 0) → Keeps [13, 14, 15] R Rb →
+      R 14 = BitVec.ofNat 64 (n - i) → R 15 = BitVec.ofNat 64 (v + i) →
+      DW live S Q 0x80006fb8#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  refine count_rec fun k i R ih hi hz kk hc hp => ?_
+  have hl := lbu_digit (hd.getD i) (hb i (by omega))
+  have hdl := hd.getD i
+  have e1 : BitVec.ofNat 64 (v + i) + 1#64 = BitVec.ofNat 64 (v + (i + 1)) := by
+    rw [show (1#64) = BitVec.ofNat 64 1 from rfl, ofNat_add_ofNat]; congr 1
+  have e2 := subw_ofNat_le (a := n - i) (b := 1) (by omega) (by omega)
+  have hq := ofNat_eq_zero_iff (show ds.getD i 0 < 2 ^ 64 by omega)
+  bc_run hlive hS [hc, hp, hl, e1, e2] at 0x80006fc8 0x80006fb4
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro h0
+    replace h0 : ds.getD i 0 = 0 := hq.mp h0
+    have hz' : ∀ j, j < i + 1 → ds.getD j 0 = 0 := fun j hj => by
+      rcases Nat.lt_or_ge j i with h | h
+      · exact hz j h
+      · rw [show j = i by omega]; exact h0
+    have e3 := ofNat_eq_zero_iff (show n - i - 1 < 2 ^ 64 by omega)
+    bc_run hlive hS [e3] at 0x80007088 0x80006fb8
+    · intro h1
+      exact hnone _ (fun j hj => hz' j (by omega)) (by keeps_tac kk)
+    · intro h1
+      rcases k with _ | k
+      · omega
+      exact ih k rfl _ (by omega) hz' (by keeps_tac kk) (by bsimp []; exact congrArg _ (by omega))
+        (by bsimp [])
+  · intro h0
+    replace h0 : ds.getD i 0 ≠ 0 := fun e => h0 (hq.mpr e)
+    exact hfound _ ⟨i, by omega, h0⟩ (by keeps_tac kk)
+
+/-- **The zero test of `bc_out_num`: `int_part`** at `0x80007190` (inlined): digits `0 … i - 1`
+zero, `x15 = n - i`, `x14` at digit `i`; the first nonzero digit ends it at
+`0x800071a0`, all `n` zero at `0x80007214`. -/
+theorem zscan_80007190 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M : Mem} {Rb : Nat → BitVec 64} (hS : HeapOwn S) {ds : List Nat} (hd : IsDigits ds)
+    {v n : Nat} (hb : ∀ i, i < n → imgM M (v + i) = BitVec.ofNat 8 (ds.getD i 0)) (hn : n < 2 ^ 30)
+    (hlo : 2147603920 ≤ v) (hhi : v + n ≤ 2273312768)
+    (hfound : ∀ R', (∃ i0, i0 < n ∧ ds.getD i0 0 ≠ 0) → Keeps [13, 14, 15] R' Rb →
+      DW live S Q 0x800071a0#64 R' M)
+    (hnone : ∀ R', (∀ j, j < n → ds.getD j 0 = 0) → Keeps [13, 14, 15] R' Rb →
+      DW live S Q 0x80007214#64 R' M) :
+    ∀ k i R, i + 1 + k = n → (∀ j, j < i → ds.getD j 0 = 0) → Keeps [13, 14, 15] R Rb →
+      R 15 = BitVec.ofNat 64 (n - i) → R 14 = BitVec.ofNat 64 (v + i) →
+      DW live S Q 0x80007190#64 R M := by
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  refine count_rec fun k i R ih hi hz kk hc hp => ?_
+  have hl := lbu_digit (hd.getD i) (hb i (by omega))
+  have hdl := hd.getD i
+  have e1 : BitVec.ofNat 64 (v + i) + 1#64 = BitVec.ofNat 64 (v + (i + 1)) := by
+    rw [show (1#64) = BitVec.ofNat 64 1 from rfl, ofNat_add_ofNat]; congr 1
+  have e2 := subw_ofNat_le (a := n - i) (b := 1) (by omega) (by omega)
+  have hq := ofNat_eq_zero_iff (show ds.getD i 0 < 2 ^ 64 by omega)
+  bc_run hlive hS [hc, hp, hl, e1, e2] at 0x800071a0 0x8000718c
+  all_goals first | exact acc_heap hS (by omega) (by omega) | skip
+  · intro h0
+    replace h0 : ds.getD i 0 = 0 := hq.mp h0
+    have hz' : ∀ j, j < i + 1 → ds.getD j 0 = 0 := fun j hj => by
+      rcases Nat.lt_or_ge j i with h | h
+      · exact hz j h
+      · rw [show j = i by omega]; exact h0
+    have e3 := ofNat_eq_zero_iff (show n - i - 1 < 2 ^ 64 by omega)
+    bc_run hlive hS [e3] at 0x80007214 0x80007190
+    · intro h1
+      exact hnone _ (fun j hj => hz' j (by omega)) (by keeps_tac kk)
+    · intro h1
+      rcases k with _ | k
+      · omega
+      exact ih k rfl _ (by omega) hz' (by keeps_tac kk) (by bsimp []; exact congrArg _ (by omega))
+        (by bsimp [])
+  · intro h0
+    replace h0 : ds.getD i 0 ≠ 0 := fun e => h0 (hq.mpr e)
+    exact hfound _ ⟨i, by omega, h0⟩ (by keeps_tac kk)
+
 /-- **The `bc_is_zero` test at `0x800062cc`** of the number in `x24`: magnitude
 zero reaches `0x800063b4`, any other `0x800062f8`. -/
 theorem ztest_800062cc {live : Nat → Prop} {S : Nat → Prop}

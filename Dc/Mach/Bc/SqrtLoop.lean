@@ -860,4 +860,52 @@ theorem sq_back {live : Nat → Prop} {S : Nat → Prop}
       r27 := by rw [hk.get 27 (by decide)]; exact st.r27
       r26 := by bsimp []; rfl }
 
+/-- **The Newton loop** against `Dc.SqrtLoop`: from the head with the
+model's guess `g` at `cs`, out at `0x80006d68` with the last guess `y`,
+`rscale < cs'`, and the loop's result `Num.sqrtFinish y rscale`. -/
+theorem sq_loop {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q : Nat}
+    {Lb : List NumObj} {x zb o p5 : NumObj} {k rs : Nat}
+    (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) (hoom : RaOom live S Q Mt0 sp W q)
+    {g : Num} {cs : Nat} {r : Num} (hL : Dc.SqrtLoop x.rep.num rs g cs r)
+    (hexit : ∀ R' M' H' F' cs' G d y g',
+      SqN S Mt0 M' R0 R' sp W q H' F' Lb x zb p5 k rs cs' G d y g' → rs < cs' →
+      r = Num.sqrtFinish y.rep.num rs → DW live S Q 0x80006d68#64 R' M') :
+    ∀ R M H F D G G1, SqL S Mt0 M R0 R sp W q H F Lb x zb p5 k rs cs D G G1 g →
+      DW live S Q 0x80006b74#64 R M := by
+  have hrs : rs = max k x.rep.num.scale := by rw [NumRep.num_scale]; exact env.rsk
+  revert hexit
+  induction hL with
+  | @finish g cs hn hc =>
+    intro hexit R M H F D G G1 st
+    refine sq_step hlive env hoom st (fun R' M' H' F' d y hy hd st' hz => ?_)
+      (fun R' M' H' F' d y hy hd st' hz => ?_)
+    · exact sq_near hlive env st' (fun hlt => hexit _ _ _ _ _ _ _ _ _ st' hlt (by rw [hy]))
+        (fun hle => absurd hle (by omega))
+    · rw [hd, hn] at hz; exact absurd hz (by decide)
+  | @refine g cs r hn hc _ ih =>
+    intro hexit R M H F D G G1 st
+    refine sq_step hlive env hoom st (fun R' M' H' F' d y hy hd st' hz => ?_)
+      (fun R' M' H' F' d y hy hd st' hz => ?_)
+    · have h1 : Dc.BcModel.SqG x.rep.num (sqc x k) y.rep.num cs := by
+        rw [hy]; exact Dc.BcModel.sqG_step env.xneg env.xsc st'.model
+      refine sq_near hlive env st' (fun hlt => absurd hlt (by omega)) fun _ R'' st'' => ?_
+      have h2 : Dc.BcModel.SqG x.rep.num (sqc x k) y.rep.num (min (cs * 3) (rs + 1)) := by
+        rw [hrs]; exact Dc.BcModel.sqG_refine h1 (by omega)
+      refine sq_back hlive env st'' h2 fun R3 st3 => ?_
+      rw [hy] at st3
+      exact ih hexit R3 _ _ _ _ _ _ st3
+    · rw [hd, hn] at hz; exact absurd hz (by decide)
+  | @iterate g cs r hn _ ih =>
+    intro hexit R M H F D G G1 st
+    refine sq_step hlive env hoom st (fun R' M' H' F' d y hy hd st' hz => ?_)
+      (fun R' M' H' F' d y hy hd st' hz => ?_)
+    · rw [hd, hn] at hz; exact absurd hz (by decide)
+    · have h1 : Dc.BcModel.SqG x.rep.num (sqc x k) y.rep.num cs := by
+        rw [hy]; exact Dc.BcModel.sqG_step env.xneg env.xsc st'.model
+      refine sq_back hlive env st' h1 fun R3 st3 => ?_
+      rw [hy] at st3
+      exact ih hexit R3 _ _ _ _ _ _ st3
+
 end Dc.Mach

@@ -23,6 +23,7 @@ open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
 open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 set_option linter.unusedSimpArgs false
+set_option maxRecDepth 8000
 
 /-! ## The model on each route -/
 
@@ -608,5 +609,195 @@ theorem sq_setup {live : Nat → Prop} {S : Nat → Prop}
       try simp only [sq5]
       repeat rw [ldv_ld_miss _ _ (by omega)]
       first | exact wq | exact w8
+
+/-! ## The comparisons with `0` and `1` -/
+
+/-- The fixed facts once `x` is known non-negative: the model's result `n`
+and the continuations. -/
+structure SqCmp (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (t : String) (Mt0 : Mem) (R0 : Nat → BitVec 64) (sp W q k : Nat) (L : List NumObj)
+    (x z o : NumObj) (n : Option Num) : Prop where
+  cx : SqCtx S R0 sp W q
+  ha : SqArgs S Mt0 L x z o q k
+  oom : RaOom live S (DQ live S Q t) Mt0 sp W q
+  xneg : x.rep.neg = false
+  out : SqOut x.rep.num k n
+  ret : ∀ r, n = some r → ∀ R' M' H' F' Lf y', Keeps binClob R' R0 → R' 10 = 1#64 →
+    SqPost S Mt0 M' H' F' L x z q sp W r Lf y' → DW live S (DQ live S Q t) (R0 1) R' M'
+
+/-- `SqE` through a step that changes only registers outside it and the
+frame's first 48 bytes. -/
+theorem SqE.step {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp W q : Nat}
+    {H : Heap} {F : List Blk} {L : List NumObj} {x z : NumObj} {k : Nat}
+    (st : SqE S Mt0 M R0 R sp W q H F L x z k) (cx : SqCtx S R0 sp W q) {ks : List Nat}
+    (hk : Keeps ks R' R)
+    (hks : ∀ r ∈ ks, r ∈ sqAll ∧ r ∉ [2, 9, 18, 19, 20, 21, 22, 23, 25, 26, 27] := by decide)
+    (hag : ∀ a, ¬ (sp - 160 ≤ a ∧ a < sp - 160 + 48) → imgM M' a = imgM M a) :
+    SqE S Mt0 M' R0 R' sp W q H F L x z k := by
+  sq_facts cx
+  have g : ∀ r, r ∈ [2, 9, 18, 19, 20, 21, 22, 23, 25, 26, 27] → R' r = R r := fun r hr =>
+    hk.get r fun hm => (hks r hm).2 hr
+  exact
+    { sa :=
+        { r2 := (g 2 (by decide)).trans st.sa.r2
+          saved := st.sa.saved.transport (lo := 48) (top := 160) (hag := fun a h1 _ =>
+            hag a fun h => by omega)
+          keep := (hk.mono fun r hr => (hks r hr).1).trans st.sa.keep
+          out := fun a ha hf => (hag a fun h => hf (by simp only [frameIn]; omega)).trans
+            (st.sa.out a ha hf) }
+      heap := st.heap.out_frame (P := fun a => sp - 160 ≤ a ∧ a < sp - 160 + 48) hag
+        fun a h => outHeap_of_ge (by simp only [heapEnd]; omega)
+      cs := fun r hr => by
+        rw [g r (by simp only [List.mem_cons, List.not_mem_nil, or_false] at hr ⊢; omega)]
+        exact st.cs r hr
+      r9 := (g 9 (by decide)).trans st.r9
+      r18 := (g 18 (by decide)).trans st.r18
+      r19 := (g 19 (by decide)).trans st.r19
+      r20 := (g 20 (by decide)).trans st.r20
+      r26 := (g 26 (by decide)).trans st.r26 }
+
+/-- After `_bc_do_compare (x, _one_, 1)` returned to `0x80006e74`: equal
+returns `_one_` (`sq_glob`), otherwise the setup (`sq_setup`). -/
+theorem sq_cmpOneRes {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {n : Option Num}
+    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (hgt : Num.cmp x.rep.num (Num.zero 0) = .gt)
+    (w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr)
+    (h10 : R 10 = ordWord (Num.cmp x.rep.num Num.one)) :
+    DW live S (DQ live S Q t) 0x80006e74#64 R M := by
+  have cx := c.cx
+  have ha := c.ha
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hxn := hb.nums x ha.mx
+  have hxneg := c.xneg
+  cases hc1 : Num.cmp x.rep.num Num.one
+  case eq =>
+    rw [hc1] at h10
+    simp only [ordWord] at h10
+    bc_run hlive hS [h10] at 0x80006e7c 0x80006ed8
+    exact sq_glob hlive cx ha (st.step cx (ks := [8]) (by keeps_tac Keeps.refl _ _)
+      (hag := fun _ _ => rfl))
+      (.inl ⟨rfl, rfl, w8⟩) ha.mo ha.one ha.oneRef ha.oneNorm ha.oneLen
+      fun R' M' H' F' Lf y' hk h10' hp =>
+        c.ret _ (SqOut.of_one c.out hgt hc1) R' M' H' F' Lf y' hk h10' (by
+          rw [ha.oneNum] at hp; exact hp)
+  all_goals
+    rw [hc1] at h10
+    simp only [ordWord] at h10
+    bc_run hlive hS [h10] at 0x80006e7c 0x80006ed8
+    obtain ⟨r, hr, hsq⟩ := SqOut.of_root c.out hgt (by rw [hc1]; decide)
+    refine sq_setup hlive
+      { cx := cx, ha := ha, oom := c.oom, xneg := hxneg
+        x0 := Num.mag_of_cmpMag_zero (by
+          rw [← Num.cmp_zero_pos (by rw [NumRep.num_neg]; exact hxneg)]; exact hgt)
+        ne1 := by rw [hc1]; decide
+        xz := fun h => by
+          have e := hb.eq_of_p ha.mx ha.mz h
+          have hz0 := KZero.num ha.zero
+          rw [← e] at hz0; rw [hz0] at hgt; exact absurd hgt (by decide)
+        xo := fun h => by
+          have e := hb.eq_of_p ha.mx ha.mo h
+          rw [e, ha.oneNum] at hc1; exact absurd hc1 (by decide)
+        oz := fun h => by
+          have e := hb.eq_of_p ha.mo ha.mz h
+          have h1 := ha.oneNum
+          rw [e, KZero.num ha.zero] at h1; exact absurd h1 (by decide)
+        ilen := NumRep.intLen_eq hxn.shape ha.nx ha.lenx
+        sqrt := hsq
+        ret := c.ret r hr } (st.step cx (ks := [8]) (by keeps_tac Keeps.refl _ _)
+        (hag := fun _ _ => rfl)) w8
+      (by rw [hc1]; simp only [ordWord]; bsimp [h10])
+
+/-- **`_bc_do_compare (x, _one_, 1)`** at `0x80003fb0`, returning to
+`0x80006e74`. -/
+theorem sq_cmpOneCall {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {n : Option Num}
+    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (hgt : Num.cmp x.rep.num (Num.zero 0) = .gt)
+    (w8 : ldv .ld M (sp - 160 + 8) = BitVec.ofNat 64 oneAddr)
+    (h10 : R 10 = BitVec.ofNat 64 x.rep.p) (h11 : R 11 = BitVec.ofNat 64 o.rep.p)
+    (h12 : R 12 = 1#64) (h1 : R 1 = 0x80006e74#64) :
+    DW live S (DQ live S Q t) 0x80003fb0#64 R M := by
+  have ha := c.ha
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hx1 := ha.lenx; have ho1 := ha.oneLen
+  have hxneg := c.xneg
+  have hcm : cmpRes true x.rep.neg (Num.cmpMag x.rep.num o.rep.num) = Num.cmp x.rep.num Num.one := by
+    rw [ha.oneNum]
+    simp [cmpRes, Num.cmp, Num.one, NumRep.num_neg, hxneg]
+  refine do_compare_spec hlive hS (hb.nums x ha.mx) (hb.nums o ha.mo) ha.nx ha.oneNorm
+    (fun h => absurd h (by omega)) (fun h => absurd h (by omega)) (u := true) _ h10 h11 h12
+    (by rw [h1]; decide) fun R1 hk1 h10' => ?_
+  rw [hcm] at h10'
+  rw [h1]
+  exact sq_cmpOneRes hlive c (st.step c.cx hk1 (hag := fun _ _ => rfl)) hgt w8 h10'
+
+/-- **`x` against `1`** from `0x80006c98` (`x > 0`): equal returns `_one_`
+(`sq_glob`), otherwise the setup (`sq_setup`). -/
+theorem sq_cmpOne {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
+    (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp W q k : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {x z o : NumObj} {n : Option Num}
+    (c : SqCmp live S Q t Mt0 R0 sp W q k L x z o n) (st : SqE S Mt0 M R0 R sp W q H F L x z k)
+    (h8 : R 8 = 0#64) (hgt : Num.cmp x.rep.num (Num.zero 0) = .gt) :
+    DW live S (DQ live S Q t) 0x80006c98#64 R M := by
+  have cx := c.cx
+  have ha := c.ha
+  sq_facts cx
+  have hsf := cx.cc.frame
+  have hal := cx.al
+  have hb := st.heap
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have h2 := st.sa.r2
+  have hxn := hb.nums x ha.mx
+  have hon := hb.nums o ha.mo
+  have hzn := hb.nums z ha.mz
+  num_facts hon
+  have hog : o.rep.neg = false := by rw [← NumRep.num_neg, ha.oneNum]; rfl
+  have hos := hon.sign
+  rw [hog] at hos
+  have hone : ldv .ld M oneAddr = BitVec.ofNat 64 o.rep.p := by
+    have hq1 := cx.slotOne
+    rw [ldv_congr .ld fun j hj => st.sa.out _ (by simp only [OutHeap, heapStart, heapEnd,
+      freeListAddr, bcFreeAddr, widthOfM, oneAddr] at hj ⊢; omega)
+      (by simp only [frameIn, widthOfM, oneAddr] at hj ⊢; omega)]
+    exact ha.one
+  simp only [oneAddr] at hone
+  have hx1 := ha.lenx; have ho1 := ha.oneLen
+  have hxneg := c.xneg
+  have hcm : cmpRes true x.rep.neg (Num.cmpMag x.rep.num o.rep.num) = Num.cmp x.rep.num Num.one := by
+    rw [ha.oneNum]
+    simp [cmpRes, Num.cmp, Num.one, NumRep.num_neg, hxneg]
+  bc_run hlive hS [h2, h8, hone, st.r9] at 0x80003fb0
+  all_goals first
+    | exact frame_acc hsf (by omega) (by omega)
+    | (guard_target =~ LdOK _ _
+       have eo : oneAddr = 0x8001cdc0 := rfl; have htx : tohostAddr = 0x8001ad00 := rfl
+       bc_addr)
+    | exact fun b hb' => cx.cc.consts b (by
+        have := of_mem_accAddrs hb'
+        have eo : oneAddr = 0x8001cdc0 := rfl; have ez : zeroAddr = 0x8001cdc8 := rfl
+        have et : twoAddr = 0x8001cdb8 := rfl
+        simp only [constBytes]; omega)
+    | skip
+  case hF =>
+    intro hc
+    refine absurd ?_ hc
+    rw [ldv_lw_miss _ _ (by omega)]; exact hos
+  case hT =>
+    intro _
+    bc_run hlive hS [st.r9] at 0x80003fb0
+    exact sq_cmpOneCall hlive c (st.step cx (ks := [1, 10, 11, 12, 15])
+      (by keeps_tac Keeps.refl _ _) (hag := fun a h => imgM_store_miss _ _ (by omega))) hgt
+      (by rw [ldv_store_hit]; try rfl) (by bsimp [st.r9]) (by bsimp []) (by bsimp []) (by bsimp [])
 
 end Dc.Mach

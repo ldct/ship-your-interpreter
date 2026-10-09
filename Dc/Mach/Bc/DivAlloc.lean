@@ -500,6 +500,76 @@ theorem dvz_zero {live : Nat → Prop} {S : Nat → Prop}
       simp (disch := omega) only [imgM_store_miss]
       exact bf.out a ha (by simp only [frameIn]; omega)
 
+/-- **`bc_divide` from `0x80005b94`** (`len1 + k ≥ L`) to its return: the
+quotient's allocation, the normalisation, the loop. `D` carries the
+normalised digits (`hX`, `hV`) of the raw buffers `xs0`, `vs0`. -/
+theorem dvs_main {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z : NumObj} {D : DvData} {H : Heap} {F : List Blk} {n : Option Num} {m : Num}
+    {len1 k : Nat} {xs0 vs0 : List Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n) (hn : n = some m)
+    (bf : DvBufs S Mt0 M R0 sp W D H F (L1 ++ xr :: L2)) (hs : DvShape D)
+    (hx0l : xs0.length = D.xs.length) (hx0d : IsDigits xs0) (hx2 : 2 ≤ xs0.length)
+    (hx00 : xs0.getD 0 0 = 0) (hx0z : xs0.getD (xs0.length - 1) 0 = 0)
+    (hv0l : vs0.length = D.L) (hv0d : IsDigits vs0) (hv00 : 0 < vs0.getD 0 0)
+    (hX : D.xs = digBE (dvalBE xs0 * (10 / (vs0.getD 0 0 + 1))) xs0.length)
+    (hV : D.vs = digBE (dvalBE vs0 * (10 / (vs0.getD 0 0 + 1))) D.L)
+    (hx : ∀ i, i < xs0.length → imgM M (D.P + i) = BitVec.ofNat 8 (xs0.getD i 0))
+    (hv : ∀ i, i < D.L → imgM M (D.N + i) = BitVec.ofNat 8 (vs0.getD i 0))
+    (hsent : imgM M (D.N + D.L) = 0#8)
+    (hoff : D.off = D.L - len1) (hkb : D.Kb + D.L = len1 + k) (hle : D.L ≤ len1 + k)
+    (hsz : len1 + k < 2 ^ 29)
+    (hm : m = ⟨if D.pre (D.Kb + 1) / D.V = 0 then false else x1.rep.neg != x2.rep.neg,
+      D.pre (D.Kb + 1) / D.V, k⟩)
+    (hr0 : ResSlot Mt0 L1 xr q) (hn1 : D.n1p = x1.rep.p) (hn2 : D.n2p = x2.rep.p) (hrs : D.rs = q)
+    (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2' : x2 ∈ L1 ++ xr :: L2) (hz : z ∈ L1 ++ xr :: L2)
+    (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 D.n1p)
+    (h9 : R 9 = BitVec.ofNat 64 D.n2p) (h12 : R 12 = BitVec.ofNat 64 (k + 1))
+    (h16 : R 16 = BitVec.ofNat 64 (D.L + 1)) (h18 : R 18 = BitVec.ofNat 64 D.P)
+    (h19 : R 19 = BitVec.ofNat 64 D.b2.pay) (h20 : R 20 = BitVec.ofNat 64 (len1 + k))
+    (h21 : R 21 = BitVec.ofNat 64 k) (h22 : R 22 = BitVec.ofNat 64 D.rs)
+    (h23 : R 23 = BitVec.ofNat 64 D.L) (h24 : R 24 = BitVec.ofNat 64 D.N)
+    (h25 : R 25 = BitVec.ofNat 64 (xs0.length - 2)) (h26 : R 26 = BitVec.ofNat 64 len1)
+    (h27 : R 27 = BitVec.ofNat 64 (D.L + 1)) (hkp : Keeps divAll R R0) :
+    DW live S Q 0x80005b94#64 R M := by
+  have hl1 := hs.l1
+  have hTs := hs.small
+  refine dvs_alloc hlive cx.dv bf hle hl1 hsz h2 h12 h21 h23 h26 h27 hk.oom
+    fun R1 M1 H1 F1 y b bs hy hkeep r21 r16 K1 => ?_
+  have hx' : ∀ i, i < xs0.length → imgM M1 (D.P + i) = BitVec.ofNat 8 (xs0.getD i 0) := fun i hi =>
+    (hkeep _ (.inl (bf.pIn i (by omega)))).trans (hx i hi)
+  have hv' : ∀ i, i < D.L → imgM M1 (D.N + i) = BitVec.ofNat 8 (vs0.getD i 0) := fun i hi =>
+    (hkeep _ (.inr (bf.nIn i (by omega)))).trans (hv i hi)
+  have hsent' : imgM M1 (D.N + D.L) = 0#8 := (hkeep _ (.inr (bf.nIn _ (Nat.le_refl _)))).trans hsent
+  let D' : DvData := { D with b3 := b, Bm := b.pay, qv := y.sb.pay }
+  have bs' : DvBase S Mt0 M1 R0 sp W D' H1 F1 (L1 ++ xr :: L2) y := { bs with }
+  have hs' : DvShape D' := { hs with }
+  have hyq : y.rep.len + y.rep.scale = dvQlen len1 D.L + k := by rw [hy]; rfl
+  refine dvs_norm (D := D') hlive cx.dv bs' hx0l hx0d hx2 hx00 hx0z hv0l hv0d hv00 hX hV hl1
+    (by simp only [D']; omega) (by omega) hx' hv' hsent' (by rw [K1.get 2]; exact h2) (by rw [r16]; exact h16)
+    (by rw [K1.get 18]; exact h18) (by rw [K1.get 23]; exact h23) (by rw [K1.get 24]; exact h24)
+    (by rw [K1.get 25]; exact h25) fun R2 M2 bs2 hx2s hv2s hsent2 r17 r16' K2 => ?_
+  have g : ∀ r, r ∉ normClob → r ∉ allocClob → R2 r = R r := fun r h1 h2 => by
+    rw [K2 r h1, K1 r h2]
+  refine dvs_init (len1 := len1) (k := k) hlive cx.dv hs' bs2 hx2s hv2s hsent2 hoff hkb hle ?_
+    (by omega) (by rw [g 2 (by decide) (by decide)]; exact h2)
+    (by rw [g 8 (by decide) (by decide)]; exact h8) (by rw [g 9 (by decide) (by decide)]; exact h9)
+    (by rw [g 18 (by decide) (by decide)]; exact h18)
+    (by rw [g 19 (by decide) (by decide)]; exact h19)
+    (by rw [K2.get 21]; exact r21) rfl
+    (by rw [g 22 (by decide) (by decide)]; exact h22)
+    (by rw [g 23 (by decide) (by decide)]; exact h23)
+    (by rw [g 24 (by decide) (by decide)]; exact h24)
+    (by rw [g 26 (by decide) (by decide)]; exact h26)
+    (by rw [g 20 (by decide) (by decide)]; exact h20) r16' r17 ?_ fun R3 M3 st => ?_
+  · rw [hyq]; simp only [D', dvQlen]; split <;> omega
+  · exact (K2.mono (by decide)).trans ((K1.mono (by decide)).trans hkp)
+  · exact dv_run hlive cx hk hn hs' st hr0 rfl hn1 hn2 hrs hx1 hx2' hz hzg
+      (by rw [hm, hy]; rfl) (by rw [hy]; simp only [zeroRep, dvQlen]; split <;> omega)
+      (by rw [hy]; rfl)
+
 end
 
 end Dc.Mach

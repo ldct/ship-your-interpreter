@@ -312,31 +312,32 @@ theorem StrAt.setRefs {M : Mem} {o : StrObj} (h : StrAt M o) {v : BitVec 64} {k 
   · rw [MemOnly.store M _ 4 v _ (hap _ (by simp only [Blk.In, Blk.pay, Blk.fin] at hts ⊢; omega))]
     exact h.nul
 
-/-- **`s_refs` of a string of the state incremented**: the handle `.str p`
-joins `hs`. -/
-theorem DcAt.bumpStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {A B : List StrObj} {o : StrObj}
-    (h : DcAt S M H F L C G hs st) (he : G.strs = A ++ o :: B) (hhs : hs.length ≤ 2 ^ 30)
-    {v : BitVec 64} (hv : v.toNat % 2 ^ 32 = o.refs + 1) :
-    DcAt S (writeLog M [(o.hb.pay + 16, 4, v)]) H F L C (G.withStr A B (o.withRefs (o.refs + 1)))
-      (.str o.hb.pay :: hs) st := by
+/-- **`s_refs` of a string of the state rewritten to `k`**, the handles now
+`hs'`: the count of `.str p` is `k`, every other count unchanged. -/
+theorem DcAt.strRefsTo {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs hs' : List GV} {st : St} {A B : List StrObj} {o : StrObj}
+    (h : DcAt S M H F L C G hs st) (he : G.strs = A ++ o :: B) {k : Nat} (hk1 : 1 ≤ k)
+    (hk : k < 2 ^ 31) (hcnt : ∀ g, g ≠ .str o.hb.pay → (G.vals ++ hs').count g = (G.vals ++ hs).count g)
+    (hkc : k = (G.vals ++ hs').count (.str o.hb.pay))
+    (hsD : ∀ g ∈ hs', g = .str o.hb.pay ∨ g ∈ hs)
+    {v : BitVec 64} (hv : v.toNat % 2 ^ 32 = k) :
+    DcAt S (writeLog M [(o.hb.pay + 16, 4, v)]) H F L C (G.withStr A B (o.withRefs k)) hs' st := by
   have hom : o ∈ G.strs := by rw [he]; exact List.mem_append_right _ List.mem_cons_self
   have hi := h.heap.heap
   have hso := h.view.strs o hom
   have hsz := hso.hsz
   have hm : MemOnly o.hb.In (writeLog M [(o.hb.pay + 16, 4, v)]) M := fun a ha =>
     MemOnly.store M _ 4 v a fun hh => ha (by simp only [Blk.In, Blk.pay, Blk.fin] at hh ⊢; omega)
-  have hrl := h.strRefs_lt hhs hom
   have hss := h.str_ne_str he
   have hbG := G.str_mem hom
   have hap : ∀ a, o.tb.In a → ¬ (o.hb.pay + 16 ≤ a ∧ a < o.hb.pay + 16 + 4) := fun a ha hh =>
     live_apart hi (h.heap.raw.live _ hbG.2) (h.heap.raw.live _ hbG.1) hss.1 ha
       (by simp only [Blk.In, Blk.pay, Blk.fin] at hh ⊢; omega)
-  have hso' := hso.setRefs hv (by omega) hrl hap
-  have hbl := G.withStr_blocks (o' := o.withRefs (o.refs + 1)) he rfl rfl
+  have hso' := hso.setRefs hv hk1 hk hap
+  have hbl := G.withStr_blocks (o' := o.withRefs k) he rfl rfl
   have hhp := h.ownWrite hbG.1 hm
   have d := h.den
-  have hsub : DObjs.Sub ⟨L, G.strs⟩ ⟨L, A ++ o.withRefs (o.refs + 1) :: B⟩ :=
+  have hsub : DObjs.Sub ⟨L, G.strs⟩ ⟨L, A ++ o.withRefs k :: B⟩ :=
     ⟨fun y hy => ⟨y, hy, rfl, rfl⟩, fun o2 ho2 => by
       rw [he] at ho2
       rcases mem_split_cases ho2 with rfl | ho2
@@ -351,22 +352,48 @@ theorem DcAt.bumpStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L :
       hsDen := fun g hg => ?_
       numRefs := fun y hy => ?_
       strRefs := fun o2 ho2 => ?_ }
-    · rcases List.mem_cons.mp hg with rfl | hg
+    · rcases hsD g hg with rfl | hg
       · exact ⟨.str o.s, _, List.mem_append_right _ List.mem_cons_self, rfl, rfl⟩
       · obtain ⟨w, hw⟩ := d.hsDen g hg; exact ⟨w, hw.relist hsub⟩
-    · rw [G.withStr_vals, count_cons_ne _ _ (by simp)]; exact d.numRefs y hy
+    · rw [G.withStr_vals, hcnt _ (by simp)]; exact d.numRefs y hy
     · rw [G.withStr_vals]
       rcases mem_split_cases ho2 with rfl | ho2
-      · show o.refs + 1 = (G.vals ++ .str o.hb.pay :: hs).count (.str o.hb.pay)
-        rw [count_cons_self]; have := d.strRefs o hom; omega
+      · exact hkc
       · have ho2G : o2 ∈ G.strs := by rw [he]; exact mem_split_of ho2
         have s1 := hso.hsz; have s2 := (h.view.strs o2 ho2G).hsz
-        rw [count_cons_ne _ _ fun e => by
+        rw [hcnt _ fun e => by
           have e' := GV.str.inj e
           exact live_apart hi (h.heap.raw.live _ (G.str_mem ho2G).1) (h.heap.raw.live _ hbG.1)
             (hss.2 o2 ho2).1 (a := o2.hb.pay) (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)
             (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)]
         exact d.strRefs o2 ho2G
 
+/-- **`s_refs` of a string of the state incremented**: the handle `.str p`
+joins `hs`. -/
+theorem DcAt.bumpStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {A B : List StrObj} {o : StrObj}
+    (h : DcAt S M H F L C G hs st) (he : G.strs = A ++ o :: B) (hhs : hs.length ≤ 2 ^ 30)
+    {v : BitVec 64} (hv : v.toNat % 2 ^ 32 = o.refs + 1) :
+    DcAt S (writeLog M [(o.hb.pay + 16, 4, v)]) H F L C (G.withStr A B (o.withRefs (o.refs + 1)))
+      (.str o.hb.pay :: hs) st := by
+  have hom : o ∈ G.strs := by rw [he]; exact List.mem_append_right _ List.mem_cons_self
+  refine h.strRefsTo he (by omega) (h.strRefs_lt hhs hom) (fun g hg => count_cons_ne _ _ (Ne.symm hg))
+    ?_ (fun g hg => List.mem_cons.mp hg) hv
+  rw [count_cons_self, h.den.strRefs o hom]
+
+/-- **`s_refs` of a string of the state decremented** (not the last
+reference): the handle `.str p` leaves `hs`. -/
+theorem DcAt.decStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {A B : List StrObj} {o : StrObj}
+    (h : DcAt S M H F L C G (.str o.hb.pay :: hs) st) (he : G.strs = A ++ o :: B)
+    (h2 : 2 ≤ o.refs) {v : BitVec 64} (hv : v.toNat % 2 ^ 32 = o.refs - 1) :
+    DcAt S (writeLog M [(o.hb.pay + 16, 4, v)]) H F L C (G.withStr A B (o.withRefs (o.refs - 1)))
+      hs st := by
+  have hom : o ∈ G.strs := by rw [he]; exact List.mem_append_right _ List.mem_cons_self
+  have hso := h.view.strs o hom
+  refine h.strRefsTo he (by omega) (by have := hso.refsLt; omega)
+    (fun g hg => (count_cons_ne _ _ (Ne.symm hg)).symm) ?_
+    (fun g hg => .inr (List.mem_cons_of_mem _ hg)) hv
+  have := h.den.strRefs o hom; rw [count_cons_self] at this; omega
 
 end Dc.Mach

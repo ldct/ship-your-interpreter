@@ -5219,6 +5219,7 @@ Checked so far:
 - Reference-count bound (`DcRefs.lean`): `DcAt.blocks_len` (at most 7856803 apart blocks in the heap), `DcAt.count_le`, `DcAt.numRefs_lt`/`.strRefs_lt` (one more reference fits the 32-bit count when `hs.length ≤ 2^30`).
 - `dc_dup_spec`, `dc_dup_num_spec`, `dc_dup_str_spec` (`DcDup.lean`) over `DcAt.bumpNum`/`DcAt.bumpStr` (`DcRefOps.lean`); the returned type word is read back from the 16-byte frame (`ld_lo32_sw`).
 - `dc_free_num_spec` (`DcFree.lean`): a handle in a stack slot through `bc_free_num_spec`; the state after `DcAt.decNum` (one reference fewer) or `DcAt.relNum` (released).
+- `dc_free_str_spec` (`DcFree.lean`): `DcAt.decStr` (over `DcAt.strRefsTo`, shared with `bumpStr`), or `DcAt.dropStr` then both blocks freed (`free_str_rel`).
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come
 from counting live blocks (heap below `2^27` bytes).

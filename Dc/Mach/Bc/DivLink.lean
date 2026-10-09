@@ -86,7 +86,7 @@ theorem dvVs_of {ds : List Nat} (hd : IsDigits ds) {len2 z0 : Nat} (hl : len2 �
 structure DvBuild (D : DvData) (xs0 vs0 : List Nat) (len1 k : Nat) : Prop where
   xs : D.xs = digBE (dvalBE xs0 * dvNorm vs0) xs0.length
   vs : D.vs = digBE (dvalBE vs0 * dvNorm vs0) D.L
-  kb : D.Kb + D.L = len1 + k
+  kb : D.Kb = len1 + k - D.L
 
 /-- **The loop's shape** for the normalised buffers of `dvXs0` and `dvVs0`. -/
 theorem dv_shape {D : DvData} {ds1 vs0 : List Nat} {l1 sa s2 k : Nat}
@@ -141,5 +141,151 @@ theorem dv_quot_zero {ds1 ds2 : List Nat} {l1 sa ln2 sb s2 z0 k : Nat}
   have hge := dvalBE_ge_of_first (by rw [hv.len]; exact hv.l1) hv.first
   rw [hv.len] at hge
   exact dv_short_zero hA hlt hge
+
+/-- `Num.div` by a nonzero divisor. -/
+theorem num_div_some {a b : Num} (k : Nat) (hb : b.mag ≠ 0) :
+    Num.div a b k = some ⟨if a.mag * 10 ^ (b.scale + k) / (b.mag * 10 ^ a.scale) = 0 then false
+      else a.neg != b.neg, a.mag * 10 ^ (b.scale + k) / (b.mag * 10 ^ a.scale), k⟩ := by
+  simp only [Num.div, beq_iff_eq, hb, if_false]
+
+section
+set_option linter.unusedSimpArgs false
+set_option maxRecDepth 8000
+
+open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
+open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
+
+/-- `n2`'s digits as `bc_divide` reads them: the trimmed scale `s2`, zeros
+past it and before the first nonzero digit `z0`. -/
+structure DvDivisor (x2 : NumObj) (s2 z0 : Nat) : Prop where
+  s2le : s2 ≤ x2.rep.scale
+  tz : ∀ j, s2 ≤ j → j < x2.rep.scale → x2.rep.ds.getD (x2.rep.len + j) 0 = 0
+  lz : ∀ i, i < z0 → x2.rep.ds.getD i 0 = 0
+  zl : z0 < x2.rep.len + s2
+  nz : x2.rep.ds.getD z0 0 ≠ 0
+
+/-- **`bc_divide` from `0x80005a50`** with both buffers in place: the length
+dispatch, then the quotient loop or the zero quotient. -/
+theorem dv_after {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z : NumObj} {D : DvData} {H : Heap} {F : List Blk} {n : Option Num} {s2 z0 k : Nat}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (hn : n = Num.div x1.rep.num x2.rep.num k)
+    (bf : DvBufs S Mt0 M R0 sp W D H F (L1 ++ xr :: L2))
+    (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2) (hdv : DvDivisor x2 s2 z0)
+    (hb : DvBuild D (dvXs0 x1.rep.ds (k + s2 - x1.rep.scale))
+      (dvVs0 x2.rep.ds (x2.rep.len + s2) z0) (x1.rep.len + s2) k)
+    (hL : D.L = x2.rep.len + s2 - z0) (hoff : D.off = D.L - (x1.rep.len + s2))
+    (hn1 : D.n1p = x1.rep.p) (hn2 : D.n2p = x2.rep.p) (hrs : D.rs = q)
+    (hx : ∀ i, i < (dvXs0 x1.rep.ds (k + s2 - x1.rep.scale)).length →
+      imgM M (D.P + i) = BitVec.ofNat 8 ((dvXs0 x1.rep.ds (k + s2 - x1.rep.scale)).getD i 0))
+    (hv : ∀ i, i < D.L → imgM M (D.N + i) =
+      BitVec.ofNat 8 ((dvVs0 x2.rep.ds (x2.rep.len + s2) z0).getD i 0))
+    (hsent : imgM M (D.N + D.L) = 0#8)
+    (hsz : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27)
+    (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
+    (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 x2.rep.p)
+    (h16 : R 16 = BitVec.ofNat 64 (D.L + 1)) (h18 : R 18 = BitVec.ofNat 64 D.P)
+    (h19 : R 19 = BitVec.ofNat 64 D.b2.pay) (h21 : R 21 = BitVec.ofNat 64 k)
+    (h22 : R 22 = BitVec.ofNat 64 q) (h23 : R 23 = BitVec.ofNat 64 D.L)
+    (h24 : R 24 = BitVec.ofNat 64 D.N)
+    (h25 : R 25 = BitVec.ofNat 64 (x1.rep.len + x1.rep.scale + (k + s2 - x1.rep.scale)))
+    (h26 : R 26 = BitVec.ofNat 64 (x1.rep.len + s2)) (h27 : R 27 = BitVec.ofNat 64 (D.L + 1))
+    (hkp : Keeps divAll R R0) :
+    DW live S Q 0x80005a50#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => bf.heap.heap.own a h1 h2
+  have hn1' := bf.heap.nums x1 hx1
+  have hn2' := bf.heap.nums x2 hx2
+  have hd1 := hn1'.shape.dig
+  have hl1 := hn1'.shape.dsLen
+  have hd2 := hn2'.shape.dig
+  have hl2 := hn2'.shape.dsLen
+  have hs2 := hdv.s2le
+  have hzl := hdv.zl
+  have hvv : DvVs (dvVs0 x2.rep.ds (x2.rep.len + s2) z0) D.L := by
+    rw [hL]; exact dvVs_of hd2 (by omega) hzl hdv.nz
+  have hmag : x2.rep.num.mag ≠ 0 := fun h => hdv.nz
+    ((dval_eq_zero_iff x2.rep.ds).mp h z0 (by omega))
+  have hxl := dvXs0_length x1.rep.ds (k + s2 - x1.rep.scale)
+  refine dvs_disp hlive hS (len1 := x1.rep.len + s2) (k := k) (L := D.L) (by omega) (by omega) h21 h23 h26
+    (fun R' hge K r12 r20 => ?_) (fun R' hlt K r12 r20 => ?_)
+  · have hq := dv_quot hd1 hl1 hl2 hs2 hdv.tz hdv.lz hzl hvv hb hge
+    refine dvs_main (len1 := x1.rep.len + s2) (k := k) hlive cx hk
+      (by rw [hn, num_div_some k hmag]) bf (dv_shape hd1 hl1 hvv hb hge (by omega))
+      (by rw [hb.xs, digBE_length]) (dvXs0_digits hd1 _) (by omega) rfl
+      (by rw [hxl]; simp only [dvXs0, dvx_getD]; rw [if_neg (by omega)])
+      hvv.len hvv.dig hvv.first hb.xs hb.vs hx hv hsent hoff (by have := hb.kb; omega) hge (by omega)
+      (by rw [hq]; rfl) hr0 hn1 hn2 hrs hx1 hx2 hz hzg
+      (by rw [K.get 2]; exact h2) (by rw [K.get 8]; rw [hn1]; exact h8) (by rw [K.get 9, hn2]; exact h9)
+      r12 (by rw [K.get 16]; exact h16) (by rw [K.get 18]; exact h18) (by rw [K.get 19]; exact h19)
+      r20 (by rw [K.get 21]; exact h21) (by rw [K.get 22, hrs]; exact h22) (by rw [K.get 23]; exact h23)
+      (by rw [K.get 24]; exact h24) (by rw [K.get 25, hxl]; rw [h25]; exact congrArg _ (by omega))
+      (by rw [K.get 26]; exact h26) (by rw [K.get 27]; exact h27) ((K.mono (by decide)).trans hkp)
+  · have hq := dv_quot_zero (l1 := x1.rep.len) (sa := x1.rep.scale) (ln2 := x2.rep.len) (k := k)
+      (sb := x2.rep.scale) hd1 hl1 hl2 hs2 hdv.tz hdv.lz hzl (by rw [← hL]; exact hvv) (by omega)
+    refine dvz_zero hlive cx hk (by rw [hn, num_div_some k hmag]; simp only [NumRep.num, dval_eq_dvalBE] at hq ⊢; rw [hq]; rfl)
+      bf hr0 hx1 hx2 hz hzg (by omega) (by omega)
+      (by rw [K.get 2]; exact h2) (by rw [K.get 8]; exact h8) (by rw [K.get 9]; exact h9) r12
+      (by rw [K.get 18]; exact h18) (by rw [K.get 19]; exact h19) (by rw [K.get 21]; exact h21)
+      (by rw [K.get 22]; exact h22) (by rw [K.get 27]; exact h27) ((K.mono (by decide)).trans hkp)
+
+/-- **`bc_divide` from `0x800059d0`** with `num1` in place: `num2`
+(`dvn_setup`), then `dv_after` over the normalised buffers. -/
+theorem dv_num2 {live : Nat → Prop} {S : Nat → Prop}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q W : Nat} {L1 L2 : List NumObj}
+    {xr x1 x2 z : NumObj} {H : Heap} {F : List Blk} {n : Option Num} {s2 z0 k : Nat} {b1 : Blk}
+    (cx : DivCtx S R0 sp q W) (hk : DivKW live S Q R0 Mt0 L1 L2 xr q sp W n)
+    (hn : n = Num.div x1.rep.num x2.rep.num k)
+    (hb1 : ∀ D : DvData, D.b1 = b1 → D.P = b1.pay →
+      D.xs.length = x1.rep.len + x1.rep.scale + (k + s2 - x1.rep.scale) + 2 →
+      DvBuf1 S Mt0 M R0 sp W D H F (L1 ++ xr :: L2))
+    (hdig : ∀ i, i < x1.rep.len + x1.rep.scale + (k + s2 - x1.rep.scale) + 2 → imgM M (b1.pay + i) =
+      BitVec.ofNat 8 ((dvXs0 x1.rep.ds (k + s2 - x1.rep.scale)).getD i 0))
+    (hx1 : x1 ∈ L1 ++ xr :: L2) (hx2 : x2 ∈ L1 ++ xr :: L2) (hdv : DvDivisor x2 s2 z0)
+    (hl1 : x1.rep.ds.length = x1.rep.len + x1.rep.scale)
+    (hl2 : x2.rep.ds.length = x2.rep.len + x2.rep.scale)
+    (hsz : x1.rep.len + x1.rep.scale + k + x2.rep.len + x2.rep.scale < 2 ^ 27)
+    (hr0 : ResSlot Mt0 L1 xr q) (hz : z ∈ L1 ++ xr :: L2)
+    (hzg : ldv .ld Mt0 zeroAddr = BitVec.ofNat 64 z.rep.p)
+    (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h8 : R 8 = BitVec.ofNat 64 x1.rep.p)
+    (h9 : R 9 = BitVec.ofNat 64 x2.rep.p) (h18 : R 18 = BitVec.ofNat 64 b1.pay)
+    (h19 : R 19 = BitVec.ofNat 64 s2) (h21 : R 21 = BitVec.ofNat 64 k)
+    (h22 : R 22 = BitVec.ofNat 64 q)
+    (h25 : R 25 = BitVec.ofNat 64 (x1.rep.len + x1.rep.scale + (k + s2 - x1.rep.scale)))
+    (h26 : R 26 = BitVec.ofNat 64 (x1.rep.len + s2)) (hkp : Keeps divAll R R0) :
+    DW live S Q 0x800059d0#64 R M := by
+  let xs0 := dvXs0 x1.rep.ds (k + s2 - x1.rep.scale)
+  let vs0 := dvVs0 x2.rep.ds (x2.rep.len + s2) z0
+  let L := x2.rep.len + s2 - z0
+  let D0 : DvData :=
+    { P := b1.pay, N := 0, Bm := 0, off := L - (x1.rep.len + s2), L := L,
+      Kb := x1.rep.len + s2 + k - L, xs := digBE (dvalBE xs0 * dvNorm vs0) xs0.length,
+      vs := digBE (dvalBE vs0 * dvNorm vs0) L, b1 := b1, b2 := b1, b3 := b1, qv := 0,
+      n1p := x1.rep.p, n2p := x2.rep.p, rs := q }
+  have hxl : xs0.length = x1.rep.len + x1.rep.scale + (k + s2 - x1.rep.scale) + 2 := by
+    rw [dvXs0_length, hl1]
+  have bD := hb1 D0 rfl rfl (by simp only [D0]; rw [digBE_length, hxl])
+  refine dvn_setup hlive cx.dv bD hx2 hdv.s2le hdv.lz hdv.nz hdv.zl h2 h9 h19 hk.oom
+    fun R' M' H' b2 bfs hkb1 hdig2 hsent r24 r23 r16 r27 r19 K => ?_
+  have hs2 := hdv.s2le
+  have hzl := hdv.zl
+  refine dv_after hlive cx hk hn bfs hx1 hx2 hdv ⟨rfl, rfl, rfl⟩ rfl rfl rfl rfl rfl
+    (fun i hi => (hkb1 _ (bD.pIn i (by simp only [D0]; rw [digBE_length]; exact hi))).trans
+      (hdig i (by rw [← hxl]; exact hi)))
+    (fun i hi => by
+      simp only at hi ⊢
+      rw [show b2.pay + z0 + i = b2.pay + (z0 + i) by omega, hdig2 _ (by omega),
+        dvVs0_getD (by omega) (by omega)])
+    (by simp only; rw [show b2.pay + z0 + (x2.rep.len + s2 - z0) = b2.pay + (x2.rep.len + s2) by omega]
+        exact hsent)
+    hsz hr0 hz hzg (by rw [K.get 2]; exact h2) (by rw [K.get 8]; exact h8) (by rw [K.get 9]; exact h9)
+    r16 (by rw [K.get 18]; exact h18) r19 (by rw [K.get 21]; exact h21) (by rw [K.get 22]; exact h22)
+    r23 r24 (by rw [K.get 25]; exact h25) (by rw [K.get 26]; exact h26) r27 ((K.mono (by decide)).trans hkp)
+
+end
 
 end Dc.Mach

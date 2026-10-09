@@ -4566,7 +4566,8 @@ loop (`ol_out`), epilogue (`ol_epi`).
 `negw` overflows) with the old object `x` in the slot (`FreeEntry` at
 `sp - 96`). `I2NK.ret` receives `I2NPost`: the slot holds a fresh object `y`
 heading the heap left by `bc_free_num` (`FreedRest.dec`/`.rel`), with
-`y.rep.num = Num.ofInt val`, normalized, one reference; off the heap only the
+`y.rep.num = Num.ofInt val`, normalized, one reference, owning its digit buffer
+(`I2NPost.owns`); off the heap only the
 slot and the 128-byte stack window change. `I2NK.oom` covers `out_of_memory`.
 Segments: prologue (`i2nPro_saved`), first digit (`i2n_head`), digit loop
 (`i2n_loop`), `bc_free_num`/`bc_new_num` calls (`i2n_free`, `i2n_new`), slot
@@ -5082,3 +5083,45 @@ Premises the callers supply: `RxArgs.size`
 and `RxCtx.far` (`stderr` below the frame). The scale warnings leave the
 console unchanged. The axioms are `propext`, `Classical.choice` and
 `Quot.sound`.
+
+### M8 `bc_sqrt` (checked)
+
+`bc_sqrt_spec` (`Dc/Mach/Bc/SqrtEntry.lean`) proves `bc_sqrt` at `0x80006a1c`
+against `SqOut x k n` in `DWO`. `SqK.fail` receives `0` for a negative `x`,
+with nothing changed outside the frame. `SqK.ret` receives `1` and `SqPost`,
+where the slot holds `y` with `y.rep.num = r`, normalized, with a digit and
+owning its buffer. `SqPost.mid` admits the `_zero_` reference that the
+`0 < x < 1` route leaks (`SqLeak`), drops `x` and adds the reference to `y`.
+`r` is `Num.zero 0` or `Num.one` for the two global returns. Otherwise `r` is
+`Dc.Sqrt x k r`: the Newton loop from `Num.sqrtInit` to `Num.sqrtFinish`.
+`SqK.oom` receives `out_of_memory`. The files:
+
+- `SqrtBase.lean`: the contract (`SqCtx`, `SqArgs`, `SqOut`, `SqLeak`,
+  `SqPost`, `SqK`), the frame state `SqAt`, and the callees on handles
+  (`sq_mulH`, `sq_addH`, `sq_subH`, `sq_divH`).
+- `SqrtScan.lean`: the inlined `bc_is_near_zero` (`sq_scan`).
+- `SqrtLoop.lean`: one iteration (`sq_step`) and the loop (`sq_loop`).
+- `SqrtExit.lean`: the epilogues (`sq_epi`, `sq_ret`), `free_slot_spec`, and
+  the handle frees (`SqFr.step`, `sq_exit`).
+- `SqrtInit.lean`, `SqrtHi.lean`: the first guess below one (`sq_lo`) and
+  above one (`sq_hi`). The model side is `sqrtInit_lo`/`sqrtInit_hi`
+  (`Dc/BcModel/SqrtInit.lean`).
+- `SqrtEntry.lean`: the sign dispatch (`sq_sign`), the compares against
+  `_zero_` and `_one_` (`sq_cmpZero`, `sq_cmpOne`), the global returns
+  (`sq_glob`), and the setup (`sq_setup`, `sq_setRefs`, `sq_setNew`).
+
+Premises the callers supply in `SqArgs`:
+- `x` normalized with a digit and a reference.
+- `x.len + x.scale + k < 2^20`.
+- Room for sixteen more references on every number of `L`, and every number
+  of `L` owning its buffer.
+- `_zero_` and `_one_` at their globals.
+- The multiplication base word (`mulBaseAddr`).
+- The stderr stream.
+- A second reference on `x` when it is `_zero_` or `_one_`.
+
+`SqCtx` places the slot off the heap and apart from both globals, and reserves
+`bc_raise`'s stack below the frame.
+
+`SqrtEntry.lean` sets `maxRecDepth 8000`, following the division files. The
+axioms are `propext`, `Classical.choice` and `Quot.sound`.

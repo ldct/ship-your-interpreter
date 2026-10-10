@@ -5283,3 +5283,28 @@ Open premise: `dc_array_get_spec` takes `hsrt` (the top array of `r` is strictly
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come
 from counting live blocks (heap below `2^27` bytes).
+
+### M10–M12 dc evaluator and assembly: admissibility premises (2026-10-10)
+
+`Dc.endToEnd_of_evalstr` (`Dc/EndToEnd.lean`) proves the final statement of
+`Dc/PLAN.md` from `EvalstrSpec` (term direction) and `EvalstrDivSpec` (stuck
+direction) under `DcAdmissible`. Its fields that restrict programs beyond the
+binary's limits on length and NUL:
+
+- `LeakBound 70 prog dcK` (`Dc/Mach/EvalLeak.lean`): at every fuel, the leaking
+  steps number at most `dcK`. A step leaks when GNU dc loses a reference:
+  `leakAllow c` (2 for `~ :`, 1 for `/ % | v X i k o Q R ;`, on their error
+  routes or callee leaks) and `numLeak` (1 for a number literal with a
+  fraction, `dc_getnum`'s divisor). `dcK` is fixed by the handle bound
+  `4k + 9 ≤ 2^20`. Known limitation: the bound is over a whole run, so a
+  long-running loop of leaking commands is not admissible.
+- `TailBound 70 prog`: the tail depth (`evalstr`'s 32-bit `tail_depth`) stays
+  below `2^31` at every fuel.
+- `NestBound 70 prog dcD` with `dcD = 47589` (`Dc/Mach/StackBound.lean`): the
+  8 MiB stack less the deepest library chain (12704 bytes), at 176 bytes per
+  nested `evalstr`. Each nesting level also costs one handle of the budget
+  slack (`+ d`).
+- SizeBound per `dc_func` call (`EvBudget.size`, `FnSize`).
+
+String lengths below `2^24` (`StrBound`) and sorted register arrays
+(`ArrSorted`) are invariants proved from the semantics, not premises.

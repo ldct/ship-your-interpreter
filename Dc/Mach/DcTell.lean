@@ -371,4 +371,233 @@ theorem dc_tell_scale_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → 
       (fun hs' => hf (by simp only [slotBytes, frameIn] at hs' ⊢; omega))]
     exact hM2 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
 
+/-! ## `dc_tell_length` -/
+
+/-- `Z`'s length of a value: a number's `numLen`, a string's length. -/
+def _root_.Dc.Val.zLen : Dc.Val → Nat
+  | .num n => n.numLen
+  | .str s => s.length
+
+/-- A string of the state fits the heap. -/
+theorem DcAt.str_len {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
+    {o : StrObj} (ho : o ∈ G.strs) : o.s.length < 2 ^ 31 := by
+  have ht := (h.view.strs o ho).tsz
+  have hb : o.tb ∈ G.blocks :=
+    List.mem_append_left _ (List.mem_append_right _ (List.mem_flatMap.mpr ⟨o, ho, by simp⟩))
+  have := blk_bounds h.heap.heap (h.heap.raw.live _ hb)
+  simp only [heapStart, heapEnd] at this
+  omega
+
+/-- The registers `dc_tell_length` changes. -/
+abbrev tellLenClob : List Nat := [1, 2, 10, 11, 12, 13, 14, 15]
+
+/-- `dc_tell_length (num, 0)` on a number. -/
+theorem tl_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {x : NumObj}
+    (h : DcAt S M H F L C G (.num x.rep.p :: hs) st) (hx : x ∈ L)
+    {sp : Nat} (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : (R 10).toNat % 2 ^ 32 = 1)
+    (h11 : R 11 = BitVec.ofNat 64 x.rep.p) (h12 : R 12 = 0#64) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C', Keeps tellLenClob R' R → R' 2 = R 2 →
+      R' 10 = BitVec.ofNat 64 x.rep.num.numLen → DcAt S M' H' F' L' C' G hs st → StkOut sp 80 M' M →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x80003804#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab' := hab
+  simp only [heapEnd] at hab'
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
+  have ht := sxw_lo32 h10 (by decide)
+  bc_run hlive hS [h2, ht, h11, h12, word_sub48 (show 48 ≤ sp by omega)] at 0x800029cc
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  bc_run hlive hS [h11, h12] at 0x800029cc
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM1 : MemOnly (frameIn sp 48) (writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 48 + 8, 8, 0#64)]) M :=
+    fun a ha => by
+      simp only [frameIn] at ha
+      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+        imgM_store_miss _ _ (by omega)]
+  have m8 : ldv .ld (writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 48 + 8, 8, 0#64)])
+      (sp - 48 + 8) = 0#64 := ldv_store_hit _ _ _
+  have m24 : ldv .ld (writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 48 + 8, 8, 0#64)])
+      (sp - 48 + 24) = BitVec.ofNat 64 x.rep.p := by rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  have m40 : ldv .ld (writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 48 + 8, 8, 0#64)])
+      (sp - 48 + 40) = R 1 := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  generalize writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 48 + 8, 8, 0#64)] = M1
+    at hM1 m8 m24 m40 ⊢
+  have hab2 : heapEnd ≤ sp - 48 := by simp only [heapEnd]; omega
+  have hP : ∀ a, frameIn sp 48 a → OutHeap a ∧ ¬ DcGlob a := fun a ha =>
+    ⟨(above_sp hab2 (by simp only [frameIn] at ha; omega)).1,
+      (above_sp hab2 (by simp only [frameIn] at ha; omega)).2.1⟩
+  have h1 := h.outWrite hM1 hP
+  refine dc_numlen_spec hlive hS (h1.heap.nums x hx) (h1.den.pos x hx) _ (by bsimp []) (by bsimp [])
+    fun R3 hk3 e3 => ?_
+  have q3 : R3 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk3.get 2 (by decide)]; bsimp []
+  bsimp []
+  bc_run hlive hS [q3, m8, e3] at 0x80002ba0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  bc_run hlive hS [q3, m8, e3] at 0x80002ba0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM2 : MemOnly (frameIn sp 48) (writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 x.rep.num.numLen)]) M1 :=
+    fun a ha => by simp only [frameIn] at ha; rw [imgM_store_miss _ _ (by omega)]
+  have n8 : ldv .ld (writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 x.rep.num.numLen)]) (sp - 48 + 8) =
+      BitVec.ofNat 64 x.rep.num.numLen := ldv_store_hit _ _ _
+  have n24 : ldv .ld (writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 x.rep.num.numLen)]) (sp - 48 + 24) =
+      BitVec.ofNat 64 x.rep.p := by rw [ldv_ld_miss _ _ (by omega), m24]
+  have n40 : ldv .ld (writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 x.rep.num.numLen)]) (sp - 48 + 40) =
+      R 1 := by rw [ldv_ld_miss _ _ (by omega), m40]
+  generalize writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 x.rep.num.numLen)] = M2 at hM2 n8 n24 n40 ⊢
+  have h2' := h1.outWrite hM2 hP
+  refine dc_free_num_spec hlive h2' (hsf.slot (by omega) (by omega) (by omega))
+    (by simp only [heapEnd]; omega) n24 (hsf.within (m := 48) (n := 32) (by omega) (by decide))
+    (by simp only [heapEnd]; omega) (.inr (by omega)) _ (by bsimp []) (by bsimp [q3]) (by bsimp [])
+    fun R6 M6 H6 F6 L6 C6 hk6 hd6 hz6 hout6 => ?_
+  have k0 : ∀ o, o < 48 → (o + 8 ≤ 24 ∨ 32 ≤ o) → ∀ j, j < 8 →
+      imgM M6 (sp - 48 + o + j) = imgM M2 (sp - 48 + o + j) :=
+    fun o ho h8 j hj => hout6 _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+      ((above_sp hab2 (by omega)).2.2 _) (fun hs' => by simp only [slotBytes] at hs'; omega)
+  have g8 : ldv .ld M6 (sp - 48 + 8) = BitVec.ofNat 64 x.rep.num.numLen :=
+    (ldv_congr .ld fun j hj => k0 8 (by omega) (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans n8
+  have g40 : ldv .ld M6 (sp - 48 + 40) = R 1 :=
+    (ldv_congr .ld fun j hj => k0 40 (by omega) (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans n40
+  have q6 : R6 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk6.get 2 (by decide)]; bsimp [q3]
+  have hS6 : HeapOwn S := fun a e1 e2 => hd6.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS6 [q6, g8, g40]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hal | skip
+  refine hk _ M6 H6 F6 L6 C6 ?_ ?_ ?_ hd6 fun a ho hg hf => ?_
+  · exact by keeps_tac ((hk6.mono (by decide)).trans (by keeps_tac ((hk3.mono (by decide)).trans
+      (by keeps_tac Keeps.refl _ _))))
+  · bsimp [h2]; try (congr 1; omega)
+  · bsimp []
+  · rw [hout6 a ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))
+      (fun hs' => hf (by simp only [slotBytes, frameIn] at hs' ⊢; omega))]
+    rw [hM2 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)]
+    exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
+
+/-- `dc_tell_length (str, 0)` on a string. -/
+theorem tl_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {o : StrObj}
+    (h : DcAt S M H F L C G (.str o.hb.pay :: hs) st) (ho : o ∈ G.strs)
+    {sp : Nat} (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : (R 10).toNat % 2 ^ 32 = 2)
+    (h11 : R 11 = BitVec.ofNat 64 o.hb.pay) (h12 : R 12 = 0#64) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' G', Keeps tellLenClob R' R → R' 2 = R 2 →
+      R' 10 = BitVec.ofNat 64 o.s.length → SameNodes G G' → DcAt S M' H' F L C G' hs st →
+      StkOut sp 80 M' M →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x80003804#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab' := hab
+  simp only [heapEnd] at hab'
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
+  have ht := sxw_lo32 h10 (by decide)
+  bc_run hlive hS [h2, ht, h11, h12, word_sub48 (show 48 ≤ sp by omega)] at 0x80003c6c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  bc_run hlive hS [h11, h12] at 0x80003c6c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM1 : MemOnly (frameIn sp 48) (writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 o.hb.pay)]) [(sp - 48 + 8, 8, 0#64)]) M :=
+    fun a ha => by
+      simp only [frameIn] at ha
+      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+        imgM_store_miss _ _ (by omega)]
+  have m8 : ldv .ld (writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 o.hb.pay)]) [(sp - 48 + 8, 8, 0#64)])
+      (sp - 48 + 8) = 0#64 := ldv_store_hit _ _ _
+  have m24 : ldv .ld (writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 o.hb.pay)]) [(sp - 48 + 8, 8, 0#64)])
+      (sp - 48 + 24) = BitVec.ofNat 64 o.hb.pay := by rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  have m40 : ldv .ld (writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 o.hb.pay)]) [(sp - 48 + 8, 8, 0#64)])
+      (sp - 48 + 40) = R 1 := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  generalize writeLog (writeLog (writeLog (writeLog M [(sp - 48 + 16, 8, R 10)])
+      [(sp - 48 + 40, 8, R 1)]) [(sp - 48 + 24, 8, BitVec.ofNat 64 o.hb.pay)]) [(sp - 48 + 8, 8, 0#64)] = M1
+    at hM1 m8 m24 m40 ⊢
+  have hab2 : heapEnd ≤ sp - 48 := by simp only [heapEnd]; omega
+  have hP : ∀ a, frameIn sp 48 a → OutHeap a ∧ ¬ DcGlob a := fun a ha =>
+    ⟨(above_sp hab2 (by simp only [frameIn] at ha; omega)).1,
+      (above_sp hab2 (by simp only [frameIn] at ha; omega)).2.1⟩
+  have h1 := h.outWrite hM1 hP
+  have hlen := (h1.view.strs o ho).len
+  have wl := sxw_ofNat (k := o.s.length) (h.str_len ho)
+  have hb : o.hb ∈ G.blocks :=
+    List.mem_append_left _ (List.mem_append_right _ (List.mem_flatMap.mpr ⟨o, ho, by simp⟩))
+  have hbb := blk_bounds h.heap.heap (h.heap.raw.live _ hb)
+  have hbs := (h1.view.strs o ho).hsz
+  simp only [heapStart, heapEnd] at hbb
+  bc_run hlive hS [m8, hlen, wl] at 0x800039a4
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  bc_run hlive hS [] at 0x800039a4
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM2 : MemOnly (frameIn sp 48) (writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 o.s.length)]) M1 :=
+    fun a ha => by simp only [frameIn] at ha; rw [imgM_store_miss _ _ (by omega)]
+  have n8 : ldv .ld (writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 o.s.length)]) (sp - 48 + 8) =
+      BitVec.ofNat 64 o.s.length := ldv_store_hit _ _ _
+  have n24 : ldv .ld (writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 o.s.length)]) (sp - 48 + 24) =
+      BitVec.ofNat 64 o.hb.pay := by rw [ldv_ld_miss _ _ (by omega), m24]
+  have n40 : ldv .ld (writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 o.s.length)]) (sp - 48 + 40) =
+      R 1 := by rw [ldv_ld_miss _ _ (by omega), m40]
+  generalize writeLog M1 [(sp - 48 + 8, 8, BitVec.ofNat 64 o.s.length)] = M2 at hM2 n8 n24 n40 ⊢
+  have h2' := h1.outWrite hM2 hP
+  refine dc_free_str_spec hlive h2' (hsf.slot (by omega) (by omega) (by omega))
+    n24 (hsf.within (m := 48) (n := 32) (by omega) (by decide))
+    (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp []) (by bsimp [])
+    fun R6 M6 H6 G6 hk6 hsn6 hd6 hout6 => ?_
+  have k0 : ∀ o, o < 48 → ∀ j, j < 8 →
+      imgM M6 (sp - 48 + o + j) = imgM M2 (sp - 48 + o + j) :=
+    fun o ho j hj => hout6 _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+      ((above_sp hab2 (by omega)).2.2 _)
+  have g8 : ldv .ld M6 (sp - 48 + 8) = BitVec.ofNat 64 o.s.length :=
+    (ldv_congr .ld fun j hj => k0 8 (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans n8
+  have g40 : ldv .ld M6 (sp - 48 + 40) = R 1 :=
+    (ldv_congr .ld fun j hj => k0 40 (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans n40
+  have q6 : R6 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk6.get 2 (by decide)]; bsimp []
+  have hS6 : HeapOwn S := fun a e1 e2 => hd6.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS6 [q6, g8, g40]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hal | skip
+  refine hk _ M6 H6 G6 ?_ ?_ ?_ hsn6 hd6 fun a ho hg hf => ?_
+  · exact by keeps_tac ((hk6.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+  · bsimp [h2]; try (congr 1; omega)
+  · bsimp []
+  · rw [hout6 a ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))]
+    rw [hM2 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)]
+    exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
+
+/-- **`dc_tell_length (value, 0)`** at `0x80003804`, as `dc_func`'s `Z`
+calls it with the popped datum `g` denoting `v`: `a0` the model's length
+(`Val.zLen`), the datum's reference released. -/
+theorem dc_tell_length_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {g : GV} {v : Dc.Val}
+    (h : DcAt S M H F L C G (g :: hs) st) (hv : g.Den ⟨L, G.strs⟩ v)
+    {sp : Nat} (hsf : StackFrame S sp 80) (hab : heapEnd + 80 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : (R 10).toNat % 2 ^ 32 = g.tag)
+    (h11 : R 11 = BitVec.ofNat 64 g.ptr) (h12 : R 12 = 0#64) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C' G', Keeps tellLenClob R' R → R' 2 = R 2 →
+      R' 10 = BitVec.ofNat 64 v.zLen → SameNodes G G' → DcAt S M' H' F' L' C' G' hs st →
+      StkOut sp 80 M' M → DW live S Q (R 1) R' M') :
+    DW live S Q 0x80003804#64 R M := by
+  match g, v, hv with
+  | .num _, .num _, ⟨x, hx, rfl, rfl⟩ =>
+    exact tl_num hlive h hx hsf hab R h2 h10 h11 h12 hal fun R' M' H' F' L' C' k1 k2 k3 k4 k5 =>
+      hk R' M' H' F' L' C' G k1 k2 k3 ⟨rfl, rfl, rfl⟩ k4 k5
+  | .str _, .str _, ⟨o, ho, rfl, rfl⟩ =>
+    exact tl_str hlive h ho hsf hab R h2 h10 h11 h12 hal fun R' M' H' G' k1 k2 k3 k4 k5 k6 =>
+      hk R' M' H' F L C G' k1 k2 k3 k4 k5 k6
+  | .num _, .str _, hv => exact hv.elim
+  | .str _, .num _, hv => exact hv.elim
+
 end Dc.Mach

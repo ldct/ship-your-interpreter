@@ -11,6 +11,11 @@ position `k` (`n < 0`), relinking the nodes in place (`rotate`).
   touch only the nodes' link words and `dc_stack`.
 - `rotate_small`/`rotate_up`/`rotate_down`: the model's three outcomes;
   `absw_pos`/`absw_neg`/`absw_min`: the machine's 32-bit `|n|`.
+- `PSeg`: a chain segment between two pointers; `rot_chain_up`/`rot_chain_down`
+  relink it through the three stores `rotW`, `DcAt.rotUp`/`.rotDown` lift that
+  to the state.
+- `dc_stack_rotate_spec`: the function, from `rot_entry`, `rot_walk` and
+  `rot_after`.
 -/
 
 namespace Dc.Mach
@@ -663,5 +668,272 @@ theorem rot_down_st {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   bc_run hlive hS [h11, h14, hpw, hcw]
   all_goals first | exact hpS | exact hcS | exact hown | (simp only [StOK, LdOK, dc_addrs, htx]; omega) | exact hal | skip
   exact hk _ (by keeps_tac Keeps.refl _ _)
+
+/-! ## The relinked state -/
+
+/-- The stack nodes' payloads: in the heap, 16-aligned, distinct. -/
+structure StkGeo (G : DcG) : Prop where
+  bnd : ∀ bg ∈ G.stk, heapStart + 16 ≤ bg.1.pay ∧ bg.1.pay + 32 ≤ heapEnd ∧ bg.1.pay % 16 = 0
+  nd : (G.stk.map (·.1.pay)).Nodup
+
+theorem DcAt.stkGeo {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st) : StkGeo G := by
+  have hi := h.heap.heap
+  have hsz : ∀ bg ∈ G.stk, 32 ≤ bg.1.sz := fun bg hm => (h.view.stk.forall bg hm).sz
+  refine ⟨fun bg hm => h.node_bounds (G.stk_mem hm) (hsz bg hm), ?_⟩
+  have hnd := h.nodup
+  simp only [DcG.blocks, List.append_assoc] at hnd
+  have h1 := (List.nodup_append.mp hnd).1
+  have e : G.stk.map (·.1.pay) = (G.stk.map (·.1)).map Blk.pay := by simp [List.map_map]
+  rw [e]
+  refine nodup_map_on (fun x hx y hy he => Classical.byContradiction fun hne => ?_) h1
+  obtain ⟨bx, hbx, rfl⟩ := List.mem_map.mp hx
+  obtain ⟨by', hby, rfl⟩ := List.mem_map.mp hy
+  have s1 := hsz bx hbx; have s2 := hsz by' hby
+  exact live_apart hi (h.heap.raw.live _ (G.stk_mem hbx)) (h.heap.raw.live _ (G.stk_mem hby)) hne
+    (a := bx.1.pay) (by simp only [Blk.In, Blk.pay, Blk.fin] at s1 ⊢; omega)
+    (by simp only [Blk.In, Blk.pay, Blk.fin] at he s2 ⊢; omega)
+
+theorem StkGeo.seg (g : StkGeo G) : ∀ bx ∈ G.stk, dcStackAddr + 8 ≤ bx.1.pay ∧ bx.1.pay % 16 = 0 :=
+  fun bx hm => by
+    obtain ⟨h1, -, h3⟩ := g.bnd bx hm
+    simp only [heapStart, dcStackAddr] at h1 ⊢; omega
+
+/-- **Up** at the state: the node `c` after `pre0 ++ [lb]` moved to the top. -/
+theorem DcAt.rotUp {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {n : Int} {pre0 post : List (Blk × GV)}
+    {lb c : Blk} {lg g : GV} (h : DcAt S M H F L C G hs st)
+    (hall : G.stk = pre0 ++ (lb, lg) :: (c, g) :: post) (hn : 0 < n)
+    (hlen : pre0.length + 1 = min (n.natAbs - 1) (G.stk.length - 1)) :
+    DcAt S (rotW M (lb.pay + 24) (headPtr post) (c.pay + 24) (ldv .ld M dcStackAddr)
+        (BitVec.ofNat 64 c.pay)) H F L C { G with stk := (c, g) :: (pre0 ++ (lb, lg) :: post) } hs
+      { st with stack := rotate n st.stack } := by
+  have geo := h.stkGeo
+  have hseg := h.view.stk.toSeg
+  rw [hall] at hseg
+  have hgeo := geo.seg
+  have hnd := geo.nd
+  rw [hall] at hgeo hnd
+  have hp : ((c, g) :: (pre0 ++ (lb, lg) :: post)).Perm G.stk := by
+    rw [hall, show pre0 ++ (lb, lg) :: (c, g) :: post = (pre0 ++ [(lb, lg)]) ++ (c, g) :: post by simp,
+      show pre0 ++ (lb, lg) :: post = (pre0 ++ [(lb, lg)]) ++ post by simp]
+    exact List.perm_middle.symm
+  have hch := PSeg.toL (a := dcStackAddr) (by rw [rotW_ld3]; exact rot_chain_up hseg hgeo hnd)
+  have hd := h.den.stk
+  rw [hall, show pre0 ++ (lb, lg) :: (c, g) :: post = (pre0 ++ [(lb, lg)]) ++ (c, g) :: post by simp]
+    at hd
+  obtain ⟨m1, m2, e, h1, h2⟩ := forall₂_split hd
+  cases h2 with
+  | cons hc h2' =>
+  rename_i vc m2'
+  have l1 := h1.length_eq
+  have l2 := h2'.length_eq
+  simp only [List.length_append, List.length_cons, List.length_nil] at l1
+  have hrot : rotate n st.stack = vc :: (m1 ++ m2') := by
+    rw [e]
+    refine rotate_up hn ?_ (List.length_pos_iff.mp (by omega))
+    rw [hall] at hlen
+    simp only [List.length_append, List.length_cons] at hlen
+    omega
+  rw [hrot]
+  exact h.permStk hp (rotW_only ⟨(lb, lg), by rw [hall]; simp, rfl⟩ ⟨(c, g), by rw [hall]; simp, rfl⟩)
+    hch (.cons hc (by
+      rw [show pre0 ++ (lb, lg) :: post = (pre0 ++ [(lb, lg)]) ++ post by simp]
+      exact forall₂_append h1 h2'))
+
+/-- **Down** at the state: the top node `top` moved after `mid ++ [c]`. -/
+theorem DcAt.rotDown {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {n : Int} {mid post : List (Blk × GV)}
+    {top c : Blk} {gt g : GV} (h : DcAt S M H F L C G hs st)
+    (hall : G.stk = (top, gt) :: (mid ++ (c, g) :: post)) (hn : n < 0) (hmin : n ≠ -2147483648)
+    (hlen : mid.length + 1 = min (n.natAbs - 1) (G.stk.length - 1)) :
+    DcAt S (rotW M (top.pay + 24) (headPtr post) (c.pay + 24) (BitVec.ofNat 64 top.pay)
+        (ldv .ld M (top.pay + 24))) H F L C { G with stk := mid ++ (c, g) :: (top, gt) :: post } hs
+      { st with stack := rotate n st.stack } := by
+  have geo := h.stkGeo
+  have hseg := h.view.stk.toSeg
+  rw [hall] at hseg
+  have hw := hseg.uncons.1
+  rw [hw] at hseg
+  have hgeo := geo.seg
+  have hnd := geo.nd
+  rw [hall] at hgeo hnd
+  have hp : (mid ++ (c, g) :: (top, gt) :: post).Perm G.stk := by
+    rw [hall, show mid ++ (c, g) :: (top, gt) :: post = (mid ++ [(c, g)]) ++ (top, gt) :: post by simp,
+      show mid ++ (c, g) :: post = (mid ++ [(c, g)]) ++ post by simp]
+    exact List.perm_middle
+  have hch := PSeg.toL (a := dcStackAddr) (by rw [rotW_ld3]; exact rot_chain_down hseg hgeo hnd)
+  have hd := h.den.stk
+  rw [hall] at hd
+  generalize hsk : st.stack = sk at hd
+  cases hd with
+  | cons ht hd' =>
+  rename_i vt ms
+  obtain ⟨m1, m2, e, h1, h2⟩ := forall₂_split hd'
+  cases h2 with
+  | cons hc h2' =>
+  rename_i vc m2'
+  have l1 := h1.length_eq
+  have l2 := h2'.length_eq
+  have hrot : rotate n (vt :: ms) = m1 ++ vc :: vt :: m2' := by
+    rw [e]
+    refine rotate_down hn hmin ?_
+    rw [hall] at hlen
+    simp only [List.length_append, List.length_cons] at hlen
+    omega
+  rw [hrot]
+  exact h.permStk hp (rotW_only ⟨(top, gt), by rw [hall]; simp, rfl⟩ ⟨(c, g), by rw [hall]; simp, rfl⟩)
+    hch (forall₂_append h1 (.cons hc (.cons ht h2')))
+
+theorem toInt_ofInt32 {n : Int} (h1 : -2147483648 ≤ n) (h2 : n < 2147483648) :
+    (BitVec.ofInt 64 n).toInt = n := by
+  rw [BitVec.toInt_ofInt]
+  exact Int.bmod_eq_of_le (by omega) (by omega)
+
+theorem absw_int {n : Int} (h1 : -2147483648 < n) (h2 : n < 2147483648) :
+    absw (BitVec.ofInt 64 n) = BitVec.ofNat 64 n.natAbs := by
+  obtain ⟨k, e | e⟩ := Int.eq_nat_or_neg n <;> subst e
+  · have e1 : BitVec.ofInt 64 (k : Int) = BitVec.ofNat 64 k := by
+      apply BitVec.eq_of_toNat_eq; simp
+    rw [e1, Int.natAbs_natCast]; exact absw_pos (by omega)
+  · rw [Int.natAbs_neg, Int.natAbs_natCast]
+    rcases Nat.eq_zero_or_pos k with rfl | hk
+    · exact absw_pos (k := 0) (by decide)
+    · exact absw_neg hk (by omega)
+
+/-! ## The function -/
+
+/-- After the walk (`0x800037ac`): the node `c'` after `pre'` is the one to
+move; the stores relink the stack as `rotate n` says. -/
+theorem rot_after {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st) {n : Int}
+    (hn1 : -2147483648 < n) (hn2 : n < 2147483648) (ht : 2 ≤ n.natAbs)
+    {pre' post' : List (Blk × GV)} {c' : Blk} {g' : GV} (hall : G.stk = pre' ++ (c', g') :: post')
+    (hl : pre'.length = min (n.natAbs - 1) (G.stk.length - 1))
+    (R R2 : Nat → BitVec 64) (hk2 : Keeps rotClob R2 R) (e10 : R2 10 = BitVec.ofInt 64 n)
+    (e11 : R2 11 = ldv .ld M dcStackAddr) (e12 : R2 12 = lastPtr pre') (e13 : R2 13 = headPtr post')
+    (e14 : R2 14 = BitVec.ofNat 64 c'.pay) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' l', Keeps rotClob R' R → l'.Perm G.stk → MemOnly (StkLinks G) M' M →
+      DcAt S M' H F L C { G with stk := l' } hs { st with stack := rotate n st.stack } →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x800037ac#64 R2 M := by
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hG := h.glob
+  have geo := h.stkGeo
+  have e1 : R2 1 = R 1 := hk2 1 (by decide)
+  have hal2 : (R2 1).toNat % 4 = 0 := by rw [e1]; exact hal
+  have hti := toInt_ofInt32 (by omega) hn2
+  have hlen := h.den.stk.length_eq
+  have hmem : ∀ bx ∈ pre' ++ (c', g') :: post', bx ∈ G.stk := fun bx hm => by rw [hall]; exact hm
+  have gc := geo.bnd (c', g') (hmem _ (by simp))
+  dsimp only at gc
+  rcases List.eq_nil_or_concat pre' with hp0 | ⟨pre0, ⟨lb, lg⟩, hp0⟩
+  -- the top node: nothing moves
+  · subst hp0
+    refine rot_top hlive hS R2 (by rw [e12]; rfl) hal2 ?_
+    rw [e1]
+    refine hk R2 M G.stk hk2 (List.Perm.refl _) (fun _ _ => rfl) ?_
+    rw [rotate_small (.inr (.inr (by simp only [List.length_nil] at hl; omega)))]
+    exact h
+  simp only [List.concat_eq_append] at hp0
+  subst hp0
+  have glb := geo.bnd (lb, lg) (hmem _ (by simp))
+  dsimp only at glb
+  simp only [heapStart, heapEnd] at glb
+  have hall' : G.stk = pre0 ++ (lb, lg) :: (c', g') :: post' := by rw [hall]; simp
+  have hlen' : pre0.length + 1 = min (n.natAbs - 1) (G.stk.length - 1) := by
+    rw [← hl]; simp
+  rcases Int.lt_or_gt_of_ne (show n ≠ 0 by omega) with hneg | hpos
+  -- `n < 0`: the top node moves down
+  · obtain ⟨⟨top, gt⟩, mid, hpm⟩ : ∃ tg mid, pre0 ++ [(lb, lg)] = tg :: mid :=
+      List.exists_cons_of_ne_nil (by simp)
+    have hall2 : G.stk = (top, gt) :: (mid ++ (c', g') :: post') := by rw [hall, hpm]; rfl
+    have gt' := geo.bnd (top, gt) (by rw [hall2]; simp)
+    dsimp only at gt'
+    have hw : ldv .ld M dcStackAddr = BitVec.ofNat 64 top.pay := by
+      rw [h.view.stk.toSeg.head, hall2]; rfl
+    have hlen2 : mid.length + 1 = min (n.natAbs - 1) (G.stk.length - 1) := by
+      rw [← hlen', ← List.length_cons, ← hpm]; simp
+    refine rot_down_st hlive hS hG gt' gc R2 (by rw [e10, hti]; omega)
+      (by
+        rw [e12, lastPtr_concat]
+        exact (ofNat_ne_small (b := 0) (by omega) (by decide) (by omega) : BitVec.ofNat 64 lb.pay ≠ _))
+      (by rw [e11, hw]) e14 hal2 fun R3 hk3 => ?_
+    rw [e1, e13]
+    refine hk R3 _ (mid ++ (c', g') :: (top, gt) :: post') ((hk3.mono (by decide)).trans hk2) ?_
+      (rotW_only ⟨(top, gt), by rw [hall2]; simp, rfl⟩ ⟨(c', g'), by rw [hall2]; simp, rfl⟩)
+      (h.rotDown hall2 hneg (by omega) hlen2)
+    rw [hall2, show mid ++ (c', g') :: (top, gt) :: post' = (mid ++ [(c', g')]) ++ (top, gt) :: post' by simp,
+      show mid ++ (c', g') :: post' = (mid ++ [(c', g')]) ++ post' by simp]
+    exact List.perm_middle
+  -- `n > 0`: the node `c'` moves to the top
+  · refine rot_up_st hlive hS hG glb gc R2 (by rw [e10, hti]; omega) (by rw [e12, lastPtr_concat]) e14
+      hal2 fun R3 hk3 => ?_
+    rw [e1, e13, e11]
+    refine hk R3 _ ((c', g') :: (pre0 ++ (lb, lg) :: post')) ((hk3.mono (by decide)).trans hk2) ?_
+      (rotW_only ⟨(lb, lg), by rw [hall']; simp, rfl⟩ ⟨(c', g'), by rw [hall']; simp, rfl⟩)
+      (h.rotUp hall' hpos hlen')
+    rw [hall', show pre0 ++ (lb, lg) :: (c', g') :: post' = (pre0 ++ [(lb, lg)]) ++ (c', g') :: post' by simp,
+      show pre0 ++ (lb, lg) :: post' = (pre0 ++ [(lb, lg)]) ++ post' by simp]
+    exact List.perm_middle.symm
+
+/-- **`dc_stack_rotate (n)`** at `0x80003768`, `n` an `int` in `a0`: the
+stack becomes `rotate n`, its nodes relinked in place; only `dc_stack` and the
+nodes' link words change. -/
+theorem dc_stack_rotate_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st) {n : Int}
+    (hn1 : -2147483648 ≤ n) (hn2 : n < 2147483648)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofInt 64 n) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' l', Keeps rotClob R' R → l'.Perm G.stk → MemOnly (StkLinks G) M' M →
+      DcAt S M' H F L C { G with stk := l' } hs { st with stack := rotate n st.stack } →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x80003768#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hG := h.glob
+  have geo := h.stkGeo
+  have hlen := h.den.stk.length_eq
+  have hhd := h.view.stk.toSeg.head
+  have hsame : ∀ R', Keeps rotClob R' R → rotate n st.stack = st.stack → DW live S Q (R 1) R' M :=
+    fun R' hk1 he => hk R' M G.stk hk1 (List.Perm.refl _) (fun _ _ => rfl) (by rw [he]; exact h)
+  by_cases hmin : n = -2147483648
+  · subst hmin
+    refine rot_entry hlive hS hG R (a := 0xffffffff80000000#64) (by rw [h10]; exact absw_min) rfl hal
+      (fun R' _ hk1 => hsame R' hk1 (rotate_small (.inr (.inl rfl)))) fun R' _ hc _ _ _ _ _ => ?_
+    exact absurd (by decide) hc
+  have hti : n.natAbs < 2 ^ 31 := by omega
+  have ctn : (BitVec.ofNat 64 n.natAbs).toInt = n.natAbs := toInt_ofNat_small (by omega)
+  refine rot_entry hlive hS hG R (a := BitVec.ofNat 64 n.natAbs)
+    (by rw [h10]; exact absw_int (by omega) hn2) rfl hal
+    (fun R' hc hk1 => hsame R' hk1 (rotate_small ?_)) fun R' hw0 hc hk1 h11 h14 h12 h15 => ?_
+  · rcases hc with hc | hc
+    · refine .inr (.inr ?_)
+      rw [hhd] at hc
+      cases hgs : G.stk with
+      | nil => rw [hgs] at hlen; simp at hlen; omega
+      | cons bx post0 =>
+        have gb := geo.bnd bx (by rw [hgs]; simp)
+        rw [hgs] at hc
+        exact absurd hc (ofNat_ne_small (b := 0) (by simp only [heapEnd] at gb; omega) (by decide)
+          (by simp only [heapStart] at gb; omega))
+    · rw [ctn] at hc; exact .inl (by omega)
+  rw [ctn] at hc
+  rw [hhd] at hw0 h11 h14
+  cases hgs : G.stk with
+  | nil => rw [hgs] at hw0; exact absurd rfl hw0
+  | cons bx post0 =>
+  obtain ⟨c0, g0⟩ := bx
+  rw [hgs] at h11 h14
+  have hch := h.view.stk.toP
+  rw [hhd, hgs] at hch
+  refine rot_walk hlive hS (all := G.stk) (pre := []) (hgs.trans rfl) hch
+    (fun bx hm => geo.bnd bx (by rw [hgs]; exact hm)) (by omega) (by omega) R' h14 h12 h15
+    fun R2 pre' c' g' post' hall hl hk2 e14 e12 e13 => ?_
+  have e2 : ∀ z ∈ [10, 11], R2 z = R' z := fun z hz => hk2 z (by
+    simp only [List.mem_cons, List.mem_nil_iff, or_false] at hz; rcases hz with rfl | rfl <;> decide)
+  refine rot_after hlive h (by omega) hn2 (by omega) hall (by rw [hl, hgs]; simp) R R2
+    ((hk2.mono (by decide)).trans hk1) (by rw [e2 10 (by simp), hk1 10 (by decide), h10])
+    (by rw [e2 11 (by simp), h11, hhd, hgs]) e12 e13 e14 hal hk
 
 end Dc.Mach

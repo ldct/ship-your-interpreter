@@ -121,3 +121,4 @@ import Dc.Mach.DcArrFree
 import Dc.Mach.DcRegPop
 import Dc.Mach.DcArray
 import Dc.Mach.DcArrSet
+import Dc.Mach.DcRotate

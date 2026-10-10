@@ -30,14 +30,15 @@ def EvHeadK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat
     StrPin G.strs G2.strs hs.tail →
     DWO live S Q (t0 ++ Dc.outStr st'.out) 0x800014f8#64 R2 M2
 
-/-- **The loop's exit** (`0x8000156c`, `DC_OKAY` with the state `st'`) from
-the invariant over any frame. -/
+/-- **The loop's exit** (`0x8000156c`, `DC_OKAY` with the state `st'`) when
+the next frame `f'` is empty, from the invariant over any frame. -/
 def EvEndK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t0 : String) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → BitVec 64) (G : DcG)
-    (hs xs : List GV) (st' : St) : Prop :=
+    (hs xs : List GV) (st' : St) (f' : Frame) : Prop :=
+  f'.s = [] →
   ∀ k' (R2 : Nat → BitVec 64) (M2 : Mem) (H2 : Heap) (F2 : List Blk) (L2 : List NumObj)
-    (C2 : BcConsts) (G2 : DcG) (xs2 : List GV) (f' : Frame) (o' : StrObj),
-    EvAt S sp W d k' q M0 R0 R2 M2 H2 F2 L2 C2 G2 hs xs2 st' f' o' →
+    (C2 : BcConsts) (G2 : DcG) (xs2 : List GV) (f'' : Frame) (o' : StrObj),
+    EvAt S sp W d k' q M0 R0 R2 M2 H2 F2 L2 C2 G2 hs xs2 st' f'' o' →
     G2.lk.length + xs2.length + 4 * k' ≤ G.lk.length + xs.length + 4 * k →
     StrPin G.strs G2.strs hs.tail →
     DWO live S Q (t0 ++ Dc.outStr st'.out) 0x8000156c#64 R2 M2
@@ -55,7 +56,8 @@ def EvIntCore (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (N
     EvOom live S Q sp W q M0 →
     EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs
       (st.push (.num (readNum st.ibase (c :: rest)).1)) ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ →
-    EvEndK live S Q t0 sp W d k q M0 R0 G hs xs (st.push (.num (readNum st.ibase (c :: rest)).1)) →
+    EvEndK live S Q t0 sp W d k q M0 R0 G hs xs (st.push (.num (readNum st.ibase (c :: rest)).1))
+      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ →
     DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M'
 
 /-- **`DC_STR`** (status `6`): the bracketed string pushed, on to the rest
@@ -72,7 +74,8 @@ def EvStrCore (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (N
     EvOom live S Q sp W q M0 →
     EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs
       (st.push (.str (scanStr 1 rest).1)) ⟨(scanStr 1 rest).2, td, false⟩ →
-    EvEndK live S Q t0 sp W d k q M0 R0 G hs xs (st.push (.str (scanStr 1 rest).1)) →
+    EvEndK live S Q t0 sp W d k q M0 R0 G hs xs (st.push (.str (scanStr 1 rest).1))
+      ⟨(scanStr 1 rest).2, td, false⟩ →
     DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M'
 
 end Dc.Mach

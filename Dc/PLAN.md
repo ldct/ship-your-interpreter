@@ -19,8 +19,11 @@ theorem Dc.endToEnd (prog : List Nat) (hp : DcAdmissible prog) :
 - `dcBoot prog`: the configuration after the loader (`initializeMemory`) and
   `setupElf` for the ELF with `prog` written into `dc_script.text`, stated at
   its zero-filled view (`Vsa.Densify.fillZero`, as WHILE's theorem is).
-- `DcAdmissible prog`: `prog.length < 8192`, no NUL byte in `prog`, and
-  `NestBound 70 prog D` (`Dc/Depth.lean`) for the nesting bound `D` of M11.
+- `DcAdmissible prog`: `prog.length < 8192`, no NUL byte in `prog`,
+  `NestBound 70 prog D` (`Dc/Depth.lean`) for the nesting bound `D` of M11,
+  and `LeakBound 70 prog`: at every fuel, at most `2^29` runs of the
+  commands that lose a bc reference (`/ % ~ | v`), so reference counts stay
+  below `2^31` (`DcG.lk`, `Dc/Mach/State.lean`).
 - Heap exhaustion is allowed as an outcome: status 1 (decision M0 (a)).
 
 Trust base, as for WHILE: the Lean kernel, the Sail RV64 model, and two
@@ -74,6 +77,9 @@ headline theorems, and a commit. Instruction counts are from
   bounds non-terminating evaluations too; `NestBound lm prog D` is
   `∀ n, nestDepth lm n St.init ⟨prog, 1, false⟩ ≤ D`. M11 fixes `D` from
   the binary's frame sizes (`D * F + B ≤ 8 MiB`).
+- *Lost references*: GNU dc's `dc_div`/`dc_rem` paths lose bc number
+  references (`DcG.lk`). `LeakBound lm prog` is defined like `NestBound`,
+  counting the leaking commands within `n` steps.
 - Remaining for M12: the concrete `DcAdmissible` and a control witness.
 
 ### M1. Machine layer (Dc/Mach)

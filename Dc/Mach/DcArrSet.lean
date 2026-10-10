@@ -64,12 +64,6 @@ theorem DcG.levOnly {G : DcG} {r : Nat} {be : Blk × RLev} {l : List (Blk × RLe
     · exact z (Q.flatMap fun r' => (G.regs r').flatMap RLev.blocks) c (by have := hcount c; have := pos _ hc; omega) _
         (List.mem_flatMap.mpr ⟨r', hm, List.mem_flatMap.mpr ⟨be', hbe, hcm⟩⟩) rfl
 
-/-- A datum through a memory agreeing on its 16 bytes. -/
-theorem DatAt.congr16 {Mt Mt' : Mem} {a : Nat} {g : GV}
-    (hag : ∀ x, a ≤ x → x < a + 16 → imgM Mt' x = imgM Mt x) (h : DatAt Mt a g) : DatAt Mt' a g :=
-  ⟨by rw [ldv_congr .ld fun j hj => hag _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact h.tag,
-    by rw [ldv_congr .ld fun j hj => hag _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact h.ptr⟩
-
 /-- **Register `r`'s top array replaced**: the new chain `arr'` from the
 level's array word, its blocks the old array's and the fresh blocks `N`, its
 data the old array's data with `hs0` traded for `hs`. The memory changes

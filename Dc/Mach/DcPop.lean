@@ -358,4 +358,10 @@ theorem dc_pop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     rw [hfr a ho hg hf hqa]
     exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
 
+/-- A datum through a memory agreeing on its 16 bytes. -/
+theorem DatAt.congr16 {Mt Mt' : Mem} {a : Nat} {g : GV}
+    (hag : ∀ x, a ≤ x → x < a + 16 → imgM Mt' x = imgM Mt x) (h : DatAt Mt a g) : DatAt Mt' a g :=
+  ⟨by rw [ldv_congr .ld fun j hj => hag _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact h.tag,
+    by rw [ldv_congr .ld fun j hj => hag _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact h.ptr⟩
+
 end Dc.Mach

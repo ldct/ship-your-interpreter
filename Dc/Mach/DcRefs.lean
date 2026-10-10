@@ -100,12 +100,9 @@ theorem DcAt.numRefs_lt {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {
     (hhs : hs.length ≤ 2 ^ 30) {x : NumObj} (hx : x ∈ L) : x.rep.refs + 1 < 2 ^ 31 := by
   rw [h.den.numRefs x hx]
   have := h.count_le (.num x.rep.p)
-  have : C.cnt x.rep.p ≤ 3 + 2 ^ 29 := by
-    unfold BcConsts.cnt
-    have := Nat.le_trans (List.count_le_length (a := x.rep.p) (l := C.lk)) h.den.lkLen
-    have : [C.z, C.o, C.t].countP (·.rep.p = x.rep.p) ≤ 3 :=
-      Nat.le_trans (List.countP_le_length) (by simp)
-    omega
+  have : C.cnt x.rep.p ≤ 3 := by
+    unfold BcConsts.cnt; exact Nat.le_trans (List.countP_le_length) (by simp)
+  have := Nat.le_trans (List.count_le_length (a := x.rep.p) (l := G.lk)) h.den.lkLen
   omega
 
 /-- One more reference to a string of the state still fits `s_refs`. -/

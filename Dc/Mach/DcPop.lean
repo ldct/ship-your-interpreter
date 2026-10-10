@@ -290,7 +290,7 @@ theorem dc_pop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     exact ⟨outHeap_of_ge (by simp only [heapEnd]; omega), fun hg => by
       have := hg.lt; simp only [heapStart] at this; omega⟩
   have h1 := h.outWrite hM1 (hP 32 (by omega))
-  obtain ⟨stk, regs, strs, lbuf⟩ := G
+  obtain ⟨stk, regs, strs, lbuf, lk⟩ := G
   cases stk with
   | nil =>
     have hst0 : st.stack = [] := by
@@ -326,7 +326,7 @@ theorem dc_pop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     have hv := h.view.stk
     cases hv with
     | cons h0 hn hl =>
-    have hcG : c ∈ (⟨(c, g) :: rest, regs, strs, lbuf⟩ : DcG).blocks := by
+    have hcG : c ∈ (⟨(c, g) :: rest, regs, strs, lbuf, lk⟩ : DcG).blocks := by
       simp only [DcG.blocks, List.map_cons, List.cons_append, List.mem_cons, true_or]
     have fbb := h.heap.heap.blk (List.mem_append_right _ (h.heap.raw.live c hcG))
     have hpl : 2147603936 ≤ c.pay ∧ c.pay < 2 ^ 64 := by
@@ -347,7 +347,7 @@ theorem dc_pop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
         (sp - 32 + 24) = R 1 := ldv_store_hit _ _ _
     have hs01 : ldv .ld (writeLog (writeLog M [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)])
         (sp - 32 + 16) = R 8 := by rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
-    refine pop_some (G := ⟨rest, regs, strs, lbuf⟩) (st := ⟨rest', sregs, ib, ob, sc, uw, ne, out⟩)
+    refine pop_some (G := ⟨rest, regs, strs, lbuf, lk⟩) (st := ⟨rest', sregs, ib, ob, sc, uw, ne, out⟩)
       hlive h1 hsf (by simp only [heapEnd]; omega) hq _ ?_ ?_ ?_ hra1 hs01 hal
       fun R' M' H' hk1 e1 e2 e8 e10 h' hd hfr => ?_
     · bsimp []

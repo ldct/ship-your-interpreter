@@ -50,7 +50,7 @@ theorem RLev.Den.relist {O O' : DObjs} (hs : O.Sub O') {e : RLev} {v : Entry} (h
 open Classical in
 /-- The constants with `x` replaced by `x'`. -/
 noncomputable def BcConsts.subst (C : BcConsts) (x x' : NumObj) : BcConsts :=
-  ⟨if C.z = x then x' else C.z, if C.o = x then x' else C.o, if C.t = x then x' else C.t, C.lk⟩
+  ⟨if C.z = x then x' else C.z, if C.o = x then x' else C.o, if C.t = x then x' else C.t⟩
 
 /-- Replacing `x` by an object with its pointer and value. -/
 theorem ite_rep {x x' : NumObj} (hp : x'.rep.p = x.rep.p) (hn : x'.rep.num = x.rep.num)
@@ -172,7 +172,8 @@ theorem DcAt.bumpNum {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L1 
       · exact d.pos y (mem_split_of hy)
     · rw [BcConsts.subst_cnt C hp' hn']
       rcases mem_split_cases hy with rfl | hy
-      · show x.rep.refs + 1 = (G.vals ++ .num x.rep.p :: hs).count (.num x.rep.p) + C.cnt x.rep.p
+      · show x.rep.refs + 1 = (G.vals ++ .num x.rep.p :: hs).count (.num x.rep.p) + C.cnt x.rep.p +
+          G.lk.count x.rep.p
         rw [count_cons_self]; have := d.numRefs x hx; omega
       · rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hne y hy (GV.num.inj e).symm]
     · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]

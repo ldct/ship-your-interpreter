@@ -164,12 +164,16 @@ structure SNodeAt (Mt : Mem) (b : Blk) (g : GV) : Prop where
 /-! ## The ghost state -/
 
 /-- The ghost of dc's memory: the stack nodes, each register's levels, the
-string objects, and `dc_readstring`'s line buffer once allocated. -/
+string objects, `dc_readstring`'s line buffer once allocated, and the number
+references dc lost (`lk`, one pointer per reference never released: the
+`_zero_` of a failed `dc_div`/`dc_rem`/`dc_divrem`/`dc_modexp` result slot,
+`bc_sqrt`'s and `bc_raisemod`'s leaks). -/
 structure DcG where
   stk : List (Blk × GV)
   regs : Nat → List (Blk × RLev)
   strs : List StrObj
   lbuf : Option Blk
+  lk : List Nat
 
 /-- A level's blocks: its node and its array nodes. -/
 def RLev.blocks (be : Blk × RLev) : List Blk := be.1 :: be.2.arr.map (·.1)
@@ -189,19 +193,15 @@ def DcG.vals (G : DcG) : List GV :=
 /-- The raw blocks of the number heap for `G` at memory `Mt`. -/
 def DcG.raws (G : DcG) (Mt : Mem) : Raws := ⟨G.blocks, Mt⟩
 
-/-- The number heap's constants `_zero_`, `_one_`, `_two_`, and the
-references bc lost (`lk`, one pointer per reference never released: the
-`_zero_` of a failed `dc_div`/`dc_rem`/`dc_divrem`/`dc_modexp` result slot,
-`bc_sqrt`'s and `bc_raisemod`'s leaks). -/
+/-- The number heap's constants `_zero_`, `_one_`, `_two_`. -/
 structure BcConsts where
   z : NumObj
   o : NumObj
   t : NumObj
-  lk : List Nat
 
-/-- How many of the constants' words and lost references point to `p`. -/
+/-- How many of the constants' words point to `p`. -/
 def BcConsts.cnt (C : BcConsts) (p : Nat) : Nat :=
-  [C.z, C.o, C.t].countP (·.rep.p = p) + C.lk.count p
+  [C.z, C.o, C.t].countP (·.rep.p = p)
 
 /-- A level denotes an `Entry`. -/
 structure RLev.Den (O : DObjs) (e : RLev) (v : Entry) : Prop where
@@ -255,10 +255,11 @@ structure DcDen (L : List NumObj) (C : BcConsts) (G : DcG) (hs : List GV) (st : 
   owns : ∀ x ∈ L, x.Owns
   norm : ∀ x ∈ L, x.rep.Norm
   pos : ∀ x ∈ L, 1 ≤ x.rep.len
-  numRefs : ∀ x ∈ L, x.rep.refs = (G.vals ++ hs).count (.num x.rep.p) + C.cnt x.rep.p
+  numRefs : ∀ x ∈ L, x.rep.refs = (G.vals ++ hs).count (.num x.rep.p) + C.cnt x.rep.p +
+    G.lk.count x.rep.p
   strRefs : ∀ o ∈ G.strs, o.refs = (G.vals ++ hs).count (.str o.hb.pay)
-  lkLen : C.lk.length ≤ 2 ^ 29
-  lkIn : ∀ p ∈ C.lk, ∃ x ∈ L, x.rep.p = p
+  lkLen : G.lk.length ≤ 2 ^ 29
+  lkIn : ∀ p ∈ G.lk, ∃ x ∈ L, x.rep.p = p
   mz : C.z ∈ L
   mo : C.o ∈ L
   mt : C.t ∈ L

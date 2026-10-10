@@ -18,8 +18,8 @@ import Dc.Mach.DcInt
 - `DcOp`: the contract of an operation called through `op` (`dc_add` …
   `dc_exp`): from the two popped handles to a fresh handle denoting `f k a b`
   in the result slot (`OpRet`), or a nonzero return with the state kept
-  (`OpFail`), or `dc_memfail` (`OomAt`). Lost references are counted in
-  `C.lk` (`BcConsts`), at most `lk` per call.
+  (`OpFail`), or `dc_memfail` (`OomAt`). Lost references are added to the
+  ghost's `lk` (`DcG`), at most `lk` per call.
 - `binop_entry`: the two checks and their messages.
 - `dc_binop_spec`: `binop st (f st.scale)`.
 -/
@@ -54,7 +54,7 @@ structure OpIn (S : Nat → Prop) (M : Mem) (H : Heap) (F : List Blk) (L : List 
   da : (GV.num pa).Den ⟨L, G.strs⟩ (.num na)
   db : (GV.num pb).Den ⟨L, G.strs⟩ (.num nb)
   hsLen : hs.length + 3 ≤ 2 ^ 30
-  lkLen : C.lk.length + lk ≤ 2 ^ 29
+  lkLen : G.lk.length + lk ≤ 2 ^ 29
   frame : StackFrame S sp N
   above : heapEnd + N ≤ sp
   slot : PtrSlot S q
@@ -68,7 +68,7 @@ structure OpIn (S : Nat → Prop) (M : Mem) (H : Heap) (F : List Blk) (L : List 
 
 /-- An operation's success: `0`, the fresh handle `y` for `r` in the slot. -/
 structure OpRet (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
-    (C0 C : BcConsts) (G : DcG) (hs : List GV) (st : St) (pa pb : Nat) (na nb : Num)
+    (C : BcConsts) (G0 G : DcG) (hs : List GV) (st : St) (pa pb : Nat) (na nb : Num)
     (f : Nat → Num → Num → Option Num) (R : Nat → BitVec 64) (sp q N lk y : Nat) (r : Num) :
     Prop where
   a0 : R 10 = 0#64
@@ -76,19 +76,21 @@ structure OpRet (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : L
   val : f st.scale na nb = some r
   den : (GV.num y).Den ⟨L, G.strs⟩ (.num r)
   word : ldv .ld M q = BitVec.ofNat 64 y
-  lkLen : C.lk.length ≤ C0.lk.length + lk
+  same : G = { G0 with lk := G.lk }
+  lkLen : G.lk.length ≤ G0.lk.length + lk
   out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slotBytes q a → imgM M a = imgM M0 a
 
 /-- An operation's failure: nonzero, the operands kept. -/
 structure OpFail (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
-    (C0 C : BcConsts) (G : DcG) (hs : List GV) (st : St) (pa pb : Nat) (na nb : Num)
+    (C : BcConsts) (G0 G : DcG) (hs : List GV) (st : St) (pa pb : Nat) (na nb : Num)
     (f : Nat → Num → Num → Option Num) (R : Nat → BitVec 64) (sp q N lk : Nat) : Prop where
   a0 : R 10 ≠ 0#64
   h : DcAt S M H F L C G (.num pa :: .num pb :: hs) st
   val : f st.scale na nb = none
   da : (GV.num pa).Den ⟨L, G.strs⟩ (.num na)
   db : (GV.num pb).Den ⟨L, G.strs⟩ (.num nb)
-  lkLen : C.lk.length ≤ C0.lk.length + lk
+  same : G = { G0 with lk := G.lk }
+  lkLen : G.lk.length ≤ G0.lk.length + lk
   out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slotBytes q a → imgM M a = imgM M0 a
 
 /-- **The contract of an operation at `fa`** computing `f k a b` within the
@@ -98,10 +100,10 @@ def DcOp (live S : Nat → Prop) (fa N lk : Nat) (f : Nat → Num → Num → Op
     (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs : List GV) (st : St)
     (pa pb : Nat) (na nb : Num) (R : Nat → BitVec 64) (sp q : Nat),
     OpIn S M H F L C G hs st pa pb na nb R sp q N lk →
-    (∀ R' M' H' F' L' C' y r, Keeps opClob R' R →
-      OpRet S M M' H' F' L' C C' G hs st pa pb na nb f R' sp q N lk y r → DWO live S Q t (R 1) R' M') →
-    (∀ R' M' H' F' L' C', Keeps opClob R' R →
-      OpFail S M M' H' F' L' C C' G hs st pa pb na nb f R' sp q N lk → DWO live S Q t (R 1) R' M') →
+    (∀ R' M' H' F' L' C' G' y r, Keeps opClob R' R →
+      OpRet S M M' H' F' L' C' G G' hs st pa pb na nb f R' sp q N lk y r → DWO live S Q t (R 1) R' M') →
+    (∀ R' M' H' F' L' C' G', Keeps opClob R' R →
+      OpFail S M M' H' F' L' C' G G' hs st pa pb na nb f R' sp q N lk → DWO live S Q t (R 1) R' M') →
     (∀ R' M' sp', OomAt S sp N M sp' R' M' → DWO live S Q t 0x80001e74#64 R' M') →
     DWO live S Q t (BitVec.ofNat 64 fa) R M
 
@@ -542,5 +544,80 @@ theorem binop_fail {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   refine hk _ M2 H2 _ (by keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
       (by keeps_tac Keeps.refl _ _))))) (by bsimp []) (by bsimp [q2]; congr 1; omega) h2'
     fun a o1 o2 o3 => by rw [hout2 a o1 o2 o3, hout1 a o1 o2 o3]
+
+/-- The memory after `dc_binop`'s inline push into the fresh node at `p`:
+no array, the datum words, the old `dc_stack` as the link, then `dc_stack`. -/
+abbrev boPushMem (M : Mem) (p : Nat) (w0 w1 : BitVec 64) : Mem :=
+  writeLog (writeLog (writeLog (writeLog (writeLog M [(p + 16, 8, 0#64)]) [(p, 8, w0)]) [(p + 8, 8, w1)])
+    [(p + 24, 8, ldv .ld M dcStackAddr)]) [(dcStackAddr, 8, BitVec.ofNat 64 p)]
+
+/-- **The state after the inline push**: `b` is the new top node. -/
+theorem boPush_post {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {v : Val} {b : Blk}
+    {w0 w1 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hf : DcFresh H F L G b) (hv : g.Den ⟨L, G.strs⟩ v)
+    (hd : DatRegs w0 w1 g) (hsz : 32 ≤ b.sz) (hp1 : 2147603936 ≤ b.pay) :
+    DcAt S (boPushMem M b.pay w0 w1) H F L C { G with stk := (b, g) :: G.stk } hs (st.push v) ∧
+      MemOnly (fun a => b.In a ∨ StkWord a) (boPushMem M b.pay w0 w1) M := by
+  have e1 : b.fin = b.pay + b.sz := by simp only [Blk.fin, Blk.pay]
+  have hds : dcStackAddr = 2147601816 := rfl
+  have hm4 : MemOnly b.In (writeLog (writeLog (writeLog (writeLog M [(b.pay + 16, 8, 0#64)])
+      [(b.pay, 8, w0)]) [(b.pay + 8, 8, w1)]) [(b.pay + 24, 8, ldv .ld M dcStackAddr)]) M :=
+    fun a ha => by
+      simp only [Blk.In] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
+  have h4 := h.rawWrite hf hm4
+  have hn : SNodeAt (writeLog (writeLog (writeLog (writeLog M [(b.pay + 16, 8, 0#64)])
+      [(b.pay, 8, w0)]) [(b.pay + 8, 8, w1)]) [(b.pay + 24, 8, ldv .ld M dcStackAddr)]) b g :=
+    { dat := { tag := by
+                rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]; exact hd.tag
+               ptr := by rw [ldv_ld_miss _ _ (by omega), ldv_store_hit, hd.ptr] }
+      arr := by
+        rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+          ldv_store_hit]
+      sz := hsz }
+  have hl : ldv .ld (writeLog (writeLog (writeLog (writeLog M [(b.pay + 16, 8, 0#64)])
+      [(b.pay, 8, w0)]) [(b.pay + 8, 8, w1)]) [(b.pay + 24, 8, ldv .ld M dcStackAddr)]) (b.pay + 24) =
+      ldv .ld (writeLog (writeLog (writeLog (writeLog M [(b.pay + 16, 8, 0#64)])
+      [(b.pay, 8, w0)]) [(b.pay + 8, 8, w1)]) [(b.pay + 24, 8, ldv .ld M dcStackAddr)]) dcStackAddr := by
+    rw [ldv_store_hit, hds]
+    repeat rw [ldv_ld_miss _ _ (by omega)]
+  refine ⟨h4.pushNode hf hn hl hv, fun a ha => ?_⟩
+  simp only [not_or] at ha
+  rw [imgM_store_miss _ _ (by simp only [StkWord] at ha; omega)]
+  exact hm4 a ha.1
+
+/-- **`op` succeeded** (`0x80003264`, `a0 = 0`): the result handle `y`
+(denoting `r`) pushed inline, then both operand handles freed. -/
+theorem binop_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    {pa pb y : Nat} {r : Num} (h : DcAt S M H F L C G (.num y :: .num pa :: .num pb :: hs) st)
+    (hdy : (GV.num y).Den ⟨L, G.strs⟩ (.num r))
+    {sp fa k : Nat} {ra : BitVec 64} (hsf : StackFrame S sp 176) (hab : heapEnd + 176 ≤ sp)
+    (hfr : BoFrame M (sp - 112) fa k ra) (hsa : DatAt M (sp - 112 + 32) (.num pa))
+    (hsb : DatAt M (sp - 112 + 48) (.num pb)) (hy : ldv .ld M (sp - 112 + 72) = BitVec.ofNat 64 y)
+    (hral : ra.toNat % 4 = 0)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 112)) (h10 : R 10 = 0#64)
+    (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
+      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → DcAt S M' H' F' L' C' G' hs (st.push (.num r)) →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 176 a → imgM M' a = imgM M a) →
+      DWO live S Q t ra R' M')
+    (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 112 - 16) →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 176 a → imgM M' a = imgM M a) →
+      DWO live S Q t 0x80001e74#64 R' M') :
+    DWO live S Q t 0x80003264#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
+  have hab' := hab
+  simp only [heapEnd] at hab'
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hab2 : heapEnd ≤ sp - 112 := by omega
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hG := h.glob
+  refine st_80003264 hlive (fun hc => absurd h10 hc) fun _ => ?_
+  have wtag := hfr.wtag
+  bc_run hlive hS [h2, wtag, hy] at 0x80001ea0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  trace_state
+  sorry
 
 end Dc.Mach

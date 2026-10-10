@@ -187,7 +187,7 @@ theorem dc_top_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     exact ⟨outHeap_of_ge (by simp only [heapEnd]; omega), fun hg => by
       have := hg.lt; simp only [heapStart] at this; omega⟩
   have h1 := h.outWrite hM1 (hP 32 (by omega))
-  obtain ⟨stk, regs, strs, lbuf⟩ := G
+  obtain ⟨stk, regs, strs, lbuf, lk⟩ := G
   cases stk with
   | nil =>
     have hst0 : st.stack = [] := by
@@ -219,7 +219,7 @@ theorem dc_top_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     have hv := h.view.stk
     cases hv with
     | cons h0 hn hl =>
-    have hcG : c ∈ (⟨(c, g) :: rest, regs, strs, lbuf⟩ : DcG).blocks := by
+    have hcG : c ∈ (⟨(c, g) :: rest, regs, strs, lbuf, lk⟩ : DcG).blocks := by
       simp only [DcG.blocks, List.map_cons, List.cons_append, List.mem_cons, true_or]
     have fbb := h.heap.heap.blk (List.mem_append_right _ (h.heap.raw.live c hcG))
     have hpl : 2147603936 ≤ c.pay ∧ c.pay < 2 ^ 64 := by
@@ -238,7 +238,7 @@ theorem dc_top_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     intro _
     have hra1 : ldv .ld (writeLog M [(sp - 32 + 24, 8, R 1)]) (sp - 32 + 24) = R 1 :=
       ldv_store_hit _ _ _
-    refine top_some (G := ⟨rest, regs, strs, lbuf⟩) (st := ⟨rest', sregs, ib, ob, sc, uw, ne, out⟩)
+    refine top_some (G := ⟨rest, regs, strs, lbuf, lk⟩) (st := ⟨rest', sregs, ib, ob, sc, uw, ne, out⟩)
       hlive h1 hsf (by simp only [heapEnd]; omega) hq _ (by bsimp []) (by bsimp [h0]) (by bsimp [h10])
       hra1 hal fun R' hk1 e1 e2 e10 h' hd => ?_
     refine hk R' _ c g rest rfl (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) e10

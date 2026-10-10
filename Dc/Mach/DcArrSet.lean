@@ -740,4 +740,93 @@ theorem DcAt.insNode {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {
     (forall₂_append hm1 (.cons ⟨rfl, hv⟩ hm2))
     (fun g' hg' => h.den.hsDen g' (List.mem_cons_of_mem _ hg'))
 
+/-! ## The model -/
+
+theorem arrSet_hit {i : Nat} {v w : Val} :
+    ∀ {m1 m2 : List (Nat × Val)}, (∀ jw ∈ m1, jw.1 < i) →
+      arrSet i v (m1 ++ (i, w) :: m2) = m1 ++ (i, v) :: m2
+  | [], m2, _ => by simp [arrSet]
+  | (j, w') :: m1, m2, h => by
+    have hj : j < i := h _ List.mem_cons_self
+    simp only [List.cons_append, arrSet, hj, ↓reduceIte]
+    rw [arrSet_hit fun jw hm => h jw (List.mem_cons_of_mem _ hm)]
+
+theorem arrSet_ins {i : Nat} {v : Val} :
+    ∀ {m1 m2 : List (Nat × Val)}, (∀ jw ∈ m1, jw.1 < i) → (∀ jw ∈ m2.head?, i < jw.1) →
+      arrSet i v (m1 ++ m2) = m1 ++ (i, v) :: m2
+  | [], [], _, _ => rfl
+  | [], (j, w) :: m2, _, h2 => by
+    have hj : i < j := h2 _ rfl
+    simp only [List.nil_append, arrSet, show ¬ j < i by omega, show (j == i) = false by
+      simp only [beq_eq_false_iff_ne]; omega, ↓reduceIte, Bool.false_eq_true]
+  | (j, w') :: m1, m2, h, h2 => by
+    have hj : j < i := h _ List.mem_cons_self
+    simp only [List.cons_append, arrSet, hj, ↓reduceIte]
+    rw [arrSet_ins (fun jw hm => h jw (List.mem_cons_of_mem _ hm)) h2]
+
+/-- Indices below `i` on the ghost side are below `i` on the model side. -/
+theorem forall₂_idx_lt {O : DObjs} {i : Nat} :
+    ∀ {l : List (Blk × ANode)} {m : List (Nat × Val)}, List.Forall₂ (ARel O) l m →
+      (∀ bx ∈ l, bx.2.idx < i) → ∀ jw ∈ m, jw.1 < i
+  | [], [], .nil, _, _, h => absurd h List.not_mem_nil
+  | _ :: _, _ :: _, .cons hr t, hl, jw, hm => by
+    rcases List.mem_cons.mp hm with rfl | hm
+    · rw [← hr.1]; exact hl _ List.mem_cons_self
+    · exact forall₂_idx_lt t (fun bx h => hl bx (List.mem_cons_of_mem _ h)) jw hm
+
+theorem St.setReg_setReg (st : St) (r : Nat) (l1 l2 : List Entry) :
+    (st.setReg r l1).setReg r l2 = st.setReg r l2 := by
+  simp only [St.setReg]; congr 1; funext q; split <;> rfl
+
+theorem DcG.setReg_setReg (G : DcG) (r : Nat) (l1 l2 : List (Blk × RLev)) :
+    (G.setReg r l1).setReg r l2 = G.setReg r l2 := by
+  simp only [DcG.setReg]; congr 1; funext q; split <;> rfl
+
+/-- A block stays fresh to the state through another `dc_malloc`. -/
+theorem DcFresh.afterMalloc {S : Nat → Prop} {M M' : Mem} {H H' : Heap} {F : List Blk}
+    {L : List NumObj} {G : DcG} {b c : Blk} {n sp : Nat} (h : DcFresh H F L G c)
+    (hp : DcMallocPost S M M' H H' n sp b) : DcFresh H' F L G c :=
+  ⟨by rw [hp.live]; exact List.mem_cons_of_mem _ h.live, h.notG, h.notNum⟩
+
+/-! ## The machine -/
+
+/-- `dc_array_set`'s datum stores and return (`0x80003d44`, `sp` lowered by
+64, `s0` the node at `a`). -/
+theorem as_tail {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp a : Nat}
+    {w0 w1 ra s0 s1 s2 : BitVec 64} (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (ha : heapStart ≤ a ∧ a + 32 ≤ heapEnd ∧ a % 8 = 0)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h8 : R 8 = BitVec.ofNat 64 a)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R', Keeps [1, 2, 8, 9, 14, 15, 18] R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      R' 8 = s0 → R' 9 = s1 → R' 18 = s2 → DW live S Q ra R' (datW M (a + 8) w0 w1)) :
+    DW live S Q 0x80003d44#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  obtain ⟨ha1, ha2, ha3⟩ := ha
+  simp only [heapEnd, heapStart] at hab ha1 ha2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h2, h8, l16, l24, l56, l48, l40, l32]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals first | (bsimp []; exact hal) | skip
+  have e : datW M (a + 8) w0 w1 = writeLog (writeLog M [(a + 8, 8, w0)]) [(a + 16, 8, w1)] := by
+    simp only [datW]
+  have m48 : ldv .ld (writeLog (writeLog M [(a + 8, 8, w0)]) [(a + 16, 8, w1)]) (sp - 64 + 48) = s0 := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), l48]
+  have m40 : ldv .ld (writeLog (writeLog M [(a + 8, 8, w0)]) [(a + 16, 8, w1)]) (sp - 64 + 40) = s1 := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), l40]
+  have m32 : ldv .ld (writeLog (writeLog M [(a + 8, 8, w0)]) [(a + 16, 8, w1)]) (sp - 64 + 32) = s2 := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), l32]
+  rw [m48, m40, m32]
+  have hk' := hk; rw [e] at hk'
+  refine hk' _ ?_ ?_ ?_ ?_ ?_ ?_
+  · keeps_tac Keeps.refl _ _
+  · bsimp []
+  · bsimp [h2]; congr 1; omega
+  · bsimp []
+  · bsimp []
+  · bsimp []
+
 end Dc.Mach

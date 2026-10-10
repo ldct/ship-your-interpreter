@@ -104,13 +104,12 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {Ge : DcG} {hse xse : List GV} {ke : Nat}
 
 /-- **`DC_SYSTEM`** from `0x800015cc` (either dispatch table). -/
-theorem evs_system_at (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
+theorem evs_system_at (hlive : ∀ p ∈ dcText, live p.1)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
-      G' st ex)
-    (hfu' : EvFuel 70 n d (k - leakOne c) st ⟨skipSys rest, td, false⟩ st'' r) (hlc : leakOne c ≤ k) (hoom : EvOom live S Q sp W q M0)
-    (htl : hs.tail = hse.tail)
-    (hgrow : G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke)
-    (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r)
+      G' st ex) (hlc : leakOne c ≤ k) (hoom : EvOom live S Q sp W q M0)
+    (hhead : EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs st
+      ⟨skipSys rest, td, false⟩)
+    (hend : EvEndK live S Q t0 sp W d k q M0 R0 G hs xs st ⟨skipSys rest, td, false⟩)
     {R1 : Nat → BitVec 64} (k1 : Keeps [10, 15] R1 R') :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800015cc#64 R1 M' := by
   obtain ⟨o0, -, -, -, ev0⟩ := e.same (e.hal hlc) e.ev.sb e.ev.srt (R2 := R1) (k1.mono (by decide))
@@ -136,11 +135,22 @@ theorem evs_system_at (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q
     (by rw [k2.get 24 (by decide), k1.get 24 (by decide), e.k1.get 24 (by decide),
       e.kc.get 24 (by decide)]; exact e.ev.s8)
   rw [← skipSys_drop rest] at ev'
-  exact ev_cont hlive (bltu_800015dc hlive) ev' hfu' htl (e.grow hlc hgrow) (e.pin hpin) hk
-    fun hne => IH t0 sp W d _ q M0 R0 R2 M2 H2 F' L' C' G' hs _ st st'' _ o' r Ge hse xse ke
-      hfu' hne ev' h12 hoom htl (e.grow hlc hgrow) (e.pin hpin) hk
+  exact ev_cont_k (bltu_800015dc hlive) ev' h12 (e.grow0 hlc) e.pin0 hhead hend
 
 /-- **`DC_SYSTEM`**: the status dispatch then `evs_system_at`. -/
+theorem evs_system_k (hlive : ∀ p ∈ dcText, live p.1)
+    (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' st ex) (h10 : R' 10 = BitVec.ofNat 64 7) (hlc : leakOne c ≤ k)
+    (hoom : EvOom live S Q sp W q M0)
+    (hhead : EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs st
+      ⟨skipSys rest, td, false⟩)
+    (hend : EvEndK live S Q t0 sp W d k q M0 R0 G hs xs st ⟨skipSys rest, td, false⟩) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
+  split
+  · exact evl_7 hlive h10 e.cs fun R1 k1 => evs_system_at hlive e hlc hoom hhead hend k1
+  · exact evm_7 hlive h10 e.cs fun R1 k1 => evs_system_at hlive e hlc hoom hhead hend k1
+
+/-- **`DC_SYSTEM`** (term direction). -/
 theorem evs_system (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
       G' st ex)
@@ -151,11 +161,8 @@ theorem evs_system (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
     (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r) :
     DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
   obtain ⟨hfu', -, hlc⟩ := hfu.system hres
-  split
-  · exact evl_7 hlive h10 e.cs fun R1 k1 =>
-      evs_system_at hlive IH e hfu' hlc hoom htl hgrow hpin hk k1
-  · exact evm_7 hlive h10 e.cs fun R1 k1 =>
-      evs_system_at hlive IH e hfu' hlc hoom htl hgrow hpin hk k1
+  exact evs_system_k hlive e h10 hlc hoom (EvHeadK.ofIH IH hfu' hoom htl hgrow hpin hk)
+    (EvEndK.ofFuel hlive hfu' htl hgrow hpin hk)
 
 end
 

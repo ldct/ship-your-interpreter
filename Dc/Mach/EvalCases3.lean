@@ -81,13 +81,12 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
 
 /-- **`DC_COMMENT`** (`0x800015a8`, from either dispatch table): on after
 the next newline, or the exit. -/
-theorem evs_comment_at (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
+theorem evs_comment_at (hlive : ∀ p ∈ dcText, live p.1)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
-      G' st ex)
-    (hfu' : EvFuel 70 n d (k - leakOne c) st ⟨skipEol rest, td, false⟩ st'' r) (hlc : leakOne c ≤ k) (hoom : EvOom live S Q sp W q M0)
-    (htl : hs.tail = hse.tail)
-    (hgrow : G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke)
-    (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r)
+      G' st ex) (hlc : leakOne c ≤ k)
+    (hhead : EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs st
+      ⟨skipEol rest, td, false⟩)
+    (hend : EvEndK live S Q t0 sp W d k q M0 R0 G hs xs st ⟨skipEol rest, td, false⟩)
     {R1 : Nat → BitVec 64} (k1 : Keeps [10, 15] R1 R') :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800015a8#64 R1 M' := by
   obtain ⟨o0, -, -, -, ev0⟩ := e.same (e.hal hlc) e.ev.sb e.ev.srt (R2 := R1) (k1.mono (by decide))
@@ -98,11 +97,9 @@ theorem evs_comment_at (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S 
   have hf := skipEol_find (imgM M') rest a er.val er.byte
   refine rt_comment hlive er.ownRest (by rw [k1.get 23 (by decide)]; exact h23) er.r9
     (fun hn R2 k2 => ?_) (fun p hp R2 k2 h8 h12 => ?_)
-  · rw [hf.2 hn] at hfu'
-    obtain ⟨rfl, rfl⟩ := hfu'.nil
-    obtain ⟨o2, -, -, -, ev2⟩ := e.same (e.hal hlc) e.ev.sb e.ev.srt (R2 := R2)
+  · obtain ⟨o2, -, -, -, ev2⟩ := e.same (e.hal hlc) e.ev.sb e.ev.srt (R2 := R2)
       ((k2.mono (by decide)).trans (k1.mono (by decide)))
-    exact ev_exit hlive ev2 htl (e.grow hlc hgrow) (e.pin hpin) hk
+    exact hend (hf.2 hn) _ R2 M' H' F' L' C' G' _ _ o2 ev2 (e.grow0 hlc) e.pin0
   · have hm := hf.1 p hp
     have hle : (skipEol rest).length ≤ rest.length := by rw [skipEol_drop rest]; simp
     obtain ⟨o', -, -, -, ev'⟩ := ev_adv e.ev e.kc e.c23 e.mem e.k1 e.e2 e.post (e.hal hlc) e.ev.sb
@@ -112,11 +109,21 @@ theorem evs_comment_at (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S 
       (by rw [k2.get 24 (by decide), k1.get 24 (by decide), e.k1.get 24 (by decide),
         e.kc.get 24 (by decide)]; exact e.ev.s8)
     rw [← skipEol_drop rest] at ev'
-    exact ev_cont hlive (bltu_800015c4 hlive) ev' hfu' htl (e.grow hlc hgrow) (e.pin hpin) hk
-      fun hne => IH t0 sp W d _ q M0 R0 R2 M' H' F' L' C' G' hs _ st st'' _ o' r Ge hse xse ke
-        hfu' hne ev' h12 hoom htl (e.grow hlc hgrow) (e.pin hpin) hk
+    exact ev_cont_k (bltu_800015c4 hlive) ev' h12 (e.grow0 hlc) e.pin0 hhead hend
 
 /-- **`DC_COMMENT`**: the status dispatch then `evs_comment_at`. -/
+theorem evs_comment_k (hlive : ∀ p ∈ dcText, live p.1)
+    (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' st ex) (h10 : R' 10 = BitVec.ofNat 64 8) (hlc : leakOne c ≤ k)
+    (hhead : EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs st
+      ⟨skipEol rest, td, false⟩)
+    (hend : EvEndK live S Q t0 sp W d k q M0 R0 G hs xs st ⟨skipEol rest, td, false⟩) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
+  split
+  · exact evl_8 hlive h10 e.cs fun R1 k1 => evs_comment_at hlive e hlc hhead hend k1
+  · exact evm_8 hlive h10 e.cs fun R1 k1 => evs_comment_at hlive e hlc hhead hend k1
+
+/-- **`DC_COMMENT`** (term direction). -/
 theorem evs_comment (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
       G' st ex)
@@ -127,11 +134,8 @@ theorem evs_comment (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n
     (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r) :
     DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
   obtain ⟨hfu', -, hlc⟩ := hfu.comment hres
-  split
-  · exact evl_8 hlive h10 e.cs fun R1 k1 =>
-      evs_comment_at hlive IH e hfu' hlc hoom htl hgrow hpin hk k1
-  · exact evm_8 hlive h10 e.cs fun R1 k1 =>
-      evs_comment_at hlive IH e hfu' hlc hoom htl hgrow hpin hk k1
+  exact evs_comment_k hlive e h10 hlc (EvHeadK.ofIH IH hfu' hoom htl hgrow hpin hk)
+    (EvEndK.ofFuel hlive hfu' htl hgrow hpin hk)
 
 end
 

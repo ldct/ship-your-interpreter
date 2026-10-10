@@ -94,9 +94,7 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
 theorem evs_eof_at (hlive : ∀ p ∈ dcText, live p.1)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
       G' st ex)
-    (hlc : leakOne c ≤ k) (htl : hs.tail = hse.tail)
-    (hgrow : G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke)
-    (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st .ok)
+    (hlc : leakOne c ≤ k) (hexit : EvExitK live S Q t0 sp W d k q M0 R0 G hs xs st)
     {R1 : Nat → BitVec 64} (k1 : Keeps [10, 15] R1 R') :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001540#64 R1 M' := by
   obtain ⟨o0, -, -, -, ev0⟩ := e.same (e.hal hlc) e.ev.sb e.ev.srt (R2 := R1) (k1.mono (by decide))
@@ -112,10 +110,20 @@ theorem evs_eof_at (hlive : ∀ p ∈ dcText, live p.1)
     (by omega)
   obtain ⟨o2, -, -, -, ev2⟩ := e'.same (e.hal hlc) e.ev.sb e.ev.srt (R2 := R2)
     ((k2.mono (by decide)).trans (k1.mono (by decide)))
-  exact ev_exit hlive ev2 htl (e.grow hlc hgrow) (e.pin hpin) hk
+  exact hexit _ R2 M2 _ F' L' C' G' _ _ o2 ev2 (e.grow0 hlc) e.pin0
 
 /-- **`DC_EOF_ERROR`**: the status dispatch then `evs_eof_at`; the
 evaluation ends with the state unchanged. -/
+theorem evs_eof_k (hlive : ∀ p ∈ dcText, live p.1)
+    (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' st ex) (h10 : R' 10 = BitVec.ofNat 64 10) (hlc : leakOne c ≤ k)
+    (hexit : EvExitK live S Q t0 sp W d k q M0 R0 G hs xs st) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
+  split
+  · exact evl_10 hlive h10 e.cs fun R1 k1 => evs_eof_at hlive e hlc hexit k1
+  · exact evm_10 hlive h10 e.cs fun R1 k1 => evs_eof_at hlive e hlc hexit k1
+
+/-- **`DC_EOF_ERROR`** (term direction). -/
 theorem evs_eof (hlive : ∀ p ∈ dcText, live p.1)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
       G' st ex)
@@ -126,9 +134,7 @@ theorem evs_eof (hlive : ∀ p ∈ dcText, live p.1)
     (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r) :
     DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
   obtain ⟨rfl, rfl, -, hlc⟩ := hfu.eofError hres
-  split
-  · exact evl_10 hlive h10 e.cs fun R1 k1 => evs_eof_at hlive e hlc htl hgrow hpin hk k1
-  · exact evm_10 hlive h10 e.cs fun R1 k1 => evs_eof_at hlive e hlc htl hgrow hpin hk k1
+  exact evs_eof_k hlive e h10 hlc (EvExitK.ofK hlive htl hgrow hpin hk)
 
 end
 

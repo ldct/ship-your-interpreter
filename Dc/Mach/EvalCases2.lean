@@ -86,16 +86,14 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {Ge : DcG} {hse xse : List GV} {ke : Nat}
 
 /-- **`DC_EATONE`**: the lookahead skipped, on to `rest.tail`. -/
-theorem evs_eat (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
+theorem evs_eat_k (hlive : ∀ p ∈ dcText, live p.1)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
       G' st' ex)
     (hres : dcFunc 70 st c rest.head? neg = .eatOne st') (h10 : R' 10 = BitVec.ofNat 64 1)
-    (hfu : EvFuel 70 (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) (hoom : EvOom live S Q sp W q M0)
-    (htl : hs.tail = hse.tail)
-    (hgrow : G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke)
-    (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r) :
+    (hlc : leakOne c ≤ k)
+    (hhead : EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs st' ⟨rest.tail, td, false⟩)
+    (hend : EvEndK live S Q t0 sp W d k q M0 R0 G hs xs st' ⟨rest.tail, td, false⟩) :
     DWO live S Q (t0 ++ Dc.outStr st'.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
-  obtain ⟨hfu', -, hlc⟩ := hfu.eatOne hres
   have h1 := dcFunc_strBound (lm := 70) (c := c) (peek := rest.head?) (neg := neg) e.ev.sb (by decide)
   have h2 := dcFunc_arrSorted (lm := 70) (c := c) (peek := rest.head?) (neg := neg) e.ev.srt
   rw [hres] at h1 h2
@@ -121,20 +119,46 @@ theorem evs_eat (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
     refine rt_eat_last hlive e2' hsf hpk fun R2 k2 h8 h12 => ?_
     obtain ⟨o', ev'⟩ := hadv 0 R2 (by simp) (by keeps_tac ((k2.mono (by decide)).trans (k1.mono (by decide))))
       (by rw [h8, k1.get 23 (by decide)]; simp)
-    exact ev_cont hlive (bltu_800017d0 hlive) ev' hfu' htl (e.grow hlc hgrow) (e.pin hpin) hk
-      fun hne => absurd rfl hne
+    exact ev_cont_k (bltu_800017d0 hlive) ev' h12 (e.grow0 hlc) e.pin0 hhead hend
   | cons p rest' =>
     simp only [List.cons_ne_nil, if_false]
     have hp : p < 256 := e.ev.chars p (by simp)
     refine rt_eat_mid hlive h10 e.cs e2 hsf hpk hp fun R2 k2 h8 h12 => ?_
     obtain ⟨o', ev'⟩ := hadv 1 R2 (by simp) (k2.mono (by decide)) (by rw [h8]; exact e.eat8)
-    simp only [List.drop_one, List.tail_cons] at ev' hfu'
-    exact ev_cont hlive (bltu_80001718 hlive) ev' hfu' htl (e.grow hlc hgrow) (e.pin hpin) hk
-      fun hne => IH t0 sp W d _ q M0 R0 R2 M' H' F' L' C' G' hs _ st' st'' _ o' r Ge hse xse ke
-        hfu' hne ev' h12 hoom htl (e.grow hlc hgrow) (e.pin hpin) hk
+    simp only [List.drop_one, List.tail_cons] at ev'
+    exact ev_cont_k (bltu_80001718 hlive) ev' h12 (e.grow0 hlc) e.pin0 hhead hend
 
-/-- **The square root** (`v`, status `0` with the root pushed): on to
-`rest`, or the exit after the last character. -/
+/-- **`DC_EATONE`** (term direction). -/
+theorem evs_eat (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
+    (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' st' ex)
+    (hres : dcFunc 70 st c rest.head? neg = .eatOne st') (h10 : R' 10 = BitVec.ofNat 64 1)
+    (hfu : EvFuel 70 (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) (hoom : EvOom live S Q sp W q M0)
+    (htl : hs.tail = hse.tail)
+    (hgrow : G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke)
+    (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r) :
+    DWO live S Q (t0 ++ Dc.outStr st'.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
+  obtain ⟨hfu', -, hlc⟩ := hfu.eatOne hres
+  exact evs_eat_k hlive e hres h10 hlc (EvHeadK.ofIH IH hfu' hoom htl hgrow hpin hk)
+    (EvEndK.ofFuel hlive hfu' htl hgrow hpin hk)
+
+/-- **The square root** (`v`, status `0` with the root `y` pushed). -/
+theorem evs_sqrt_k (hlive : ∀ p ∈ dcText, live p.1) {s : St} {x y : Num}
+    (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' (s.push (.num y)) ex)
+    (hres : dcFunc 70 st c rest.head? neg = .sqrt s x) (h10 : R' 10 = BitVec.ofNat 64 0)
+    (hlc : leakOne c ≤ k)
+    (hhead : EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs (s.push (.num y))
+      ⟨rest, td, false⟩)
+    (hend : EvEndK live S Q t0 sp W d k q M0 R0 G hs xs (s.push (.num y)) ⟨rest, td, false⟩) :
+    DWO live S Q (t0 ++ Dc.outStr (s.push (.num y)).out)
+      (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
+  have h1 := dcFunc_strBound (lm := 70) (c := c) (peek := rest.head?) (neg := neg) e.ev.sb (by decide)
+  have h2 := dcFunc_arrSorted (lm := 70) (c := c) (peek := rest.head?) (neg := neg) e.ev.srt
+  rw [hres] at h1 h2
+  exact evs_zero_k hlive e h10 hlc (h1.push (VB.num _ _)) (h2.stack _) hhead hend
+
+/-- **The square root** (term direction). -/
 theorem evs_sqrt (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n) {s : St} {x y : Num}
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
       G' (s.push (.num y)) ex)
@@ -148,16 +172,8 @@ theorem evs_sqrt (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n) {
       (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
   obtain ⟨y', hy', hfu', -, hlc⟩ := hfu.sqrt hres
   obtain rfl := Sqrt.fuel_eq hsq hy'
-  have h1 := dcFunc_strBound (lm := 70) (c := c) (peek := rest.head?) (neg := neg) e.ev.sb (by decide)
-  have h2 := dcFunc_arrSorted (lm := 70) (c := c) (peek := rest.head?) (neg := neg) e.ev.srt
-  rw [hres] at h1 h2
-  have hsb : StrBound (2 ^ 24) (s.push (.num y)) := h1.push (VB.num _ _)
-  have hsrt : ArrSorted (s.push (.num y)) := h2.stack _
-  cases rest with
-  | nil => exact evs_zero_last hlive e h10 hfu' hlc hsb hsrt htl hgrow hpin hk
-  | cons p rest' =>
-    simp only [List.cons_ne_nil, if_false]
-    exact evs_zero_mid hlive IH e h10 hfu' hlc hsb hsrt hoom htl hgrow hpin hk
+  exact evs_sqrt_k hlive e hres h10 hlc (EvHeadK.ofIH IH hfu' hoom htl hgrow hpin hk)
+    (EvEndK.ofFuel hlive hfu' htl hgrow hpin hk)
 
 end
 

@@ -190,6 +190,7 @@ theorem af_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
       AfPost (sp - 48) 32 M H F L G [b] M' H' F' L' G' →
       DcAt S M' H' F' L' C' G' (rest.map (·.2.v) ++ hs) st → AfNodes M' H' F' L' G' w rest →
       HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ (rest.map (·.2.v) ++ hs) →
+      StrPin G.strs G'.strs (rest.map (·.2.v) ++ hs) →
       DW live S Q (if w = 0#64 then 0x80003e90#64 else 0x80003e5c#64) R' M') :
     DW live S Q 0x80003eac#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -234,12 +235,12 @@ theorem af_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   by_cases hz : w = 0#64
   · bc_run hlive hS [p8, hz] at 0x80003e90
     all_goals first | (intro hc; exact absurd hc (by decide)) | skip
-    have := hk _ _ _ _ _ _ _ (by keeps_tac hkk) hpost h4 hr4 hkp
+    have := hk _ _ _ _ _ _ _ (by keeps_tac hkk) hpost h4 hr4 hkp (StrPin.refl _ _)
     simp only [hz, ↓reduceIte] at this; exact this
   · bc_run hlive hS [p8] at 0x80003e5c
     · intro hc; exact absurd hc hz
     intro _
-    have := hk _ _ _ _ _ _ _ (by keeps_tac hkk) hpost h4 hr4 hkp
+    have := hk _ _ _ _ _ _ _ (by keeps_tac hkk) hpost h4 hr4 hkp (StrPin.refl _ _)
     simp only [hz, ↓reduceIte] at this; exact this
 
 /-- `dc_array_free` on a node holding a string (`0x80003e7c`, `sp` lowered by
@@ -258,6 +259,7 @@ theorem af_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
       AfPost (sp - 48) 32 M H F L G [b] M' H' F' L' G' →
       DcAt S M' H' F' L' C' G' (rest.map (·.2.v) ++ hs) st → AfNodes M' H' F' L' G' w rest →
       HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ (rest.map (·.2.v) ++ hs) →
+      StrPin G.strs G'.strs (rest.map (·.2.v) ++ hs) →
       DW live S Q (if w = 0#64 then 0x80003e90#64 else 0x80003e5c#64) R' M') :
     DW live S Q 0x80003e7c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -274,7 +276,7 @@ theorem af_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   refine dc_free_str_specP hlive (Pend.id G) h (q := b.pay + 16) hq hw
     (StackFrame.sub (m := 48) (n := 32) hsf (by decide)) (by simp only [heapEnd]; omega)
     _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
-    fun R1 M3 H' G' hk1 hsn h3 hfr hfc hkp => ?_
+    fun R1 M3 H' G' hk1 hsn h3 hfr hfc hkp hpin => ?_
   have hne : ∀ bn ∈ rest, bn.1 ≠ b := fun bn hm e => hbr (List.mem_map.mpr ⟨bn, hm, e⟩)
   have hp1 : AfPost (sp - 48) 32 M H F L G [b] M3 H' F L G' :=
     ⟨hsn, hfr, fun c hc _ => hfc c hc⟩
@@ -294,7 +296,7 @@ theorem af_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   have hkk : Keeps afTailClob R2 R :=
     (hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
   show DW live S Q 0x80003e8c#64 R2 M4
-  have hk' := hk _ _ _ _ _ _ _ (by keeps_tac hkk) hpost h4 hr4 hkp
+  have hk' := hk _ _ _ _ _ _ _ (by keeps_tac hkk) hpost h4 hr4 hkp hpin
   by_cases hz : w = 0#64
   · simp only [hz, ↓reduceIte] at hk'
     bc_run hlive hS [p8, hz] at 0x80003e90
@@ -328,6 +330,7 @@ theorem af_body {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
       DcAt S M' H' F' L' C' G' (rest.map (·.2.v) ++ hs) st →
       AfNodes M' H' F' L' G' (ldv .ld M (b.pay + 24)) rest →
       HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ (rest.map (·.2.v) ++ hs) →
+      StrPin G.strs G'.strs (rest.map (·.2.v) ++ hs) →
       DW live S Q (if ldv .ld M (b.pay + 24) = 0#64 then 0x80003e90#64 else 0x80003e5c#64) R' M') :
     DW live S Q 0x80003e5c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -347,12 +350,12 @@ theorem af_body {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
     all_goals first | (intro hc; exact absurd hc (by decide)) | skip
     all_goals try intro _
     refine af_num hlive h hn hv hfb hbr hsf (by simp only [heapEnd]; omega) _ ?_ hr
-      ?_ ?_ fun R' M' H' F' L' C' G' hk1 hp h' hr' hkp => ?_
+      ?_ ?_ fun R' M' H' F' L' C' G' hk1 hp h' hr' hkp hpin => ?_
     · bsimp [hw]
     · bsimp [h2]
     · bsimp [h8]
     exact hk R' M' H' F' L' C' G' ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
-      (by rw [hk1.get 8]; bsimp [hw]) hp h' hr' hkp
+      (by rw [hk1.get 8]; bsimp [hw]) hp h' hr' hkp hpin
   | str p =>
     rw [hv] at hlw h
     simp only [GV.tag] at hlw
@@ -363,12 +366,12 @@ theorem af_body {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
     all_goals first | (intro hc; exact absurd hc (by decide)) | skip
     all_goals try intro _
     refine af_str hlive h hn hv hfb hbr hsf (by simp only [heapEnd]; omega) _ ?_ hr
-      ?_ ?_ fun R' M' H' F' L' C' G' hk1 hp h' hr' hkp => ?_
+      ?_ ?_ fun R' M' H' F' L' C' G' hk1 hp h' hr' hkp hpin => ?_
     · bsimp [hw]
     · bsimp [h2]
     · bsimp [h8]
     exact hk R' M' H' F' L' C' G' ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
-      (by rw [hk1.get 8]; bsimp [hw]) hp h' hr' hkp
+      (by rw [hk1.get 8]; bsimp [hw]) hp h' hr' hkp hpin
 
 /-- **The loop of `dc_array_free`** (`0x80003e5c`) over a nonempty chain:
 every node and datum freed, `s0` `NULL` at `0x80003e90`. -/
@@ -384,12 +387,12 @@ theorem af_loop {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
       (_ : ∀ R' M' H' F' L' C' G', Keeps afClob R' R → R' 8 = 0#64 →
         AfPost (sp - 48) 32 M H F L G (b :: rest.map (·.1)) M' H' F' L' G' →
         DcAt S M' H' F' L' C' G' hs st → HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs →
-        DW live S Q 0x80003e90#64 R' M'),
+        StrPin G.strs G'.strs hs → DW live S Q 0x80003e90#64 R' M'),
       DW live S Q 0x80003e5c#64 R M
   | rest, M, H, F, L, C, G, b, n, h, ha, R, h2, h8, h18, h19, hk => by
     obtain ⟨-, hn, hfb, hbr, hr⟩ := ha.head
     refine af_body hlive h hn hfb hbr hr hsf hab R h2 h8 h18 h19
-      fun R' M' H' F' L' C' G' hk1 e8 hp h' hr' hkp => ?_
+      fun R' M' H' F' L' C' G' hk1 e8 hp h' hr' hkp hpin => ?_
     have k18 : R' 18 = 1#64 := by rw [hk1.get 18]; exact h18
     have k19 : R' 19 = 2#64 := by rw [hk1.get 19]; exact h19
     have k2 : R' 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk1.get 2]; exact h2
@@ -400,14 +403,16 @@ theorem af_loop {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
       exact hk R' M' H' F' L' C' G' hk1 (e8.trans hz) (hp.sub fun c hc => by
         rw [List.mem_singleton.mp hc]; exact List.mem_cons_self) h'
         (hkp.mono fun g hg => List.mem_append_right _ hg)
+        (hpin.mono fun g hg => List.mem_append_right _ hg)
     | (b', n') :: rest', hr' =>
       obtain ⟨e1, -, hfb', -, -⟩ := hr'.head
       have hnz : ldv .ld M (b.pay + 24) ≠ 0#64 := e1 ▸ blk_ptr_ne h'.heap.heap hfb'.live
       simp only [hnz, ↓reduceIte]
       refine af_loop hlive hsf hab rest' h' (e1 ▸ hr') R' k2 (e8.trans e1) k18 k19
-        fun R'' M'' H'' F'' L'' C'' G'' hk2 e8' hp' h'' hkp' => ?_
+        fun R'' M'' H'' F'' L'' C'' G'' hk2 e8' hp' h'' hkp' hpin' => ?_
       refine hk R'' M'' H'' F'' L'' C'' G'' (hk2.trans hk1) e8' ((hp.trans hp').sub fun c hc => ?_) h''
         ((hkp.mono fun g hg => List.mem_append_right _ hg).trans hkp')
+        ((hpin.mono fun g hg => List.mem_append_right _ hg).trans hpin')
       rcases List.mem_append.mp hc with hc | hc
       · rw [List.mem_singleton.mp hc]; exact List.mem_cons_self
       · exact List.mem_cons_of_mem _ hc
@@ -458,7 +463,7 @@ theorem dc_array_free_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → 
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps afFnClob R' R →
       AfPost sp 80 M H F L G (l.map (·.1)) M' H' F' L' G' → DcAt S M' H' F' L' C' G' hs st →
-      HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs → DW live S Q (R 1) R' M') :
+      HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs → StrPin G.strs G'.strs hs → DW live S Q (R 1) R' M') :
     DW live S Q 0x80003e20#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -472,7 +477,7 @@ theorem dc_array_free_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → 
     all_goals first | (intro hc; exact absurd hz hc) | skip
     all_goals try intro _
     all_goals try (bc_run hlive hS [h10, hz])
-    exact hk R M H F L C G (Keeps.refl _ _) (AfPost.refl _ _ _ _ _ _ _ _) h (HsKeep.refl _ _)
+    exact hk R M H F L C G (Keeps.refl _ _) (AfPost.refl _ _ _ _ _ _ _ _) h (HsKeep.refl _ _) (StrPin.refl _ _)
   | (b, n) :: rest, h, ha =>
     obtain ⟨e1, -, hfb, -, -⟩ := ha.head
     have hnz : p ≠ 0#64 := e1 ▸ blk_ptr_ne hi hfb.live
@@ -496,7 +501,7 @@ theorem dc_array_free_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → 
     all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
     show DW live S Q 0x80003e5c#64 _ (afProW M sp R)
     refine af_loop hlive hsf (by simp only [heapEnd]; omega) rest h1 (e1 ▸ ha1) _ ?_ ?_ ?_ ?_
-      fun R' M' H' F' L' C' G' hk1 e8 hp h' hkp => ?_
+      fun R' M' H' F' L' C' G' hk1 e8 hp h' hkp hpin => ?_
     · bsimp [e2]
     · bsimp [h10, e1]
     · bsimp []
@@ -523,7 +528,7 @@ theorem dc_array_free_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → 
     have q24 : ldv .ld M' (sp - 48 + 24) = R 9 := by
       rw [hfr 24 (by omega)]; simp only [afProW]; rw [ldv_store_hit]
     refine af_epi hlive hS hsf R' k2 q40 q32 q24 q16 q8 hal fun R'' hk2 e1 e2 e8' e9 e18 e19 => ?_
-    refine hk R'' M' H' F' L' C' G' (Keeps.restoreAll (rs := [1, 2, 8, 9, 18, 19]) ?_ ?_) ?_ h' hkp
+    refine hk R'' M' H' F' L' C' G' (Keeps.restoreAll (rs := [1, 2, 8, 9, 18, 19]) ?_ ?_) ?_ h' hkp hpin
     · exact (hk2.mono (by decide)).trans ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
     · intro z hz
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hz

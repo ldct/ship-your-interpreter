@@ -101,7 +101,7 @@ theorem cmpop_go {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     (hra : ldv .ld M (sp - 64 + 56) = ra) (hral : ra.toNat % 4 = 0)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64))
     (hk : ∀ R' M' H' F' L' C' G', Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
-      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → R' 10 = ordWord (cmpop st).1 →
+      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs → R' 10 = ordWord (cmpop st).1 →
       DcAt S M' H' F' L' C' G' hs (cmpop st).2 →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 400 a → imgM M' a = imgM M a) →
       DWO live S Q t ra R' M') :
@@ -226,7 +226,7 @@ theorem cmpop_go {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     ((hk5.mono (by decide)).trans (by keeps_tac ((hk4.mono (by decide)).trans (by keeps_tac
       ((hk3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans
         (by keeps_tac Keeps.refl _ _)))))))))))
-    (by bsimp []) (by bsimp []; congr 1; omega) rfl (by bsimp [h40, ena, enb]) h6 fun a ho hg hf => ?_
+    (by bsimp []) (by bsimp []; congr 1; omega) rfl rfl (by bsimp [h40, ena, enb]) h6 fun a ho hg hf => ?_
   have hlo : a < sp - 400 ∨ sp ≤ a :=
     Classical.byContradiction fun hc => hf ⟨by omega, by omega⟩
   have hf1 : ¬ frameIn (sp - 64) 32 a := fun h' => by have := h'.1; have := h'.2; omega
@@ -250,7 +250,7 @@ theorem dc_cmpop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     (hsf : StackFrame S sp 400) (hab : heapEnd + 400 ≤ sp)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps (1 :: 2 :: opClob) R' R → R' 1 = R 1 → R' 2 = R 2 →
-      G'.lk = G.lk → R' 10 = ordWord (cmpop st).1 → DcAt S M' H' F' L' C' G' hs (cmpop st).2 →
+      G'.lk = G.lk → G'.strs = G.strs → R' 10 = ordWord (cmpop st).1 → DcAt S M' H' F' L' C' G' hs (cmpop st).2 →
       StkOut sp 400 M' M → DWO live S Q t (R 1) R' M') :
     DWO live S Q t 0x8000345c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -279,7 +279,7 @@ theorem dc_cmpop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
       simp only [frameIn] at ha
       rw [hfr a (by omega), hm1 a (by simp only [frameIn]; omega)]
     refine hk R' M' H F L C G (kk.trans k1) e1
-      (by rw [e2, h2]) rfl (by rw [cmpop_of_no2 hno, e10]; rfl) ?_ fun a _ _ hf => hm' a hf
+      (by rw [e2, h2]) rfl rfl (by rw [cmpop_of_no2 hno, e10]; rfl) ?_ fun a _ _ hf => hm' a hf
     rw [cmpop_of_no2 hno]
     exact h.outWrite hm' fun a ha => by
       simp only [frameIn] at ha
@@ -289,9 +289,9 @@ theorem dc_cmpop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     have k1 : Keeps (1 :: 2 :: opClob) R1 R :=
       (hk1.mono (by decide) : Keeps (1 :: 2 :: opClob) R1 _).trans (by keeps_tac Keeps.refl _ _)
     refine cmpop_go hlive h1 hsf hab hstk hra hal R1 q1
-      fun R' M' H' F' L' C' G' kk e1 e2 elk e10 h' hout => ?_
+      fun R' M' H' F' L' C' G' kk e1 e2 elk estr e10 h' hout => ?_
     refine hk R' M' H' F' L' C' G' (kk.trans k1) e1
-      (by rw [e2, h2]) elk e10 h' fun a ho hg hf => ?_
+      (by rw [e2, h2]) elk estr e10 h' fun a ho hg hf => ?_
     rw [hout a ho hg hf, hm1 a fun h' => hf (by simp only [frameIn] at h' ⊢; omega)]
 
 end Dc.Mach

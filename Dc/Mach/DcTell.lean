@@ -493,7 +493,7 @@ theorem tl_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
     (h11 : R 11 = BitVec.ofNat 64 o.hb.pay) (h12 : R 12 = 0#64) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' G', Keeps tellLenClob R' R → R' 2 = R 2 →
       R' 10 = BitVec.ofNat 64 o.s.length → SameNodes G G' → DcAt S M' H' F L C G' hs st →
-      StkOut sp 80 M' M →
+      StkOut sp 80 M' M → StrPin G.strs G'.strs hs →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x80003804#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -554,7 +554,7 @@ theorem tl_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   refine dc_free_str_spec hlive h2' (hsf.slot (by omega) (by omega) (by omega))
     n24 (hsf.within (m := 48) (n := 32) (by omega) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp []) (by bsimp [])
-    fun R6 M6 H6 G6 hk6 hsn6 hd6 hout6 => ?_
+    fun R6 M6 H6 G6 hk6 hsn6 hd6 hout6 hpin6 => ?_
   have k0 : ∀ o, o < 48 → ∀ j, j < 8 →
       imgM M6 (sp - 48 + o + j) = imgM M2 (sp - 48 + o + j) :=
     fun o ho j hj => hout6 _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
@@ -568,7 +568,7 @@ theorem tl_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   bsimp []
   bc_run hlive hS6 [q6, g8, g40]
   all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hal | skip
-  refine hk _ M6 H6 G6 ?_ ?_ ?_ hsn6 hd6 fun a ho hg hf => ?_
+  refine hk _ M6 H6 G6 ?_ ?_ ?_ hsn6 hd6 (fun a ho hg hf => ?_) hpin6
   · exact by keeps_tac ((hk6.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
   · bsimp [h2]; try (congr 1; omega)
   · bsimp []
@@ -588,15 +588,15 @@ theorem dc_tell_length_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) →
     (h11 : R 11 = BitVec.ofNat 64 g.ptr) (h12 : R 12 = 0#64) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps tellLenClob R' R → R' 2 = R 2 →
       R' 10 = BitVec.ofNat 64 v.zLen → SameNodes G G' → DcAt S M' H' F' L' C' G' hs st →
-      StkOut sp 80 M' M → DW live S Q (R 1) R' M') :
+      StkOut sp 80 M' M → StrPin G.strs G'.strs hs → DW live S Q (R 1) R' M') :
     DW live S Q 0x80003804#64 R M := by
   match g, v, hv with
   | .num _, .num _, ⟨x, hx, rfl, rfl⟩ =>
     exact tl_num hlive h hx hsf hab R h2 h10 h11 h12 hal fun R' M' H' F' L' C' k1 k2 k3 k4 k5 =>
-      hk R' M' H' F' L' C' G k1 k2 k3 ⟨rfl, rfl, rfl⟩ k4 k5
+      hk R' M' H' F' L' C' G k1 k2 k3 ⟨rfl, rfl, rfl⟩ k4 k5 (StrPin.refl _ _)
   | .str _, .str _, ⟨o, ho, rfl, rfl⟩ =>
-    exact tl_str hlive h ho hsf hab R h2 h10 h11 h12 hal fun R' M' H' G' k1 k2 k3 k4 k5 k6 =>
-      hk R' M' H' F L C G' k1 k2 k3 k4 k5 k6
+    exact tl_str hlive h ho hsf hab R h2 h10 h11 h12 hal fun R' M' H' G' k1 k2 k3 k4 k5 k6 k7 =>
+      hk R' M' H' F L C G' k1 k2 k3 k4 k5 k6 k7
   | .num _, .str _, hv => exact hv.elim
   | .str _, .num _, hv => exact hv.elim
 

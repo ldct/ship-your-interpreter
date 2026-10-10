@@ -244,7 +244,7 @@ theorem binop2_pops {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     {fa k : Nat} (hfa : fa % 4 = 0) (hfa2 : fa < 2 ^ 64)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 fa) (h11 : R 11 = BitVec.ofNat 64 k)
     (h17 : R 17 = 1#64) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R1 M2 H2 G2 st2 na nb, Keeps (1 :: 2 :: popClob) R1 R → G2.lk = G.lk →
+    (hk : ∀ R1 M2 H2 G2 st2 na nb, Keeps (1 :: 2 :: popClob) R1 R → G2.lk = G.lk → G2.strs = G.strs →
       R1 1 = 0x80003388#64 → R1 2 = BitVec.ofNat 64 (sp - 128) → R1 10 = BitVec.ofNat 64 pa →
       R1 11 = BitVec.ofNat 64 pb → R1 12 = BitVec.ofNat 64 k →
       R1 13 = BitVec.ofNat 64 (sp - 128 + 72) → R1 14 = BitVec.ofNat 64 (sp - 128 + 88) →
@@ -336,7 +336,7 @@ theorem binop2_pops {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     exact hd1.tag
   refine hk _ M3 H3 G2 st2 na nb
     (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans
-      (by keeps_tac Keeps.refl _ _))))) rfl
+      (by keeps_tac Keeps.refl _ _))))) rfl rfl
     (by bsimp []) (by bsimp [q3]) (by bsimp []; rfl) (by bsimp []) (by bsimp []) (by bsimp [])
     (by bsimp []) ⟨rfl, h2', hda, hdb, hfr3, hd2, hsb, fun a ho hg hf => ?_⟩
   have hf1 : ¬ frameIn (sp - 128) 336 a := fun h' => hf (by simp only [frameIn] at h' ⊢; omega)
@@ -357,7 +357,7 @@ theorem binop2_fail {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     (hfr : B2Frame M (sp - 128) fa k ra) (hsa : DatAt M (sp - 128 + 32) (.num pa))
     (hsb : DatAt M (sp - 128 + 48) (.num pb)) (hral : ra.toNat % 4 = 0)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 128)) (h10 : R 10 ≠ 0#64)
-    (hk : ∀ R' M' H' G', Keeps (1 :: 2 :: pushClob) R' R → G'.lk = G.lk → R' 1 = ra →
+    (hk : ∀ R' M' H' G', Keeps (1 :: 2 :: pushClob) R' R → G'.lk = G.lk → G'.strs = G.strs → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → DcAt S M' H' F L C G' hs ((st.push (.num na)).push (.num nb)) →
       StkOut (sp - 128) 64 M' M → DWO live S Q t ra R' M')
     (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 128 - 64) → StkOut (sp - 128) 64 M' M →
@@ -404,7 +404,7 @@ theorem binop2_fail {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   · exact hral
   refine hk _ M2 H2 { G with stk := (c2, .num pb) :: (c1, .num pa) :: G.stk } (by keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
-      (by keeps_tac Keeps.refl _ _))))) rfl (by bsimp []) (by bsimp [q2]; rw [show sp - 128 + 128 = sp by omega]) h2'
+      (by keeps_tac Keeps.refl _ _))))) rfl rfl (by bsimp []) (by bsimp [q2]; rw [show sp - 128 + 128 = sp by omega]) h2'
     fun a o1 o2 o3 => by rw [hout2 a o1 o2 o3, hout1 a o1 o2 o3]
 
 /-- **An inline push with frame stores among the node stores**: a memory
@@ -506,7 +506,7 @@ theorem binop2_second {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 128)) (h10 : R 10 = 32#64)
     (h1 : R 1 = 0x800033fc#64)
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
-      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → DcAt S M' H' F' L' C' G' hs (st.push (.num rr)) →
+      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs → DcAt S M' H' F' L' C' G' hs (st.push (.num rr)) →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
       DWO live S Q t ra R' M')
     (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 128 - 16) →
@@ -567,7 +567,7 @@ theorem binop2_second {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
   exact binop2_frees hlive h3 hsf hab hwa3 hwb3 hwr3 hral _ (by bsimp [q1]) (by bsimp []) (by bsimp [])
     fun R' M' H' F' L' C' hk' e1 e2 h' hout' => hk R' M' H' F' L' C' { G with stk := (b, .num yr) :: G.stk }
       (by keeps_tac ((hk'.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
-        (by keeps_tac Keeps.refl _ _))))) e1 e2 rfl h' fun a ho hg hf => by
+        (by keeps_tac Keeps.refl _ _))))) e1 e2 rfl rfl h' fun a ho hg hf => by
       rw [hout' a ho hg hf, hm3 a (fun hb => by
         rcases hb with hb | hb
         · simp only [Blk.In, Blk.pay, Blk.fin] at hb hbhi hpl1; simp only [OutHeap, heapStart, heapEnd] at ho; omega
@@ -596,7 +596,7 @@ theorem binop2_mid {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     (h14 : R 14 = BitVec.ofNat 64 yr) (h15 : R 15 = BitVec.ofNat 64 b.pay)
     (h16 : R 16 = 2147601816#64)
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
-      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk →
+      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs →
       DcAt S M' H' F' L' C' G' hs ((st.push (.num rq)).push (.num rr)) →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M2 a) →
       DWO live S Q t ra R' M')
@@ -662,8 +662,8 @@ theorem binop2_mid {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     rw [ldv_congr .ld fun j hj => agr _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact hwr
   refine binop2_second hlive h4 hdr hsf hab hwa4 hwb4 hwr4 hral l96 l104 ⟨by rw [hw1]; rfl, rfl⟩ (upd (upd R 10 32#64) 1 2147496956#64)
     (by bsimp [h2]) (by bsimp []) (by bsimp [])
-    (fun R' M' H' F' L' C' G' hk' e1 e2 elk h' hout' => hk R' M' H' F' L' C' G'
-      ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) e1 e2 elk h' fun a ho hg hf => by
+    (fun R' M' H' F' L' C' G' hk' e1 e2 elk estr h' hout' => hk R' M' H' F' L' C' G'
+      ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) e1 e2 elk estr h' fun a ho hg hf => by
         rw [hout' a ho hg hf]
         exact hm4 a fun hb => by
           rcases hb with hb | hb | hb
@@ -698,7 +698,7 @@ theorem binop2_first {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 128)) (h10 : R 10 = BitVec.ofNat 64 b.pay)
     (h1r : R 1 = 0x800033b0#64)
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
-      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk →
+      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs →
       DcAt S M' H' F' L' C' G' hs ((st.push (.num rq)).push (.num rr)) →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a) →
       DWO live S Q t ra R' M')
@@ -764,8 +764,8 @@ theorem binop2_first {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
   exact binop2_mid hlive h2' hfresh hbsz hpl1 hpl2 hpl3 hbhi hdq hdr hsf hab hwa2 hwb2 hwr2 hral hd hw1 hold _
     (by bsimp [h2]) (by bsimp [h10]) (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [h10])
     (by bsimp [])
-    (fun R' M' H' F' L' C' G' hk' e1 e2 elk h' hout' => hk R' M' H' F' L' C' G'
-      ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) e1 e2 elk h' (out2 M' hout'))
+    (fun R' M' H' F' L' C' G' hk' e1 e2 elk estr h' hout' => hk R' M' H' F' L' C' G'
+      ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) e1 e2 elk estr h' (out2 M' hout'))
     fun R' M' e2 hout' => hoom R' M' e2 (out2 M' hout')
 
 /-- **`op` succeeded** (`0x80003388`, `a0 = 0`): the results `yq` then `yr`
@@ -783,7 +783,7 @@ theorem binop2_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     (hyr : ldv .ld M (sp - 128 + 88) = BitVec.ofNat 64 yr) (hral : ra.toNat % 4 = 0)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 128)) (h10 : R 10 = 0#64)
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
-      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk →
+      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs →
       DcAt S M' H' F' L' C' G' hs ((st.push (.num rq)).push (.num rr)) →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
       DWO live S Q t ra R' M')
@@ -855,9 +855,9 @@ theorem binop2_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   rw [hpc]
   exact binop2_first hlive h1 hp hdq hdr hsf hab hwa hwb hwr hral l96 l104 ⟨by rw [hw0]; rfl, rfl⟩ l8 l88
     R1 q1 hr10 e1
-    (fun R' M' H' F' L' C' G' hk' e1' e2 elk h' hout' => hk R' M' H' F' L' C' G'
+    (fun R' M' H' F' L' C' G' hk' e1' e2 elk estr h' hout' => hk R' M' H' F' L' C' G'
       ((hk'.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))
-      e1' e2 elk h' (out1 M' hout'))
+      e1' e2 elk estr h' (out1 M' hout'))
     fun R' M' e2 hout' => hoom R' M' e2 (out1 M' hout')
 
 /-! ## `dc_binop2` -/
@@ -876,7 +876,7 @@ theorem dc_binop2_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 fa) (h11 : R 11 = BitVec.ofNat 64 st.scale)
     (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps (1 :: 2 :: opClob) R' R → R' 2 = R 2 →
-      G'.lk.length ≤ G.lk.length + lk → DcAt S M' H' F' L' C' G' hs (binop2 st (f st.scale)) →
+      G'.lk.length ≤ G.lk.length + lk → G'.strs = G.strs → DcAt S M' H' F' L' C' G' hs (binop2 st (f st.scale)) →
       StkOut sp W M' M → DWO live S Q t (R 1) R' M')
     (hoom : ∀ R' M' sp', OomAt S sp W M (fun _ => False) sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M') :
@@ -890,7 +890,7 @@ theorem dc_binop2_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
   have hsf176 := hsf.mono (n := 192) (by omega)
   refine binop2_entry hlive h (hsf.mono (by omega)) (by simp only [heapEnd]; omega) R h2 hal
     (fun hno R' M' hk' hout' => hk R' M' H F L C G (hk'.mono (by decide)) (hk'.get 2 (by decide))
-      (by omega) (by
+      (by omega) rfl (by
         rw [binop2_of_not hno]
         exact h.outWrite (P := frameIn sp 304) (fun a ha => hout' a (by simp only [frameIn] at ha; omega))
           fun a ha => ⟨(above_sp (sp := sp - 304) (by simp only [heapEnd]; omega) ha.1).1,
@@ -900,7 +900,7 @@ theorem dc_binop2_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
   have r01 : R0 1 = R 1 := hk0.get 1 (by decide)
   refine binop2_pops hlive h hsf hab hW hstk hfa hfa2 R0 (by rw [hk0.get 10 (by decide), h10])
     (by rw [hk0.get 11 (by decide), h11]) e17 (by rw [hk0.get 2 (by decide), h2]) (by rw [r01]; exact hal)
-    fun R1 M2 H2 G2 st2 na nb hk1 hlk2 e1 e2 e10 e11 e12 e13 e14 hb => ?_
+    fun R1 M2 H2 G2 st2 na nb hk1 hlk2 hstr2 e1 e2 e10 e11 e12 e13 e14 hb => ?_
   obtain ⟨est, h2', hda, hdb, hfr, hsa, hsb, hout2⟩ := hb
   subst est
   rw [r01] at hfr
@@ -943,23 +943,25 @@ theorem dc_binop2_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
     rw [e1]
     refine binop2_ok hlive hr.h hr.dq hr.dr hsf176 hab176 hfr' hsa' hsb' hr.wq hr.wr hral R'
       (by rw [hk'.get 2 (by decide), e2]) hr.a0
-      (fun R'' M'' H'' F'' L'' C'' G'' hk'' e1'' e2'' hlk'' hd'' hout'' => ?_)
+      (fun R'' M'' H'' F'' L'' C'' G'' hk'' e1'' e2'' hlk'' hs'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 128 - 16) ⟨by omega, by omega, e2'',
         fun a o1 o2 o3 _ => outW M' M'' hr.out hout'' a o1 o2 o3⟩
     rw [binop2_push_some (st := st2) (g := f ((st2.push (.num na)).push (.num nb)).scale) hr.val] at hk
     refine hk R'' M'' H'' F'' L'' C'' G'' ((hk''.trans ((hk'.mono (by decide)).trans kk)))
-      (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hr.lkLen) hd'' (outW M' M'' hr.out hout'')
+      (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hr.lkLen)
+      (hs''.trans ((congrArg DcG.strs hr.same).trans hstr2)) hd'' (outW M' M'' hr.out hout'')
   · obtain ⟨hfr', hsa', hsb'⟩ := after M' hf.out
     rw [e1]
     refine binop2_fail hlive hf.h hf.da hf.db hsf176 hab176 hfr' hsa' hsb' hral R'
       (by rw [hk'.get 2 (by decide), e2]) hf.a0
-      (fun R'' M'' H'' G'' hk'' hlk'' e1'' e2'' hd'' hout'' => ?_)
+      (fun R'' M'' H'' G'' hk'' hlk'' hs'' e1'' e2'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 128 - 64) ⟨by omega, by omega, e2'',
         fun a o1 o2 o3 _ => outW M' M'' hf.out (fun a o1 o2 o3 => hout'' a o1 o2 fun h' => o3 (by
           simp only [frameIn] at h' ⊢; omega)) a o1 o2 o3⟩
     rw [binop2_push_none (st := st2) (g := f ((st2.push (.num na)).push (.num nb)).scale) hf.val] at hk
     refine hk R'' M'' H'' F' L' C' G'' ((hk''.mono (by decide)).trans ((hk'.mono (by decide)).trans kk))
-      (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hf.lkLen) hd''
+      (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hf.lkLen)
+      (hs''.trans ((congrArg DcG.strs hf.same).trans hstr2)) hd''
       (outW M' M'' hf.out fun a o1 o2 o3 => hout'' a o1 o2 fun h' => o3 (by
         simp only [frameIn] at h' ⊢; omega))
 

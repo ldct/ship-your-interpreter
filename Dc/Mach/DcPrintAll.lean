@@ -61,11 +61,12 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     (hoom : ∀ t' R' M' sp', OomAt S sp prN M0 ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
     ∀ (rest pre : List (Blk × GV)) {b : Blk} {g : GV} {t : String} {M : Mem} {H : Heap} {F : List Blk}
       {L : List NumObj} {C : BcConsts} {G : DcG} (R : Nat → BitVec 64),
-    DcAt S M H F L C G hs st → G.stk = pre ++ (b, g) :: rest → SameNodes G0 G → MulBase S M →
+    DcAt S M H F L C G hs st → G.stk = pre ++ (b, g) :: rest → SameNodes G0 G → StrPin G0.strs G.strs hs →
+    MulBase S M →
     (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M a = imgM M0 a) →
     R 2 = BitVec.ofNat 64 sp → R 8 = BitVec.ofNat 64 b.pay → R 9 = BitVec.ofNat 64 ob →
     (∀ R' M' H' F' L' C' G', Keeps (8 :: cClob) R' R → R' 2 = R 2 → SameNodes G0 G' →
-      DcAt S M' H' F' L' C' G' hs st →
+      DcAt S M' H' F' L' C' G' hs st → StrPin G0.strs G'.strs hs →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M0 a) →
       DWO live S Q (t ++ Dc.outStr (paOut ob (st.stack.drop pre.length))) 0x800038e4#64 R' M') →
     DWO live S Q t 0x800038c4#64 R M := by
@@ -74,7 +75,7 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
   | nil => ?_
   | cons y rest ih => ?_
   all_goals
-    intro pre b g t M H F L C G R h hst hsn hmb hfr h2 h8 h9 hk
+    intro pre b g t M H F L C G R h hst hsn hpin hmb hfr h2 h8 h9 hk
     have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
     have hNW : prN = 48 + (32 + (176 + 512 + rmStack (2 ^ 30) + 48)) := rfl
     have hrm : 224 ≤ rmStack (2 ^ 30) := by unfold rmStack; omega
@@ -94,7 +95,7 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     have hvm : v ∈ st.stack := List.mem_of_mem_drop (by rw [hdrop]; exact List.mem_cons_self)
     refine dc_print_spec hlive (keep := true) (nl := true) (ob := ob) (sp := sp) h
       (fun e => absurd e (by decide)) hv hhs (hw v hvm) hmb hob2 hob herr hsf hab _ ?q2 ?q10 ?q11 ?q12
-      ?q13 ?q14 ?qal (fun R' M' H' F' L' C' G' hk' e2 hsn' hD hfr' => ?_)
+      ?q13 ?q14 ?qal (fun R' M' H' F' L' C' G' hk' e2 hsn' hD hfr' hpin' => ?_)
       fun t' R' M' sp' ho => hoom t' R' M' sp' ⟨ho.lo, ho.hi, ho.r2, fun a e1 e2 e3 e4 =>
         (ho.out a e1 e2 e3 e4).trans (hfr a e1 e2 e4 e3)⟩
     case q2 => bsimp [h2]
@@ -119,10 +120,11 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     have hfr2 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M0 a :=
       fun a e1 e2 e3 e4 => (hfr' a e1 e2 e3 e4).trans (hfr a e1 e2 e3 e4)
     have hsn2 := hsn.trans hsn'
+    have hpin2 : StrPin G0.strs G'.strs hs := hpin.trans hpin'
     have hlen := hD'.den.stk.length_eq
     rw [hst'] at hlen
     rw [show nlBytes true = [10] from rfl]
-    clear hfr' hmb hfr hD h hsn hsn'
+    clear hfr' hmb hfr hD h hsn hsn' hpin hpin'
     bsimp []
   · -- the last node
     simp only [headPtr] at hl
@@ -130,7 +132,7 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     have ho : Dc.Val.out 70 ob v ++ [10] = paOut ob (st.stack.drop pre.length) := by
       rw [hdrop, List.drop_eq_nil_of_le (by simp at hlen; omega)]; simp [paOut]
     rw [ho]
-    refine hk _ M' H' F' L' C' G' ?_ ?_ hsn2 hD' hfr2
+    refine hk _ M' H' F' L' C' G' ?_ ?_ hsn2 hD' hpin2 hfr2
     · exact by keeps_tac ((hk'.mono (ks' := 8 :: cClob) (by decide)).trans
         (show Keeps (8 :: cClob) _ R by keeps_tac Keeps.refl _ _))
     · bsimp [e2]
@@ -147,8 +149,8 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     all_goals try (intro hc; exact (hc hnz).elim)
     try intro _
     refine ih (pre ++ [(b, g)]) (b := b') (g := g') (t := t ++ Dc.outStr (Dc.Val.out 70 ob v ++ [10])) _ hD'
-      (by rw [hst']; simp) hsn2 hmb' hfr2 ?r2 ?r8 ?r9
-      fun R'' M'' H'' F'' L'' C'' G'' hk'' e2' hsn'' hD'' hfr'' => ?_
+      (by rw [hst']; simp) hsn2 hpin2 hmb' hfr2 ?r2 ?r8 ?r9
+      fun R'' M'' H'' F'' L'' C'' G'' hk'' e2' hsn'' hD'' hpin'' hfr'' => ?_
     case r2 => bsimp [q2]
     case r8 => bsimp [hl]
     case r9 => bsimp [q9]
@@ -156,7 +158,7 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
         paOut ob (st.stack.drop pre.length) := by
       rw [hdrop]; simp [paOut]
     rw [List.length_append, List.length_singleton, String.append_assoc, ← outStr_append, ho]
-    refine hk R'' M'' H'' F'' L'' C'' G'' (hk''.trans ?_) ?_ hsn'' hD'' hfr''
+    refine hk R'' M'' H'' F'' L'' C'' G'' (hk''.trans ?_) ?_ hsn'' hD'' hpin'' hfr''
     · exact by keeps_tac ((hk'.mono (ks' := 8 :: cClob) (by decide)).trans
         (show Keeps (8 :: cClob) _ R by keeps_tac Keeps.refl _ _))
     · rw [e2']; bsimp [e2]
@@ -193,7 +195,7 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : R 10 = BitVec.ofNat 64 ob)
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps cClob R' R → R' 2 = R 2 → SameNodes G G' →
-      DcAt S M' H' F' L' C' G' hs st →
+      DcAt S M' H' F' L' C' G' hs st → StrPin G.strs G'.strs hs →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp (32 + prN) a → imgM M' a = imgM M a) →
       DWO live S Q (t ++ Dc.outStr (paOut ob st.stack)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp (32 + prN) M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
@@ -242,7 +244,7 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
     all_goals first | exact frame_acc hsf' (by omega) (by omega) | exact hal | skip
     have hnil : st.stack = [] := List.eq_nil_of_length_eq_zero (by rw [← hlen, hstk]; rfl)
     rw [show t = t ++ Dc.outStr (paOut ob st.stack) by rw [hnil]; simp [paOut, Dc.outStr]]
-    refine hk _ M1 H F L C G ?_ ?_ ⟨rfl, rfl, rfl⟩ h1 fun a _ _ _ hf =>
+    refine hk _ M1 H F L C G ?_ ?_ ⟨rfl, rfl, rfl⟩ h1 (StrPin.refl _ _) fun a _ _ _ hf =>
       hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
     · refine Keeps.restoreAll (rs := [2, 8]) (show Keeps ([2, 8] ++ cClob) _ R by
         keeps_tac Keeps.refl _ _) fun z hz => ?_
@@ -287,8 +289,8 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
       (fun t' R' M' sp' ho => hoom t' R' M' sp' ⟨by have := ho.lo; omega, by have := ho.hi; omega, ho.r2,
         fun a e1 e2 e3 e4 => (ho.out a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)) e4).trans
           (hM1 a fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))⟩)
-      rest [] (b := b) (g := g) _ h1 (by rw [hstk]; rfl) ⟨rfl, rfl, rfl⟩ hmb1 (fun _ _ _ _ _ => rfl)
-      ?r2 ?r8 ?r9 fun R' M' H' F' L' C' G' hk' e2 hsn hD hfr => ?_
+      rest [] (b := b) (g := g) _ h1 (by rw [hstk]; rfl) ⟨rfl, rfl, rfl⟩ (StrPin.refl _ _) hmb1 (fun _ _ _ _ _ => rfl)
+      ?r2 ?r8 ?r9 fun R' M' H' F' L' C' G' hk' e2 hsn hD hpin hfr => ?_
     case r2 => bsimp []
     case r8 => bsimp []
     case r9 => bsimp []
@@ -306,7 +308,7 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
     simp only [List.length_nil, List.drop_zero]
     have hsf32 : StackFrame S sp 32 := by simpa using hsf.within (m := 0) (n := 32) (by omega) (by decide)
     refine pa_epi hlive hsf32 (by omega) _ q2 f16 f8 f24 hal fun R'' hk'' e1 e2' e8 e9 => ?_
-    refine hk _ M' H' F' L' C' G' ?_ ?_ hsn hD fun a e1 e2 e3 e4 =>
+    refine hk _ M' H' F' L' C' G' ?_ ?_ hsn hD hpin fun a e1 e2 e3 e4 =>
       (hfr a e1 e2 e3 fun hf => e4 (by simp only [frameIn] at hf ⊢; omega)).trans
         (hM1 a fun hf => e4 (by simp only [frameIn] at hf ⊢; omega))
     · refine Keeps.restoreAll (rs := [2, 8, 9]) ((hk''.mono (ks' := [2, 8, 9] ++ cClob) (by decide)).trans

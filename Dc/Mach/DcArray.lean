@@ -290,7 +290,7 @@ theorem ag_found {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
     {ra : BitVec 64} (hra : ldv .ld M (sp - 48 + 40) = ra) (hal : ra.toNat % 4 = 0)
     (hk : ∀ R' M' L' C' G', Keeps (1 :: 2 :: i2nClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
       DatRegs (R' 10) (R' 11) x.v → DcAt S M' H F L' C' G' (x.v :: hs) st →
-      x.v.Den ⟨L', G'.strs⟩ v → StkOut sp 336 M' M → DW live S Q ra R' M') :
+      x.v.Den ⟨L', G'.strs⟩ v → StkOut sp 336 M' M → StrPin G.strs G'.strs hs → DW live S Q ra R' M') :
     DW live S Q 0x80003e0c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -301,12 +301,12 @@ theorem ag_found {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
   bc_run hlive hS [h2, h15, hra] at 0x800020a0
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   refine dc_dup_spec hlive h hhs hv (StackFrame.shrink (hsf) (m := 16) (by omega))
-    (by simp only [heapEnd]; omega) _ ⟨?_, ?_⟩ ?_ ?_ fun R' M' L' C' G' hk1 hd' _ h' hden hfr => ?_
+    (by simp only [heapEnd]; omega) _ ⟨?_, ?_⟩ ?_ ?_ fun R' M' L' C' G' hk1 hd' _ h' hden hfr hpin => ?_
   · bsimp []; exact hd.tag
   · bsimp []; exact hd.ptr
   · bsimp [h2]; congr 1; omega
   · bsimp []; exact hal
-  refine hk R' M' L' C' G' ?_ ?_ ?_ hd' h' hden fun a ho hg hf => hfr a ho hg fun h' => hf ?_
+  refine hk R' M' L' C' G' ?_ ?_ ?_ hd' h' hden (fun a ho hg hf => hfr a ho hg fun h' => hf ?_) hpin
   · exact (hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
   · rw [hk1.get 1]; bsimp []
   · rw [hk1.get 2]; bsimp [h2]; congr 1; omega
@@ -365,7 +365,7 @@ theorem dc_array_get_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G' g, Keeps i2nClob R' R → DatRegs (R' 10) (R' 11) g →
       DcAt S M' H' F' L' C' G' (g :: hs) st → g.Den ⟨L', G'.strs⟩ (arrayGet st r i) →
-      StkOut sp 336 M' M → DW live S Q (R 1) R' M')
+      StkOut sp 336 M' M → StrPin G.strs G'.strs hs → DW live S Q (R 1) R' M')
     (hoom : ∀ R' M', StkOut sp 336 M' M → DW live S Q 0x80002bcc#64 R' M') :
     DW live S Q 0x80003dc8#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -409,7 +409,7 @@ theorem dc_array_get_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
         have hnone := hff.2 ha
         refine hk R' M' H' F' L' C' G g (Keeps.restore2 (R1 := R) ((hk3.trans
           (hk2.mono (by decide))).mono (by decide)) (by keeps_tac Keeps.refl _ _) e1 (by rw [e2', h2]))
-          hd h' ?_ (hout M' hfr)
+          hd h' ?_ (hout M' hfr) (StrPin.refl _ _)
         rw [arrayGet_eq, hnone]; exact hden)
       fun R' M' hfr => hoom R' M' (hout M' hfr)
   generalize hM2 : writeLog (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 i)]) [(sp - 48 + 40, 8, R 1)] = M2
@@ -446,9 +446,9 @@ theorem dc_array_get_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     obtain ⟨hm, v, hfind, hv⟩ := hff.1 _ ha
     refine ag_found hlive h1 hhs (PChain_mem_node hch hm) hv (hbd _ hm) hsf
       (by simp only [heapEnd]; omega) R3 q3 e15 l40 hal
-      fun R' M' L' C' G' hk4 e1 e2 hd h' hden hfr => ?_
+      fun R' M' L' C' G' hk4 e1 e2 hd h' hden hfr hpin => ?_
     exact hk R' M' H F L' C' G' x'.v (Keeps.restore2 (R1 := R) ((hk4.trans
       (hKR3.mono (by decide))).mono (by decide)) (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2]))
-      hd h' (by rw [arrayGet_eq, hfind]; exact hden) (hout M' hfr)
+      hd h' (by rw [arrayGet_eq, hfind]; exact hden) (hout M' hfr) hpin
 
 end Dc.Mach

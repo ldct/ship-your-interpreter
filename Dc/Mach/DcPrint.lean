@@ -224,6 +224,7 @@ theorem pr_str {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' G', Keeps cClob R' R → R' 2 = R 2 → SameNodes G G' →
       DcAt S M' H' F L C G' (if keep then hs else hs.tail) st → StkOut sp 112 M' M →
+      StrPin G.strs G'.strs (if keep then hs else hs.tail) →
       DWO live S Q (t ++ Dc.outStr (o.s ++ nlBytes nl)) (R 1) R' M') :
     DWO live S Q t 0x8000200c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -254,7 +255,7 @@ theorem pr_str {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
   refine dc_out_str_spec hlive (keep := keep) h1 hd ho
     (hsf.within (m := 48) (n := 64) (by omega) (by decide)) (by simp only [heapEnd]; omega) _
     (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
-    (fun R' M' H' G' hk' e2 hsn hD hstk => ?_)
+    (fun R' M' H' G' hk' e2 hsn hD hstk hpin => ?_)
   have kf : ∀ o, 8 ≤ o → o < 48 → imgM M' (sp - 48 + o) = imgM M1 (sp - 48 + o) := fun o h8 h48 =>
     hstk _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
       (by simp only [frameIn]; omega)
@@ -272,7 +273,7 @@ theorem pr_str {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     hD.view.outFd, by decide, by decide, by decide⟩ hsf48 (by simp only [heapEnd]; omega) _
     q2 f8 f40 hal fun R'' hk'' e1 e2' => ?_
   rw [String.append_assoc, ← outStr_append]
-  refine hk R'' M' H' G' ?_ (by rw [e2', h2]) hsn hD hfr'
+  refine hk R'' M' H' G' ?_ (by rw [e2', h2]) hsn hD hfr' hpin
   refine Keeps.restoreAll (rs := [2]) ((hk''.mono (ks' := [2] ++ cClob) (by decide)).trans
     (by keeps_tac ((hk'.mono (ks' := [2] ++ cClob) (by decide)).trans
       (show Keeps ([2] ++ cClob) _ R by keeps_tac Keeps.refl _ _)))) fun z hz => ?_
@@ -297,6 +298,7 @@ theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     (hk : ∀ R' M' H' F' L' C' G', Keeps cClob R' R → R' 2 = R 2 → SameNodes G G' →
       DcAt S M' H' F' L' C' G' (if keep then hs else hs.tail) st →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a) →
+      StrPin G.strs G'.strs (if keep then hs else hs.tail) →
       DWO live S Q (t ++ Dc.outStr (Dc.Val.out 70 ob v ++ nlBytes nl)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp prN M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
     DWO live S Q t 0x8000200c#64 R M := by
@@ -307,14 +309,14 @@ theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     have hsz := NumRep.len_le_wid (h.heap.nums x hx).shape (h.den.norm x hx)
     have := hw _ rfl
     exact pr_num hlive h hd hx hhs (by omega) hmb hob2 hob herr hsf hab R h2 h10 h11 h12 h13 h14 hal
-      (fun R' M' H' F' L' C' hk' e2 hD hfr => hk R' M' H' F' L' C' G hk' e2 ⟨rfl, rfl, rfl⟩ hD hfr) hoom
+      (fun R' M' H' F' L' C' hk' e2 hD hfr => hk R' M' H' F' L' C' G hk' e2 ⟨rfl, rfl, rfl⟩ hD hfr (StrPin.refl _ _)) hoom
   · obtain ⟨o, ho, rfl, rfl⟩ := hv
     have hsf' := hsf
     rw [hNW] at hsf' hab
     have hsf112 : StackFrame S sp 112 := by
       simpa using hsf'.within (m := 0) (n := 112) (by omega) (by decide)
-    exact pr_str hlive h hd ho hsf112 (by omega) R h2 h10 h11 h13 h14 hal fun R' M' H' G' hk' e2 hsn hD hstk =>
-        hk R' M' H' F L C G' hk' e2 hsn hD fun a e1 e2 _ e4 =>
-          hstk a e1 e2 fun hf => e4 (by simp only [frameIn] at hf ⊢; rw [hNW]; omega)
+    exact pr_str hlive h hd ho hsf112 (by omega) R h2 h10 h11 h13 h14 hal fun R' M' H' G' hk' e2 hsn hD hstk hpin =>
+        hk R' M' H' F L C G' hk' e2 hsn hD (fun a e1 e2 _ e4 =>
+          hstk a e1 e2 fun hf => e4 (by simp only [frameIn] at hf ⊢; rw [hNW]; omega)) hpin
 
 end Dc.Mach

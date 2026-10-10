@@ -194,7 +194,7 @@ theorem dc_dup_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' L' C' G', Keeps dupClob R' R → DatRegs (R' 10) (R' 11) g → SameNodes G G' →
       DcAt S M' H F L' C' G' (g :: hs) st → g.Den ⟨L', G'.strs⟩ v → StkOut sp 16 M' M →
-      DW live S Q (R 1) R' M') :
+      StrPin G.strs G'.strs hs → DW live S Q (R 1) R' M') :
     DW live S Q 0x800020a0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   simp only [heapEnd] at hab
@@ -226,6 +226,7 @@ theorem dc_dup_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     subst e1
     exact hk R' M' _ _ G (hk1.trans (by keeps_tac Keeps.refl _ _)) hd' ⟨rfl, rfl, rfl⟩ h'
       (hv.relist (DObjs.sub_swapNum (x := x) (x' := x.withRefs (x.rep.refs + 1)) rfl rfl)) hfr
+      (StrPin.refl _ _)
   | str p =>
     obtain ⟨o, ho, e1⟩ : ∃ o ∈ G.strs, o.hb.pay = p := by
       cases v with
@@ -251,5 +252,6 @@ theorem dc_dup_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     rw [he] at hv
     exact hk R' M' _ _ (G.withStr A B (o.withRefs (o.refs + 1))) (hk1.trans (by keeps_tac Keeps.refl _ _))
       hd' ⟨rfl, rfl, rfl⟩ h' (hv.relist (DObjs.sub_swapStr (o := o) (o' := o.withRefs (o.refs + 1)) rfl rfl)) hfr
+      (by rw [he]; exact StrPin.withRefs _ _)
 
 end Dc.Mach

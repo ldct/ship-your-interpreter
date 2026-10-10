@@ -139,7 +139,8 @@ theorem reg_get_dup {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     {ra : BitVec 64} (hra : ldv .ld M (sp - 32 + 24) = ra) (hal : ra.toNat % 4 = 0)
     (hk : ∀ R' M' L' C' G', Keeps (1 :: 2 :: popClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
       R' 10 = 0#64 → SameNodes G G' → DcAt S M' H F L' C' G' (g :: hs) st →
-      g.Den ⟨L', G'.strs⟩ v → DatAt M' q g → GetOut sp q M' M → DWO live S Q t ra R' M') :
+      g.Den ⟨L', G'.strs⟩ v → DatAt M' q g → GetOut sp q M' M → StrPin G.strs G'.strs hs →
+      DWO live S Q t ra R' M') :
     DWO live S Q t 0x80002f44#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have hq1 := hq.lo; have hq2 := hq.hi; have hq3 := hq.al
@@ -163,7 +164,7 @@ theorem reg_get_dup {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   refine dc_dup_spec hlive h1 hhs hv
     (StackFrame.sub (m := 32) (n := 16) (hsf.shrink (m := 48) (by omega)) (by decide))
     (by simp only [heapEnd]; omega) _ ⟨?_, ?_⟩
-    (by bsimp [h2]) (by bsimp []) fun R1 M2 L' C' G' hk1 hd' hsn h' hden hfr => ?_
+    (by bsimp [h2]) (by bsimp []) fun R1 M2 L' C' G' hk1 hd' hsn h' hden hfr hpin => ?_
   · rw [ldv_ld_miss _ _ (by omega)]; exact hd.tag
   · bsimp []; rw [ldv_ld_miss _ _ (by omega)]; exact hd.ptr
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk1.get 2]; bsimp [h2]
@@ -196,7 +197,7 @@ theorem reg_get_dup {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   refine hk _ _ L' C' G' (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
     (by bsimp []) (by bsimp []; congr 1; omega) (by bsimp []) hsn
     (h'.outWrite hMq fun x hx => ⟨outHeap_of_ge (by simp only [heapEnd]; omega), fun hg => by
-      have := hg.lt; simp only [heapStart] at this; omega⟩) hden (slotMem_dat hd') ?_
+      have := hg.lt; simp only [heapStart] at this; omega⟩) hden (slotMem_dat hd') ?_ hpin
   intro x ho hg hf hqx
   rw [hMq x (by omega), hfr x ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))]
   exact hM1 x hf
@@ -298,7 +299,7 @@ theorem dc_register_get_spec {live S : Nat → Prop}
     (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G' g v, regGet st r = some v → Keeps popClob R' R → R' 10 = 0#64 →
       SameNodes G G' → DcAt S M' H' F' L' C' G' (g :: hs) st → g.Den ⟨L', G'.strs⟩ v →
-      DatAt M' q g → GetOut sp q M' M → DWO live S Q t (R 1) R' M')
+      DatAt M' q g → GetOut sp q M' M → StrPin G.strs G'.strs hs → DWO live S Q t (R 1) R' M')
     (hkn : regGet st r = none → ∀ R' M', Keeps popClob R' R → R' 10 = 2#64 →
       DcAt S M' H F L C G hs st → GetOut sp q M' M → DWO live S Q t (R 1) R' M')
     (hoom : ∀ R' M', GetOut sp q M' M → DWO live S Q t 0x80002bcc#64 R' M') :
@@ -342,7 +343,7 @@ theorem dc_register_get_spec {live S : Nat → Prop}
       (fun R' M' hfr => hoom R' M' (hout M' hfr))
     exact hk R' M' H' F' L' C' G g _ hget
       (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) e10 ⟨rfl, rfl, rfl⟩ h' hden hdat
-      (hout M' hfr)
+      (hout M' hfr) (StrPin.refl _ _)
   | @cons _ b e l' h0 hb hl' =>
     obtain ⟨v0, rest, hst, hde⟩ : ∃ v0 rest, st.regs r = v0 :: rest ∧ e.Den ⟨L, G.strs⟩ v0 := by
       revert hd; generalize st.regs r = m; intro hd; cases hd with | cons h _ => exact ⟨_, _, rfl, h⟩
@@ -406,8 +407,8 @@ theorem dc_register_get_spec {live S : Nat → Prop}
       refine reg_get_dup hlive h1 hhs hgv hdat1 ⟨by simp only [heapStart]; omega,
         by simp only [heapEnd]; omega, by omega⟩ hsf (by simp only [heapEnd]; omega) hq _
         (by bsimp [h2]) (by bsimp [h11]) (by bsimp []) (ldv_store_hit _ _ _) hal
-        fun R' M' L' C' G' hk1 e1 e2 e10 hsn h' hden hd' hfr => ?_
+        fun R' M' L' C' G' hk1 e1 e2 e10 hsn h' hden hd' hfr hpin => ?_
       exact hk R' M' H F L' C' G' g v (by rw [hget, hv0])
-        (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) e10 hsn h' hden hd' (hout M' hfr)
+        (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) e10 hsn h' hden hd' (hout M' hfr) hpin
 
 end Dc.Mach

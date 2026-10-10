@@ -224,6 +224,7 @@ theorem DcG.withStr_blocks {G : DcG} {A B : List StrObj} {o o' : StrObj}
 theorem DcG.withStr_vals (G : DcG) (A B : List StrObj) (o' : StrObj) :
     (G.withStr A B o').vals = G.vals := rfl
 
+
 /-- The string blocks are none of the stack's or registers' blocks. -/
 theorem DcAt.str_ne {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
@@ -303,6 +304,43 @@ theorem DcAt.strView {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {
 
 /-- `s_refs` of a string written: the object with count `k`. -/
 def StrObj.withRefs (o : StrObj) (k : Nat) : StrObj := { o with refs := k }
+
+/-- **Held strings stay put**: every string object named by a handle of `hs`
+survives in `ss'` with its blocks and text; only its count may change. The
+evaluator reads a held string's text through a raw pointer into `o.tb`. -/
+def StrPin (ss ss' : List StrObj) (hs : List GV) : Prop :=
+  ∀ o ∈ ss, GV.str o.hb.pay ∈ hs → ∃ o' ∈ ss', o'.hb = o.hb ∧ o'.tb = o.tb ∧ o'.s = o.s
+
+theorem StrPin.refl (ss : List StrObj) (hs : List GV) : StrPin ss ss hs :=
+  fun o ho _ => ⟨o, ho, rfl, rfl, rfl⟩
+
+theorem StrPin.of_eq {ss ss' : List StrObj} (e : ss' = ss) (hs : List GV) : StrPin ss ss' hs :=
+  e ▸ StrPin.refl ss hs
+
+theorem StrPin.trans {s1 s2 s3 : List StrObj} {hs : List GV} (h1 : StrPin s1 s2 hs)
+    (h2 : StrPin s2 s3 hs) : StrPin s1 s3 hs := fun o ho hh => by
+  obtain ⟨o2, ho2, e1, e2, e3⟩ := h1 o ho hh
+  obtain ⟨o3, ho3, f1, f2, f3⟩ := h2 o2 ho2 (by rw [e1]; exact hh)
+  exact ⟨o3, ho3, f1.trans e1, f2.trans e2, f3.trans e3⟩
+
+theorem StrPin.mono {ss ss' : List StrObj} {hs hs' : List GV} (h : StrPin ss ss' hs)
+    (hm : ∀ g ∈ hs', g ∈ hs) : StrPin ss ss' hs' := fun o ho hh => h o ho (hm _ hh)
+
+/-- Every string kept with its blocks and text (no handle needed). -/
+theorem StrPin.of_all {ss ss' : List StrObj} {hs : List GV}
+    (h : ∀ o ∈ ss, ∃ o' ∈ ss', o'.hb = o.hb ∧ o'.tb = o.tb ∧ o'.s = o.s) : StrPin ss ss' hs :=
+  fun o ho _ => h o ho
+
+/-- A count rewritten. -/
+theorem StrPin.withRefs {A B : List StrObj} {o : StrObj} (k : Nat) (hs : List GV) :
+    StrPin (A ++ o :: B) (A ++ o.withRefs k :: B) hs := StrPin.of_all fun o2 ho2 => by
+  rcases mem_split_cases ho2 with rfl | hm
+  · exact ⟨o2.withRefs k, List.mem_append_right _ List.mem_cons_self, rfl, rfl, rfl⟩
+  · exact ⟨o2, mem_split_of hm, rfl, rfl, rfl⟩
+
+/-- A new string object. -/
+theorem StrPin.cons (ss : List StrObj) (o : StrObj) (hs : List GV) : StrPin ss (o :: ss) hs :=
+  StrPin.of_all fun o2 ho2 => ⟨o2, List.mem_cons_of_mem _ ho2, rfl, rfl, rfl⟩
 
 /-- The string with its count word rewritten. -/
 theorem StrAt.setRefs {M : Mem} {o : StrObj} (h : StrAt M o) {v : BitVec 64} {k : Nat}

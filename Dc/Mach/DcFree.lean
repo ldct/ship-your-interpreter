@@ -777,6 +777,19 @@ theorem HsKeep.dropStr {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
   have := List.count_pos_iff.mpr (List.mem_append_right G.vals hg)
   omega
 
+/-- The last reference to a string dropped keeps the strings the other
+handles hold. -/
+theorem StrPin.dropStr {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    {A B : List StrObj} {o : StrObj} (d : DcDen L C G (.str o.hb.pay :: hs) st) (he : G.strs = A ++ o :: B)
+    (h1 : o.refs = 1) : StrPin (A ++ o :: B) (A ++ B) hs := fun o2 ho2 hh => by
+  have hom : o ∈ G.strs := by rw [he]; exact List.mem_append_right _ List.mem_cons_self
+  rcases mem_split_cases ho2 with e | hm
+  · have e2 := d.strRefs o hom
+    rw [count_cons_self] at e2
+    have := List.count_pos_iff.mpr (List.mem_append_right G.vals (e ▸ hh : GV.str o.hb.pay ∈ hs))
+    omega
+  · exact ⟨o2, hm, rfl, rfl, rfl⟩
+
 /-- The registers `dc_free_str` may change. -/
 abbrev freeStrClob : List Nat := [10, 14, 15]
 
@@ -894,7 +907,7 @@ theorem dc_free_str_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     (hk : ∀ R' M' H' G', Keeps freeStrClob R' R → SameNodes G G' → DcAt S (Φ M') H' F L C G' hs st →
       StkOut sp 32 M' M →
       (∀ c, DcFresh H F L G c → DcFresh H' F L G' c ∧ ∀ a, c.In a → imgM M' a = imgM M a) →
-      HsKeep ⟨L, G.strs⟩ ⟨L, G'.strs⟩ hs →
+      HsKeep ⟨L, G.strs⟩ ⟨L, G'.strs⟩ hs → StrPin G.strs G'.strs hs →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x800039a4#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -956,6 +969,7 @@ theorem dc_free_str_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     have hperm := DcG.blocks_perm_drop he
     refine hk R' M' H' (G.dropStr A B) (hk1.trans (by keeps_tac Keeps.refl _ _)) ⟨rfl, rfl, rfl⟩ h'
       (fun a ho' hg hf => ?_) (fun c hc => ?_) (by rw [he]; exact HsKeep.dropStr h.den he h1)
+      (by rw [he]; exact StrPin.dropStr h.den he h1)
     · rw [hfr a ho' hg hf, hout a ho']
     · have hcG : ∀ b ∈ G.blocks, c ≠ b := fun b hb e => hc.notG (e ▸ hb)
       obtain ⟨hc', hcb⟩ := hfc c ⟨hc.live, fun hm => hc.notG (hperm.mem_iff.mpr
@@ -982,6 +996,7 @@ theorem dc_free_str_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
         fun a hca => hm a fun hb => live_apart h.heap.heap hc.live
           (h.heap.raw.live _ (G.str_mem ho).1) (fun e => hc.notG (e ▸ (G.str_mem ho).1)) hca hb⟩)
       (by rw [he]; exact HsKeep.withStr (o := o) (o' := o.withRefs (o.refs - 1)) rfl rfl hs)
+      (by rw [he]; exact StrPin.withRefs _ _)
 
 /-- **`dc_free_str (&s)`** at `0x800039a4` on a handle `.str p` held in the
 slot `q`: one reference fewer, or the string's two blocks freed. -/
@@ -993,9 +1008,9 @@ theorem dc_free_str_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' G', Keeps freeStrClob R' R → SameNodes G G' → DcAt S M' H' F L C G' hs st →
-      StkOut sp 32 M' M → DW live S Q (R 1) R' M') :
+      StkOut sp 32 M' M → StrPin G.strs G'.strs hs → DW live S Q (R 1) R' M') :
     DW live S Q 0x800039a4#64 R M :=
   dc_free_str_specP hlive (Pend.id G) (M := M) h hq hw hsf hab R h10 h2 hal
-    fun R' M' H' G' k1 k2 k3 k4 _ _ => hk R' M' H' G' k1 k2 k3 k4
+    fun R' M' H' G' k1 k2 k3 k4 _ _ k5 => hk R' M' H' G' k1 k2 k3 k4 k5
 
 end Dc.Mach

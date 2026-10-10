@@ -403,6 +403,7 @@ theorem triop_pop23 {live S : Nat → Prop}
     (hout0 : StkOut sp W M2 M0)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 128)) (h1 : R 1 = 0x800035ac#64)
     (hk : ∀ R1 M3 H3 G2 st2 na nb, Keeps (1 :: 2 :: popClob) R1 R → G2.lk = G1.lk →
+      G2.strs = G1.strs →
       R1 1 = 0x800035d8#64 → R1 2 = BitVec.ofNat 64 (sp - 128) → R1 10 = BitVec.ofNat 64 pa →
       R1 11 = BitVec.ofNat 64 pb → R1 12 = BitVec.ofNat 64 pc → R1 13 = BitVec.ofNat 64 k →
       R1 14 = BitVec.ofNat 64 (sp - 128 + 88) →
@@ -480,7 +481,7 @@ theorem triop_pop23 {live S : Nat → Prop}
   rw [jalr_tgt _ hfal]
   refine hk _ M4 H4 G3 st3 na nb
     (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans
-      (by keeps_tac Keeps.refl _ _))))) rfl
+      (by keeps_tac Keeps.refl _ _))))) rfl rfl
     (by bsimp []) (by bsimp [q3]) (by bsimp []; rfl) (by bsimp []; rfl) (by bsimp []; rfl) (by bsimp [])
     (by bsimp []) ⟨rfl, h3', hda, hdb, hdc, hfr4, hd3, hsb4, hsc4, fun a ho hg hf => ?_⟩
   have hf1 : ¬ frameIn (sp - 128) 336 a := fun h' => hf (by simp only [frameIn] at h' ⊢; omega)
@@ -500,7 +501,7 @@ theorem triop_pops {live S : Nat → Prop}
     {fa k : Nat} (hfa : fa % 4 = 0) (hfa2 : fa < 2 ^ 64)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 fa) (h11 : R 11 = BitVec.ofNat 64 k)
     (h17 : R 17 = 1#64) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R1 M2 H2 G2 st2 na nb nc, Keeps (1 :: 2 :: popClob) R1 R → G2.lk = G.lk →
+    (hk : ∀ R1 M2 H2 G2 st2 na nb nc, Keeps (1 :: 2 :: popClob) R1 R → G2.lk = G.lk → G2.strs = G.strs →
       R1 1 = 0x800035d8#64 → R1 2 = BitVec.ofNat 64 (sp - 128) → R1 10 = BitVec.ofNat 64 pa →
       R1 11 = BitVec.ofNat 64 pb → R1 12 = BitVec.ofNat 64 pc → R1 13 = BitVec.ofNat 64 k →
       R1 14 = BitVec.ofNat 64 (sp - 128 + 88) →
@@ -551,10 +552,10 @@ theorem triop_pops {live S : Nat → Prop}
   bsimp []
   refine triop_pop23 hlive h1' hsf hab hW hG1 hdc hfa hfa2 hfr2 hd1 (fun a ho hg hf => ?_) R2 q2
     (by rw [hk2.get 1 (by decide)]; bsimp [])
-    fun R1 M3 H3 G2 st2 na nb hk1 hlk e1 e2 e10 e11 e12 e13 e14 hb =>
+    fun R1 M3 H3 G2 st2 na nb hk1 hlk hstr e1 e2 e10 e11 e12 e13 e14 hb =>
       hk R1 M3 H3 G2 st2 na nb nc
         ((hk1.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans
-          (by keeps_tac Keeps.refl _ _)))) hlk e1 e2 e10 e11 e12 e13 e14 hb
+          (by keeps_tac Keeps.refl _ _)))) hlk hstr e1 e2 e10 e11 e12 e13 e14 hb
   have hf1 : ¬ frameIn (sp - 128) 336 a := fun h' => hf (by simp only [frameIn] at h' ⊢; omega)
   rw [hout1 a ho hg hf1 (by simp only [frameIn] at hf; omega)]
   exact hM1 a fun h' => hf (by simp only [frameIn] at h' ⊢; omega)
@@ -575,7 +576,7 @@ theorem triop_fail {live S : Nat → Prop}
     (hsb : DatAt M (sp - 128 + 48) (.num pb)) (hsc : DatAt M (sp - 128 + 64) (.num pc))
     (hral : ra.toNat % 4 = 0)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 128)) (h10 : R 10 ≠ 0#64)
-    (hk : ∀ R' M' H' G', Keeps (1 :: 2 :: pushClob) R' R → G'.lk = G.lk → R' 1 = ra →
+    (hk : ∀ R' M' H' G', Keeps (1 :: 2 :: pushClob) R' R → G'.lk = G.lk → G'.strs = G.strs → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp →
       DcAt S M' H' F L C G' hs (((st.push (.num na)).push (.num nb)).push (.num nc)) →
       StkOut (sp - 128) 64 M' M → DWO live S Q t ra R' M')
@@ -640,7 +641,7 @@ theorem triop_fail {live S : Nat → Prop}
   · exact hral
   refine hk _ M3 H3 { G with stk := (c3, .num pc) :: (c2, .num pb) :: (c1, .num pa) :: G.stk }
     (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans
-      (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))))) rfl
+      (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))))) rfl rfl
     (by bsimp []) (by bsimp [q3]; rw [show sp - 128 + 128 = sp by omega]) h3' out3
 
 /-- **The last two operand frees and the return** (`0x8000365c` onward):
@@ -775,7 +776,7 @@ theorem triop_push {live S : Nat → Prop}
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 128)) (h10 : R 10 = BitVec.ofNat 64 b.pay)
     (h1r : R 1 = 0x8000362c#64)
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
-      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → DcAt S M' H' F' L' C' G' hs (st.push (.num r)) →
+      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs → DcAt S M' H' F' L' C' G' hs (st.push (.num r)) →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a) →
       DWO live S Q t ra R' M') :
     DWO live S Q t 0x8000362c#64 R M2 := by
@@ -848,7 +849,7 @@ theorem triop_push {live S : Nat → Prop}
   exact triop_frees hlive h4 hsf hab hwa4 hwb4 hwc4 hwr4 hral _ (by bsimp [h2]) (by bsimp [h2])
     (by bsimp [])
     fun R' M' H' F' L' C' hk' e1 e2 h' hout' => hk R' M' H' F' L' C' { G with stk := (b, .num y) :: G.stk }
-      (by keeps_tac ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))) e1 e2 rfl h'
+      (by keeps_tac ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))) e1 e2 rfl rfl h'
       fun a ho hg hf => by
         rw [hout' a ho hg hf, hm4 a (fun hb => by
           rcases hb with hb | hb | hb
@@ -872,7 +873,7 @@ theorem triop_ok {live S : Nat → Prop}
     (hy : ldv .ld M (sp - 128 + 88) = BitVec.ofNat 64 y) (hral : ra.toNat % 4 = 0)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 128)) (h10 : R 10 = 0#64)
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
-      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → DcAt S M' H' F' L' C' G' hs (st.push (.num r)) →
+      R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs → DcAt S M' H' F' L' C' G' hs (st.push (.num r)) →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
       DWO live S Q t ra R' M')
     (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 128 - 16) →
@@ -935,9 +936,9 @@ theorem triop_ok {live S : Nat → Prop}
   bsimp []
   exact triop_push hlive h1 hp hdy hsf hab hwa hwb hwc hwr hral l96 l104 ⟨by rw [hw0]; rfl, rfl⟩
     R1 q1 hr10 e1
-    (fun R' M' H' F' L' C' G' hk' e1' e2 elk h' hout' => hk R' M' H' F' L' C' G'
+    (fun R' M' H' F' L' C' G' hk' e1' e2 elk estr h' hout' => hk R' M' H' F' L' C' G'
       ((hk'.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))
-      e1' e2 elk h' (out1 M' hout'))
+      e1' e2 elk estr h' (out1 M' hout'))
 
 /-! ## `dc_triop` -/
 
@@ -958,7 +959,7 @@ theorem dc_triop_spec {live S : Nat → Prop}
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 fa) (h11 : R 11 = BitVec.ofNat 64 st.scale)
     (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps (1 :: 2 :: opClob) R' R → R' 2 = R 2 →
-      G'.lk.length ≤ G.lk.length + lk → DcAt S M' H' F' L' C' G' hs (triop st (f st.scale)) →
+      G'.lk.length ≤ G.lk.length + lk → G'.strs = G.strs → DcAt S M' H' F' L' C' G' hs (triop st (f st.scale)) →
       StkOut sp W M' M → DWO live S Q t (R 1) R' M')
     (hoom : ∀ R' M' sp', OomAt S sp W M (fun _ => False) sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M') :
@@ -972,7 +973,7 @@ theorem dc_triop_spec {live S : Nat → Prop}
   have hsf176 := hsf.mono (n := 192) (by omega)
   refine triop_entry hlive h (hsf.mono (by omega)) (by simp only [heapEnd]; omega) R h2 hal
     (fun hno R' M' hk' hout' => hk R' M' H F L C G (hk'.mono (by decide)) (hk'.get 2 (by decide))
-      (by omega) (by
+      (by omega) rfl (by
         rw [triop_of_not hno]
         exact h.outWrite (P := frameIn sp 304) (fun a ha => hout' a (by simp only [frameIn] at ha; omega))
           fun a ha => ⟨(above_sp (sp := sp - 304) (by simp only [heapEnd]; omega) ha.1).1,
@@ -982,7 +983,7 @@ theorem dc_triop_spec {live S : Nat → Prop}
   have r01 : R0 1 = R 1 := hk0.get 1 (by decide)
   refine triop_pops hlive h hsf hab hW hstk hfa hfa2 R0 (by rw [hk0.get 10 (by decide), h10])
     (by rw [hk0.get 11 (by decide), h11]) e17 (by rw [hk0.get 2 (by decide), h2]) (by rw [r01]; exact hal)
-    fun R1 M2 H2 G2 st2 na nb nc hk1 hlk2 e1 e2 e10 e11 e12 e13 e14 hb => ?_
+    fun R1 M2 H2 G2 st2 na nb nc hk1 hlk2 hstr2 e1 e2 e10 e11 e12 e13 e14 hb => ?_
   obtain ⟨est, h2', hda, hdb, hdc, hfr, hsa, hsb, hsc, hout2⟩ := hb
   subst est
   rw [r01] at hfr
@@ -1025,25 +1026,27 @@ theorem dc_triop_spec {live S : Nat → Prop}
     rw [e1]
     refine triop_ok hlive hr.h hr.den hsf176 hab176 hfr' hsa' hsb' hsc' hr.word hral R'
       (by rw [hk'.get 2 (by decide), e2]) hr.a0
-      (fun R'' M'' H'' F'' L'' C'' G'' hk'' e1'' e2'' hlk'' hd'' hout'' => ?_)
+      (fun R'' M'' H'' F'' L'' C'' G'' hk'' e1'' e2'' hlk'' hs'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 128 - 16) ⟨by omega, by omega, e2'',
         fun a o1 o2 o3 _ => outW M' M'' hr.out hout'' a o1 o2 o3⟩
     rw [triop_push_some (st := st2)
       (g := f (((st2.push (.num na)).push (.num nb)).push (.num nc)).scale) hr.val] at hk
     refine hk R'' M'' H'' F'' L'' C'' G'' ((hk''.trans ((hk'.mono (by decide)).trans kk)))
-      (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hr.lkLen) hd'' (outW M' M'' hr.out hout'')
+      (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hr.lkLen)
+      (hs''.trans ((congrArg DcG.strs hr.same).trans hstr2)) hd'' (outW M' M'' hr.out hout'')
   · obtain ⟨hfr', hsa', hsb', hsc'⟩ := after M' hf.out
     rw [e1]
     refine triop_fail hlive hf.h hf.da hf.db hf.dc hsf176 hab176 hfr' hsa' hsb' hsc' hral R'
       (by rw [hk'.get 2 (by decide), e2]) hf.a0
-      (fun R'' M'' H'' G'' hk'' hlk'' e1'' e2'' hd'' hout'' => ?_)
+      (fun R'' M'' H'' G'' hk'' hlk'' hs'' e1'' e2'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 128 - 64) ⟨by omega, by omega, e2'',
         fun a o1 o2 o3 _ => outW M' M'' hf.out (fun a o1 o2 o3 => hout'' a o1 o2 fun h' => o3 (by
           simp only [frameIn] at h' ⊢; omega)) a o1 o2 o3⟩
     rw [triop_push_none (st := st2)
       (g := f (((st2.push (.num na)).push (.num nb)).push (.num nc)).scale) hf.val] at hk
     refine hk R'' M'' H'' F' L' C' G'' ((hk''.mono (by decide)).trans ((hk'.mono (by decide)).trans kk))
-      (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hf.lkLen) hd''
+      (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hf.lkLen)
+      (hs''.trans ((congrArg DcG.strs hf.same).trans hstr2)) hd''
       (outW M' M'' hf.out fun a o1 o2 o3 => hout'' a o1 o2 fun h' => o3 (by
         simp only [frameIn] at h' ⊢; omega))
 

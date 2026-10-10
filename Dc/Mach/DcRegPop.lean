@@ -251,7 +251,8 @@ theorem rpop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     (hk : ∀ R' M' H' F' L' C' G' ent es v, st.regs r = ent :: es → ent.val = some v →
       Keeps (1 :: 2 :: 8 :: popClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
       R' 8 = s0 → R' 10 = 0#64 → DcAt S M' H' F' L' C' G' (g :: hs) (st.setReg r es) →
-      g.Den ⟨L', G'.strs⟩ v → HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs → DatAt M' q g →
+      g.Den ⟨L', G'.strs⟩ v → HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs → StrPin G.strs G'.strs (g :: hs) →
+      DatAt M' q g →
       PopOut sp q M' M → DWO live S Q t ra R' M') :
     DWO live S Q t 0x800036b0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -309,7 +310,7 @@ theorem rpop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   refine dc_array_free_spec hlive hdc harr
     (StackFrame.sub (m := 32) (n := 80) (hsf.shrink (m := 112) (by omega)) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
-    fun R1 M1 H1 F1 L1 C1 G1 hk1 hpost hdc1 hkeep => ?_
+    fun R1 M1 H1 F1 L1 C1 G1 hk1 hpost hdc1 hkeep hpin => ?_
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk1.get 2]; bsimp [h2]
   have q8 : R1 8 = BitVec.ofNat 64 c.pay := by rw [hk1.get 8]; bsimp [h8]
   bsimp []
@@ -351,12 +352,12 @@ theorem rpop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
       simp only [Nat.add_zero] at e
       rw [e, ldv_ld_miss _ _ (by omega), ldv_store_hit]; exact hdat.tag
     · rw [hqm 8 (by omega), ldv_store_hit]; exact hdat.ptr
-  rw [hev] at hdc2 hkeep
+  rw [hev] at hdc2 hkeep hpin
   refine hk _ M2 H2 F1 L1 C1 G1 ent es v hp.regs hv0
     (by keeps_tac (((hk2.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)).trans
       ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))
     (by bsimp []) (by bsimp []; congr 1; omega) (by bsimp []) (by bsimp []) hdc2
-    (hkeep g List.mem_cons_self v hgv) (hkeep.mono fun x hx => List.mem_cons_of_mem _ hx) hdq
+    (hkeep g List.mem_cons_self v hgv) (hkeep.mono fun x hx => List.mem_cons_of_mem _ hx) hpin hdq
     fun a ho hg hf hqa => ?_
   rw [hfrq a ho hg fun h' => hf (by simp only [frameIn] at h' ⊢; omega)]
   simp only [DcGlob, dc_addrs, not_or] at hg
@@ -380,7 +381,8 @@ theorem rpop_lev {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
       ent.val = some v → Keeps (1 :: 2 :: 8 :: popClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → R' 8 = s0 → R' 10 = 0#64 →
       DcAt S M' H' F' L' C' G' (g :: hs) (st.setReg r es) →
-      g.Den ⟨L', G'.strs⟩ v → HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs → DatAt M' q g →
+      g.Den ⟨L', G'.strs⟩ v → HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs → StrPin G.strs G'.strs (g :: hs) →
+      DatAt M' q g →
       PopOut sp q M' M → DWO live S Q t ra R' M')
     (herr : e.v = none → ∀ R' M', Keeps (1 :: 2 :: 8 :: fprintfClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → R' 8 = s0 → R' 10 = 2#64 →
@@ -426,13 +428,13 @@ theorem rpop_lev {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     refine st_800036ac hlive (fun hc => absurd hc ?_) fun _ => ?_
     · bsimp []; omega
     refine rpop_some hlive h hr hl hev hsf (by simp only [heapEnd]; omega) hq _ ?_ ?_ ?_ ?_ hra hs0 hal
-      fun R' M' H' F' L' C' G' ent es v he hv hk1 e1 e2 e8 e10 hdc hgd hkeep hdq hfr => ?_
+      fun R' M' H' F' L' C' G' ent es v he hv hk1 e1 e2 e8 e10 hdc hgd hkeep hpin hdq hfr => ?_
     · bsimp [h2]
     · bsimp [h8]
     · bsimp [h11]
     · bsimp [hra4]
     exact hk g hev R' M' H' F' L' C' G' ent es v he hv
-      ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) e1 e2 e8 e10 hdc hgd hkeep hdq hfr
+      ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) e1 e2 e8 e10 hdc hgd hkeep hpin hdq hfr
 
 /-- The memory of `dc_register_pop`'s frame after the prologue's stores. -/
 abbrev rpopProW (M : Mem) (sp : Nat) (R : Nat → BitVec 64) : Mem :=
@@ -496,7 +498,8 @@ theorem dc_register_pop_spec {live S : Nat → Prop}
     (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G' g ent es v, st.regs r = ent :: es → ent.val = some v →
       Keeps popClob R' R → R' 10 = 0#64 → DcAt S M' H' F' L' C' G' (g :: hs) (st.setReg r es) →
-      g.Den ⟨L', G'.strs⟩ v → HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs → DatAt M' q g →
+      g.Den ⟨L', G'.strs⟩ v → HsKeep ⟨L, G.strs⟩ ⟨L', G'.strs⟩ hs → StrPin G.strs G'.strs (g :: hs) →
+      DatAt M' q g →
       PopOut sp q M' M → DWO live S Q t (R 1) R' M')
     (hkn : (∀ ent es, st.regs r = ent :: es → ent.val = none) → ∀ R' M', Keeps popClob R' R →
       R' 10 = 2#64 → DcAt S M' H F L C G hs st → PopOut sp q M' M → DWO live S Q t (R 1) R' M') :
@@ -548,9 +551,9 @@ theorem dc_register_pop_spec {live S : Nat → Prop}
     rw [h0] at e8
     refine rpop_lev hlive h1 hr hl hsf (by simp only [heapEnd]; omega) hq R0 e2 e8 e11 e15 e14
       hra1 hs01 hal
-      (fun g hev R' M' H' F' L' C' G' ent es v he hv hk1 e1 e2 e8 e10 hdc hgd hkeep hdq hfr =>
+      (fun g hev R' M' H' F' L' C' G' ent es v he hv hk1 e1 e2 e8 e10 hdc hgd hkeep hpin hdq hfr =>
         hk R' M' H' F' L' C' G' g ent es v he hv
-          (hk1.restore3 hk0 e1 (by rw [e2, h2]) e8) e10 hdc hgd hkeep hdq (hout M' hfr))
+          (hk1.restore3 hk0 e1 (by rw [e2, h2]) e8) e10 hdc hgd hkeep hpin hdq (hout M' hfr))
       (fun hev => herr (fun ent es he => ?_) R0 hk0)
     rw [hst] at he; cases he
     have hval := hde.val; rw [hev] at hval

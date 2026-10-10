@@ -1,4 +1,4 @@
-import Dc.Mach.DcGetnumSpec
+import Dc.Mach.Bc.RecMul
 import Dc.Mach.Format
 
 /-!

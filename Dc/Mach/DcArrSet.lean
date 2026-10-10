@@ -854,7 +854,7 @@ theorem as_found_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (hk : ∀ R' M' H' F' L' C' G', Keeps foundClob R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
       DcAt S M' H' F' L' C' G' hs (st.setReg r ({ en with arr := m1 ++ (x.idx, v) :: m2 } :: es)) →
-      StkOut sp 112 M' M → DW live S Q ra R' M') :
+      StkOut sp 112 M' M → StrPin G.strs G'.strs hs → DW live S Q ra R' M') :
     DW live S Q 0x80003d20#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -899,7 +899,7 @@ theorem as_found_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     ((hfs 48 (by omega)).trans l48) ((hfs 40 (by omega)).trans l40) ((hfs 32 (by omega)).trans l32)
     hal fun R' hk2 e1 e2 e8 e9 e18 => ?_
   refine hk R' _ H' F' L' C' _ ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
-    (by keeps_tac Keeps.refl _ _)))) e1 e2 e8 e9 e18 h3 fun y ho hg hf => ?_
+    (by keeps_tac Keeps.refl _ _)))) e1 e2 e8 e9 e18 h3 (fun y ho hg hf => ?_) (StrPin.refl _ _)
   have hnw : y < c.pay + 8 ∨ c.pay + 24 ≤ y := by
     have := ho.1; simp only [heapStart, heapEnd] at this; omega
   simp only [datW]
@@ -928,7 +928,7 @@ theorem as_found_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (hk : ∀ R' M' H' F' L' C' G', Keeps foundClob R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
       DcAt S M' H' F' L' C' G' hs (st.setReg r ({ en with arr := m1 ++ (x.idx, v) :: m2 } :: es)) →
-      StkOut sp 112 M' M → DW live S Q ra R' M') :
+      StkOut sp 112 M' M → StrPin G.strs G'.strs hs → DW live S Q ra R' M') :
     DW live S Q 0x80003d20#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -955,7 +955,7 @@ theorem as_found_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     hptr
     (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp [h8]) (by bsimp [h2]) (by bsimp [])
-    fun R1 M3 H' G' hk1 _ h3 hfr _ _ => ?_
+    fun R1 M3 H' G' hk1 _ h3 hfr _ _ hpin => ?_
   have hfs : ∀ k, k + 8 ≤ 64 → ldv .ld M3 (sp - 64 + k) = ldv .ld M (sp - 64 + k) :=
     fun k hk => ldv_congr .ld fun j hj => by
       have hin : frameIn sp 112 (sp - 64 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
@@ -971,7 +971,7 @@ theorem as_found_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     ((hfs 48 (by omega)).trans l48) ((hfs 40 (by omega)).trans l40) ((hfs 32 (by omega)).trans l32)
     hal fun R' hk2 e1 e2 e8 e9 e18 => ?_
   refine hk R' _ H' F L C G' ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
-    (by keeps_tac Keeps.refl _ _)))) e1 e2 e8 e9 e18 h3 fun y ho hg hf => ?_
+    (by keeps_tac Keeps.refl _ _)))) e1 e2 e8 e9 e18 h3 (fun y ho hg hf => ?_) hpin
   have hnw : y < c.pay + 8 ∨ c.pay + 24 ≤ y := by
     have := ho.1; simp only [heapStart, heapEnd] at this; omega
   simp only [datW]
@@ -1856,10 +1856,10 @@ theorem as_ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
 /-- What `dc_array_set` delivers from its body (`sp` lowered by 64): the
 state with the datum stored and the callee-saved words restored. -/
 abbrev AsK (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) (sp : Nat)
-    (M : Mem) (R : Nat → BitVec 64) (ra s0 s1 s2 : BitVec 64) (hs : List GV) (st' : St) : Prop :=
+    (M : Mem) (R : Nat → BitVec 64) (ra s0 s1 s2 : BitVec 64) (G : DcG) (hs : List GV) (st' : St) : Prop :=
   ∀ R' M' H' F' L' C' G', Keeps arrClob R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
     R' 8 = s0 → R' 9 = s1 → R' 18 = s2 → DcAt S M' H' F' L' C' G' hs st' →
-    StkOut sp 112 M' M → DW live S Q ra R' M'
+    StkOut sp 112 M' M → StrPin G.strs G'.strs hs → DW live S Q ra R' M'
 
 theorem regs_cons_of {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {r : Nat}
     {be : Blk × RLev} {l : List (Blk × RLev)} (hd : DcDen L C G hs st) (hr : r < 256)
@@ -1886,7 +1886,7 @@ theorem as_case_none {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
     (l56 : ldv .ld M (sp - 64 + 56) = ra)
     (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
-    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 hs (arraySet st r i v))
+    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 G hs (arraySet st r i v))
     (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
     DW live S Q 0x80003ca0#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
@@ -1904,7 +1904,7 @@ theorem as_case_none {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       simp only [arraySet, hst]
     rw [e] at hk
     refine hk R' M' H2 F L C _ ((hk2.mono (by decide)).trans (hk1.mono (by decide))) ?_ e2' ?_ ?_ ?_
-      h4 fun a ho hg hf => (hfr2 a ho hg hf).trans (hfr a ho hg hf)
+      h4 (fun a ho hg hf => (hfr2 a ho hg hf).trans (hfr a ho hg hf)) (StrPin.refl _ _)
     · rw [e1']; exact e1
     · rw [hk2.get 8, hk1.get 8]; exact h8
     · rw [hk2.get 9]; exact e9
@@ -1925,7 +1925,7 @@ theorem as_case_emp {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
     (l56 : ldv .ld M (sp - 64 + 56) = ra)
     (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
-    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 hs (arraySet st r i v))
+    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 G hs (arraySet st r i v))
     (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
     DW live S Q 0x80003ca0#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
@@ -1947,7 +1947,7 @@ theorem as_case_emp {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     simp only [arraySet, hst, hen, arrSet]
   rw [e] at hk
   refine hk R' M' H' F L C _ ((hk2.mono (by decide)).trans (hk1.mono (by decide))) ?_ ?_ ?_ ?_ ?_
-    h4 fun a ho hg hf => (hfr2 a ho hg).trans (hfr a ho hg hf)
+    h4 (fun a ho hg hf => (hfr2 a ho hg).trans (hfr a ho hg hf)) (StrPin.refl _ _)
   · rw [hk2.get 1]; exact e1
   · rw [hk2.get 2]; exact e2
   · rw [hk2.get 8, hk1.get 8]; exact h8
@@ -1970,7 +1970,7 @@ theorem as_found {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
     (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
     (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
     (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
-    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 hs (arraySet st r i v)) :
+    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 G hs (arraySet st r i v)) :
     DW live S Q 0x80003d20#64 R M := by
   rw [hall] at hF
   obtain ⟨m1, m', hm, hm1, hm'⟩ := forall₂_split hF
@@ -2011,7 +2011,7 @@ theorem as_case_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
     (l56 : ldv .ld M (sp - 64 + 56) = ra)
     (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
-    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 hs (arraySet st r i v))
+    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 G hs (arraySet st r i v))
     (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
     DW live S Q 0x80003ca0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -2052,8 +2052,8 @@ theorem as_case_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       ((hfr 56 (by omega) (by omega) (by omega)).trans l56) (ldv_store_hit _ _ _)
       ((hfr 40 (by omega) (by omega) (by omega)).trans l40)
       ((hfr 32 (by omega) (by omega) (by omega)).trans l32) hal
-      fun R' M' H' F' L' C' G' hk4 e1 e2 e8' e9 e18 h4 hso => hk R' M' H' F' L' C' G' ?_ e1 e2 e8' e9
-        e18 h4 (hout M' hso)
+      fun R' M' H' F' L' C' G' hk4 e1 e2 e8' e9 e18 h4 hso hpin => hk R' M' H' F' L' C' G' ?_ e1 e2 e8' e9
+        e18 h4 (hout M' hso) hpin
     exact hk4.trans (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
   · rw [hall] at hF
     obtain ⟨m1, m2, hm, hm1, hm2⟩ := forall₂_split hF
@@ -2077,7 +2077,7 @@ theorem as_case_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       ((hfr 40 (by omega) (by omega) (by omega)).trans l40)
       ((hfr 32 (by omega) (by omega) (by omega)).trans l32) hal
       (fun R' M' H' c hk4 e1 e2 e8' e9 e18 h4 hso => hk R' M' H' F L C _ ?_ e1 e2 e8' e9
-        e18 h4 (hout M' hso)) fun R' M' hso => hoom R' M' (hout M' hso)
+        e18 h4 (hout M' hso) (StrPin.refl _ _)) fun R' M' hso => hoom R' M' (hout M' hso)
     exact hk4.trans (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
 
 theorem ofNat_sub64 {sp : Nat} (h1 : 64 ≤ sp) :
@@ -2099,7 +2099,7 @@ theorem dc_array_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 r) (h11 : R 11 = BitVec.ofNat 64 i)
     (hd : DatRegs (R 12) (R 13) g) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps setClob R' R → DcAt S M' H' F' L' C' G' hs (arraySet st r i v) →
-      StkOut sp 112 M' M → DW live S Q (R 1) R' M')
+      StkOut sp 112 M' M → StrPin G.strs G'.strs hs → DW live S Q (R 1) R' M')
     (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
     DW live S Q 0x80003c7c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -2126,8 +2126,8 @@ theorem dc_array_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     rw [← hM1, ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
       ldv_ld_miss _ _ (by omega), ldv_store_hit]
   have h1 := h.outWrite hMo fun a ha => asFrame_out (by simp only [heapEnd]; omega) ha
-  have hK : AsK live S Q sp M1 R (R 1) (R 8) (R 9) (R 18) hs (arraySet st r i v) :=
-    fun R' M' H' F' L' C' G' hk2 e1 e2 e8 e9 e18 h' hso =>
+  have hK : AsK live S Q sp M1 R (R 1) (R 8) (R 9) (R 18) G hs (arraySet st r i v) :=
+    fun R' M' H' F' L' C' G' hk2 e1 e2 e8 e9 e18 h' hso hpin =>
       hk R' M' H' F' L' C' G' (Keeps.restoreAll (rs := [1, 2, 8, 9, 18]) hk2 fun z hz => by
         simp only [List.mem_cons, List.not_mem_nil, or_false] at hz
         rcases hz with rfl | rfl | rfl | rfl | rfl
@@ -2135,7 +2135,7 @@ theorem dc_array_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
         · rw [e2, h2]
         · exact e8
         · exact e9
-        · exact e18) h' fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)
+        · exact e18) h' (fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)) hpin
   have hoom' : ∀ R' M', StkOut sp 112 M' M1 → DW live S Q 0x80001e74#64 R' M' :=
     fun R' M' hso => hoom R' M' fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)
   clear hM1
@@ -2146,7 +2146,7 @@ theorem dc_array_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
   have q8 : R1 8 = R 8 := by rw [hk1.get 8]; bsimp []
   have q9 : R1 9 = BitVec.ofNat 64 i := by rw [hk1.get 9]; bsimp [h11]
   have q18 : R1 18 = BitVec.ofNat 64 r := by rw [hk1.get 18]; bsimp [h10]
-  have hK1 : AsK live S Q sp M1 R1 (R 1) (R 8) (R 9) (R 18) hs (arraySet st r i v) :=
+  have hK1 : AsK live S Q sp M1 R1 (R 1) (R 8) (R 9) (R 18) G hs (arraySet st r i v) :=
     fun R' M' H' F' L' C' G' hk2 => hK R' M' H' F' L' C' G'
       (hk2.trans (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))
   obtain ⟨hch, -, -⟩ := h1.topArr hr

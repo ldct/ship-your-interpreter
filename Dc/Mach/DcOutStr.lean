@@ -131,7 +131,7 @@ theorem os_toss {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     (f24 : ldv .ld M (sp - 32 + 24) = ra) (hal : ra.toNat % 4 = 0)
     (hk : ∀ R' M' H' G', Keeps [1, 2, 8, 9, 10, 14, 15] R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
       R' 8 = s0v → R' 9 = s1v → SameNodes G G' → DcAt S M' H' F L C G' hs st →
-      (∀ a, OutHeap a → imgM M' a = imgM M a) → DWO live S Q t ra R' M') :
+      (∀ a, OutHeap a → imgM M' a = imgM M a) → StrPin G.strs G'.strs hs → DWO live S Q t ra R' M') :
     DWO live S Q t 0x80003a28#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have hab' := hab
@@ -175,7 +175,7 @@ theorem os_toss {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     refine os_rel hlive h1' fh ft (Ne.symm hss.1) (by omega) hptr hsf hab _ (by bsimp [h8]) (by bsimp [h2])
       ((kf 16 (by omega)).trans f16) ((kf 8 (by omega)).trans f8) ((kf 24 (by omega)).trans f24) hal
       fun R' M' H' hk1 e1 e2 e8 e9 hD hfr => hk R' M' H' (G.dropStr A B) ?_ e1 e2 e8 e9 ⟨rfl, rfl, rfl⟩ hD
-        fun a ho' => (hfr a ho').trans (hout a ho')
+        (fun a ho' => (hfr a ho').trans (hout a ho')) (by rw [he]; exact StrPin.dropStr h.den he h1)
     exact hk1.trans (by keeps_tac Keeps.refl _ _)
   · -- one reference fewer
     have hpos : ¬ (BitVec.ofNat 64 (o.refs - 1)).toInt ≤ (0#64).toInt := by
@@ -191,6 +191,7 @@ theorem os_toss {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     refine os_epi hlive hsf hab _ (by bsimp [h2]) ((kf 16 (by omega)).trans f16)
       ((kf 8 (by omega)).trans f8) ((kf 24 (by omega)).trans f24) hal
       fun R' hk1 e1 e2 e8 e9 => hk R' _ H (G.withStr A B (o.withRefs (o.refs - 1))) ?_ e1 e2 e8 e9 ⟨rfl, rfl, rfl⟩ (h.decStr he h2r hv1) hout
+        (by rw [he]; exact StrPin.withRefs _ _)
     exact (hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)
 
 /-- The registers `dc_out_str` changes. -/
@@ -210,6 +211,7 @@ theorem dc_out_str_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
     (h11 : R 11 = boolWord keep) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' G', Keeps outStrClob R' R → R' 2 = R 2 → SameNodes G G' →
       DcAt S M' H' F L C G' (if keep then hs else hs.tail) st → StkOut sp 64 M' M →
+      StrPin G.strs G'.strs (if keep then hs else hs.tail) →
       DWO live S Q (t ++ Dc.outStr o.s) (R 1) R' M') :
     DWO live S Q t 0x800039e0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -307,8 +309,8 @@ theorem dc_out_str_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
     bc_run hlive hS' [q2, q9']
     refine os_toss hlive hD ho (sp := sp) (by simpa using hsf.within (m := 0) (n := 32) (by omega) (by decide))
       (by simp only [heapEnd]; omega) R' q8 q2 f16 f8 f24 hal
-      fun R'' M'' H'' G'' hk'' e1 e2 e8 e9 hsn hD' hfr =>
-        hk R'' M'' H'' G'' ?_ (by rw [e2, h2]) hsn hD' fun a ho' hg hf => (hfr a ho').trans (hm' a hf)
+      fun R'' M'' H'' G'' hk'' e1 e2 e8 e9 hsn hD' hfr hpin =>
+        hk R'' M'' H'' G'' ?_ (by rw [e2, h2]) hsn hD' (fun a ho' hg hf => (hfr a ho').trans (hm' a hf)) hpin
     refine Keeps.restoreAll (rs := [1, 2, 8, 9]) ((hk''.mono (by decide)).trans
       ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))) fun z hz => ?_
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hz
@@ -321,7 +323,7 @@ theorem dc_out_str_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
     bc_run hlive hS' [q2, q9']
     refine os_epi hlive (sp := sp) (by simpa using hsf.within (m := 0) (n := 32) (by omega) (by decide))
       (by simp only [heapEnd]; omega) R' q2 f16 f8 f24 hal fun R'' hk'' e1 e2 e8 e9 => ?_
-    refine hk R'' M' H G ?_ (by rw [e2, h2]) ⟨rfl, rfl, rfl⟩ hD fun a ho hg hf => hm' a hf
+    refine hk R'' M' H G ?_ (by rw [e2, h2]) ⟨rfl, rfl, rfl⟩ hD (fun a ho hg hf => hm' a hf) (StrPin.refl _ _)
     refine Keeps.restoreAll (rs := [1, 2, 8, 9]) ((hk''.mono (by decide)).trans
       ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))) fun z hz => ?_
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hz

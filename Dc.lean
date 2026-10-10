@@ -139,3 +139,10 @@ import Dc.Mach.DcSystem
 import Dc.Mach.DcGetnumSpec
 import Dc.Mach.DcFuncBase
 import Dc.Mach.DcFuncDisp
+import Dc.Mach.DcFuncExit
+import Dc.Mach.DcFuncCtx
+import Dc.Mach.DcScalars
+import Dc.Mach.DcFuncArm0
+import Dc.Mach.DcFuncArm1
+import Dc.Mach.DcFuncArm2
+import Dc.Mach.DcFuncPop

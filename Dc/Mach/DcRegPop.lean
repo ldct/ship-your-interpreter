@@ -700,7 +700,7 @@ theorem dc_register_push_spec {live S : Nat → Prop}
       DcAt S M' H' F L C (G.setReg r ((c, ⟨some g, []⟩) :: G.regs r)) hs
         (st.setReg r (⟨some v, []⟩ :: st.regs r)) →
       StkOut sp 48 M' M → DW live S Q (R 1) R' M')
-    (hoom : ∀ R' M', StkOut sp 48 M' M → DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 48 (StkOut sp 48 · M)) :
     DW live S Q 0x80002e24#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -721,7 +721,8 @@ theorem dc_register_push_spec {live S : Nat → Prop}
   refine dc_malloc_spec hlive h2'.heap.heap (n := 32) (by decide)
     (StackFrame.sub (m := 32) (n := 16) hsf (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
-    (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm _ hfr => hoom R1 Mm fun x ho hg hf => ?_
+    (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm e2 hfr =>
+      hoom R1 Mm (sp - 32 - 16) (by omega) (by omega) e2 fun x ho hg hf => ?_
   rotate_left
   · rw [hfr x (OutHeap.not_alloc h2'.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)]
     exact hM2 x fun h' => hf h'

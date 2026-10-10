@@ -325,7 +325,7 @@ theorem ag_zero {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
     (hk : ∀ R' M' H' F' L' C' g, Keeps (1 :: 2 :: i2nClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → DatRegs (R' 10) (R' 11) g → DcAt S M' H' F' L' C' G (g :: hs) st →
       g.Den ⟨L', G.strs⟩ (.num (Num.zero 0)) → StkOut sp 336 M' M → DW live S Q ra R' M')
-    (hoom : ∀ R' M', StkOut sp 336 M' M → DW live S Q 0x80002bcc#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80002bcc#64 sp 336 (StkOut sp 336 · M)) :
     DW live S Q 0x80003dfc#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -333,11 +333,11 @@ theorem ag_zero {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
   simp only [heapEnd] at hab
   bc_run hlive hS [h2, hra] at 0x800026d8
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-  refine dc_int2data_spec hlive h hhs (v := 0) (StackFrame.shrink hsf (m := 192) (by omega))
+  refine dc_int2data_spec hlive h hhs (v := 0) (sp := sp) (StackFrame.shrink hsf (m := 192) (by omega))
     (by simp only [heapEnd]; omega) _ ?_ ?_ ?_ (by decide) (by decide)
     (fun R' M' H' F' L' C' g hk1 hd' hden h' hfr => ?_)
-    (fun R' M' _ hfr => hoom R' M' fun a ho hg hf => hfr a ho hg fun h' => hf (by
-      simp only [frameIn] at h' ⊢; omega))
+    (fun R' M' e2 hfr => hoom R' M' (sp - 192) (by omega) (by omega) e2
+      fun a ho hg hf => hfr a ho hg fun h' => hf (by simp only [frameIn] at h' ⊢; omega))
   · bsimp []; rfl
   · bsimp [h2]; congr 1; omega
   · bsimp []; exact hal
@@ -367,7 +367,7 @@ theorem dc_array_get_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     (hk : ∀ R' M' H' F' L' C' G' g, Keeps i2nClob R' R → DatRegs (R' 10) (R' 11) g →
       DcAt S M' H' F' L' C' G' (g :: hs) st → g.Den ⟨L', G'.strs⟩ (arrayGet st r i) →
       StkOut sp 336 M' M → StrPin G.strs G'.strs hs → G'.lk = G.lk → DW live S Q (R 1) R' M')
-    (hoom : ∀ R' M', StkOut sp 336 M' M → DW live S Q 0x80002bcc#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80002bcc#64 sp 336 (StkOut sp 336 · M)) :
     DW live S Q 0x80003dc8#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -412,7 +412,7 @@ theorem dc_array_get_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
           (hk2.mono (by decide))).mono (by decide)) (by keeps_tac Keeps.refl _ _) e1 (by rw [e2', h2]))
           hd h' ?_ (hout M' hfr) (StrPin.refl _ _) rfl
         rw [arrayGet_eq, hnone]; exact hden)
-      fun R' M' hfr => hoom R' M' (hout M' hfr)
+      fun R' M' sp' e1 e2 e3 hfr => hoom R' M' sp' e1 e2 e3 (hout M' hfr)
   generalize hM2 : writeLog (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 i)]) [(sp - 48 + 40, 8, R 1)] = M2
     at h1 hch hbd hf2 l8 l40 e10 hz hout ⊢
   rcases hl : topArr (G.regs r) with _ | ⟨⟨b, x⟩, l⟩

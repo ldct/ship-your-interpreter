@@ -115,6 +115,12 @@ theorem reg_get_err {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   rw [hfr2 a (hwin a ha), hfr1 a (hwin a ha), imgM_store_miss _ _ (by omega),
     imgM_store_miss _ _ (by omega)]
 
+/-- **An out-of-memory continuation** at `pc` from a callee using `W` bytes
+below `sp`: any `sp'` in that window, the bytes `O` keeps. -/
+def StkOom (P : BitVec 64 → (Nat → BitVec 64) → Mem → Prop) (pc : BitVec 64) (sp W : Nat)
+    (O : Mem → Prop) : Prop :=
+  ∀ R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → O M' → P pc R' M'
+
 /-- The bytes `dc_register_get` changes outside its frame and the slot: none. -/
 def GetOut (sp q : Nat) (M' M : Mem) : Prop :=
   ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 336 a → (a < q ∨ q + 16 ≤ a) → imgM M' a = imgM M a
@@ -215,7 +221,7 @@ theorem reg_get_zero {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
       R' 2 = BitVec.ofNat 64 sp → R' 10 = 0#64 → DcAt S M' H' F' L' C' G (g :: hs) st →
       g.Den ⟨L', G.strs⟩ (.num (Num.zero 0)) → DatAt M' q g → GetOut sp q M' M →
       DWO live S Q t ra R' M')
-    (hoom : ∀ R' M', GetOut sp q M' M → DWO live S Q t 0x80002bcc#64 R' M') :
+    (hoom : StkOom (DWO live S Q t) 0x80002bcc#64 sp 336 (GetOut sp q · M)) :
     DWO live S Q t 0x80002fbc#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have hq1 := hq.lo; have hq2 := hq.hi; have hq3 := hq.al
@@ -234,9 +240,9 @@ theorem reg_get_zero {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
   refine dc_int2data_spec hlive h1 hhs (v := 0)
     (StackFrame.sub (m := 32) (n := 192) (hsf.shrink (m := 224) (by omega)) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []; rfl) (by bsimp [h2]) (by bsimp []) (by decide)
-    (by decide) (fun R1 M2 H' F' L' C' g hk1 hd' hden h' hfr => ?_) (fun R1 M2 _ hfr => ?_)
+    (by decide) (fun R1 M2 H' F' L' C' g hk1 hd' hden h' hfr => ?_) (fun R1 M2 e2 hfr => ?_)
   rotate_left
-  · refine hoom R1 M2 fun x ho hg hf _ => ?_
+  · refine hoom R1 M2 (sp - 32 - 192) (by omega) (by omega) e2 fun x ho hg hf _ => ?_
     rw [hfr x ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))]
     exact hM1 x hf
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk1.get 2 (by decide)]; bsimp [h2]
@@ -302,7 +308,7 @@ theorem dc_register_get_spec {live S : Nat → Prop}
       DatAt M' q g → GetOut sp q M' M → StrPin G.strs G'.strs hs → DWO live S Q t (R 1) R' M')
     (hkn : regGet st r = none → ∀ R' M', Keeps popClob R' R → R' 10 = 2#64 →
       DcAt S M' H F L C G hs st → GetOut sp q M' M → DWO live S Q t (R 1) R' M')
-    (hoom : ∀ R' M', GetOut sp q M' M → DWO live S Q t 0x80002bcc#64 R' M') :
+    (hoom : StkOom (DWO live S Q t) 0x80002bcc#64 sp 336 (GetOut sp q · M)) :
     DWO live S Q t 0x80002f18#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   simp only [heapEnd] at hab
@@ -340,7 +346,7 @@ theorem dc_register_get_spec {live S : Nat → Prop}
     all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hrown | (simp only [LdOK, regAddr, dcRegAddr]; omega) | skip
     refine reg_get_zero hlive h1 hhs hsf (by simp only [heapEnd]; omega) hq _ (by bsimp [h2])
       (by bsimp [h11]) (ldv_store_hit _ _ _) hal (fun R' M' H' F' L' C' g hk1 e1 e2 e10 h' hden hdat hfr => ?_)
-      (fun R' M' hfr => hoom R' M' (hout M' hfr))
+      (fun R' M' sp' e1 e2 e3 hfr => hoom R' M' sp' e1 e2 e3 (hout M' hfr))
     exact hk R' M' H' F' L' C' G g _ hget
       (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) e10 ⟨rfl, rfl, rfl, rfl⟩ h' hden hdat
       (hout M' hfr) (StrPin.refl _ _)

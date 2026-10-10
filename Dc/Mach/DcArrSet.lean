@@ -1183,8 +1183,8 @@ theorem ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
       R' 2 = BitVec.ofNat 64 sp →
       MemOnly (frameIn sp 48) Ms M → DcMallocPost S Ms M1 H H' 32 (sp - 32) b →
       DW live S Q (R 1) R' (levW M1 b r (R 11)))
-    (hoom : ∀ R' M', (∀ a, ¬ AllocByte H a → ¬ frameIn sp 48 a → imgM M' a = imgM M a) →
-      DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 48
+      (fun M' => ∀ a, ¬ AllocByte H a → ¬ frameIn sp 48 a → imgM M' a = imgM M a)) :
     DW live S Q 0x8000391c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
@@ -1211,7 +1211,8 @@ theorem ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   refine dc_malloc_spec hlive hi2 (n := 32) (by decide)
     (StackFrame.sub (m := 32) (n := 16) hsf (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
-    (fun R1 M1 H' b hk1 hp e10 => ?_) fun R1 M1 _ hfr => hoom R1 M1 fun x hx hf => ?_
+    (fun R1 M1 H' b hk1 hp e10 => ?_) fun R1 M1 e2 hfr =>
+      hoom R1 M1 (sp - 32 - 16) (by omega) (by omega) e2 fun x hx hf => ?_
   rotate_left
   · rw [hfr x hx (by simp only [frameIn] at hf ⊢; omega)]
     exact hM2 x hf
@@ -1683,7 +1684,7 @@ theorem as_ins {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
       DcAt S M' H' F L C (G.setReg r ((b, { e with arr := pre ++ (c, ⟨i, g⟩) :: post }) :: l))
         hs (st.setReg r ({ en with arr := m1 ++ (i, v) :: m2 } :: es)) →
       StkOut sp 112 M' M → DW live S Q ra R' M')
-    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 112 (StkOut sp 112 · M)) :
     DW live S Q 0x80003cd0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -1697,7 +1698,8 @@ theorem as_ins {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   refine dc_malloc_spec hlive h2'.heap.heap (n := 32) (by decide)
     (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
-    (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm _ hfr => hoom R1 Mm fun x ho hg hf => ?_
+    (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm e2 hfr =>
+      hoom R1 Mm (sp - 64 - 16) (by omega) (by omega) e2 fun x ho hg hf => ?_
   rotate_left
   · rw [hfr x (OutHeap.not_alloc h2'.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)]
     exact hM2 x hf
@@ -1745,7 +1747,7 @@ theorem as_empty {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
       Keeps [1, 2, 9, 10, 11, 12, 13, 14, 15, 18] R1 R → R1 1 = ra → R1 2 = BitVec.ofNat 64 sp →
       R1 9 = s1 → R1 18 = s2 → R1 10 = BitVec.ofNat 64 r → R1 11 = BitVec.ofNat 64 c.pay →
       DW live S Q 0x8000391c#64 R1 (nodeW Mm c.pay i 0#64 w0 w1))
-    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 112 (StkOut sp 112 · M)) :
     DW live S Q 0x80003da4#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -1755,7 +1757,8 @@ theorem as_empty {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
   refine dc_malloc_spec hlive h.heap.heap (n := 32) (by decide)
     (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
-    (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm _ hfr => hoom R1 Mm fun x ho hg hf => ?_
+    (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm e2 hfr =>
+      hoom R1 Mm (sp - 64 - 16) (by omega) (by omega) e2 fun x ho hg hf => ?_
   rotate_left
   · exact hfr x (OutHeap.not_alloc h.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)
   obtain ⟨h3, hfc⟩ := h.malloc hp (by decide) (by simp only [heapEnd]; omega)
@@ -1805,8 +1808,8 @@ theorem as_ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
         (st.setReg r [⟨none, [(i, v)]⟩]) →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
       DW live S Q (R 1) R' M')
-    (hoom : ∀ R' M', (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
-      DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 112
+      (fun M' => ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a)) :
     DW live S Q 0x8000391c#64 R (nodeW M c.pay i 0#64 w0 w1) := by
   have hsl := hsf.lo
   have e1c : c.fin = c.pay + c.sz := rfl
@@ -1833,7 +1836,7 @@ theorem as_ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
   have hi1 := h1.heap.heap
   refine ss_new hlive hi1 h.glob hr hw (StackFrame.shrink hsf (by decide))
     (by simp only [heapEnd]; omega) R h10 h2 hal
-    (fun R' Ms M1 H' b hk1 e1 e2 hMs hp => ?_) fun R' M' hfr => hoom R' M' fun a ho hg hf => ?_
+    (fun R' Ms M1 H' b hk1 e1 e2 hMs hp => ?_) fun R' M' sp' e1 e2 e3 hfr => hoom R' M' sp' (by omega) e2 e3 fun a ho hg hf => ?_
   · rw [h11]
     refine hk R' _ H' b hk1 e1 e2 (h.newArr hr hl hf hcsz hi hd hv (by simp only [heapEnd]; omega) hMs hp)
       fun a ho hg hf => ?_
@@ -1887,7 +1890,7 @@ theorem as_case_none {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (l56 : ldv .ld M (sp - 64 + 56) = ra)
     (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
     (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 G hs (arraySet st r i v))
-    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 112 (StkOut sp 112 · M)) :
     DW live S Q 0x80003ca0#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -1898,7 +1901,7 @@ theorem as_case_none {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   refine as_empty hlive h hsf hab R h2 h9 h18 l16 l24 l56 l40 l32
     (fun R1 Mm H' c h3 hfc hcsz hfr hk1 e1 e2 e9 e18 e10 e11 => ?_) hoom
   refine as_ss_new hlive h3 hr hl hfc hcsz hi hd hv hsf hab R1 e10 e11 e2 (by rw [e1]; exact hal)
-    (fun R' M' H2 b hk2 e1' e2' h4 hfr2 => ?_) fun R' M' hfr2 => hoom R' M' fun a ho hg hf => ?_
+    (fun R' M' H2 b hk2 e1' e2' h4 hfr2 => ?_) fun R' M' sp' e1 e2 e3 hfr2 => hoom R' M' sp' (by omega) e2 e3 fun a ho hg hf => ?_
   · rw [e1]
     have e : arraySet st r i v = st.setReg r [⟨none, [(i, v)]⟩] := by
       simp only [arraySet, hst]
@@ -1926,7 +1929,7 @@ theorem as_case_emp {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (l56 : ldv .ld M (sp - 64 + 56) = ra)
     (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
     (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 G hs (arraySet st r i v))
-    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 112 (StkOut sp 112 · M)) :
     DW live S Q 0x80003ca0#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -2012,7 +2015,7 @@ theorem as_case_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (l56 : ldv .ld M (sp - 64 + 56) = ra)
     (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
     (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 G hs (arraySet st r i v))
-    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 112 (StkOut sp 112 · M)) :
     DW live S Q 0x80003ca0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
@@ -2077,7 +2080,7 @@ theorem as_case_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       ((hfr 40 (by omega) (by omega) (by omega)).trans l40)
       ((hfr 32 (by omega) (by omega) (by omega)).trans l32) hal
       (fun R' M' H' c hk4 e1 e2 e8' e9 e18 h4 hso => hk R' M' H' F L C _ ?_ e1 e2 e8' e9
-        e18 h4 (hout M' hso) (StrPin.refl _ _) rfl) fun R' M' hso => hoom R' M' (hout M' hso)
+        e18 h4 (hout M' hso) (StrPin.refl _ _) rfl) fun R' M' sp' e1 e2 e3 hso => hoom R' M' sp' e1 e2 e3 (hout M' hso)
     exact hk4.trans (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
 
 theorem ofNat_sub64 {sp : Nat} (h1 : 64 ≤ sp) :
@@ -2100,7 +2103,7 @@ theorem dc_array_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     (hd : DatRegs (R 12) (R 13) g) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps setClob R' R → DcAt S M' H' F' L' C' G' hs (arraySet st r i v) →
       StkOut sp 112 M' M → StrPin G.strs G'.strs hs → G'.lk = G.lk → DW live S Q (R 1) R' M')
-    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 112 (StkOut sp 112 · M)) :
     DW live S Q 0x80003c7c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -2136,8 +2139,8 @@ theorem dc_array_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
         · exact e8
         · exact e9
         · exact e18) h' (fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)) hpin hlk
-  have hoom' : ∀ R' M', StkOut sp 112 M' M1 → DW live S Q 0x80001e74#64 R' M' :=
-    fun R' M' hso => hoom R' M' fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)
+  have hoom' : StkOom (DW live S Q) 0x80001e74#64 sp 112 (StkOut sp 112 · M1) :=
+    fun R' M' sp' e1 e2 e3 hso => hoom R' M' sp' e1 e2 e3 fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)
   clear hM1
   refine get_stacked hlive h1 hr _ (by bsimp [h10]) (by bsimp []) fun R1 hk1 e10 => ?_
   rw [show upd (upd (upd (upd R 2 (BitVec.ofNat 64 (sp - 64))) 9 (R 11)) 18 (R 10)) 1

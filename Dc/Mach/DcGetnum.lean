@@ -425,4 +425,116 @@ theorem gn_under {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     refine hk R2 M1 1 (hQ.next hab (fr1.sregs (k2.mono (by decide)) (k2.get 2)) h1 hm1 kk
       (e22.trans s8) (by omega) hp1) hQ.le e8 (dropSpace_drop_stop hno)
 
+/-- **`dc_getnum`'s prologue** to the first read (`0x80002780`): `temp`,
+`build`, `base` set by `bc_init_num`, `result` a copy of `_zero_`, `base`
+the input base by `bc_int2num`. -/
+theorem perm_pro {α : Type} (a b c d : α) (l : List α) : (a :: b :: c :: d :: l).Perm (b :: d :: c :: a :: l) :=
+  (List.Perm.swap b a _).trans (List.Perm.cons b ((List.Perm.cons a (List.Perm.swap d c l)).trans
+    ((List.Perm.swap d a _).trans (List.Perm.cons d (List.Perm.swap c a l)))))
+
+theorem gn_pro {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {hs0 : List GV} {st : St} {sp : Nat}
+    {o : StrObj} {j0 ra : Nat} (h : DcAt S M H F L C G hs0 st) (gx : GnCtx S M sp G o j0)
+    (hhs : hs0.length + 6 ≤ 2 ^ 20) (hoom : GnOom live S Q t M sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : R 10 = 0x80000b70#64)
+    (h11 : R 11 = BitVec.ofNat 64 st.ibase) (h12 : R 12 = BitVec.ofNat 64 ra)
+    (hp : ldv .ld M inPtrAddr = BitVec.ofNat 64 (o.tb.pay + j0))
+    (hk : ∀ R' M' H' F' L' C' pr pt pd pb,
+      GnQ S M R sp G hs0 st o j0 ra (R 22) L R' M' 0 H' F' L' C' pr pt pd pb →
+      DWO live S Q t 0x80002780#64 R' M') :
+    DWO live S Q t 0x80002714#64 R M := by
+  have cx := gx.cx
+  have hab := cx.abv
+  have hab' := cx.ab
+  have hsf := cx.sf
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  simp only [heapEnd] at hab hab'
+  have hcab : heapEnd + cfW ≤ sp - 144 := by simp only [heapEnd]; omega
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hib := h.den.ibase
+  refine gn_pro1 hlive h cx R h2 fun R1 M1 fr1 h1 k1 e18 e8 e19 e10 e1 hm1 => ?_
+  refine cf_init hlive cx fr1 h1 (by omega) (gnSv_above (by omega)) (o := 32) (by omega) (by omega)
+    e10 (by rw [e1]; decide) fun R2 M2 L2 C2 k2 fr2 h2' ez2 w2 ho2 hkp2 => ?_
+  have hS2 : HeapOwn S := fun a e1 e2 => h2'.heap.heap.own a e1 e2
+  have q22 := fr2.r2
+  rw [e1]
+  bc_run hlive hS2 [q22] at 0x800049bc
+  refine cf_init hlive cx (fr2.regs (by keeps_tac Keeps.refl _ _)) h2' (by simp only [List.length_cons]; omega)
+    (gnSv_above (by omega)) (o := 24) (by omega) (by omega) (by bsimp [q22]) (by bsimp [])
+    fun R3 M3 L3 C3 k3 fr3 h3 ez3 w3 ho3 hkp3 => ?_
+  have hS3 : HeapOwn S := fun a e1 e2 => h3.heap.heap.own a e1 e2
+  have q23 := fr3.r2
+  bsimp []
+  bc_run hlive hS3 [q23] at 0x800049bc
+  refine cf_init hlive cx (fr3.regs (by keeps_tac Keeps.refl _ _)) h3 (by simp only [List.length_cons]; omega)
+    (gnSv_above (by omega)) (o := 8) (by omega) (by omega) (by bsimp [q23]) (by bsimp [])
+    fun R4 M4 L4 C4 k4 fr4 h4 ez4 w4 ho4 hkp4 => ?_
+  have hS4 : HeapOwn S := fun a e1 e2 => h4.heap.heap.own a e1 e2
+  have q24 := fr4.r2
+  have hG4 : ∀ a, DcGlob a → S a := h4.glob
+  have zw : ldv .ld M4 0x8001cdc8 = BitVec.ofNat 64 C4.z.rep.p := h4.view.zw
+  bsimp []
+  bc_run hlive hS4 [q24, zw] at 0x800049ac
+  refine cf_copy hlive (fr4.sregs ((by keeps_tac Keeps.refl _ _ : Keeps [20, 10, 1] _ R4).mono (by decide))
+      (by bsimp [])) cx.abv h4 (by simp only [List.length_cons]; omega) h4.den.mz (by bsimp [])
+    (by bsimp []) fun R5 M5 L5 C5 k5 fr5 h5 ez5 hd5 hkp5 hout5 => ?_
+  have e10' : R5 10 = BitVec.ofNat 64 C4.z.rep.p := by rw [k5.get 10]; bsimp []
+  have q25 : R5 2 = BitVec.ofNat 64 (sp - 144) := by rw [k5.get 2]; bsimp [q24]
+  have hS5 : HeapOwn S := fun a e1 e2 => h5.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS5 [q25, e10'] at 0x80002778
+  case hk.hS => exact frame_acc hsf (by omega) (by omega)
+  obtain ⟨fr6, h6, w6, ho6⟩ := cf_sd (v := BitVec.ofNat 64 C4.z.rep.p) (o := 16) cx fr5 h5
+    (gnSv_above (by omega)) (by omega)
+  generalize writeLog M5 [(sp - 144 + 16, 8, BitVec.ofNat 64 C4.z.rep.p)] = M6 at fr6 h6 w6 ho6 ⊢
+  have hS6 : HeapOwn S := fun a e1 e2 => h6.heap.heap.own a e1 e2
+  have gO : ∀ {Ma Mb : Mem}, (∀ a, OutHeap a → imgM Mb a = imgM Ma a) → ∀ o', o' + 8 ≤ 144 →
+      ldv .ld Mb (sp - 144 + o') = ldv .ld Ma (sp - 144 + o') := fun hout o' _ =>
+    ldv_congr .ld fun j _ => hout _ (outHeap_of_ge (by omega))
+  have gP : ∀ {Ma Mb : Mem}, (∀ a, OutHeap a → imgM Mb a = imgM Ma a) →
+      ldv .ld Mb inPtrAddr = ldv .ld Ma inPtrAddr := fun hout =>
+    ldv_congr .ld fun j hj => hout _ (InP.off (by simp only [InP, widthOfM] at hj ⊢; omega)).1
+  have l8 : ldv .ld M6 (sp - 144 + 8) = BitVec.ofNat 64 C3.z.rep.p :=
+    (ho6.word cx.abv (by omega)).trans ((gO hout5 8 (by omega)).trans w4)
+  have kk5 : Keeps (20 :: cClob) R5 R1 :=
+    (k5.mono (by decide)).trans (by keeps_tac ((k4.mono (by decide)).trans (by keeps_tac
+      ((k3.mono (by decide)).trans (by keeps_tac ((k2.mono (by decide))))))))
+  have s8 : R5 8 = R 11 := (kk5.get 8).trans e8
+  bc_run hlive hS6 [q25, s8, h11] at 0x8000690c
+  refine cf_i2n hlive cx (fr6.sregs (by keeps_tac Keeps.refl _ _) (by bsimp [q25])) (h6.perm (List.Perm.swap _ _ _))
+    (gnSv_above (by omega)) (o := 8) (v := (st.ibase : Int)) (by omega) (by omega) l8 (by bsimp [q25])
+    (by bsimp []; exact (ofInt_natCast64 _).symm) (by bsimp []) (by omega) (by omega)
+    (fun R7 M7 H7 F7 L7 C7 y7 hk7 fr7 h7 hn7 hw7 ho7 hkp7 => ?_) hoom
+  bsimp []
+  have kk : Keeps (20 :: cClob) R7 R1 :=
+    (hk7.mono (by decide)).trans (by keeps_tac (kk5.mono (by decide)))
+  have chn : ∀ o', o' + 8 ≤ 144 → 24 ≤ o' →
+      ldv .ld M7 (sp - 144 + o') = ldv .ld M4 (sp - 144 + o') := fun o' h1 h2 =>
+    (ho7.word cx.abv (by omega)).trans ((ho6.word cx.abv (by omega)).trans (gO hout5 o' h1))
+  have hsub : ∀ g ∈ hs0, ∀ l : List GV, g ∈ l ++ hs0 := fun g hg l => List.mem_append_right _ hg
+  have hpr : ∀ l : List GV, GV.num C4.z.rep.p ∈ l ++ GV.num C4.z.rep.p :: GV.num C2.z.rep.p :: GV.num C.z.rep.p :: hs0 :=
+    fun l => by simp
+  refine hk R7 M7 H7 F7 (y7 :: L7) C7 C4.z.rep.p C.z.rep.p C2.z.rep.p y7.rep.p
+    { fr := fr7
+      h := h7.perm (perm_pro _ _ _ _ _)
+      w16 := (ho7.word cx.abv (by omega)).trans w6
+      w32 := (chn 32 (by omega) (by omega)).trans ((ho4.word cx.abv (by omega)).trans
+        ((ho3.word cx.abv (by omega)).trans w2))
+      w24 := (chn 24 (by omega) (by omega)).trans ((ho4.word cx.abv (by omega)).trans w3)
+      w8 := hw7
+      dr := hkp7 _ (hpr []) _ (by have := h4.den.zv; rw [this] at hd5; exact hd5)
+      db := ⟨y7, List.mem_cons_self, rfl, by rw [hn7, ofInt_nat]⟩
+      keep := (((hkp2.trans (hkp3.mono fun g hg => hsub g hg [_])).trans
+        (hkp4.mono fun g hg => hsub g hg [_, _])).trans (hkp5.mono fun g hg => hsub g hg [_, _, _])).trans
+        (hkp7.mono fun g hg => hsub g hg [_, _, _])
+      r18 := (kk.get 18).trans (e18.trans h10)
+      r19 := (kk.get 19).trans (e19.trans h12)
+      r20 := by rw [hk7.get 20]; bsimp []; rw [k5.get 20]; bsimp []
+      r22 := (kk.get 22).trans (k1.get 22)
+      le := Nat.zero_le _
+      ptr := (ho7.inP hcab).trans ((ho6.inP hcab).trans ((gP hout5).trans ((ho4.inP hcab).trans
+        ((ho3.inP hcab).trans ((ho2.inP hcab).trans ((ldv_congr .ld fun j hj => hm1 _ fun hf => by
+          simp only [frameIn, widthOfM, inPtrAddr] at hf hj; omega).trans (by rw [hp]; simp))))))) }
+
 end Dc.Mach

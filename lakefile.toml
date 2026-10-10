@@ -27,3 +27,4 @@ name = "VsaBoot"
 
 [[lean_lib]]
 name = "Dc"
+leanOptions.backward.isDefEq.respectTransparency = false

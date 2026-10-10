@@ -5,8 +5,9 @@ import Dc.Depth
 
 `leakCount lm n st f` counts the commands, within the first `n` steps of the
 evaluation of `f` (following `Dc.run` like `nestDepth`), whose `dc_func` arm
-may lose references (`leakCmd`): each such call may add at most two lost
-number references (`DcG.lk`) and two lost string handles (`FnPost.ex`).
+may lose references (`leakCmd`): each such call adds at most `leakAllow c ≤ 2`
+lost number references (`DcG.lk`) and lost string handles (`FnPost.ex`)
+together.
 `LeakBound lm prog k` bounds it for `dc -e prog` at every fuel.
 
 `StrBound N st`: every string the state holds is shorter than `N`
@@ -15,10 +16,19 @@ number references (`DcG.lk`) and two lost string handles (`FnPost.ex`).
 
 namespace Dc
 
-/-- The commands whose `dc_func` arm may lose a reference: `/ % ~ |` (a
-failed operation's result slot), `v` (a negative operand, a string), `X` (a
-string). -/
-def leakCmd (c : Nat) : Bool := c == 47 || c == 37 || c == 126 || c == 124 || c == 118 || c == 88
+/-- **The references and strings a command's `dc_func` arm may lose**
+(`FnPost.lk`): `/ % |` a failed operation's result slot, `~` two; `v` a
+negative operand or a string; `X` a string; `i k o Q R ;` a popped string
+on their error routes; `:` an index and a value. The PLAN's list `/ % ~ | v`
+gains `X` and these register and parameter commands. -/
+def leakAllow (c : Nat) : Nat :=
+  if c = 126 ∨ c = 58 then 2
+  else if c = 47 ∨ c = 37 ∨ c = 124 ∨ c = 118 ∨ c = 88 ∨ c = 105 ∨ c = 107 ∨ c = 111 ∨
+    c = 81 ∨ c = 82 ∨ c = 59 then 1
+  else 0
+
+/-- The commands that may lose a reference (`leakAllow c ≠ 0`). -/
+def leakCmd (c : Nat) : Bool := leakAllow c != 0
 
 mutual
 

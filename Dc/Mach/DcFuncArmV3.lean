@@ -40,7 +40,7 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
 /-- `?` from the status test after `ferror` (`0x80000d1c`, `a0 = 0`): the datum
 reloaded from the frame and pushed, `s0` reloaded, `DC_EVALTOS`. The frame is
 at the registers with `s0` restored to `v8`. -/
-theorem fq_push (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : Nat} {v8 tw : BitVec 64}
+theorem fq_push {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : Nat} {v8 tw : BitVec 64}
     {M3 : Mem} {H2 : Heap} {G G' : DcG} {R3 : Nat → BitVec 64}
     (h3 : DcAt S M3 H2 F L C G' (.str p :: hs) st) (hv : (GV.str p).Den ⟨L, G'.strs⟩ (.str []))
     (hcv : FnAt S sp W M0 R0 (VsaIris.Sym.upd R3 8 v8) M3) (hW : 192 + 128 ≤ W)
@@ -49,7 +49,7 @@ theorem fq_push (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : Nat} {v8 tw 
     (l24 : ldv .ld M3 (sp - 192 + 24) = BitVec.ofNat 64 p)
     (l176 : ldv .ld M3 (sp - 192 + 176) = v8)
     (hlk : G'.lk = G.lk) (hpin : StrPin G.strs G'.strs hs)
-    (hk : FnK live S Q t0 st (.evalTos (st.push (.str []))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (.evalTos (st.push (.str []))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000d1c#64 R3 M3 := by
   fv_frame hcv
   bc_run hlive hlive [e10, l16, l24, e2] at 0x80002da4
@@ -78,7 +78,7 @@ theorem fq_push (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : Nat} {v8 tw 
 
 /-- `?` after `dc_readstring` (`0x80000d0c`): the datum spilled to the frame,
 `ferror (stdin)` (`0`), then `fq_push`. -/
-theorem fq_tail (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : Nat} {v8 : BitVec 64} {M2 : Mem}
+theorem fq_tail {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : Nat} {v8 : BitVec 64} {M2 : Mem}
     {H2 : Heap} {G G' : DcG} {R2 : Nat → BitVec 64}
     (h2 : DcAt S M2 H2 F L C G' (.str p :: hs) st) (hv : (GV.str p).Den ⟨L, G'.strs⟩ (.str []))
     (hcv : FnAt S sp W M0 R0 (VsaIris.Sym.upd R2 8 v8) M2) (hW : 192 + 128 ≤ W)
@@ -86,7 +86,7 @@ theorem fq_tail (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : Nat} {v8 : B
     (e10 : (R2 10).toNat % 2 ^ 32 = 2) (e11 : R2 11 = BitVec.ofNat 64 p)
     (hs0 : ldv .ld M2 (sp - 192 + 176) = v8)
     (hlk : G'.lk = G.lk) (hpin : StrPin G.strs G'.strs hs)
-    (hk : FnK live S Q t0 st (.evalTos (st.push (.str []))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (.evalTos (st.push (.str []))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000d0c#64 R2 M2 := by
   fv_frame hcv
   bc_run hlive hlive [e2] at 0x8000071c
@@ -108,12 +108,12 @@ theorem fq_tail (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : Nat} {v8 : B
 
 /-- `?` at the call of `dc_readstring` (`s0` spilled, `stdin` in `a0`):
 the new empty string, then `fq_tail`. -/
-theorem fq_rs (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fq_rs {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R Rq : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 128 ≤ W)
     (ho : FnOom live S Q sp W M0) (kq : Keeps (8 :: 1 :: 2 :: cClob) Rq R)
     (eq2 : Rq 2 = BitVec.ofNat 64 (sp - 192)) (eq1 : Rq 1 = 0x80000d0c#64)
-    (hk : FnK live S Q t0 st (.evalTos (st.push (.str []))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (.evalTos (st.push (.str []))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80003ad8#64 Rq (writeLog M [(sp - 192 + 176, 8, R 8)]) := by
   fv_frame hc
   have e2 := hc.r2
@@ -143,13 +143,13 @@ theorem fq_rs (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap
 
 /-- `?` (`0x80000ccc`): `DC_EVALTOS` on a new empty string read from the
 exhausted input. -/
-theorem fa_query (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_query {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 128 ≤ W)
     (ho : FnOom live S Q sp W M0)
     (hlaS : ∀ a, 0x8001cd30 ≤ a → a < 0x8001cd34 → S a)
     (hla : ldv .lw M 0x8001cd30 = 0xFFFFFFFFFFFFFFFF#64)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 63 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 63 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000ccc#64 R M := by
   fv_frame hc
   have e2 := hc.r2

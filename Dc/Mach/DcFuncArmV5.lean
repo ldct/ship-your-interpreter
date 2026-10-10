@@ -25,10 +25,10 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {hs : List GV} {sp W : Nat} {R0 : Nat → BitVec 64} {peek : Option Nat} {neg : Bool}
 
 /-- `c` (`0x80001154`): `dc_clear_stack ()`, `DC_OKAY`. -/
-theorem fa_c (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_c {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 80 ≤ W)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 99 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 99 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001154#64 R M := by
   have hr : dcFunc 70 st 99 peek neg = .ok { st with stack := [] } := rfl
   rw [hr] at hk
@@ -46,11 +46,11 @@ theorem fa_c (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap}
     (by rw [hsn.lk]; exact Nat.le_add_right _ _) hpin
 
 /-- `d` (`0x80001188`): the top datum pushed again with one more reference. -/
-theorem fa_d (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_d {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
     (ho : FnOom live S Q sp W M0) (hhs : hs.length ≤ 2 ^ 30)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 100 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 100 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001188#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have e2 := hc.r2

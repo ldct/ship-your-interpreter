@@ -34,13 +34,13 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {hs : List GV} {sp W : Nat} {R0 : Nat → BitVec 64} {peek : Option Nat} {neg : Bool}
 
 /-- `f` (`0x80000eb4`): `dc_printall (dc_obase)`, `DC_OKAY`. -/
-theorem fa_f (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_f {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + (32 + prN) ≤ W)
     (ho : FnOom live S Q sp W M0) (hmb : MulBase S M0) (hhs : hs.length ≤ 2 ^ 20)
     (hw : ∀ v ∈ st.stack, ∀ n, v = .num n → n.wid < 2 ^ 20)
     (herr : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 102 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 102 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000eb4#64 R M := by
   have hr : dcFunc 70 st 102 peek neg = .ok (st.emit (paOut st.obase st.stack)) := rfl
   rw [hr] at hk
@@ -64,13 +64,13 @@ theorem fa_f (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap}
     (.ok _) (by simp) (by rw [hsn.lk]; exact Nat.le_add_right _ _) hpin
 
 /-- `p` (`0x8000115c`): the top datum printed in place with a newline. -/
-theorem fa_p (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_p {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 + prN ≤ W)
     (ho : FnOom live S Q sp W M0) (hmb : MulBase S M0) (hhs : hs.length ≤ 2 ^ 20)
     (hw : ∀ n rest, st.stack = .num n :: rest → n.wid < 2 ^ 20)
     (herr : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 112 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 112 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x8000115c#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have e2 := hc.r2
@@ -119,13 +119,13 @@ theorem fa_p (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap}
       hc2 hk (.ok _) (by simp) (by rw [hsn.lk]; exact Nat.le_add_right _ _) hpin
 
 /-- `n` (`0x80001128`): the popped datum printed without a newline and released. -/
-theorem fa_n (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_n {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 + prN ≤ W)
     (ho : FnOom live S Q sp W M0) (hmb : MulBase S M0) (hhs : hs.length + 1 ≤ 2 ^ 20)
     (hw : ∀ n rest, st.stack = .num n :: rest → n.wid < 2 ^ 20)
     (herr : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 110 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 110 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001128#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have e2 := hc.r2

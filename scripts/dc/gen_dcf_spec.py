@@ -37,7 +37,7 @@ ARMS = {
     0x80000C10: ("Dc.Mach.DcFuncArm0", "fa_ws", "hlive (c := {c}) (by decide) h hc hk"),
     0x80000C20: ("Dc.Mach.DcFuncArm0", "fa_int", "hlive (c := {c}) rfl h hc hk"),
     0x80000C30: ("Dc.Mach.DcFuncArmV4", "fa_default", f"hlive rfl (by decide) h hc {W} e13 hk"),
-    0x80000C6C: ("Dc.Mach.DcFuncArm2", "fa_rem", f"{OP} hp.size.rem {HS} hp.lkLen hk"),
+    0x80000C6C: ("Dc.Mach.DcFuncArm2", "fa_rem", f"{OP} hp.size.rem {HS} hp.lkLen (by decide) hk"),
     0x80000C84: ("Dc.Mach.DcFuncArm0", "fa_hash", "hlive h hc hk"),
     0x80000C8C: ("Dc.Mach.DcFuncArm0", "fa_bang", "hlive h hc e11 hp.pk hk"),
     0x80000CA4: ("Dc.Mach.DcFuncArm1", "fa_K", f"hlive h hc {W} ho {HS} hk"),
@@ -49,8 +49,8 @@ ARMS = {
     0x80000D90: ("Dc.Mach.DcFuncArmR2", "fa_lt", f"hlive h hc {W} e11 e12 hp.pk hk"),
     0x80000DC0: ("Dc.Mach.DcFuncArmR3", "fa_semi", None),
     0x80000E08: ("Dc.Mach.DcFuncArmR3", "fa_colon", None),
-    0x80000E40: ("Dc.Mach.DcFuncArmR1", "fa_k", f"hlive h hc {W} hk"),
-    0x80000E78: ("Dc.Mach.DcFuncArmR1", "fa_i", f"hlive h hc {W} hk"),
+    0x80000E40: ("Dc.Mach.DcFuncArmR1", "fa_k", f"hlive h hc {W} (by decide) hk"),
+    0x80000E78: ("Dc.Mach.DcFuncArmR1", "fa_i", f"hlive h hc {W} (by decide) hk"),
     0x80000EB4: ("Dc.Mach.DcFuncArmV6", "fa_f", f"{OP} {HS} hp.size.all hp.err hk"),
     0x80000EC4: ("Dc.Mach.DcFuncArmR3", "fa_s", None),
     0x80000EF4: ("Dc.Mach.DcFuncArmV1", "fa_r", "hlive h hc hk"),
@@ -60,25 +60,25 @@ ARMS = {
     0x80000F5C: ("Dc.Mach.DcFuncArmV8", "fa_a", f"hlive h hc {W} ho hk"),
     0x80000FA0: ("Dc.Mach.DcFuncArm2", "fa_exp", f"{OP} hp.size.exp {HS} hp.lkLen hk"),
     0x80000FB8: ("Dc.Mach.DcFuncArmV7", "fa_Z", f"hlive h hc {W} ho {HS} hk"),
-    0x80000FE0: ("Dc.Mach.DcFuncArmV1", "fa_X", f"hlive h hc {W} ho {HS} hk"),
+    0x80000FE0: ("Dc.Mach.DcFuncArmV1", "fa_X", f"hlive h hc {W} ho {HS} (by decide) hk"),
     0x80001008: ("Dc.Mach.DcFuncArmR3", "fa_S", None),
     0x80001038: ("Dc.Mach.DcFuncArmR3", "fa_R", None),
     0x80001058: ("Dc.Mach.DcFuncArmR3", "fa_Q", None),
     0x800010A8: ("Dc.Mach.DcFuncArm2", "fa_add", f"{OP} {HS} hp.lkLen hk"),
-    0x800010C0: ("Dc.Mach.DcFuncArm2", "fa_div", f"{OP} hp.size.div {HS} hp.lkLen hk"),
+    0x800010C0: ("Dc.Mach.DcFuncArm2", "fa_div", f"{OP} hp.size.div {HS} hp.lkLen (by decide) hk"),
     0x800010D8: ("Dc.Mach.DcFuncArm2", "fa_sub", f"{OP} {HS} hp.lkLen hk"),
-    0x800010F0: ("Dc.Mach.DcFuncArmR1", "fa_o", f"hlive h hc {W} hk"),
+    0x800010F0: ("Dc.Mach.DcFuncArmR1", "fa_o", f"hlive h hc {W} (by decide) hk"),
     0x80001128: ("Dc.Mach.DcFuncArmV6", "fa_n", f"{OP} {HS} hp.size.top hp.err hk"),
     0x80001154: ("Dc.Mach.DcFuncArmV5", "fa_c", f"hlive h hc {W} hk"),
     0x8000115C: ("Dc.Mach.DcFuncArmV6", "fa_p", f"{OP} {HS} hp.size.top hp.err hk"),
     0x80001188: ("Dc.Mach.DcFuncArmV5", "fa_d", f"hlive h hc {W} ho {HS} hk"),
-    0x800011A8: ("Dc.Mach.DcFuncArm2", "fa_modexp", f"{OP} hp.size.modexp {HS} hp.lkLen hk"),
+    0x800011A8: ("Dc.Mach.DcFuncArm2", "fa_modexp", f"{OP} hp.size.modexp {HS} hp.lkLen (by decide) hk"),
     0x800011C0: ("Dc.Mach.DcFuncArm1", "fa_z", f"hlive h hc {W} ho {HS} hk"),
     0x800011D0: ("Dc.Mach.DcFuncArm2", "fa_mul", f"{OP} {HS} hp.lkLen hk"),
-    0x800011E8: ("Dc.Mach.DcFuncArmV2", "fa_v", f"{OP} {HS} hp.lkLen hp.size.sqOut hp.size.sqrt hk"),
+    0x800011E8: ("Dc.Mach.DcFuncArmV2", "fa_v", f"{OP} {HS} hp.lkLen (by decide) hp.size.sqOut hp.size.sqrt hk"),
     0x80000BD4: ("Dc.Mach.DcFuncArmV7", "fa_P", f"{OP} {HS} hp.size.top hk"),
     0x80001220: ("Dc.Mach.DcFuncArmR3", "fa_l", None),
-    0x80001240: ("Dc.Mach.DcFuncArm2", "fa_divrem", f"{OP} hp.size.rem {HS} hp.lkLen hk"),
+    0x80001240: ("Dc.Mach.DcFuncArm2", "fa_divrem", f"{OP} hp.size.rem {HS} hp.lkLen (by decide) hk"),
     0x80001258: ("Dc.Mach.DcFuncArm0", "fa_lbrack", "hlive h hc hk"),
 }
 
@@ -134,7 +134,7 @@ LEMMA = """theorem dcf_{c} {{live S : Nat → Prop}} {{Q : String → (Nat → B
     {{peek : Option Nat}} {{neg : Bool}} {{R : Nat → BitVec 64}}
     (hp : FnPre S sp W M H F L C G hs st {c} peek) (hr : FnRegs R sp {c} peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st {c} peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow {c}) t0 st (dcFunc 70 st {c} peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_{c} hlive hp.heapOwn (hp.frame.mono {W})
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -181,7 +181,7 @@ theorem dc_func_spec_done {{live S : Nat → Prop}}
     (hc : c ∈ fnDone ∨ c < 9 ∨ 126 < c)
     (hp : FnPre S sp W M H F L C G hs st c peek) (hr : FnRegs R sp c peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st c peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow c) t0 st (dcFunc 70 st c peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M := by
   rcases hc with hc | hout
   · simp only [fnDone, List.mem_cons, List.not_mem_nil, or_false] at hc
@@ -201,7 +201,7 @@ theorem dc_func_spec {live S : Nat → Prop}
     {c : Nat} {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st c peek) (hr : FnRegs R sp c peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st c peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow c) t0 st (dcFunc 70 st c peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   dc_func_spec_done hlive (by
     by_cases h : 9 ≤ c ∧ c ≤ 126

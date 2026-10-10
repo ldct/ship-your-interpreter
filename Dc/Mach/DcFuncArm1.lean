@@ -21,18 +21,18 @@ local macro_rules | `(tactic| sx_side) => `(tactic| dc_side)
 
 /-- **`dc_push (dc_int2data (v))`** as `fn_i2d_push`, over handles `ex ++ hs`
 whose front `ex` (strings the arm lost) is left to the caller's post. -/
-theorem fn_i2d_pushE {live S : Nat → Prop}
+theorem fn_i2d_pushE {al : Nat} {live S : Nat → Prop}
     {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {st : St} {M0 M : Mem} {H : Heap}
     {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {sp W : Nat}
     {R0 R : Nat → BitVec 64} {ex : List GV} {p : Nat}
-    {v : Int} (h : DcAt S M H F L C G (ex ++ hs) st) (hex : ex.length ≤ 2)
+    {v : Int} (h : DcAt S M H F L C G (ex ++ hs) st) (hex : ex.length ≤ 2) (hxl : ex.length ≤ al)
     (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W) (ho : FnOom live S Q sp W M0)
     (hhs : (ex ++ hs).length ≤ 2 ^ 30) (hvlo : -2 ^ 31 < v) (hvhi : v < 2 ^ 31)
     (h10 : R 10 = BitVec.ofInt 64 v) (h1 : R 1 = BitVec.ofNat 64 (p + 4))
     (hp : (p + 4) % 4 = 0 ∧ p + 8 < 2 ^ 64)
     (hj1 : JalAt live S Q (p + 4) 0x80002da4) (hj2 : JAt live S Q (p + 8) 0x80000c10)
-    (hk : FnK live S Q t0 st (.ok (st.push (.num (Num.ofInt v)))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (.ok (st.push (.num (Num.ofInt v)))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800026d8#64 R M := by
   obtain ⟨hp1, hp2⟩ := hp
   refine dc_int2data_spec hlive h hhs (hc.cf (Wc := 192) (by omega)) (hc.cab (by omega)) R h10 hc.r2
@@ -52,7 +52,7 @@ theorem fn_i2d_pushE {live S : Nat → Prop}
         (k3.get 2 (by decide)) hout3
       rw [e1]
       exact hj2 _ R3 M3 (fa_ok (st' := st.push (.num (Num.ofInt v))) hlive h3 hc3 hk (.ok _) hex
-        (by simp) (StrPin.refl _ _))
+        (by simp; exact hxl) (StrPin.refl _ _))
     · exact hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3 fun a e1 e2 _ e4 => hout3 a e1 e2 e4
   · have hj : JAt live S Q 0x80002bcc 0x80001e74 := fun t R M k => by
       have htx : tohostAddr = 0x8001ad00 := rfl
@@ -63,7 +63,7 @@ theorem fn_i2d_pushE {live S : Nat → Prop}
 
 /-- **`dc_push (dc_int2data (v))`** from the call of `dc_int2data` (return
 address `p + 4`, where `dc_push` is called; `p + 8` jumps to `DC_OKAY`). -/
-theorem fn_i2d_push {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem fn_i2d_push {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {st : St} {M0 M : Mem} {H : Heap}
     {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {sp W p : Nat}
     {R0 R : Nat → BitVec 64} {v : Int} (h : DcAt S M H F L C G hs st)
@@ -72,9 +72,9 @@ theorem fn_i2d_push {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     (h10 : R 10 = BitVec.ofInt 64 v) (h1 : R 1 = BitVec.ofNat 64 (p + 4))
     (hp : (p + 4) % 4 = 0 ∧ p + 8 < 2 ^ 64)
     (hj1 : JalAt live S Q (p + 4) 0x80002da4) (hj2 : JAt live S Q (p + 8) 0x80000c10)
-    (hk : FnK live S Q t0 st (.ok (st.push (.num (Num.ofInt v)))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (.ok (st.push (.num (Num.ofInt v)))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800026d8#64 R M :=
-  fn_i2d_pushE (ex := []) hlive h (by simp) hc hW ho hhs hvlo hvhi h10 h1 hp hj1 hj2 hk
+  fn_i2d_pushE (ex := []) hlive h (by simp) (by simp) hc hW ho hhs hvlo hvhi h10 h1 hp hj1 hj2 hk
 
 section
 
@@ -98,22 +98,22 @@ macro "fn_i2d_sites" : tactic =>
       exact k))
 
 /-- A small natural `n` pushed as a number. -/
-theorem fa_global (hlive : ∀ p ∈ dcText, live p.1) {p n : Nat}
+theorem fa_global {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {p n : Nat}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W)
     (ho : FnOom live S Q sp W M0) (hhs : hs.length ≤ 2 ^ 30) (hn : n < 2 ^ 31)
     (h10 : R 10 = BitVec.ofNat 64 n) (h1 : R 1 = BitVec.ofNat 64 (p + 4))
     (hp : (p + 4) % 4 = 0 ∧ p + 8 < 2 ^ 64)
     (hj1 : JalAt live S Q (p + 4) 0x80002da4) (hj2 : JAt live S Q (p + 8) 0x80000c10)
-    (hk : FnK live S Q t0 st (.ok (st.push (.num (Num.ofInt n)))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (.ok (st.push (.num (Num.ofInt n)))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800026d8#64 R M :=
   fn_i2d_push hlive h hc hW ho hhs (by omega) (by omega) (by rw [h10, BitVec.ofInt_natCast]) h1 hp
     hj1 hj2 hk
 
 /-- `K` (`0x80000ca4`): push `dc_scale`. -/
-theorem fa_K (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_K {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W)
     (ho : FnOom live S Q sp W M0) (hhs : hs.length ≤ 2 ^ 30)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 75 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 75 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000ca4#64 R M := by
   have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -125,10 +125,10 @@ theorem fa_K (hlive : ∀ p ∈ dcText, live p.1)
   fn_i2d_sites
 
 /-- `I` (`0x80000cb8`): push `dc_ibase`. -/
-theorem fa_I (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_I {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W)
     (ho : FnOom live S Q sp W M0) (hhs : hs.length ≤ 2 ^ 30)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 73 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 73 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000cb8#64 R M := by
   have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -140,10 +140,10 @@ theorem fa_I (hlive : ∀ p ∈ dcText, live p.1)
   fn_i2d_sites
 
 /-- `O` (`0x80000f1c`): push `dc_obase`. -/
-theorem fa_O (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_O {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W)
     (ho : FnOom live S Q sp W M0) (hhs : hs.length ≤ 2 ^ 30)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 79 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 79 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000f1c#64 R M := by
   have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -155,10 +155,10 @@ theorem fa_O (hlive : ∀ p ∈ dcText, live p.1)
   fn_i2d_sites
 
 /-- `z` (`0x800011c0`): push the stack depth. -/
-theorem fa_z (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_z {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W)
     (ho : FnOom live S Q sp W M0) (hhs : hs.length ≤ 2 ^ 30)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 122 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 122 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800011c0#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hlen : st.stack.length < 2 ^ 31 := by

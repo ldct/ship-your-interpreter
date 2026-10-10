@@ -33,14 +33,14 @@ theorem StkLinks.off {G : DcG} (g : StkGeo G) {a : Nat} (hl : StkLinks G a) (e1 
 
 /-- `FnK` for `.ok s` depends neither on the state it started from nor on the
 ghost beyond its lost references and strings. -/
-theorem FnK.okIdx {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem FnK.okIdx {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t0 : String} {st1 st2 s : St} {G G2 : DcG} {hs : List GV} {sp W : Nat} {M0 : Mem}
-    {R0 : Nat → BitVec 64} (hk : FnK live S Q t0 st1 (.ok s) G hs sp W M0 R0)
+    {R0 : Nat → BitVec 64} (hk : FnK live S Q al t0 st1 (.ok s) G hs sp W M0 R0)
     (hl : G2.lk = G.lk) (hst : G2.strs = G.strs) :
-    FnK live S Q t0 st2 (.ok s) G2 hs sp W M0 R0 :=
+    FnK live S Q al t0 st2 (.ok s) G2 hs sp W M0 R0 :=
   fun R' M' H' F' L' C' G' code st' ex k e2 e10 hf hp =>
     hk R' M' H' F' L' C' G' code st' ex k e2 e10 (by cases hf; exact .ok _)
-      ⟨hp.dc, hp.ex, hl ▸ hp.lk, hst ▸ hp.pin, hp.out⟩
+      ⟨hp.dc, hl ▸ hp.lk, hp.ex, hst ▸ hp.pin, hp.out⟩
 
 section
 
@@ -49,9 +49,9 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {G : DcG} {hs : List GV} {sp W : Nat} {R0 R : Nat → BitVec 64} {peek : Option Nat} {neg : Bool}
 
 /-- `r` (`0x80000ef4`): `dc_stack_rotate (2)`, `DC_OKAY`. -/
-theorem fa_r (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_r {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 114 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 114 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000ef4#64 R M := by
   have hr : dcFunc 70 st 114 peek neg = .ok { st with stack := rotate 2 st.stack } := rfl
   rw [hr] at hk
@@ -76,10 +76,10 @@ macro "fn_pop_sites " p:ident b:ident : tactic =>
 
 /-- `X` (`0x80000fe0`): a popped number's scale, `0` for a string (its
 reference lost), pushed. -/
-theorem fa_X (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_X {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
-    (ho : FnOom live S Q sp W M0) (hhs : hs.length + 1 ≤ 2 ^ 30)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 88 peek neg) G hs sp W M0 R0) :
+    (ho : FnOom live S Q sp W M0) (hhs : hs.length + 1 ≤ 2 ^ 30) (hal : 1 ≤ al)
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 88 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000fe0#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have e2 := hc.r2
@@ -126,7 +126,7 @@ theorem fa_X (hlive : ∀ p ∈ dcText, live p.1)
       bsimp []
       bc_run hlive hlive [] at 0x800026d8
       have hsz := (h1.heap.nums x hx).shape.size
-      refine fn_i2d_pushE (ex := []) (p := 0x80000fd4) (hs := hs) (st := st1) (v := (x.rep.scale : Int)) hlive h2 (by simp)
+      refine fn_i2d_pushE (ex := []) (p := 0x80000fd4) (hs := hs) (st := st1) (v := (x.rep.scale : Int)) hlive h2 (by simp) (by simp)
         (hc3.mod (by keeps_tac Keeps.refl _ _)) (by omega) ho (by simp; omega) (by omega) (by omega)
         (by bsimp [e102]; rw [BitVec.ofInt_natCast]) (by bsimp []) (by decide) ?_ ?_ (hk.okIdx rfl rfl)
       fn_i2d_sites
@@ -141,7 +141,7 @@ theorem fa_X (hlive : ∀ p ∈ dcText, live p.1)
       bc_run hlive hlive [e21, htg] at 0x800026d8
       all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
       bc_run hlive hlive [e21, htg] at 0x800026d8
-      refine fn_i2d_pushE (ex := [.str q]) (p := 0x80000fd4) (hs := hs) (st := st1) (v := 0) hlive h1 (by simp)
+      refine fn_i2d_pushE (ex := [.str q]) (p := 0x80000fd4) (hs := hs) (st := st1) (v := 0) hlive h1 (by simp) (by simp; omega)
         (hc1.mod (by keeps_tac Keeps.refl _ _)) (by omega) ho (by simp; omega) (by omega) (by omega)
         (by bsimp [e10]; rfl) (by bsimp []) (by decide) ?_ ?_ (hk.okIdx rfl rfl)
       fn_i2d_sites

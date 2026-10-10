@@ -12,8 +12,9 @@ import Dc.Semantics
 the `dc_status` code and the state the caller continues with; for `v`,
 `dc_func` runs `bc_sqrt` itself and returns `DC_OKAY` with the root pushed).
 The lookahead character arrives as `chW`. Its post `FnPost`: the state relation over the caller's handles with
-the strings an error route leaked in front (`ex`), at most two more lost
-references, the caller's strings kept with their blocks and text
+the strings an error route leaked in front (`ex`), at most `al` more lost
+references and strings together (`al` is the command's allowance:
+`leakAllow c`, `0` for a command that loses nothing), the caller's strings kept with their blocks and text
 (`StrPin`), and every byte off the heap, the globals, `out_char`'s words and
 the frame unchanged. `FnK` is the caller's continuation; `FnAt` the frame
 inside an arm (after the dispatch of `DcFuncDisp.lean`).
@@ -42,12 +43,12 @@ inductive FnOut (st : St) : Res → Nat → St → Prop
 
 /-- **What `dc_func` leaves its caller** (frame `sp`, `W` bytes): the state
 over the caller's handles `hs` and the leaked strings `ex`. -/
-structure FnPost (S : Nat → Prop) (sp W : Nat) (M : Mem) (G : DcG) (hs : List GV) (M' : Mem)
+structure FnPost (S : Nat → Prop) (al sp W : Nat) (M : Mem) (G : DcG) (hs : List GV) (M' : Mem)
     (H' : Heap) (F' : List Blk) (L' : List NumObj) (C' : BcConsts) (G' : DcG) (st' : St)
     (ex : List GV) : Prop where
   dc : DcAt S M' H' F' L' C' G' (ex ++ hs) st'
+  lk : G'.lk.length + ex.length ≤ G.lk.length + al
   ex : ex.length ≤ 2
-  lk : G'.lk.length ≤ G.lk.length + 2
   pin : StrPin G.strs G'.strs hs
   out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp W a → imgM M' a = imgM M a
 
@@ -55,11 +56,11 @@ structure FnPost (S : Nat → Prop) (sp W : Nat) (M : Mem) (G : DcG) (hs : List 
 (entry registers `R`, memory `M`, frame `W` bytes below `sp`): the console
 `t0` followed by the state's output. -/
 def FnK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
-    (t0 : String) (st : St) (r : Res) (G : DcG) (hs : List GV) (sp W : Nat) (M : Mem)
+    (al : Nat) (t0 : String) (st : St) (r : Res) (G : DcG) (hs : List GV) (sp W : Nat) (M : Mem)
     (R : Nat → BitVec 64) : Prop :=
   ∀ R' M' H' F' L' C' G' code st' ex, Keeps cClob R' R → R' 2 = R 2 →
     R' 10 = BitVec.ofNat 64 code → FnOut st r code st' →
-    FnPost S sp W M G hs M' H' F' L' C' G' st' ex →
+    FnPost S al sp W M G hs M' H' F' L' C' G' st' ex →
     DWO live S Q (t0 ++ Dc.outStr st'.out) (R 1) R' M'
 
 /-- **Inside an arm of `dc_func`**: `sp` lowered by 192, `ra` saved at
@@ -197,20 +198,20 @@ theorem BnezAt.of_step {live S : Nat → Prop}
 
 /-- **An arm's `return code`** (`0x80000c14`, `a0 = code`): the epilogue,
 then the caller's continuation. -/
-theorem FnAt.close {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem FnAt.close {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {st st' : St} {r : Res} {G G' : DcG}
     {hs ex : List GV} {sp W code : Nat} {M0 M : Mem} {R0 R : Nat → BitVec 64} {H' : Heap}
     {F' : List Blk} {L' : List NumObj} {C' : BcConsts}
-    (hc : FnAt S sp W M0 R0 R M) (hk : FnK live S Q t0 st r G hs sp W M0 R0)
+    (hc : FnAt S sp W M0 R0 R M) (hk : FnK live S Q al t0 st r G hs sp W M0 R0)
     (hf : FnOut st r code st') (h : DcAt S M H' F' L' C' G' (ex ++ hs) st') (hex : ex.length ≤ 2)
-    (hlk : G'.lk.length ≤ G.lk.length + 2) (hpin : StrPin G.strs G'.strs hs)
+    (hlk : G'.lk.length + ex.length ≤ G.lk.length + al) (hpin : StrPin G.strs G'.strs hs)
     (h10 : R 10 = BitVec.ofNat 64 code) :
     DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80000c14#64 R M := by
   have hsf : StackFrame S sp 192 := hc.frame.mono (by have := hc.big; omega)
   refine fn_epi hlive hsf (by have := hc.room; have := hc.big; omega) R hc.r2 hc.ra hc.al
     fun R' k e1 e2 => ?_
   refine hk R' M H' F' L' C' G' code st' ex ?_ (e2.trans hc.r20.symm) ?_ hf
-    ⟨h, hex, hlk, hpin, hc.out⟩
+    ⟨h, hlk, hex, hpin, hc.out⟩
   · refine Keeps.restoreAll (rs := [1, 2]) ((k.mono (ks' := [1, 2] ++ cClob) (by decide)).trans
       (hc.keep.mono (by decide))) fun z hz => ?_
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hz

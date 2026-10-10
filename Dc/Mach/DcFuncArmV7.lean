@@ -22,22 +22,22 @@ local macro_rules | `(tactic| sx_side) => `(tactic| dc_side)
 
 /-- `FnK` for `.ok s` moved to another start state and to a ghost with no
 more lost references whose strings keep the held ones (`StrPin`). -/
-theorem FnK.okPin {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem FnK.okPin {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t0 : String} {st1 st2 s : St} {G G2 : DcG} {hs : List GV} {sp W : Nat} {M0 : Mem}
-    {R0 : Nat → BitVec 64} (hk : FnK live S Q t0 st1 (.ok s) G hs sp W M0 R0)
+    {R0 : Nat → BitVec 64} (hk : FnK live S Q al t0 st1 (.ok s) G hs sp W M0 R0)
     (hl : G2.lk.length ≤ G.lk.length) (hst : StrPin G.strs G2.strs hs) :
-    FnK live S Q t0 st2 (.ok s) G2 hs sp W M0 R0 :=
+    FnK live S Q al t0 st2 (.ok s) G2 hs sp W M0 R0 :=
   fun R' M' H' F' L' C' G' code st' ex k e2 e10 hf hp =>
     hk R' M' H' F' L' C' G' code st' ex k e2 e10 (by cases hf; exact .ok _)
-      ⟨hp.dc, hp.ex, by have := hp.lk; omega, hst.trans hp.pin, hp.out⟩
+      ⟨hp.dc, by have := hp.lk; omega, hp.ex, hst.trans hp.pin, hp.out⟩
 
 /-- `fflush (stdout)` then `DC_OKAY` (`0x80000c04`). -/
-theorem fa_okF {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem fa_okF {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {st st' : St} {r : Res} {M0 M : Mem} {H : Heap}
     {F : List Blk} {L : List NumObj} {C : BcConsts} {G G' : DcG} {hs ex : List GV} {sp W : Nat}
     {R0 R : Nat → BitVec 64} (h : DcAt S M H F L C G' (ex ++ hs) st') (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st r G hs sp W M0 R0) (hf : FnOut st r 0 st') (hex : ex.length ≤ 2)
-    (hlk : G'.lk.length ≤ G.lk.length + 2) (hpin : StrPin G.strs G'.strs hs) :
+    (hk : FnK live S Q al t0 st r G hs sp W M0 R0) (hf : FnOut st r 0 st') (hex : ex.length ≤ 2)
+    (hlk : G'.lk.length + ex.length ≤ G.lk.length + al) (hpin : StrPin G.strs G'.strs hs) :
     DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80000c04#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hro : ∀ b ∈ accAddrs 2147516936 8, (b, dcROImg b) ∈ dcRO := by decide +kernel
@@ -77,11 +77,11 @@ theorem DcAt.zLen_lt {M : Mem} {H : Heap} {G : DcG} {g : GV} {v : Val} {st : St}
       exact h.str_len ho
 
 /-- `Z` (`0x80000fb8`): the popped datum's length pushed. -/
-theorem fa_Z (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_Z {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
     (ho : FnOom live S Q sp W M0) (hhs : hs.length + 1 ≤ 2 ^ 30)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 90 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 90 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000fb8#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have e2 := hc.r2
@@ -119,20 +119,20 @@ theorem fa_Z (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap}
     bsimp []
     bc_run hlive hlive [] at 0x800026d8
     refine fn_i2d_pushE (ex := []) (p := 0x80000fd4) (hs := hs) (st := st1) (v := (v.zLen : Int))
-      hlive h2 (by simp) (hc2.mod (by keeps_tac Keeps.refl _ _)) (by omega) ho (by simp; omega)
+      hlive h2 (by simp) (by simp) (hc2.mod (by keeps_tac Keeps.refl _ _)) (by omega) ho (by simp; omega)
       (by omega) (by omega) (by bsimp [e102]; rw [BitVec.ofInt_natCast]) (by bsimp []) (by decide)
       ?_ ?_ (hk.okPin (by rw [hsn.lk]; exact Nat.le_refl _) hpin2)
     fn_i2d_sites
 
 /-- `P` on a popped number (`0x80001394`): `dc_dump_num (value, DC_TOSS)`. -/
-theorem fP_num (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {M1 : Mem} {H1 : Heap}
+theorem fP_num {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {M1 : Mem} {H1 : Heap}
     {G G1 : DcG} {R1 : Nat → BitVec 64}
     (h1 : DcAt S M1 H1 F L C G1 (.num x.rep.p :: hs) st1) (hx : x ∈ L)
     (hpt : ldv .ld M1 (sp - 192 + 24) = BitVec.ofNat 64 x.rep.p)
     (hc1 : FnAt S sp W M0 R0 R1 M1) (hW : 192 + dnN ≤ W) (ho : FnOom live S Q sp W M0)
     (hmb : MulBase S M0) (hhs : hs.length + 3 ≤ 2 ^ 20) (hwid : x.rep.num.wid < 2 ^ 20)
     (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs)
-    (hk : FnK live S Q t0 st1 (.ok (st1.emit x.rep.num.dump)) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st1 (.ok (st1.emit x.rep.num.dump)) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x80001394#64 R1 M1 := by
   fv_frame hc1
   have e21 := hc1.r2
@@ -152,13 +152,13 @@ theorem fP_num (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {M1 
     (by simp) (by rw [hlk]; exact Nat.le_add_right _ _) (StrPin.of_eq hstr _)
 
 /-- `P` on a popped string (`0x80001374`): `dc_out_str (value, DC_TOSS)`. -/
-theorem fP_str (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {o : StrObj} {M1 : Mem} {H1 : Heap}
+theorem fP_str {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {o : StrObj} {M1 : Mem} {H1 : Heap}
     {G G1 : DcG} {R1 : Nat → BitVec 64}
     (h1 : DcAt S M1 H1 F L C G1 (.str o.hb.pay :: hs) st1) (ho' : o ∈ G1.strs)
     (hpt : ldv .ld M1 (sp - 192 + 24) = BitVec.ofNat 64 o.hb.pay)
     (hc1 : FnAt S sp W M0 R0 R1 M1) (hW : 192 + 64 ≤ W)
     (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs)
-    (hk : FnK live S Q t0 st1 (.ok (st1.emit o.s)) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st1 (.ok (st1.emit o.s)) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x80001374#64 R1 M1 := by
   fv_frame hc1
   have e21 := hc1.r2
@@ -178,12 +178,12 @@ theorem fP_str (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {o : StrObj} {M1 
 
 /-- `P` (`0x80000bd4`): the popped datum printed as bytes (a number) or text
 (a string) and released. -/
-theorem fa_P (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_P {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 + dnN ≤ W)
     (ho : FnOom live S Q sp W M0) (hmb : MulBase S M0) (hhs : hs.length + 3 ≤ 2 ^ 20)
     (hw : ∀ n rest, st.stack = .num n :: rest → n.wid < 2 ^ 20)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 80 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 80 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000bd4#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have e2 := hc.r2

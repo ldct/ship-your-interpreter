@@ -1,5 +1,6 @@
 import Dc.Mach.DcFuncArmV8
 import Dc.Mach.DcFuncDisp
+import Dc.Mach.EvalLeak
 
 /-!
 # `dc_func`'s contract: premises and the per-arm join (M10)
@@ -116,7 +117,7 @@ theorem dcf_out {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st c peek) (hr : FnRegs R sp c peek neg)
     (hout : c < 9 ∨ 126 < c)
-    (hk : FnK live S Q t0 st (dcFunc 70 st c peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow c) t0 st (dcFunc 70 st c peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M := by
   refine dcf_disp_out hlive (hp.frame.mono (by have := hp.stk; omega)) (by have := hp.room; have := hp.stk; omega)
     hp.c256 hout R hr.r2 hr.r10 fun R' k e2 e13 => ?_

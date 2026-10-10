@@ -45,14 +45,14 @@ theorem DcAt.of_disp {S : Nat → Prop} {M0 : Mem} {H : Heap} {F : List Blk} {L 
     ⟨this.1, this.2.1⟩
 
 /-- An arm returning a code, the heap and ghost unchanged. -/
-theorem fa_code {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem fa_code {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {st st' : St} {r : Res} {M0 M : Mem} {H : Heap}
     {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {sp W code : Nat}
     {R0 R : Nat → BitVec 64} (h : DcAt S M H F L C G hs st') (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st r G hs sp W M0 R0) (hf : FnOut st r code st')
+    (hk : FnK live S Q al t0 st r G hs sp W M0 R0) (hf : FnOut st r code st')
     (h10 : R 10 = BitVec.ofNat 64 code) :
     DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80000c14#64 R M :=
-  hc.close hlive hk hf (ex := []) h (by simp) (by omega) (StrPin.refl _ _) h10
+  hc.close hlive hk hf (ex := []) h (by simp) (by simp) (StrPin.refl _ _) h10
 
 /-- The frame after stores confined to the scalar globals. -/
 theorem FnAt.scalars {S : Nat → Prop} {sp W : Nat} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64}
@@ -62,12 +62,12 @@ theorem FnAt.scalars {S : Nat → Prop} {sp W : Nat} {M0 M M' : Mem} {R0 R R' : 
     fun a _ e2 _ _ => hm a fun hw => e2 hw.glob
 
 /-- `DC_OKAY` (`0x80000c10`) after an arm's callees. -/
-theorem fa_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem fa_ok {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {st st' : St} {r : Res} {M0 M : Mem} {H : Heap}
     {F : List Blk} {L : List NumObj} {C : BcConsts} {G G' : DcG} {hs ex : List GV} {sp W : Nat}
     {R0 R : Nat → BitVec 64} (h : DcAt S M H F L C G' (ex ++ hs) st') (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st r G hs sp W M0 R0) (hf : FnOut st r 0 st') (hex : ex.length ≤ 2)
-    (hlk : G'.lk.length ≤ G.lk.length + 2) (hpin : StrPin G.strs G'.strs hs) :
+    (hk : FnK live S Q al t0 st r G hs sp W M0 R0) (hf : FnOut st r 0 st') (hex : ex.length ≤ 2)
+    (hlk : G'.lk.length + ex.length ≤ G.lk.length + al) (hpin : StrPin G.strs G'.strs hs) :
     DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80000c10#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   bc_run hlive hlive [] at 0x80000c14
@@ -81,9 +81,9 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {G : DcG} {hs : List GV} {sp W : Nat} {R0 R : Nat → BitVec 64} {peek : Option Nat} {neg : Bool}
 
 /-- Whitespace (`0x80000c10`): `DC_OKAY`. -/
-theorem fa_ws (hlive : ∀ p ∈ dcText, live p.1) {c : Nat} (hcw : c = 9 ∨ c = 10 ∨ c = 32)
+theorem fa_ws {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {c : Nat} (hcw : c = 9 ∨ c = 10 ∨ c = 32)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st c peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st c peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000c10#64 R M := by
   have hr : dcFunc 70 st c peek neg = .ok st := by rcases hcw with rfl | rfl | rfl <;> rfl
   rw [hr] at hk
@@ -92,37 +92,37 @@ theorem fa_ws (hlive : ∀ p ∈ dcText, live p.1) {c : Nat} (hcw : c = 9 ∨ c 
   exact fa_code hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hk (.ok st) (by bsimp [])
 
 /-- `#` (`0x80000c84`): `DC_COMMENT`. -/
-theorem fa_hash (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_hash {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 35 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 35 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000c84#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   bc_run hlive hlive [] at 0x80000c14
   exact fa_code hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hk .comment (by bsimp [])
 
 /-- `[` (`0x80001258`): `DC_STR`. -/
-theorem fa_lbrack (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_lbrack {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 91 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 91 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001258#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   bc_run hlive hlive [] at 0x80000c14
   exact fa_code hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hk .str (by bsimp [])
 
 /-- `x` (`0x80000d30`): `DC_EVALTOS`. -/
-theorem fa_x (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_x {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 120 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 120 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000d30#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   bc_run hlive hlive [] at 0x80000c14
   exact fa_code hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hk (.evalTos st) (by bsimp [])
 
 /-- `!` (`0x80000c8c`): `DC_NEGCMP` before `<`, `=`, `>`, else `DC_SYSTEM`. -/
-theorem fa_bang (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_bang {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M)
     (h11 : R 11 = chW peek) (hpk : ∀ r, peek = some r → r < 256)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 33 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 33 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000c8c#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hw : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (chW peek + 18446744073709551556#64)) =
@@ -163,10 +163,10 @@ theorem fa_bang (hlive : ∀ p ∈ dcText, live p.1)
     exact fa_code hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hk .system (by bsimp [])
 
 /-- A number's first character (`0x80000c20`, its own epilogue): `DC_INT`. -/
-theorem fa_int (hlive : ∀ p ∈ dcText, live p.1) {c : Nat}
+theorem fa_int {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {c : Nat}
     (hci : dcFunc 70 st c peek neg = .int)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st c peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st c peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000c20#64 R M := by
   rw [hci] at hk
   have hsf : StackFrame S sp 192 := hc.frame.mono hc.big
@@ -180,7 +180,7 @@ theorem fa_int (hlive : ∀ p ∈ dcText, live p.1) {c : Nat}
   bc_run hlive hlive [e2, f]
   all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hal | skip
   refine hk _ M H F L C G 5 st [] ?_ ?_ (by bsimp []) .int
-    ⟨h, by simp, by omega, StrPin.refl _ _, hc.out⟩
+    ⟨h, by simp, by simp, StrPin.refl _ _, hc.out⟩
   · refine Keeps.restoreAll (rs := [1, 2]) (show Keeps ([1, 2] ++ cClob) _ R0 from
       (by keeps_tac (hc.keep.mono (by decide)))) fun z hz => ?_
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hz
@@ -190,9 +190,9 @@ theorem fa_int (hlive : ∀ p ∈ dcText, live p.1) {c : Nat}
   · bsimp [hc.r20]; rw [Nat.sub_add_cancel (by omega)]
 
 /-- `q` (`0x80000f00`): `unwind_noexit = 0`, `unwind_depth = 1`, `DC_QUIT`. -/
-theorem fa_q (hlive : ∀ p ∈ dcText, live p.1)
+theorem fa_q {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 113 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 113 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000f00#64 R M := by
   have hq : dcFunc 70 st 113 peek neg = .quit { st with unwind := 1, noexit := false } := rfl
   rw [hq] at hk

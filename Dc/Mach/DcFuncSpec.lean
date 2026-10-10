@@ -30,7 +30,7 @@ theorem dc_func_spec_done {live S : Nat → Prop}
     (hc : c ∈ fnDone ∨ c < 9 ∨ 126 < c)
     (hp : FnPre S sp W M H F L C G hs st c peek) (hr : FnRegs R sp c peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st c peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow c) t0 st (dcFunc 70 st c peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M := by
   rcases hc with hc | hout
   · simp only [fnDone, List.mem_cons, List.not_mem_nil, or_false] at hc

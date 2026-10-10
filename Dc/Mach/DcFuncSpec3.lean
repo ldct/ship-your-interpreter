@@ -30,7 +30,7 @@ theorem dcf_91 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 91 peek) (hr : FnRegs R sp 91 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 91 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 91) t0 st (dcFunc 70 st 91 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_91 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -42,7 +42,7 @@ theorem dcf_92 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 92 peek) (hr : FnRegs R sp 92 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 92 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 92) t0 st (dcFunc 70 st 92 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_92 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -54,7 +54,7 @@ theorem dcf_93 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 93 peek) (hr : FnRegs R sp 93 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 93 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 93) t0 st (dcFunc 70 st 93 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_93 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -66,7 +66,7 @@ theorem dcf_94 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 94 peek) (hr : FnRegs R sp 94 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 94 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 94) t0 st (dcFunc 70 st 94 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_94 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -78,7 +78,7 @@ theorem dcf_95 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 95 peek) (hr : FnRegs R sp 95 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 95 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 95) t0 st (dcFunc 70 st 95 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_95 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -90,7 +90,7 @@ theorem dcf_96 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 96 peek) (hr : FnRegs R sp 96 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 96 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 96) t0 st (dcFunc 70 st 96 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_96 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -102,7 +102,7 @@ theorem dcf_97 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 97 peek) (hr : FnRegs R sp 97 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 97 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 97) t0 st (dcFunc 70 st 97 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_97 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -114,7 +114,7 @@ theorem dcf_98 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 98 peek) (hr : FnRegs R sp 98 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 98 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 98) t0 st (dcFunc 70 st 98 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_98 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -126,7 +126,7 @@ theorem dcf_99 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 99 peek) (hr : FnRegs R sp 99 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 99 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 99) t0 st (dcFunc 70 st 99 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_99 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -138,7 +138,7 @@ theorem dcf_100 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 100 peek) (hr : FnRegs R sp 100 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 100 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 100) t0 st (dcFunc 70 st 100 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_100 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -150,7 +150,7 @@ theorem dcf_101 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 101 peek) (hr : FnRegs R sp 101 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 101 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 101) t0 st (dcFunc 70 st 101 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_101 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -162,7 +162,7 @@ theorem dcf_102 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 102 peek) (hr : FnRegs R sp 102 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 102 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 102) t0 st (dcFunc 70 st 102 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_102 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -174,7 +174,7 @@ theorem dcf_103 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 103 peek) (hr : FnRegs R sp 103 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 103 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 103) t0 st (dcFunc 70 st 103 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_103 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -186,7 +186,7 @@ theorem dcf_104 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 104 peek) (hr : FnRegs R sp 104 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 104 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 104) t0 st (dcFunc 70 st 104 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_104 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -198,7 +198,7 @@ theorem dcf_106 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 106 peek) (hr : FnRegs R sp 106 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 106 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 106) t0 st (dcFunc 70 st 106 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_106 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -210,7 +210,7 @@ theorem dcf_109 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 109 peek) (hr : FnRegs R sp 109 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 109 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 109) t0 st (dcFunc 70 st 109 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_109 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -222,7 +222,7 @@ theorem dcf_110 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 110 peek) (hr : FnRegs R sp 110 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 110 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 110) t0 st (dcFunc 70 st 110 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_110 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -234,7 +234,7 @@ theorem dcf_112 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 112 peek) (hr : FnRegs R sp 112 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 112 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 112) t0 st (dcFunc 70 st 112 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_112 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -246,7 +246,7 @@ theorem dcf_113 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 113 peek) (hr : FnRegs R sp 113 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 113 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 113) t0 st (dcFunc 70 st 113 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_113 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -258,7 +258,7 @@ theorem dcf_114 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 114 peek) (hr : FnRegs R sp 114 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 114 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 114) t0 st (dcFunc 70 st 114 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_114 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -270,7 +270,7 @@ theorem dcf_116 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 116 peek) (hr : FnRegs R sp 116 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 116 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 116) t0 st (dcFunc 70 st 116 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_116 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -282,7 +282,7 @@ theorem dcf_117 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 117 peek) (hr : FnRegs R sp 117 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 117 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 117) t0 st (dcFunc 70 st 117 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_117 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -294,11 +294,11 @@ theorem dcf_118 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 118 peek) (hr : FnRegs R sp 118 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 118 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 118) t0 st (dcFunc 70 st 118 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_118 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_v hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) hp.lkLen hp.size.sqOut hp.size.sqrt hk
+    fun R' hc h e11 e12 e13 => fa_v hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) hp.lkLen (by decide) hp.size.sqOut hp.size.sqrt hk
 
 theorem dcf_119 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -306,7 +306,7 @@ theorem dcf_119 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 119 peek) (hr : FnRegs R sp 119 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 119 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 119) t0 st (dcFunc 70 st 119 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_119 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -318,7 +318,7 @@ theorem dcf_120 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 120 peek) (hr : FnRegs R sp 120 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 120 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 120) t0 st (dcFunc 70 st 120 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_120 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -330,7 +330,7 @@ theorem dcf_121 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 121 peek) (hr : FnRegs R sp 121 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 121 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 121) t0 st (dcFunc 70 st 121 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_121 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -342,7 +342,7 @@ theorem dcf_122 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 122 peek) (hr : FnRegs R sp 122 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 122 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 122) t0 st (dcFunc 70 st 122 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_122 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -354,7 +354,7 @@ theorem dcf_123 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 123 peek) (hr : FnRegs R sp 123 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 123 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 123) t0 st (dcFunc 70 st 123 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_123 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -366,11 +366,11 @@ theorem dcf_124 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 124 peek) (hr : FnRegs R sp 124 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 124 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 124) t0 st (dcFunc 70 st 124 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_124 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_modexp hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.modexp (by have := hp.hsLen; omega) hp.lkLen hk
+    fun R' hc h e11 e12 e13 => fa_modexp hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.modexp (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
 
 theorem dcf_125 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -378,7 +378,7 @@ theorem dcf_125 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 125 peek) (hr : FnRegs R sp 125 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 125 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 125) t0 st (dcFunc 70 st 125 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_125 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
@@ -390,10 +390,10 @@ theorem dcf_126 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
     (hp : FnPre S sp W M H F L C G hs st 126 peek) (hr : FnRegs R sp 126 peek neg)
     (ho : FnOom live S Q sp W M)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 126 peek neg) G hs sp W M R) :
+    (hk : FnK live S Q (leakAllow 126) t0 st (dcFunc 70 st 126 peek neg) G hs sp W M R) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_126 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_divrem hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.rem (by have := hp.hsLen; omega) hp.lkLen hk
+    fun R' hc h e11 e12 e13 => fa_divrem hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.rem (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
 
 end Dc.Mach

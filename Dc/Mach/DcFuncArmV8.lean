@@ -52,13 +52,13 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
 
 /-- `a`'s tail (`0x80000f8c`, the byte `b` at `sp + 160`):
 `dc_push (dc_makestring (sp + 160, 1))`, `DC_OKAY`. -/
-theorem fa_mk (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {b : Nat} {M2 : Mem} {H2 : Heap}
+theorem fa_mk {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {b : Nat} {M2 : Mem} {H2 : Heap}
     {F2 : List Blk} {L2 : List NumObj} {C2 : BcConsts} {G G2 : DcG} {R2 : Nat → BitVec 64}
     (h2 : DcAt S M2 H2 F2 L2 C2 G2 hs st1) (hc2 : FnAt S sp W M0 R0 R2 M2) (hW : 192 + 336 ≤ W)
     (ho : FnOom live S Q sp W M0) (hb : b < 256)
     (hby : imgM M2 (sp - 192 + 160) = BitVec.ofNat 8 b)
     (hlk : G2.lk = G.lk) (hpin : StrPin G.strs G2.strs hs)
-    (hk : FnK live S Q t0 st1 (.ok (st1.push (.str [b]))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st1 (.ok (st1.push (.str [b]))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x80000f8c#64 R2 M2 := by
   fv_frame hc2
   have e22 := hc2.r2
@@ -95,13 +95,13 @@ theorem fa_mk (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {b : Nat} {M2 : Me
       fun a e1 e2 _ e4 => hout4 a e1 e2 e4
 
 /-- `a` on a popped number (`0x800013a4`): its low byte. -/
-theorem fa_num (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {M1 : Mem} {H1 : Heap}
+theorem fa_num {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {M1 : Mem} {H1 : Heap}
     {F : List Blk} {L : List NumObj} {C : BcConsts} {G G1 : DcG} {R1 : Nat → BitVec 64}
     (h1 : DcAt S M1 H1 F L C G1 (.num x.rep.p :: hs) st1) (hx : x ∈ L)
     (hpt : ldv .ld M1 (sp - 192 + 24) = BitVec.ofNat 64 x.rep.p)
     (hc1 : FnAt S sp W M0 R0 R1 M1) (hW : 192 + 336 ≤ W) (ho : FnOom live S Q sp W M0)
     (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs)
-    (hk : FnK live S Q t0 st1 (.ok (st1.push (.str [(x.rep.num.toInt.1 % 256).toNat]))) G hs sp W
+    (hk : FnK live S Q al t0 st1 (.ok (st1.push (.str [(x.rep.num.toInt.1 % 256).toNat]))) G hs sp W
       M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x800013a4#64 R1 M1 := by
   fv_frame hc1
@@ -126,13 +126,13 @@ theorem fa_num (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {M1 
     (by simp only [imgM_sb, ite_true, sbData_ofInt]) hlk (StrPin.of_eq hstr _) hk
 
 /-- `a` on a popped string (`0x80001328`): its first byte, the string released. -/
-theorem fa_str (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {o : StrObj} {M1 : Mem} {H1 : Heap}
+theorem fa_str {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {o : StrObj} {M1 : Mem} {H1 : Heap}
     {F : List Blk} {L : List NumObj} {C : BcConsts} {G G1 : DcG} {R1 : Nat → BitVec 64}
     (h1 : DcAt S M1 H1 F L C G1 (.str o.hb.pay :: hs) st1) (ho' : o ∈ G1.strs)
     (hpt : ldv .ld M1 (sp - 192 + 24) = BitVec.ofNat 64 o.hb.pay)
     (hc1 : FnAt S sp W M0 R0 R1 M1) (hW : 192 + 336 ≤ W) (ho : FnOom live S Q sp W M0)
     (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs)
-    (hk : FnK live S Q t0 st1 (.ok (st1.push (.str [o.s.headD 0]))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st1 (.ok (st1.push (.str [o.s.headD 0]))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x80001328#64 R1 M1 := by
   fv_frame hc1
   have e21 := hc1.r2
@@ -174,11 +174,11 @@ theorem fa_str (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {o : StrObj} {M1 
     ((StrPin.of_eq hstr _).trans hpin3) hk
 
 /-- `a` (`0x80000f5c`): a one-character string of the popped datum. -/
-theorem fa_a (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {F : List Blk}
+theorem fa_a {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
     (ho : FnOom live S Q sp W M0)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 97 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 97 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000f5c#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have e2 := hc.r2

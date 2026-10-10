@@ -74,7 +74,7 @@ macro "fv_frame " hc:ident : tactic =>
 
 /-- `v` after `dc_free_num` (`0x800012f8`): the root pushed under the popped
 type word, `DC_OKAY`. -/
-theorem fv_push (hlive : ∀ p ∈ dcText, live p.1) {st st1 : St} {res : Res} {r : Num} {y : Nat}
+theorem fv_push {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st st1 : St} {res : Res} {r : Num} {y : Nat}
     {M3 : Mem} {H3 : Heap} {F3 : List Blk} {L3 : List NumObj} {C3 : BcConsts} {G G2 : DcG}
     {R3 : Nat → BitVec 64}
     (h3 : DcAt S M3 H3 F3 L3 C3 G2 (.num y :: hs) st1) (hy : (GV.num y).Den ⟨L3, G2.strs⟩ (.num r))
@@ -82,8 +82,8 @@ theorem fv_push (hlive : ∀ p ∈ dcText, live p.1) {st st1 : St} {res : Res} {
     (ho : FnOom live S Q sp W M0) (e3b : R3 2 = BitVec.ofNat 64 (sp - 192))
     (hy3 : ldv .ld M3 (sp - 192 + 160) = BitVec.ofNat 64 y)
     (htg3 : (ldv .ld M3 (sp - 192 + 16)).toNat % 2 ^ 32 = 1)
-    (hlk : G2.lk.length ≤ G.lk.length + 2) (hstr : G2.strs = G.strs)
-    (hf : FnOut st res 0 (st1.push (.num r))) (hk : FnK live S Q t0 st res G hs sp W M0 R0) :
+    (hlk : G2.lk.length ≤ G.lk.length + al) (hstr : G2.strs = G.strs)
+    (hf : FnOut st res 0 (st1.push (.num r))) (hk : FnK live S Q al t0 st res G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x800012f8#64 R3 M3 := by
   fv_frame hc3
   bc_run hlive hlive [e3b, hy3] at 0x80002da4
@@ -101,7 +101,7 @@ theorem fv_push (hlive : ∀ p ∈ dcText, live p.1) {st st1 : St} {res : Res} {
       ((k5.get 2 (by decide)).trans (by bsimp [])) hout5
     bsimp []
     bc_run hlive hlive [] at 0x80000c10
-    exact fa_ok (st' := st1.push (.num r)) hlive (ex := []) h5 hc5 hk hf (by simp) hlk
+    exact fa_ok (st' := st1.push (.num r)) hlive (ex := []) h5 hc5 hk hf (by simp) (by simpa using hlk)
       (StrPin.of_eq hstr _)
   · exact hc4.oom ho (Wc := 64) (by omega) (by omega) (by omega) e5 fun a e1 e2 _ e4 => hout5 a e1 e2 e4
 
@@ -117,8 +117,8 @@ theorem fv_ret (hlive : ∀ p ∈ dcText, live p.1) {st st1 : St} {res : Res} {r
     (hrq : ldv .ld M2 (sp - 192 + 160) = BitVec.ofNat 64 y)
     (hpt2 : ldv .ld M2 (sp - 192 + 24) = BitVec.ofNat 64 x.rep.p)
     (htg2 : (ldv .ld M2 (sp - 192 + 16)).toNat % 2 ^ 32 = 1)
-    (hpl : pl.length ≤ 1) (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs)
-    (hf : FnOut st res 0 (st1.push (.num r))) (hk : FnK live S Q t0 st res G hs sp W M0 R0) :
+    (hpl : pl.length ≤ 1) (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs) (hal : 1 ≤ al)
+    (hf : FnOut st res 0 (st1.push (.num r))) (hk : FnK live S Q al t0 st res G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x800012ec#64 R2 M2 := by
   fv_frame hc2
   bc_run hlive hlive [e10, e2b] at 0x80002ba0
@@ -147,7 +147,7 @@ theorem fv_ret (hlive : ∀ p ∈ dcText, live p.1) {st st1 : St} {res : Res} {r
 
 /-- `v` on a popped number (`0x800011f4`): `dc_sqrt (value, dc_scale, &result)`,
 then `fv_ret`; a negative operand returns `1` and the popped reference is lost. -/
-theorem fv_num (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {o : Option Num}
+theorem fv_num {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {o : Option Num}
     {M1 : Mem} {H1 : Heap} {G G1 : DcG} {R1 : Nat → BitVec 64}
     (h1 : DcAt S M1 H1 F L C G1 (.num x.rep.p :: hs) st1) (hx : x ∈ L)
     (hd : DatAt M1 (fnSlot sp) (.num x.rep.p))
@@ -155,8 +155,8 @@ theorem fv_num (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {o :
     (ho : FnOom live S Q sp W M0) (hmb : MulBase S M0) (e21 : R1 2 = BitVec.ofNat 64 (sp - 192))
     (hhs : hs.length + 4 ≤ 2 ^ 20) (hlkb : G.lk.length + 2 ≤ 2 ^ 29)
     (hO : SqOut x.rep.num st1.scale o) (hz : x.rep.num.wid + st1.scale < 2 ^ 20)
-    (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs)
-    (hk : FnK live S Q t0 (st1.push (.num x.rep.num))
+    (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs) (hal : 1 ≤ al)
+    (hk : FnK live S Q al t0 (st1.push (.num x.rep.num))
       (dcFunc 70 (st1.push (.num x.rep.num)) 118 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x800011f4#64 R1 M1 := by
   fv_frame hc1
@@ -196,7 +196,7 @@ theorem fv_num (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {o :
       rw [ldv_congr .ld fun j hj => m2 _ (by omega) (by simp only [widthOfM] at hj; omega)]
       exact hd.tag
     bsimp []
-    exact fv_ret hlive h2 hy hc2 hW ho e2b e102 hrq hpt2 htg2 hpl hlk hstr
+    exact fv_ret hlive h2 hy hc2 hW ho e2b e102 hrq hpt2 htg2 hpl hlk hstr hal
       (sqOut_fn (st := st1) peek neg hO) hk
   · intro hn R2 M2 H2 F2 L2 C2 k2 e22 e102 h2 hout2
     subst hn
@@ -207,17 +207,17 @@ theorem fv_num (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : NumObj} {o :
     bsimp []
     bc_run hlive hlive [e102] at 0x80000c10
     exact fa_ok (st' := st1) hlive (ex := []) (h2.leak (by omega)) hc2 hk (.ok _) (by simp)
-      (by simp [hlk]) (StrPin.of_eq hstr _)
+      (by simp [hlk]; omega) (StrPin.of_eq hstr _)
 
 /-- `v` on a popped string (`0x800011f4`): the `stderr` message, the string's
 reference lost. -/
-theorem fv_str (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {q : Nat} {M1 : Mem} {H1 : Heap}
+theorem fv_str {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {q : Nat} {M1 : Mem} {H1 : Heap}
     {G G1 : DcG} {R1 : Nat → BitVec 64}
     (h1 : DcAt S M1 H1 F L C G1 (.str q :: hs) st1) (hd : DatAt M1 (fnSlot sp) (.str q))
     (hc1 : FnAt S sp W M0 R0 R1 M1) (hW : 1216 + rmStack (2 ^ 30) ≤ W)
     (e21 : R1 2 = BitVec.ofNat 64 (sp - 192))
-    (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs)
-    (hk : FnK live S Q t0 st1 (.ok st1) G hs sp W M0 R0) :
+    (hlk : G1.lk = G.lk) (hstr : G1.strs = G.strs) (hal : 1 ≤ al)
+    (hk : FnK live S Q al t0 st1 (.ok st1) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st1.out) 0x800011f4#64 R1 M1 := by
   fv_frame hc1
   have hS : HeapOwn S := fun a e1 e2 => h1.heap.heap.own a e1 e2
@@ -246,19 +246,19 @@ theorem fv_str (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {q : Nat} {M1 : M
           have := hg.lt; simp only [heapStart] at this; omega⟩
   bsimp []
   bc_run hlive hlive [] at 0x80000c10
-  exact fa_ok (st' := st1) hlive h2 hc2 hk (.ok _) (by simp) (by simp [hlk])
+  exact fa_ok (st' := st1) hlive h2 hc2 hk (.ok _) (by simp) (by simp [hlk]; omega)
     (StrPin.of_eq hstr _)
 
 /-- `v` (`0x800011e8`): the square root of a popped number (`dc_sqrt`); a
 string or a negative number is lost with a `stderr` message. -/
-theorem fa_v (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
+theorem fa_v {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap} {G : DcG}
     {R : Nat → BitVec 64}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 1216 + rmStack (2 ^ 30) ≤ W)
     (ho : FnOom live S Q sp W M0) (hmb : MulBase S M0)
-    (hhs : hs.length + 4 ≤ 2 ^ 20) (hlk : G.lk.length + 2 ≤ 2 ^ 29)
+    (hhs : hs.length + 4 ≤ 2 ^ 20) (hlk : G.lk.length + 2 ≤ 2 ^ 29) (hal : 1 ≤ al)
     (hsq : ∀ n rest, st.stack = .num n :: rest → ∃ o, SqOut n st.scale o)
     (hsz : ∀ n rest, st.stack = .num n :: rest → n.wid + st.scale < 2 ^ 20)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 118 peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 118 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800011e8#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have e2 := hc.r2
@@ -282,7 +282,7 @@ theorem fa_v (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap}
       | str s =>
         have hr : dcFunc 70 (st1.push (.str s)) 118 peek neg = .ok st1 := rfl
         rw [hr] at hk
-        exact fv_str (st1 := st1) (G1 := G1) hlive h1 hd hc1 hW hc1.r2 rfl rfl (hk.okIdx rfl rfl)
+        exact fv_str (st1 := st1) (G1 := G1) hlive h1 hd hc1 hW hc1.r2 rfl rfl hal (hk.okIdx rfl rfl)
     | num xp =>
       cases v with
       | str _ => exact hv.elim
@@ -290,7 +290,7 @@ theorem fa_v (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem} {H : Heap}
       obtain ⟨x, hx, rfl, rfl⟩ := hv
       obtain ⟨o, hO⟩ := hsq x.rep.num st1.stack rfl
       exact fv_num (st1 := st1) (G1 := G1) hlive h1 hx hd hc1 hW ho hmb hc1.r2 hhs hlk hO (hsz x.rep.num st1.stack rfl)
-        rfl rfl hk
+        rfl rfl hal hk
 
 end
 

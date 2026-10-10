@@ -65,12 +65,12 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
 
 /-- The default arm after its `stderr` prefix (`0x80000c50`): `dc_show_id` to
 `stdout`, `DC_OKAY`. -/
-theorem fd_show (hlive : ∀ p ∈ dcText, live p.1) {st : St} {c : Nat} {M2 : Mem} {H : Heap}
+theorem fd_show {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {c : Nat} {M2 : Mem} {H : Heap}
     {G : DcG} {R2 : Nat → BitVec 64}
     (h2 : DcAt S M2 H F L C G hs st) (hc2 : FnAt S sp W M0 R0 R2 M2) (hW : 192 + 304 ≤ W)
     (hcc : c < 256) (e2 : R2 2 = BitVec.ofNat 64 (sp - 192))
     (hc0 : ldv .ld M2 (sp - 192) = BitVec.ofNat 64 c)
-    (hk : FnK live S Q t0 st (.ok (st.emit (unimplemented c))) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (.ok (st.emit (unimplemented c))) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000c50#64 R2 M2 := by
   fv_frame hc2
   have hro : ∀ b ∈ accAddrs 2147516936 8, (b, dcROImg b) ∈ dcRO := by decide +kernel
@@ -102,12 +102,12 @@ theorem fd_show (hlive : ∀ p ∈ dcText, live p.1) {st : St} {c : Nat} {M2 : M
 
 /-- The default arm (`0x80000c30`, the character `c` in `a3`): the
 `unimplemented` diagnostic, `DC_OKAY`. -/
-theorem fa_default (hlive : ∀ p ∈ dcText, live p.1) {st : St} {c : Nat} {M : Mem} {H : Heap}
+theorem fa_default {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {c : Nat} {M : Mem} {H : Heap}
     {G : DcG} {R : Nat → BitVec 64}
     (hcd : dcFunc 70 st c peek neg = .ok (st.emit (unimplemented c))) (hcc : c < 256)
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 304 ≤ W)
     (h13 : R 13 = BitVec.ofNat 64 c)
-    (hk : FnK live S Q t0 st (dcFunc 70 st c peek neg) G hs sp W M0 R0) :
+    (hk : FnK live S Q al t0 st (dcFunc 70 st c peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000c30#64 R M := by
   rw [hcd] at hk
   fv_frame hc

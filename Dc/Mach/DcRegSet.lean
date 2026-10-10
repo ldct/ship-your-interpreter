@@ -280,7 +280,8 @@ theorem pend_datW {G : DcG} {b : Blk} (hb : b ∈ G.blocks) (hns : ∀ o ∈ G.s
       exact imgM_store_same _ _ w0 (.inr rfl) ⟨hx.1, h8⟩
     · exact imgM_store_same _ _ w1 (.inr rfl) ⟨by omega, by omega⟩
   sub e he := by rw [List.mem_singleton.mp he]; exact hb
-  win x hx := ⟨b, List.mem_singleton_self _, by simp only [datWin, Blk.In, Blk.pay, Blk.fin] at hx ⊢; omega⟩
+  win x hx := .inl ⟨b, List.mem_singleton_self _, by
+    simp only [datWin, Blk.In, Blk.pay, Blk.fin] at hx ⊢; omega⟩
   nstr e he o ho := by
     rw [List.mem_singleton.mp he]; exact ⟨(hns o ho).1.symm, (hns o ho).2.symm⟩
 
@@ -659,7 +660,8 @@ theorem reg_set_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   refine dc_free_num_specP hlive hpd h2' (q := b.pay + 8)
     ⟨fun i _ => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
       by omega, by omega⟩
-    (.win fun x hx => by simp only [datWin, slotBytes] at hx ⊢; omega)
+    (.win (fun x hx => by simp only [datWin, slotBytes] at hx ⊢; omega)
+      (by simp only [heapStart]; omega))
     (by rw [ldv_ld_miss _ _ (by omega)]; exact hptr)
     (StackFrame.sub (m := 48) (n := 32) hsf (by decide)) (by simp only [heapEnd]; omega)
     (Or.inl (by omega)) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])

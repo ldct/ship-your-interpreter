@@ -493,7 +493,7 @@ theorem pend_datIn {G : DcG} {b : Blk} (hb : b ∈ G.blocks) (hns : ∀ o ∈ G.
       exact imgM_store_same _ _ w0 (.inr rfl) ⟨hx.1, h8⟩
     · exact imgM_store_same _ _ w1 (.inr rfl) ⟨by omega, by omega⟩
   sub e he := by rw [List.mem_singleton.mp he]; exact hb
-  win x hx := ⟨b, List.mem_singleton_self _, by
+  win x hx := .inl ⟨b, List.mem_singleton_self _, by
     simp only [datWin, Blk.In, Blk.pay, Blk.fin] at hx ha ⊢; omega⟩
   nstr e he o ho := by
     rw [List.mem_singleton.mp he]; exact ⟨(hns o ho).1.symm, (hns o ho).2.symm⟩
@@ -878,7 +878,8 @@ theorem as_found_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   refine dc_free_num_specP hlive hpd h1 (q := c.pay + 16)
     ⟨fun i _ => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
       by omega, by omega⟩
-    (.win fun y hy => by simp only [datWin, slotBytes] at hy ⊢; omega) hptr
+    (.win (fun y hy => by simp only [datWin, slotBytes] at hy ⊢; omega)
+      (by simp only [heapStart]; omega)) hptr
     (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
     (by simp only [heapEnd]; omega) (Or.inl (by omega)) _ (by bsimp [h8]) (by bsimp [h2]) (by bsimp [])
     fun R1 M3 H' F' L' C' hk1 h3 _ hfr _ _ => ?_

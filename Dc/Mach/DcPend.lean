@@ -9,7 +9,7 @@ the two the bytes no longer match any ghost: the old reference has left the
 state's references, the node still holds its words.
 
 `Pend G E W Φ` names the *view memory* `Φ M` of a machine memory `M`: `M`
-with the window `W` (inside the ghost's blocks `E`, none a string's)
+with the window `W` (inside the ghost's blocks `E`, none a string's, or the word `dc_stack`)
 overwritten by bytes `Φ` fixes. The state is `DcAt S (Φ M) …` while the
 machine runs on `M`. `Pend.id` is no window, so a spec over a pending state
 is also the plain spec.
@@ -41,7 +41,7 @@ structure Pend (G : DcG) (E : List Blk) (W : Nat → Prop) (Φ : Mem → Mem) : 
   out : ∀ M x, ¬ W x → imgM (Φ M) x = imgM M x
   fix : ∀ M M' x, W x → imgM (Φ M) x = imgM (Φ M') x
   sub : ∀ e ∈ E, e ∈ G.blocks
-  win : ∀ x, W x → InBlocks E x
+  win : ∀ x, W x → InBlocks E x ∨ StkWord x
   nstr : ∀ e ∈ E, ∀ o ∈ G.strs, e ≠ o.hb ∧ e ≠ o.tb
 
 /-- No window. -/
@@ -74,23 +74,23 @@ live block. -/
 theorem Pend.not_win (hp : Pend G E W Φ) {S : Nat → Prop} {Mt : Mem} {H : Heap}
     (hi : HeapInv S Mt H) (hE : ∀ e ∈ E, e ∈ H.live) {c : Blk} (hc : c ∈ H.live) (hcE : c ∉ E)
     {x : Nat} (hx : c.In x) : ¬ W x := fun hw => by
-  obtain ⟨e, he, hex⟩ := hp.win x hw
-  exact live_apart hi (hE e he) hc (fun h => hcE (h ▸ he)) hex hx
+  rcases hp.win x hw with ⟨e, he, hex⟩ | hs
+  · exact live_apart hi (hE e he) hc (fun h => hcE (h ▸ he)) hex hx
+  · have := live_in_heap hi hc hx
+    simp only [StkWord, dc_addrs, heapStart] at hs this; omega
 
 theorem Pend.not_alloc (hp : Pend G E W Φ) {S : Nat → Prop} {Mt : Mem} {H : Heap}
     (hi : HeapInv S Mt H) (hE : ∀ e ∈ E, e ∈ H.live) {x : Nat} (hw : W x) : ¬ AllocByte H x := by
-  obtain ⟨e, he, hex⟩ := hp.win x hw
-  exact live_not_alloc hi (hE e he) hex
+  rcases hp.win x hw with ⟨e, he, hex⟩ | hs
+  · exact live_not_alloc hi (hE e he) hex
+  · exact OutHeap.not_alloc hi (DcGlob.outHeap (by simp only [StkWord, DcGlob, dc_addrs] at hs ⊢; omega))
 
 theorem Pend.inHeap (hp : Pend G E W Φ) {S : Nat → Prop} {Mt : Mem} {H : Heap}
     (hi : HeapInv S Mt H) (hE : ∀ e ∈ E, e ∈ H.live) {x : Nat} (hw : W x) :
-    heapStart ≤ x ∧ x < heapEnd := by
-  obtain ⟨e, he, hex⟩ := hp.win x hw
-  exact live_in_heap hi (hE e he) hex
-
-theorem Pend.not_out (hp : Pend G E W Φ) {S : Nat → Prop} {Mt : Mem} {H : Heap}
-    (hi : HeapInv S Mt H) (hE : ∀ e ∈ E, e ∈ H.live) {x : Nat} (ho : OutHeap x) : ¬ W x :=
-  fun hw => ho.1 (hp.inHeap hi hE hw)
+    (heapStart ≤ x ∧ x < heapEnd) ∨ StkWord x := by
+  rcases hp.win x hw with ⟨e, he, hex⟩ | hs
+  · exact .inl (live_in_heap hi (hE e he) hex)
+  · exact .inr hs
 
 /-- A store off the window, made on the machine, is the store on the view. -/
 theorem Pend.store (hp : Pend G E W Φ) (M : Mem) {a w : Nat} (v : BitVec 64) (hw : w = 4 ∨ w = 8)
@@ -135,7 +135,8 @@ theorem DcAt.machHeap {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L 
     h.heap.subRaw (fun c hc => (DcG.mem_rawsOff.mp hc).1) fun _ _ _ _ => rfl
   refine hb1.transportOwn (fun x hx => (hp.out M x fun hw => hp.not_alloc hi hE hw hx).symm)
     (fun c hc x hx => ?_) fun j hj => (hp.out M _ fun hw => by
-      have := hp.inHeap hi hE hw; simp only [bcFreeAddr, heapStart] at this; omega).symm
+      rcases hp.inHeap hi hE hw with this | this <;>
+        simp only [bcFreeAddr, heapStart, StkWord, dc_addrs] at this <;> omega).symm
   have hcE : c ∉ E := by
     rcases List.mem_append.mp hc with hc | hc
     · exact fun he => h.heap.raw.out _ (hp.sub _ he) hc
@@ -158,7 +159,8 @@ theorem BcHeap.ofMach {S : Nat → Prop} {I M' : Mem} {H' : Heap} {F' : List Blk
           · exact (DcG.mem_rawsOff.mp hc).2
         exact hp.out M' x (hp.not_win hi hE (hb.owned_live hc) hcE hx))
       fun j hj => hp.out M' _ fun hw => by
-        have := hp.inHeap hi hE hw; simp only [bcFreeAddr, heapStart] at this; omega
+        rcases hp.inHeap hi hE hw with this | this <;>
+        simp only [bcFreeAddr, heapStart, StkWord, dc_addrs] at this <;> omega
   refine (hb1.addRaws hE hEo).subRaw (fun c hc => ?_) fun _ _ _ _ => rfl
   by_cases hcE : c ∈ E
   · exact List.mem_append_left _ hcE

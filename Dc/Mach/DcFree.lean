@@ -350,7 +350,7 @@ theorem DcAt.handle_num {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {
 above the heap, or in a block fresh to the state. -/
 inductive SlotPlace (H : Heap) (F : List Blk) (L : List NumObj) (G : DcG) (W : Nat → Prop)
     (q : Nat) : Prop
-  | win : (∀ a, slotBytes q a → W a) → SlotPlace H F L G W q
+  | win : (∀ a, slotBytes q a → W a) → heapStart ≤ q → SlotPlace H F L G W q
   | above : heapEnd ≤ q → SlotPlace H F L G W q
   | fresh (c : Blk) : DcFresh H F L G c → (∀ a, slotBytes q a → c.In a) → SlotPlace H F L G W q
 
@@ -368,11 +368,11 @@ theorem SlotPlace.clear {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk} 
     (hs : SlotPlace H F L G W q) (hp : Pend G E W Φ) (hi : HeapInv S Mt H)
     (hE : ∀ e ∈ E, e ∈ H.live) (hG : ∀ b ∈ G.blocks, b ∈ H.live) : SlotClear H F L G E W q := by
   cases hs with
-  | win hw =>
+  | win hw hq =>
     exact
       { apart := fun b hb hbE _ a hba hsa => hp.not_win hi hE hb hbE hba (hw a hsa)
         noAlloc := fun a hsa => hp.not_alloc hi hE (hw a hsa)
-        lo := (hp.inHeap hi hE (hw q ⟨Nat.le_refl q, by omega⟩)).1
+        lo := hq
         winG := fun a hsa _ => hw a hsa }
   | above hq =>
     have hout : ∀ a, slotBytes q a → heapEnd ≤ a := fun a hsa => by

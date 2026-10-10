@@ -1,6 +1,7 @@
 import Dc.Mach.DcFuncArmR1
 import Dc.Mach.DcFuncArmR2
 import Dc.Mach.DcFuncArmR3
+import Dc.Mach.DcFuncArmR4
 import Dc.Mach.DcFuncSpecBase
 
 /-!
@@ -17,6 +18,30 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
+
+theorem dcf_58 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
+    {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
+    (hp : FnPre S sp W M H F L C G hs st 58 peek) (hr : FnRegs R sp 58 peek neg)
+    (ho : FnOom live S Q sp W M)
+    (hk : FnK live S Q (leakAllow 58) t0 st (dcFunc 70 st 58 peek neg) G hs sp W M R) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
+  fn_arm hp hr (dcf_disp_58 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
+    (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
+    fun R' hc h e11 e12 e13 => fa_colon hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho (by decide) e11 hp.pk hk
+
+theorem dcf_59 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
+    {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    {peek : Option Nat} {neg : Bool} {R : Nat → BitVec 64}
+    (hp : FnPre S sp W M H F L C G hs st 59 peek) (hr : FnRegs R sp 59 peek neg)
+    (ho : FnOom live S Q sp W M)
+    (hk : FnK live S Q (leakAllow 59) t0 st (dcFunc 70 st 59 peek neg) G hs sp W M R) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
+  fn_arm hp hr (dcf_disp_59 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
+    (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
+    fun R' hc h e11 e12 e13 => fa_semi hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho (by have := hp.hsLen; omega) (by decide) e11 hp.pk hp.srt hk
 
 theorem dcf_60 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}

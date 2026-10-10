@@ -318,6 +318,14 @@ theorem StackFrame.within {S : Nat → Prop} {sp W m n : Nat} (h : StackFrame S 
   hi := by have := h.hi; omega
   al := by have := h.al; omega
 
+/-- An aligned word inside the stack frame `h` is a pointer slot. -/
+theorem StackFrame.slot {S : Nat → Prop} {sp W q : Nat} (h : StackFrame S sp W) (hlo : sp - W ≤ q)
+    (hhi : q + 8 ≤ sp) (hal : q % 8 = 0) : PtrSlot S q where
+  own i hi := h.own _ (by omega) (by omega)
+  al := hal
+  lo := by have := h.lo; omega
+  hi := by have := h.hi; omega
+
 /-- A byte at or above a stack pointer over the heap: off the heap, not a global,
 outside every window below `sp`. -/
 theorem above_sp {sp a : Nat} (hh : heapEnd ≤ sp) (ha : sp ≤ a) :
@@ -586,6 +594,66 @@ theorem boPush_post {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : 
   rw [imgM_store_miss _ _ (by simp only [StkWord] at ha; omega)]
   exact hm4 a ha.1
 
+/-- **The operand frees and the return** after the inline push (`0x800032b4`
+onward): free the slots at `sp1 + 40` (`a`) and `sp1 + 56` (`b`), reload `ra`, return. -/
+theorem binop_frees {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M3 : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {pa pb : Nat}
+    (h3 : DcAt S M3 H F L C G (.num pa :: .num pb :: hs) st)
+    {sp : Nat} {ra : BitVec 64} (hsf : StackFrame S sp 176) (hab : heapEnd + 176 ≤ sp)
+    (hwa : ldv .ld M3 (sp - 112 + 32 + 8) = BitVec.ofNat 64 pa)
+    (hwb : ldv .ld M3 (sp - 112 + 48 + 8) = BitVec.ofNat 64 pb)
+    (hwr : ldv .ld M3 (sp - 112 + 104) = ra) (hral : ra.toNat % 4 = 0)
+    (R : Nat → BitVec 64) (q1 : R 2 = BitVec.ofNat 64 (sp - 112))
+    (h10 : R 10 = BitVec.ofNat 64 (sp - 112 + 32 + 8)) (h1 : R 1 = 0x800032b8#64)
+    (hk : ∀ R' M' H' F' L' C', Keeps (1 :: 2 :: freeNumClob) R' R → R' 1 = ra →
+      R' 2 = BitVec.ofNat 64 sp → DcAt S M' H' F' L' C' G hs st →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 176 a → imgM M' a = imgM M3 a) →
+      DWO live S Q t ra R' M') :
+    DWO live S Q t 0x80002ba0#64 R M3 := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
+  have hab' := hab
+  simp only [heapEnd] at hab'
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hab2 : heapEnd ≤ sp - 112 := by omega
+  have hsf32 : StackFrame S (sp - 112) 32 := hsf.within (by omega) (by decide)
+  refine dc_free_num_spec hlive h3 (q := sp - 112 + 32 + 8) (hsf.slot (by omega) (by omega) (by omega))
+    (by omega) hwa hsf32 (by omega) (Or.inr (by omega)) _ h10 q1 (by rw [h1]; decide)
+    (fun R4 M4 H4 F4 L4 C4 hk4 h4 _ hout4 => ?_)
+  have ag4 : ∀ a, sp - 112 ≤ a → ¬ slotBytes (sp - 112 + 32 + 8) a → imgM M4 a = imgM M3 a :=
+    fun a ha hn => hout4 a (above_sp hab2 ha).1 (above_sp hab2 ha).2.1 ((above_sp hab2 ha).2.2 32) hn
+  have q4 : R4 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk4.get 2 (by decide)]; bsimp [q1]
+  have hwb4 : ldv .ld M4 (sp - 112 + 48 + 8) = BitVec.ofNat 64 pb := by
+    rw [ldv_congr .ld fun j hj => ag4 _ (by omega) (by simp only [slotBytes, widthOfM] at hj ⊢; omega)]
+    exact hwb
+  have hS4 : HeapOwn S := fun a e1 e2 => h4.heap.heap.own a e1 e2
+  rw [h1]
+  bc_run hlive hS4 [q4] at 0x80002ba0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine dc_free_num_spec hlive h4 (q := sp - 112 + 48 + 8) (hsf.slot (by omega) (by omega) (by omega))
+    (by omega) hwb4 hsf32 (by omega) (Or.inr (by omega)) _ (by bsimp []) (by bsimp [q4]) (by bsimp [])
+    (fun R5 M5 H5 F5 L5 C5 hk5 h5 _ hout5 => ?_)
+  have ag5 : ∀ a, sp - 112 ≤ a → ¬ slotBytes (sp - 112 + 48 + 8) a → imgM M5 a = imgM M4 a :=
+    fun a ha hn => hout5 a (above_sp hab2 ha).1 (above_sp hab2 ha).2.1 ((above_sp hab2 ha).2.2 32) hn
+  have q5 : R5 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk5.get 2 (by decide)]; bsimp [q4]
+  have hwr5 : ldv .ld M5 (sp - 112 + 104) = ra := by
+    rw [ldv_congr .ld fun j hj => ag5 _ (by omega) (by simp only [slotBytes, widthOfM] at hj ⊢; omega),
+      ldv_congr .ld fun j hj => ag4 _ (by omega) (by simp only [slotBytes, widthOfM] at hj ⊢; omega)]
+    exact hwr
+  have hS5 : HeapOwn S := fun a e1 e2 => h5.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS5 [q5, hwr5]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  · exact hral
+  refine hk _ M5 H5 F5 L5 C5 (by keeps_tac ((hk5.mono (by decide)).trans (by keeps_tac ((hk4.mono (by decide)).trans
+      (by keeps_tac Keeps.refl _ _))))) (by bsimp []) (by bsimp [q5]; congr 1; omega) h5
+    fun a ho hg hf => by
+      have e5 := hout5 a ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))
+        (fun hs' => hf (by simp only [frameIn, slotBytes] at hs' ⊢; omega))
+      have e4 := hout4 a ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))
+        (fun hs' => hf (by simp only [frameIn, slotBytes] at hs' ⊢; omega))
+      rw [e5, e4]
+
 /-- **`op` succeeded** (`0x80003264`, `a0 = 0`): the result handle `y`
 (denoting `r`) pushed inline, then both operand handles freed. -/
 theorem binop_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
@@ -617,7 +685,80 @@ theorem binop_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   have wtag := hfr.wtag
   bc_run hlive hS [h2, wtag, hy] at 0x80001ea0
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-  trace_state
-  sorry
+  have hw0 := ld_lo32_sw M (sp - 112 + 64) 1#64
+  generalize ldv .ld (writeLog M [(sp - 112 + 64, 4, 1#64)]) (sp - 112 + 64) = w0 at hw0 ⊢
+  have hM1 : MemOnly (fun a => sp - 112 + 64 ≤ a ∧ a < sp - 112 + 96)
+      (writeLog (writeLog (writeLog M [(sp - 112 + 64, 4, 1#64)]) [(sp - 112 + 88, 8, BitVec.ofNat 64 y)])
+        [(sp - 112 + 80, 8, w0)]) M := fun a ha => by
+    repeat rw [imgM_store_miss _ _ (by omega)]
+  have l80 : ldv .ld (writeLog (writeLog (writeLog M [(sp - 112 + 64, 4, 1#64)])
+      [(sp - 112 + 88, 8, BitVec.ofNat 64 y)]) [(sp - 112 + 80, 8, w0)]) (sp - 112 + 80) = w0 :=
+    ldv_store_hit _ _ _
+  have l88 : ldv .ld (writeLog (writeLog (writeLog M [(sp - 112 + 64, 4, 1#64)])
+      [(sp - 112 + 88, 8, BitVec.ofNat 64 y)]) [(sp - 112 + 80, 8, w0)]) (sp - 112 + 88) =
+      BitVec.ofNat 64 y := by rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  generalize (writeLog (writeLog (writeLog M [(sp - 112 + 64, 4, 1#64)])
+      [(sp - 112 + 88, 8, BitVec.ofNat 64 y)]) [(sp - 112 + 80, 8, w0)]) = M1 at hM1 l80 l88 ⊢
+  have h1 := h.outWrite hM1 fun a ha => ⟨(above_sp hab2 (a := a) (by omega)).1,
+    (above_sp hab2 (a := a) (by omega)).2.1⟩
+  have hi1 := h1.heap.heap
+  refine dc_malloc_spec hlive hi1 (n := 32) (sp := sp - 112) (by omega)
+    (hsf.within (m := 112) (n := 16) (by omega) (by decide)) (by simp only [heapEnd]; omega) _
+    (by bsimp []) (by bsimp [h2]) (by bsimp []) (fun R1 M2 H2 b hk1 hp hr10 => ?_)
+    (fun R1 M2 hr2 hfr2 => ?_)
+  rotate_left
+  · refine hoom R1 M2 hr2 fun a ho hg hf => ?_
+    rw [hfr2 a (OutHeap.not_alloc hi1 ho) (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))]
+    exact hM1 a fun ha => hf (by simp only [frameIn]; omega)
+  obtain ⟨h2', hfresh⟩ := h1.malloc hp (by decide) (by simp only [heapEnd]; omega)
+  have hcl := hfresh.live
+  have fbb := h2'.heap.heap.blk (List.mem_append_right _ hcl)
+  have hblo : 2147603920 ≤ b.h := fbb.lo
+  have hbhi : b.fin ≤ 2273312768 := Nat.le_trans fbb.fin fbb.top
+  have hbal : b.h % 16 = 0 := fbb.al
+  have hbsz := hp.size
+  have hpl : 2147603936 ≤ b.pay ∧ b.pay + 32 ≤ 2273312768 ∧ b.pay % 16 = 0 := by
+    simp only [Blk.pay, Blk.fin] at *; omega
+  obtain ⟨hpl1, hpl2, hpl3⟩ := hpl
+  have q1 : R1 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk1.get 2 (by decide)]; bsimp [h2]
+  have ag2 : ∀ a, sp - 112 ≤ a → imgM M2 a = imgM M1 a := fun a ha =>
+    hp.frame a (OutHeap.not_alloc hi1 (above_sp hab2 ha).1) fun hf => by
+      simp only [frameIn] at hf; omega
+  have l80' : ldv .ld M2 (sp - 112 + 80) = w0 := by
+    rw [ldv_congr .ld fun j hj => ag2 _ (by omega)]; exact l80
+  have l88' : ldv .ld M2 (sp - 112 + 88) = BitVec.ofNat 64 y := by
+    rw [ldv_congr .ld fun j hj => ag2 _ (by omega)]; exact l88
+  have hS2 : HeapOwn S := fun a e1 e2 => h2'.heap.heap.own a e1 e2
+  have hG2 := h2'.glob
+  bsimp []
+  bc_run hlive hS2 [q1, hr10, l80', l88'] at 0x80002ba0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hd : DatRegs w0 (BitVec.ofNat 64 y) (.num y) := ⟨by rw [hw0]; rfl, rfl⟩
+  obtain ⟨h3, hm3⟩ := boPush_post h2' hfresh hdy hd hp.size hpl1
+  show DW _ _ _ _ _ (boPushMem M2 b.pay w0 (BitVec.ofNat 64 y))
+  generalize boPushMem M2 b.pay w0 (BitVec.ofNat 64 y) = M3 at h3 hm3
+  have agM : ∀ a, sp - 112 ≤ a → ¬ (sp - 112 + 64 ≤ a ∧ a < sp - 112 + 96) → imgM M3 a = imgM M a :=
+    fun a ha hn => by
+      rw [hm3 a (fun hb => by
+        rcases hb with hb | hb
+        · simp only [Blk.In] at hb; omega
+        · simp only [StkWord, dcStackAddr] at hb; omega), ag2 a ha]
+      exact hM1 a hn
+  have hwa : ldv .ld M3 (sp - 112 + 32 + 8) = BitVec.ofNat 64 pa := by
+    rw [ldv_congr .ld fun j hj => agM _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact hsa.ptr
+  have hwb : ldv .ld M3 (sp - 112 + 48 + 8) = BitVec.ofNat 64 pb := by
+    rw [ldv_congr .ld fun j hj => agM _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact hsb.ptr
+  have hwr : ldv .ld M3 (sp - 112 + 104) = ra := by
+    rw [ldv_congr .ld fun j hj => agM _ (by omega) (by omega)]; exact hfr.wra
+  exact binop_frees hlive h3 hsf hab hwa hwb hwr hral _ (by bsimp [q1]) (by bsimp []) (by bsimp [])
+    fun R' M' H' F' L' C' hk' e1 e2 h' hout' => hk R' M' H' F' L' C' { G with stk := (b, .num y) :: G.stk }
+      (by keeps_tac ((hk'.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
+        (by keeps_tac Keeps.refl _ _))))) e1 e2 rfl h' fun a ho hg hf => by
+      rw [hout' a ho hg hf, hm3 a (fun hb => by
+        rcases hb with hb | hb
+        · simp only [Blk.In, Blk.pay, Blk.fin] at hb hbhi hpl1; simp only [OutHeap, heapStart, heapEnd] at ho; omega
+        · exact hg (by simp only [StkWord, DcGlob, dc_addrs] at hb ⊢; omega)),
+        hp.frame a (OutHeap.not_alloc hi1 ho) fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)]
+      exact hM1 a fun ha => hf (by simp only [frameIn]; omega)
 
 end Dc.Mach

@@ -4,6 +4,8 @@ import Dc.Mach.EvalEntryB
 import Dc.Mach.DcFuncSpec
 import Dc.Mach.EvalTos5
 import Dc.Mach.EvalInv
+import Dc.Mach.EvalIntB
+import Dc.Mach.EvalStrB
 
 /-!
 # `EvalstrDivSpec` from the segments (M10, stuck direction)
@@ -102,5 +104,11 @@ theorem evalstrDiv (hint : ∀ Q, EvIntCore dcLive dcOwn Q) (hstr : ∀ Q, EvStr
   evalstrDiv_of (fun _ => ev_entry_k dcText_live)
     (fun _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ hp hr ho hk => dc_func_spec dcText_live hp hr ho hk)
     hint hstr hev
+
+/-- **`EvalstrDivSpec`** from the term direction's entry at every fuel
+(`EvEntrySpec`): `DC_INT` (`evs_int_k`) and `DC_STR` (`evs_str_k`) discharged. -/
+theorem evalstrDiv_of_term (hev : ∀ Q n, EvEntrySpec dcLive dcOwn Q n) :
+    EvalstrDivSpec dcLive dcOwn :=
+  evalstrDiv (fun _ => evs_int_k dcText_live) (fun _ => evs_str_k dcText_live) hev
 
 end Dc.Mach

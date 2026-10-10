@@ -983,4 +983,161 @@ theorem as_found_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
     hfr y ho hg (by simp only [frameIn] at hf ⊢; omega)]
 
+/-- A fresh array node's stores: index, link, datum. -/
+abbrev nodeW (M : Mem) (a i : Nat) (nx w0 w1 : BitVec 64) : Mem :=
+  writeLog (writeLog (writeLog (writeLog M [(a, 4, BitVec.ofNat 64 i)]) [(a + 24, 8, nx)])
+    [(a + 8, 8, w0)]) [(a + 16, 8, w1)]
+
+/-- `dc_array_set`'s stores into the fresh node `a` on the insert path
+(`0x80003cdc`, `sp` lowered by 64, `s0` the next node word `nx`). -/
+theorem as_nstore {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp a i : Nat}
+    {w0 w1 pv nx : BitVec 64} (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (ha : heapStart ≤ a ∧ a + 32 ≤ heapEnd ∧ a % 8 = 0)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h10 : R 10 = BitVec.ofNat 64 a)
+    (h9 : R 9 = BitVec.ofNat 64 i) (h8 : R 8 = nx)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (l8 : ldv .ld M (sp - 64 + 8) = pv)
+    (hk : ∀ R', Keeps [13, 14, 15] R' R → R' 14 = pv →
+      DW live S Q 0x80003cf8#64 R' (nodeW M a i nx w0 w1)) :
+    DW live S Q 0x80003cdc#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  obtain ⟨ha1, ha2, ha3⟩ := ha
+  simp only [heapEnd, heapStart] at hab ha1 ha2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have haw : (BitVec.ofNat 64 a).toNat = a := by simp only [BitVec.toNat_ofNat]; omega
+  have haS : ∀ k, k + 8 ≤ 32 → ∀ b ∈ accAddrs (a + k) 8, S b := fun k hk b hb => by
+    have := of_mem_accAddrs hb
+    exact hS b (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  have haS4 : ∀ b ∈ accAddrs a 4, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hS b (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  bc_run hlive hS [h2, h10, h9, h8, haw, l16, l24, l8] at 0x80003cf8
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact haS4 | exact haS 8 (by omega) | exact haS 16 (by omega) | exact haS 24 (by omega) | (simp only [StOK, htx]; omega) | skip
+  refine hk _ ?_ ?_
+  · keeps_tac Keeps.refl _ _
+  · bsimp []
+
+/-- The same stores on the empty path (`0x80003dac`, link `0`), on to the
+tail at `0x80003d7c`. -/
+theorem as_nstore0 {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp a i : Nat}
+    {w0 w1 : BitVec 64} (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (ha : heapStart ≤ a ∧ a + 32 ≤ heapEnd ∧ a % 8 = 0)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h10 : R 10 = BitVec.ofNat 64 a)
+    (h9 : R 9 = BitVec.ofNat 64 i)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (hk : ∀ R', Keeps [14, 15] R' R → DW live S Q 0x80003d7c#64 R' (nodeW M a i 0#64 w0 w1)) :
+    DW live S Q 0x80003dac#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  obtain ⟨ha1, ha2, ha3⟩ := ha
+  simp only [heapEnd, heapStart] at hab ha1 ha2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have haw : (BitVec.ofNat 64 a).toNat = a := by simp only [BitVec.toNat_ofNat]; omega
+  have haS : ∀ k, k + 8 ≤ 32 → ∀ b ∈ accAddrs (a + k) 8, S b := fun k hk b hb => by
+    have := of_mem_accAddrs hb
+    exact hS b (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  have haS4 : ∀ b ∈ accAddrs a 4, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hS b (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  bc_run hlive hS [h2, h10, h9, haw, l16, l24] at 0x80003d7c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact haS4 | exact haS 8 (by omega) | exact haS 16 (by omega) | exact haS 24 (by omega) | (simp only [StOK, htx]; omega) | skip
+  refine hk _ ?_
+  · keeps_tac Keeps.refl _ _
+
+/-- `dc_array_set` linking the fresh node after the node at `q` and
+returning (`0x80003cf8`, `a4 = q`, `a0` the fresh node). -/
+theorem as_link {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp q : Nat}
+    {ra s0 s1 s2 : BitVec 64} (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (hq : heapStart ≤ q ∧ q + 32 ≤ heapEnd ∧ q % 8 = 0)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h14 : R 14 = BitVec.ofNat 64 q)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R', Keeps [1, 2, 8, 9, 18] R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      R' 8 = s0 → R' 9 = s1 → R' 18 = s2 → DW live S Q ra R' (writeLog M [(q + 24, 8, R 10)])) :
+    DW live S Q 0x80003cf8#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  obtain ⟨hq1, hq2, hq3⟩ := hq
+  simp only [heapEnd, heapStart] at hab hq1 hq2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hqw : (BitVec.ofNat 64 q).toNat = q := by simp only [BitVec.toNat_ofNat]; omega
+  have hnz : BitVec.ofNat 64 q ≠ 0#64 := ofNat_ne_small (by omega) (by decide) (by omega)
+  have hqS : ∀ b ∈ accAddrs (q + 24) 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hS b (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  bc_run hlive hS [h2, h14, hqw, l56, l48]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hqS | (simp only [StOK, htx]; omega) | skip
+  all_goals try (intro hc; exact (hnz hc).elim)
+  intro _
+  bc_run hlive hS [h2, h14, hqw, l56, l48]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hqS | (simp only [StOK, htx]; omega) | skip
+  all_goals first | (bsimp []; exact hal) | skip
+  have m40 : ldv .ld (writeLog M [(q + 24, 8, R 10)]) (sp - 64 + 40) = s1 := by
+    rw [ldv_ld_miss _ _ (by omega), l40]
+  have m32 : ldv .ld (writeLog M [(q + 24, 8, R 10)]) (sp - 64 + 32) = s2 := by
+    rw [ldv_ld_miss _ _ (by omega), l32]
+  rw [m40, m32]
+  refine hk _ ?_ ?_ ?_ ?_ ?_ ?_
+  · keeps_tac Keeps.refl _ _
+  · bsimp []
+  · bsimp [h2]; congr 1; omega
+  · bsimp []
+  · bsimp []
+  · bsimp []
+
+/-- `dc_array_set`'s tail call `dc_set_stacked_array (s2, a0)`
+(`0x80003d7c`, `sp` lowered by 64). -/
+theorem as_ss {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp : Nat}
+    {ra s1 s2 : BitVec 64} (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64))
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l40 : ldv .ld M (sp - 64 + 40) = s1)
+    (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hk : ∀ R', Keeps [1, 2, 9, 10, 11, 18] R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      R' 9 = s1 → R' 18 = s2 → R' 10 = R 18 → R' 11 = R 10 → DW live S Q 0x8000391c#64 R' M) :
+    DW live S Q 0x80003d7c#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h2, l56, l40, l32] at 0x8000391c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine hk _ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+  · keeps_tac Keeps.refl _ _
+  · bsimp []
+  · bsimp [h2]; congr 1; omega
+  · bsimp []
+  · bsimp []
+  · bsimp []
+  · bsimp []
+
+/-- The insert path's branch with no node before (`0x80003cf8`, `a4 = 0`):
+`s0` restored, then the tail call. -/
+theorem as_ss0 {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {sp : Nat}
+    {ra s0 s1 s2 : BitVec 64} (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h14 : R 14 = 0#64)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hk : ∀ R', Keeps [1, 2, 8, 9, 10, 11, 18] R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      R' 8 = s0 → R' 9 = s1 → R' 18 = s2 → R' 10 = R 18 → R' 11 = R 10 →
+      DW live S Q 0x8000391c#64 R' M) :
+    DW live S Q 0x80003cf8#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h2, h14, l48] at 0x80003d7c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  all_goals try (intro hc; exact (hc rfl).elim)
+  all_goals try intro _
+  bc_run hlive hS [h2, l48] at 0x80003d7c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine as_ss hlive hS hsf (by simp only [heapEnd]; omega) _ (by bsimp [h2]) l56 l40 l32
+    fun R' hk1 e1 e2 e9 e18 e10 e11 => hk R' ?_ e1 e2 ?_ e9 e18 ?_ ?_
+  · keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+  · rw [hk1.get 8]; bsimp []
+  · rw [e10]; bsimp []
+  · rw [e11]; bsimp []
+
 end Dc.Mach

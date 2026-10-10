@@ -307,4 +307,175 @@ theorem binop_entry {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
         | str _ => simp [GV.tag] at e2
         | num pa => exact hgo c1 c2 pb pa rest2 hstk R1 hk1 e14
 
+/-! ## The pops -/
+
+theorem StackFrame.within {S : Nat → Prop} {sp W m n : Nat} (h : StackFrame S sp W) (hmn : m + n ≤ W)
+    (hm : m % 16 = 0) : StackFrame S (sp - m) n where
+  own a h1 h2 := h.own a (by omega) (by omega)
+  lo := by have := h.lo; omega
+  hi := by have := h.hi; omega
+  al := by have := h.al; omega
+
+/-- A byte at or above a stack pointer over the heap: off the heap, not a global,
+outside every window below `sp`. -/
+theorem above_sp {sp a : Nat} (hh : heapEnd ≤ sp) (ha : sp ≤ a) :
+    OutHeap a ∧ ¬ DcGlob a ∧ ∀ n, ¬ frameIn sp n a :=
+  ⟨outHeap_of_ge (by omega), fun hg => by
+    have := hg.lt; simp only [heapStart, heapEnd] at this hh; omega,
+    fun n hf => by simp only [frameIn] at hf; omega⟩
+
+/-- `dc_binop`'s frame words (`sp1 = sp - 112`): `op`, `kscale`, the second's
+type word and the return address. -/
+structure BoFrame (M : Mem) (sp1 fa k : Nat) (ra : BitVec 64) : Prop where
+  wfa : ldv .ld M (sp1 + 8) = BitVec.ofNat 64 fa
+  wk : ldv .ld M (sp1 + 16) = BitVec.ofNat 64 k
+  wtag : ldv .ld M (sp1 + 24) = 1#64
+  wra : ldv .ld M (sp1 + 104) = ra
+
+theorem BoFrame.transport {M M' : Mem} {sp1 fa k : Nat} {ra : BitVec 64} (h : BoFrame M sp1 fa k ra)
+    (hag : ∀ a, (sp1 + 8 ≤ a ∧ a < sp1 + 32) ∨ (sp1 + 104 ≤ a ∧ a < sp1 + 112) → imgM M' a = imgM M a) :
+    BoFrame M' sp1 fa k ra where
+  wfa := by rw [ldv_congr .ld fun j hj => hag _ (.inl (by simp only [widthOfM] at hj; omega))]; exact h.wfa
+  wk := by rw [ldv_congr .ld fun j hj => hag _ (.inl (by simp only [widthOfM] at hj; omega))]; exact h.wk
+  wtag := by rw [ldv_congr .ld fun j hj => hag _ (.inl (by simp only [widthOfM] at hj; omega))]; exact h.wtag
+  wra := by rw [ldv_congr .ld fun j hj => hag _ (.inr (by simp only [widthOfM] at hj; omega))]; exact h.wra
+
+/-- The state at the call of `op`: both operands popped into the slots at
+`sp1 + 32` (`a`) and `sp1 + 48` (`b`), their handles held. -/
+structure BoAt (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
+    (C : BcConsts) (G2 : DcG) (hs : List GV) (st st2 : St) (sp W fa k : Nat) (ra : BitVec 64)
+    (pa pb : Nat) (na nb : Num) : Prop where
+  st : st = (st2.push (.num na)).push (.num nb)
+  h : DcAt S M H F L C G2 (.num pa :: .num pb :: hs) st2
+  da : (GV.num pa).Den ⟨L, G2.strs⟩ (.num na)
+  db : (GV.num pb).Den ⟨L, G2.strs⟩ (.num nb)
+  fr : BoFrame M (sp - 112) fa k ra
+  sa : DatAt M (sp - 112 + 32) (.num pa)
+  sb : DatAt M (sp - 112 + 48) (.num pb)
+  out : StkOut sp W M M0
+
+/-- The head of a stack whose ghost head is a number handle. -/
+theorem den_num_head {O : DObjs} {p : Nat} {v : Val} (h : (GV.num p).Den O v) :
+    ∃ n, v = .num n ∧ (GV.num p).Den O (.num n) := by
+  cases v with
+  | num n => exact ⟨n, rfl, h⟩
+  | str s => exact h.elim
+
+theorem word_sub112 {x : Nat} (h : 112 ≤ x) :
+    BitVec.ofNat 64 x + 18446744073709551504#64 = BitVec.ofNat 64 (x - 112) := by
+  change BitVec.ofNat 64 x + -(112#64) = _
+  rw [BitVec.add_neg_eq_sub]
+  exact BitVec.ofNat_sub_ofNat_of_le x 112 (by decide) h
+
+/-- **`dc_binop`'s two pops** (`0x80003228` to the call of `op`). -/
+theorem binop_pops {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    (h : DcAt S M H F L C G hs st) {sp W : Nat}
+    (hsf : StackFrame S sp W) (hab : heapEnd + W ≤ sp) (hW : 448 ≤ W)
+    {cb ca : Blk} {pb pa : Nat} {rest : List (Blk × GV)}
+    (hstk : G.stk = (cb, .num pb) :: (ca, .num pa) :: rest)
+    {fa k : Nat} (hfa : fa % 4 = 0) (hfa2 : fa < 2 ^ 64)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 fa) (h11 : R 11 = BitVec.ofNat 64 k)
+    (h14 : R 14 = 1#64) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R1 M2 H2 G2 st2 na nb, Keeps (1 :: 2 :: popClob) R1 R →
+      R1 1 = 0x80003264#64 → R1 2 = BitVec.ofNat 64 (sp - 112) → R1 10 = BitVec.ofNat 64 pa →
+      R1 11 = BitVec.ofNat 64 pb → R1 12 = BitVec.ofNat 64 k →
+      R1 13 = BitVec.ofNat 64 (sp - 112 + 72) →
+      BoAt S M M2 H2 F L C G2 hs st st2 sp W fa k (R 1) pa pb na nb →
+      DWO live S Q t (BitVec.ofNat 64 fa) R1 M2) :
+    DWO live S Q t 0x80003228#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab' := hab
+  simp only [heapEnd] at hab'
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  bc_run hlive hS [h2, h10, h11, h14, word_sub112 (x := sp) (by omega)] at 0x8000310c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM1 : MemOnly (frameIn sp 112) (writeLog (writeLog (writeLog (writeLog M
+      [(sp - 112 + 8, 8, BitVec.ofNat 64 fa)]) [(sp - 112 + 104, 8, R 1)])
+      [(sp - 112 + 16, 8, BitVec.ofNat 64 k)]) [(sp - 112 + 24, 8, 1#64)]) M := fun a ha => by
+    simp only [frameIn] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
+  have hP : ∀ a, sp - W ≤ a → OutHeap a ∧ ¬ DcGlob a := fun a ha =>
+    ⟨(above_sp (sp := sp - W) (by omega) ha).1, (above_sp (sp := sp - W) (by omega) ha).2.1⟩
+  have h1 := h.outWrite hM1 fun a ha => hP a (by simp only [frameIn] at ha; omega)
+  have hfr1 : BoFrame (writeLog (writeLog (writeLog (writeLog M
+      [(sp - 112 + 8, 8, BitVec.ofNat 64 fa)]) [(sp - 112 + 104, 8, R 1)])
+      [(sp - 112 + 16, 8, BitVec.ofNat 64 k)]) [(sp - 112 + 24, 8, 1#64)]) (sp - 112) fa k (R 1) :=
+    ⟨by simp (disch := omega) only [ldv_ld_miss, ldv_store_hit],
+     by simp (disch := omega) only [ldv_ld_miss, ldv_store_hit],
+     by simp (disch := omega) only [ldv_ld_miss, ldv_store_hit],
+     by simp (disch := omega) only [ldv_ld_miss, ldv_store_hit]⟩
+  have hslot : ∀ o, o + 16 ≤ 112 → o % 8 = 0 → DatSlot S (sp - 112) (sp - 112 + o) := fun o h1 h2 =>
+    ⟨fun i hi => hsf.own _ (by omega) (by omega), by omega, by omega, by omega⟩
+  have hden := h.den.stk
+  rw [hstk] at hden
+  have hne : st.stack ≠ [] := fun e => by rw [e] at hden; cases hden
+  refine dc_pop_spec hlive h1 (hsf.within (m := 112) (n := 336) (by omega) (by decide))
+    (by simp only [heapEnd]; omega) (hslot 48 (by omega) (by omega)) _ (by bsimp []) (by bsimp [])
+    (by bsimp []) (fun R2 M2 H2 G1 g v st1 est eG hk2 e10 h1' hd1 hout1 => ?_)
+    (fun e => absurd e hne)
+  obtain ⟨c, rfl⟩ := eG
+  simp only [List.cons.injEq, Prod.mk.injEq] at hstk
+  obtain ⟨⟨rfl, rfl⟩, hG1⟩ := hstk
+  subst est
+  obtain ⟨nb, rfl, hdb⟩ := (by cases hden with | cons hh _ => exact den_num_head hh :
+    ∃ nb, v = .num nb ∧ (GV.num pb).Den ⟨L, G1.strs⟩ (.num nb))
+  have q2 : R2 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk2.get 2 (by decide)]; bsimp []
+  have hS2 : HeapOwn S := fun a h1 h2 => h1'.heap.heap.own a h1 h2
+  bsimp []
+  bc_run hlive hS2 [q2] at 0x8000310c
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hden1 := h1'.den.stk
+  rw [hG1] at hden1
+  have hne1 : st1.stack ≠ [] := fun e => by rw [e] at hden1; cases hden1
+  refine dc_pop_spec hlive h1' (hsf.within (m := 112) (n := 336) (by omega) (by decide))
+    (by simp only [heapEnd]; omega) (hslot 32 (by omega) (by omega)) _ (by bsimp []) (by bsimp [q2])
+    (by bsimp []) (fun R3 M3 H3 G2 g2 v2 st2 est2 eG2 hk3 e10' h2' hd2 hout2 => ?_)
+    (fun e => absurd e hne1)
+  obtain ⟨c2, rfl⟩ := eG2
+  simp only [List.cons.injEq, Prod.mk.injEq] at hG1
+  obtain ⟨⟨rfl, rfl⟩, -⟩ := hG1
+  subst est2
+  obtain ⟨na, rfl, hda⟩ := (by cases hden1 with | cons hh _ => exact den_num_head hh :
+    ∃ na, v2 = .num na ∧ (GV.num pa).Den ⟨L, G2.strs⟩ (.num na))
+  have hab2 : heapEnd ≤ sp - 112 := by omega
+  have hfr3 : BoFrame M3 (sp - 112) fa k (R 1) := (hfr1.transport fun a ha => by
+      have ⟨o1, o2, o3⟩ := above_sp hab2 (a := a) (by omega)
+      exact hout1 a o1 o2 (o3 _) (by omega)).transport fun a ha => by
+    have ⟨o1, o2, o3⟩ := above_sp hab2 (a := a) (by omega)
+    exact hout2 a o1 o2 (o3 _) (by omega)
+  have hb3 : ldv .ld M3 (sp - 112 + 48 + 8) = BitVec.ofNat 64 pb := by
+    rw [ldv_congr .ld fun j hj => by
+      have ⟨o1, o2, o3⟩ := above_sp hab2 (a := sp - 112 + 48 + 8 + j) (by omega)
+      exact hout2 _ o1 o2 (o3 _) (by simp only [widthOfM] at hj; omega)]
+    exact hd1.ptr
+  have ha3 := hd2.ptr
+  have q3 : R3 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk3.get 2 (by decide)]; bsimp [q2]
+  have hS3 : HeapOwn S := fun a h1 h2 => h2'.heap.heap.own a h1 h2
+  have wfa := hfr3.wfa
+  have wk := hfr3.wk
+  bsimp []
+  have hfal : (BitVec.ofNat 64 fa).toNat % 4 = 0 := by
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hfa2]; exact hfa
+  bc_run hlive hS3 [q3, hb3, ha3, wfa, wk]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  · rw [jalr_tgt _ hfal]; exact hfal
+  rw [jalr_tgt _ hfal]
+  have hsb : DatAt M3 (sp - 112 + 48) (.num pb) := by
+    refine ⟨?_, hb3⟩
+    rw [ldv_congr .ld fun j hj => by
+      have ⟨o1, o2, o3⟩ := above_sp hab2 (a := sp - 112 + 48 + j) (by omega)
+      exact hout2 _ o1 o2 (o3 _) (by simp only [widthOfM] at hj; omega)]
+    exact hd1.tag
+  refine hk _ M3 H3 G2 st2 na nb
+    (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans
+      (by keeps_tac Keeps.refl _ _)))))
+    (by bsimp []) (by bsimp [q3]) (by bsimp []; rfl) (by bsimp []) (by bsimp []) (by bsimp [])
+    ⟨rfl, h2', hda, hdb, hfr3, hd2, hsb, fun a ho hg hf => ?_⟩
+  have hf1 : ¬ frameIn (sp - 112) 336 a := fun h' => hf (by simp only [frameIn] at h' ⊢; omega)
+  rw [hout2 a ho hg hf1 (by simp only [frameIn] at hf; omega),
+    hout1 a ho hg hf1 (by simp only [frameIn] at hf; omega)]
+  exact hM1 a fun h' => hf (by simp only [frameIn] at h' ⊢; omega)
+
 end Dc.Mach

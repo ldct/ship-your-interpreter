@@ -164,15 +164,12 @@ end DcLoaded
 /-- **dc halts at a loaded configuration** (`dc_halts`). -/
 theorem dc_halts_loaded {prog : List Nat} (c : Config) (h : DcLoaded prog c) (hp : DcProg prog)
     (φ : Nat × String → Prop) (hφ1 : ∀ t, φ (1, t))
-    (hoom : ∀ M1 R' M' sp', Filled M1 c.σ.mem freeListAddr bssLen (fun _ => 0#8) →
-      OomAt dcOwn stackTop mainW M1 PinWords sp' R' M' →
-      DWO dcLive dcOwn (fun t rv mv => ExitQ φ t rv mv) (Vsa.Machine.output c.σ) 0x80001e74#64 R' M')
     (hk : ∀ M1 R1 R' M' H' F L C b1 b2, Filled M1 c.σ.mem freeListAddr bssLen (fun _ => 0#8) →
       R1 1 = 0x8000003c#64 → R1 2 = BitVec.ofNat 64 stackTop →
       BootEval dcOwn stackTop mainW M1 R1 R' M' H' F L C (msObj b1 b2 prog) prog →
       DWO dcLive dcOwn (fun t rv mv => ExitQ φ t rv mv) (Vsa.Machine.output c.σ) 0x80001914#64 R' M') :
     ∃ e out, Vsa.Machine.Halts c out e ∧ φ (e, out) :=
-  dc_halts c φ h.vsaOk dcText_live h.vsaPC h.text dcOwnList_spec dcOwn_sep (h.start hp) hφ1 hoom hk
+  dc_halts c φ h.vsaOk dcText_live h.vsaPC h.text dcOwnList_spec dcOwn_sep (h.start hp) hφ1 hk
 
 open Iris Iris.BI Iris.Std Iris.ProgramLogic Iris.ProofMode in
 /-- **dc halts at a loaded configuration**, continuations as Iris
@@ -182,12 +179,9 @@ theorem dc_halts_wp_loaded {prog : List Nat} (c : Config) (h : DcLoaded prog c) 
     (hev : ∀ [_G : MachGS .hasLC MachGF], ∀ rv mv M1 R1 R' M' H' F L C b1 b2,
       EvalCallAt dcOwn c.σ.mem prog rv mv M1 R1 R' M' H' F L C b1 b2 →
       roOwn (GF := MachGF) roR dcText ∗ RunRes dcOwn (Vsa.Machine.output c.σ) rv mv ⊢
-        (twpW (GF := MachGF) (vsaModel dcLive)).W (fun v => iprop(⌜ψ v⌝)))
-    (hoo : ∀ [_G : MachGS .hasLC MachGF], ∀ rv mv M1 R' M' sp', OomCallAt dcOwn c.σ.mem rv mv M1 R' M' sp' →
-      roOwn (GF := MachGF) roR dcText ∗ RunRes dcOwn (Vsa.Machine.output c.σ) rv mv ⊢
         (twpW (GF := MachGF) (vsaModel dcLive)).W (fun v => iprop(⌜ψ v⌝))) :
     ∃ e out, Vsa.Machine.Halts c out e ∧ ψ (e, out) :=
-  dc_halts_wp c ψ h.vsaOk dcText_live h.vsaPC h.text dcOwnList_spec dcOwn_sep (h.start hp) hψ1 hev hoo
+  dc_halts_wp c ψ h.vsaOk dcText_live h.vsaPC h.text dcOwnList_spec dcOwn_sep (h.start hp) hψ1 hev
 
 open Iris Iris.BI Iris.Std Iris.ProgramLogic Iris.ProofMode in
 /-- **dc diverges or halts at a loaded configuration** (`dc_stuck`). -/
@@ -196,11 +190,8 @@ theorem dc_stuck_loaded {prog : List Nat} (c : Config) (h : DcLoaded prog c) (hp
     (hev : ∀ [_G : MachGS .hasLC MachGF], ∀ rv mv M1 R1 R' M' H' F L C b1 b2,
       EvalCallAt dcOwn c.σ.mem prog rv mv M1 R1 R' M' H' F L C b1 b2 →
       roOwn (GF := MachGF) roR dcText ∗ RunRes dcOwn (Vsa.Machine.output c.σ) rv mv ⊢
-        (wpW (GF := MachGF) (vsaModel dcLive)).W (fun v => iprop(⌜ψ v⌝)))
-    (hoo : ∀ [_G : MachGS .hasLC MachGF], ∀ rv mv M1 R' M' sp', OomCallAt dcOwn c.σ.mem rv mv M1 R' M' sp' →
-      roOwn (GF := MachGF) roR dcText ∗ RunRes dcOwn (Vsa.Machine.output c.σ) rv mv ⊢
         (wpW (GF := MachGF) (vsaModel dcLive)).W (fun v => iprop(⌜ψ v⌝))) :
     Vsa.Machine.Diverges c ∨ ∃ out e, Vsa.Machine.Halts c out e ∧ ψ (e, out) :=
-  dc_stuck c ψ h.vsaOk dcText_live h.vsaPC h.text dcOwnList_spec dcOwn_sep (h.start hp) hψ1 hev hoo
+  dc_stuck c ψ h.vsaOk dcText_live h.vsaPC h.text dcOwnList_spec dcOwn_sep (h.start hp) hψ1 hev
 
 end Dc.Mach

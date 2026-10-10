@@ -20,10 +20,10 @@ runs to `dc_evalstr`'s entry with `BootEval`: the state relation `DcAt` for
 `St.init` over the ghost `bootG o` (the script's string object `o`, its one
 reference the handle `(DC_STRING, o)` in `main`'s frame, `a0` pointing at
 it). The state is built by `boot_dcAt` from `bc_init_numbers`'s three
-constants (`InitPost`) and the zeroed globals. `bc_init_numbers`' out of
-memory ends in `dc_memfail_spec` (the `progname` word was just stored);
-`dc_makestring`'s goes to the caller's `hoom` (`OomAt`), whose `progname`
-supplier is the open M11 item of `DcMemfail.lean`.
+constants (`InitPost`) and the zeroed globals. Out of memory in
+`bc_init_numbers` or `dc_makestring` ends in `dc_memfail_spec` (the
+`progname` and `stderr` words read from the state, kept by the callee's
+frame) and `_exit` with status 1 (`hex`).
 -/
 
 namespace Dc.Mach
@@ -360,8 +360,7 @@ theorem main_mk {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 M : Mem} {sp W : Nat} {s : List Nat}
     {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts}
     (pre : BootPre S M0 sp W s) (mid : MainMid S sp W M0 R0 R M H F L C)
-    (hoom : ∀ R' M' sp', OomAt S sp W M0 PinWords sp' R' M' →
-      DWO live S Q t 0x80001e74#64 R' M')
+    (hex : ExitK live S Q 1#64)
     (hk : ∀ R' M' H' b1 b2, BootEval S sp W M0 R0 R' M' H' F L C (msObj b1 b2 s) s →
       DWO live S Q t 0x80001914#64 R' M') :
     DWO live S Q t 0x80000b28#64 R M := by
@@ -397,9 +396,19 @@ theorem main_mk {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     (by bsimp [q2]) (by bsimp []) (by bsimp [h10]) (by bsimp []; try decide)
     (fun R2 M2 H2 b1 b2 k2 e2 e10 e11 hd hso => ?_) (fun R2 M2 e2 hso => ?_)
   rotate_left
-  · refine hoom R2 M2 (sp - 32 - 64) ⟨by omega, by omega, e2, fun a e1 e2' e3 hp => ?_⟩
-    exact (hso a e1 e2' fun h => e3 (by simp only [frameIn] at h ⊢; omega)).trans
-      (mid.out a e1 (fun hg => e2' ⟨hg, hp⟩) e3)
+  · -- out of memory: `dc_memfail` from `sp - 96`, `progname` and `stderr` kept by `dc_makestring`
+    have pin : ∀ a, PinWords a → imgM M2 a = imgM M a := fun a hp =>
+      hso a (DcGlob.outHeap (by simp only [PinWords, DcGlob] at hp ⊢; omega)) (fun hc => hc.2 hp)
+        (fun hf => by simp only [frameIn, PinWords, dc_addrs] at hf hp; omega)
+    refine dc_memfail_spec hlive mid.dc.glob ?_ ?_ (hsf.within (m := 96) (n := 320) (by omega) (by decide))
+      (by simp only [stderrAddr]; omega) R2 (by rw [e2]; congr 1) (hex t)
+    · rw [ldv_congr .ld fun j hj => pin _ (by simp only [PinWords, widthOfM, dc_addrs] at hj ⊢; omega)]
+      exact mid.dc.view.prog
+    · exact { mid.dc.errFile with
+        val := by
+          rw [ldv_congr .lw fun j hj => pin _ (by
+            simp only [PinWords, widthOfM, stderrAddr, dc_addrs] at hj ⊢; omega)]
+          exact mid.dc.errFile.val }
   have hS2 : HeapOwn S := fun a h1 h2 => hd.heap.heap.own a h1 h2
   have q2' : R2 2 = BitVec.ofNat 64 (sp - 32) := by rw [e2]; bsimp [q2]
   bsimp []
@@ -446,18 +455,16 @@ theorem main_mk {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
 /-- **`main` from its entry to the call of `dc_evalstr`.** From the fresh
 boot (`BootPre`, `R0 2 = sp`), the run reaches `dc_evalstr`'s
 entry `0x80001914` with `BootEval`: `St.init` over the script's string
-object. `bc_init_numbers`' out of memory exits with status 1 (`hex`);
-`dc_makestring`'s goes to `hoom`. -/
+object. Out of memory (`bc_init_numbers`, `dc_makestring`) exits with
+status 1 (`hex`). -/
 theorem main_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 : Mem} {sp W : Nat} {s : List Nat}
     (pre : BootPre S M0 sp W s) (R0 : Nat → BitVec 64) (h2 : R0 2 = BitVec.ofNat 64 sp)
     (hex : ExitK live S Q 1#64)
-    (hoom : ∀ R' M' sp', OomAt S sp W M0 PinWords sp' R' M' →
-      DWO live S Q t 0x80001e74#64 R' M')
     (hk : ∀ R' M' H' F L C b1 b2, BootEval S sp W M0 R0 R' M' H' F L C (msObj b1 b2 s) s →
       DWO live S Q t 0x80001914#64 R' M') :
     DWO live S Q t 0x80000b00#64 R0 M0 :=
   main_init hlive pre R0 h2 hex fun _ _ _ _ _ _ _ mid =>
-    main_mk hlive pre mid hoom fun _ _ _ _ _ he => hk _ _ _ _ _ _ _ _ he
+    main_mk hlive pre mid hex fun _ _ _ _ _ he => hk _ _ _ _ _ _ _ _ he
 
 end Dc.Mach

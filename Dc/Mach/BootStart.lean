@@ -172,13 +172,11 @@ theorem StartPre.boot {S : Nat → Prop} {M M' : Mem} {s : List Nat} (h : StartP
 /-- **`_start` from `0x80000008`** (after `gp`): `sp = __stack_top`, `.bss`
 zeroed into `M1`, `main` called with `ra = 0x8000003c`, then `main_spec` to
 the call of `dc_evalstr` (`BootEval` over `main`'s entry `M1`, `R1`).
-`bc_init_numbers`' out of memory exits with status 1 (`hex`);
-`dc_makestring`'s goes to `hoom`. -/
+Out of memory (`bc_init_numbers`, `dc_makestring`) exits with status 1
+(`hex`). -/
 theorem start_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {s : List Nat}
     (h : StartPre S M s) (R : Nat → BitVec 64) (hex : ExitK live S Q 1#64)
-    (hoom : ∀ M1 R' M' sp', Filled M1 M freeListAddr bssLen (fun _ => 0#8) →
-      OomAt S stackTop mainW M1 PinWords sp' R' M' → DWO live S Q t 0x80001e74#64 R' M')
     (hk : ∀ M1 R1 R' M' H' F L C b1 b2, Filled M1 M freeListAddr bssLen (fun _ => 0#8) →
       R1 1 = 0x8000003c#64 → R1 2 = BitVec.ofNat 64 stackTop →
       BootEval S stackTop mainW M1 R1 R' M' H' F L C (msObj b1 b2 s) s →
@@ -190,7 +188,7 @@ theorem start_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     (by simp only [bssLen_eq]; omega) (by bsimp []) (by bsimp []) (by keeps_tac Keeps.refl _ _)
     (Filled.zero M _ _)
   dx_run hlive at 0x80000b00
-  exact main_spec hlive (h.boot hf) _ (by bsimp [k1.get 2]) hex (fun R' M' sp' ho => hoom M1 R' M' sp' hf ho)
+  exact main_spec hlive (h.boot hf) _ (by bsimp [k1.get 2]) hex
     fun R' M' H' F L C b1 b2 he => hk M1 _ R' M' H' F L C b1 b2 hf (by bsimp []) (by bsimp [k1.get 2]) he
 
 /-- **`main`'s return into `_start`** (`0x8000003c`, `a0` the status):

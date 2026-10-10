@@ -10,9 +10,9 @@ present, the owned bytes `S` enumerated by `l` and disjoint from the code,
 (0x80001914) to `_exit`'s `tohost` store with the exit word of `e` and the
 console satisfying `φ` (`ExitQ φ`) makes the machine halt: `Halts c out e`
 with `φ (e, out)`. The run before `dc_evalstr` is `start_spec` (the `gp`
-pair through `wp_gpBoot`); `dc_makestring`'s out of memory is the caller's
-`hoom` (`DcMemfail.lean`'s open supplier), `bc_init_numbers`' exits with
-status 1, which `φ` admits (`hφ1`).
+pair through `wp_gpBoot`); out of memory before `dc_evalstr`
+(`bc_init_numbers`, `dc_makestring`) exits with status 1, which `φ` admits
+(`hφ1`).
 
 The ownership split follows the WHILE route (`VsaIris/Interp/EndToEnd.lean`):
 adequacy's register and memory maps are read off `c` on `bootRegs` and on the
@@ -178,9 +178,6 @@ theorem dc_halts {live S : Nat → Prop} (c : Config) {l s : List Nat} (φ : Nat
     (htext : ∀ p ∈ dcText, (vsaModel live).mem c p.1 = p.2)
     (hl : l.Nodup ∧ ∀ a, a ∈ l ↔ S a) (hsep : ∀ a ∈ l, ∀ p ∈ dcText, p.1 ≠ a)
     (pre : StartPre S c.σ.mem s) (hφ1 : ∀ t, φ (1, t))
-    (hoom : ∀ M1 R' M' sp', Filled M1 c.σ.mem freeListAddr bssLen (fun _ => 0#8) →
-      OomAt S stackTop mainW M1 PinWords sp' R' M' →
-      DWO live S (fun t rv mv => ExitQ φ t rv mv) (Vsa.Machine.output c.σ) 0x80001e74#64 R' M')
     (hk : ∀ M1 R1 R' M' H' F L C b1 b2, Filled M1 c.σ.mem freeListAddr bssLen (fun _ => 0#8) →
       R1 1 = 0x8000003c#64 → R1 2 = BitVec.ofNat 64 stackTop →
       BootEval S stackTop mainW M1 R1 R' M' H' F L C (msObj b1 b2 s) s →
@@ -190,7 +187,7 @@ theorem dc_halts {live S : Nat → Prop} (c : Config) {l s : List Nat} (φ : Nat
     List.nodup_append.mpr ⟨dcText_nodup, hl.1, fun a ha b hb e => by
       obtain ⟨p, hp, rfl⟩ := List.mem_map.mp ha
       exact hsep b hb p hp e⟩
-  have hrun := start_spec hlive pre (upd ((vsaModel live).reg c) 3 gpV) (exitK_one hφ1) hoom hk
+  have hrun := start_spec hlive pre (upd ((vsaModel live).reg c) 3 gpV) (exitK_one hφ1) hk
   refine vsa_adequacy_exit (GF := MachGF) live c (bmap ((vsaModel live).reg c) bootRegs)
     (bmap ((vsaModel live).mem c) (dcText.map Prod.fst ++ l)) (bmap_agree _ _) (bmap_agree _ _)
     hok φ ?_

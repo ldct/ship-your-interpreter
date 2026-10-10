@@ -245,17 +245,17 @@ theorem DcAt.setArr {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L
 /-! ## The search loop -/
 
 /-- The word naming the last node of `pre`, or `0`. -/
-def lastPtr (pre : List (Blk × ANode)) : BitVec 64 :=
+def lastPtr {α : Type} (pre : List (Blk × α)) : BitVec 64 :=
   match pre.getLast? with
   | none => 0#64
   | some bx => BitVec.ofNat 64 bx.1.pay
 
 /-- The word naming the first node of `post`, or `0`. -/
-def headPtr : List (Blk × ANode) → BitVec 64
+def headPtr {α : Type} : List (Blk × α) → BitVec 64
   | [] => 0#64
   | bx :: _ => BitVec.ofNat 64 bx.1.pay
 
-theorem lastPtr_concat (pre : List (Blk × ANode)) (bx : Blk × ANode) :
+theorem lastPtr_concat {α : Type} (pre : List (Blk × α)) (bx : Blk × α) :
     lastPtr (pre ++ [bx]) = BitVec.ofNat 64 bx.1.pay := by
   simp [lastPtr]
 

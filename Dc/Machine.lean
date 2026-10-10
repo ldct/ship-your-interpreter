@@ -99,10 +99,11 @@ inductive Res where
 
 /-! ## Stack and register primitives -/
 
-/-- `dc_stack_rotate n`. -/
+/-- `dc_stack_rotate n`. The machine takes `|n|` in 32 bits, so
+`n = -2^31` stays negative and leaves the stack unchanged. -/
 def rotate (n : Int) (s : List Val) : List Val :=
   let absn := n.natAbs
-  if s.isEmpty || absn < 2 then s
+  if s.isEmpty || absn < 2 || n == -2147483648 then s
   else
     let i := min (absn - 1) (s.length - 1)
     if i == 0 then s

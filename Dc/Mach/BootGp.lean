@@ -87,18 +87,43 @@ theorem wp_of_bupdD {M : MachineModel} (Wp : MachWP (GF := GF) M) {Φ : Nat × S
     (|==> Wp.W Φ) ⊢ Wp.W Φ :=
   BIUpdateFUpdate.fupd_of_bupd.trans Wp.fupd
 
+/-- The run's read-only resources once `gp` is set: `gp` at `gpV` and the code. -/
+theorem roOwn_of_gp {v : BitVec 64} (hv : v = gpV) :
+    (3 ↦ᵣ□ v) ∗ textOwn (GF := GF) dcText ⊢ roOwn roR dcText := by
+  subst hv
+  unfold roOwn textOwn
+  simp only [roR, sepL_cons, sepL_nil]
+  rw [show gp = 3 from rfl]
+  iintro ⟨#Hgp, #Htx⟩
+  isplitl []
+  · isplitl []
+    · iexact Hgp
+    · iempintro
+  · iexact Htx
+
+/-- The read-only resources of a run owning `gp`: the code alone. -/
+theorem roOwn_nil : textOwn (GF := GF) dcText ⊢ roOwn [] dcText := by
+  unfold roOwn textOwn
+  simp only [sepL_nil]
+  iintro #Htx
+  isplitl []
+  · iempintro
+  · iexact Htx
+
 /-- **The boot run from `_start`.** Owning `gp` and dc's registers at `rv`
 (`PC = 0x80000000`), the bytes `S` at `mv` (`Mt`'s image), the code and the
 console at `t`: the `gp` pair runs (`gp_pair`), `gp` becomes read-only at
 `gpV` (`reg_persistD`), and the printing run `DWO` from `0x80000008` (with
-`gp` set in `rv`) continues to `Q` (`wp_lroW`). -/
+`gp` set in `rv`) continues to `Q` (`wp_lroW`); the continuation receives
+the run's read-only resources (`roOwn roR dcText`). -/
 theorem wp_gpBoot (Wp : MachWP (GF := GF) (vsaModel live)) {Φ : Nat × String → IProp GF}
     {S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
     (hlive : ∀ p ∈ dcText, live p.1) {rv : Nat → BitVec 64} {mv : Nat → BitVec 8} {Mt : Mem}
     (hpc : rv VsaIris.PC = 0x80000000#64) (hmt : ∀ a, S a → mv a = imgM Mt a)
     (hk : DWO live S Q t 0x80000008#64 (upd rv 3 gpV) Mt) :
     textOwn (GF := GF) dcText ∗ sepL bootRegs (fun r => r ↦ᵣ rv r) ∗
-      ownSet S (fun a => a ↦ₘ mv a) ∗ consoleOwn t ∗ runKontO Wp Φ dcRegs S Q ⊢ Wp.W Φ := by
+      ownSet S (fun a => a ↦ₘ mv a) ∗ consoleOwn t ∗
+      (roOwn roR dcText -∗ runKontO Wp Φ dcRegs S Q) ⊢ Wp.W Φ := by
   have hs : SWPR live [] dcText bootRegs S
       (fun rv' mv' => rv' 3 = gpV ∧ Matches dcRegs S 0x80000008#64 (upd rv 3 gpV) Mt rv' mv')
       0x80000000#64 rv Mt :=
@@ -108,12 +133,8 @@ theorem wp_gpBoot (Wp : MachWP (GF := GF) (vsaModel live)) {Φ : Nat × String �
   obtain ⟨n, hrun⟩ := swpr_run hs ⟨hpc, fun _ _ _ => rfl, hmt⟩
   iintro ⟨#Htx, Hr, HS, Hc, Hk⟩
   iapply wp_localRunW Wp n rv mv hrun
-  unfold roOwn
-  simp only [sepL_nil]
   isplitl []
-  · isplitl []
-    · iempintro
-    · unfold textOwn; iexact Htx
+  · iapply roOwn_nil; iexact Htx
   isplitl [Hr]
   · iexact Hr
   isplitl [HS]
@@ -126,16 +147,13 @@ theorem wp_gpBoot (Wp : MachWP (GF := GF) (vsaModel live)) {Φ : Nat × String �
   ihave Hgp := reg_persistD 3 (rv' 3) $$ Hgp
   imod Hgp with #Hgp
   imodintro
+  ihave #Hro := roOwn_of_gp hgp $$ [Hgp Htx]
+  · iframe Hgp Htx
+  ihave Hk := Hk $$ Hro
   iapply wp_lroW Wp (swpo_run hk hm)
-  unfold roOwn
-  simp only [roR, sepL_cons, sepL_nil]
-  rw [show gp = 3 from rfl, ← hgp]
   isplitl []
-  · isplitl []
-    · isplitl []
-      · iexact Hgp
-      · iempintro
-    · unfold textOwn; iexact Htx
+  · iexact Hro
+  simp only [dcRegs, sepL_cons, sepL_nil]
   iframe Hr' HS' Hc Hk
 
 end Iris

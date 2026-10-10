@@ -115,22 +115,33 @@ theorem exitKont {live S : Nat → Prop} (Wp : MachWP (GF := GF) (vsaModel live)
 
 end Iris
 
+/-- The code out of the read-only resources. -/
+theorem roOwn_text {hlc : HasLC} {GF : BundledGFunctors} [G : MachGS hlc GF]
+    (ro : List (Nat × BitVec 64)) (text : List (Nat × BitVec 8)) :
+    roOwn (GF := GF) ro text ⊢ textOwn text := by
+  unfold roOwn textOwn
+  iintro ⟨-, #H⟩
+  iexact H
+
 theorem bootRegs_nodup : bootRegs.Nodup := by decide
 
-/-- **The whole run's WP from adequacy's ownership** (the key list `K` of the
-memory map kept abstract: the code addresses followed by `l`). -/
-theorem dc_boot_wp {live S : Nat → Prop} {c : Config} {l K : List Nat} [G : MachGS .hasLC MachGF]
+/-- **The whole run's WP from adequacy's ownership**, for either WP (the key
+list `K` of the memory map kept abstract: the code addresses followed by
+`l`): a run `hrun` from `0x80000008` to `Q` and its continuation `HK` (given
+the code) prove the run from `_start`. -/
+theorem dc_boot_wpG {live S : Nat → Prop} {c : Config} {l K : List Nat} [G : MachGS .hasLC MachGF]
+    (Wp : MachWP (GF := MachGF) (vsaModel live)) {Φ : Nat × String → IProp MachGF}
     (hlive : ∀ p ∈ dcText, live p.1)
     (hpc : (vsaModel live).reg c VsaIris.PC = 0x80000000#64)
     (htext : ∀ p ∈ dcText, (vsaModel live).mem c p.1 = p.2)
     (hl : l.Nodup ∧ ∀ a, a ∈ l ↔ S a) (hnd : K.Nodup) (hK : K = dcText.map Prod.fst ++ l)
-    {φ : Nat × String → Prop}
-    (hrun : DWO live S (fun t rv mv => ExitQ φ t rv mv) (Vsa.Machine.output c.σ) 0x80000008#64
-      (upd ((vsaModel live).reg c) 3 gpV) c.σ.mem) :
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hrun : DWO live S Q (Vsa.Machine.output c.σ) 0x80000008#64
+      (upd ((vsaModel live).reg c) 3 gpV) c.σ.mem)
+    (HK : roOwn (GF := MachGF) roR dcText ⊢ runKontO Wp Φ dcRegs S Q) :
     ⊢ ([∗map] k ↦ v ∈ bmap ((vsaModel live).reg c) bootRegs, k ↦ᵣ v) -∗
       ([∗map] k ↦ v ∈ bmap ((vsaModel live).mem c) K, k ↦ₘ v) -∗
-      consoleOwn (Vsa.Machine.output c.σ) -∗
-      (twpW (GF := MachGF) (vsaModel live)).W (fun v => iprop(⌜φ v⌝)) := by
+      consoleOwn (Vsa.Machine.output c.σ) -∗ Wp.W Φ := by
   have e : sepL (GF := MachGF) K (fun r => r ↦ₘ (vsaModel live).mem c r) ⊢
       sepL (dcText.map Prod.fst) (fun r => r ↦ₘ (vsaModel live).mem c r) ∗
         sepL l (fun r => r ↦ₘ (vsaModel live).mem c r) := by
@@ -143,11 +154,10 @@ theorem dc_boot_wp {live S : Nat → Prop} {c : Config} {l K : List Nat} [G : Ma
   icases Hm with ⟨Ht, Hl⟩
   ihave Ht := textOwn_of_sepL _ dcText htext $$ Ht
   ihave Hl := ownSet_of_sepL hl _ $$ Hl
-  iapply wp_of_bupdD (twpW (vsaModel live))
+  iapply wp_of_bupdD Wp
   imod Ht with #Ht
   imodintro
-  ihave Hk := exitKont (S := S) (twpW (vsaModel live)) hlive φ $$ Ht
-  iapply wp_gpBoot (twpW (vsaModel live)) (mv := (vsaModel live).mem c) hlive hpc (fun _ _ => rfl) hrun
+  iapply wp_gpBoot Wp (mv := (vsaModel live).mem c) hlive hpc (fun _ _ => rfl) hrun
   isplitl []
   · iexact Ht
   isplitl [Hr]
@@ -156,7 +166,8 @@ theorem dc_boot_wp {live S : Nat → Prop} {c : Config} {l K : List Nat} [G : Ma
   · iexact Hl
   isplitl [Hc]
   · iexact Hc
-  iexact Hk
+  iintro #Hro
+  iapply HK $$ Hro
 
 /-- **dc halts.** From a loaded configuration and a run from `main`'s call
 of `dc_evalstr` to `_exit`'s store (`hk`), the machine halts with some code
@@ -184,6 +195,7 @@ theorem dc_halts {live S : Nat → Prop} (c : Config) {l s : List Nat} (φ : Nat
     (bmap ((vsaModel live).mem c) (dcText.map Prod.fst ++ l)) (bmap_agree _ _) (bmap_agree _ _)
     hok φ ?_
   intro G
-  exact dc_boot_wp hlive hpc htext hl hnd rfl hrun
+  exact dc_boot_wpG (twpW (vsaModel live)) hlive hpc htext hl hnd rfl hrun
+    ((roOwn_text roR dcText).trans (exitKont (twpW (vsaModel live)) hlive φ))
 
 end Dc.Mach

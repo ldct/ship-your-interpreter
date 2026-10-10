@@ -373,4 +373,226 @@ theorem as_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
     · bsimp [h8]; rfl
     · bsimp [h14]
 
+/-! ## Splicing a chain -/
+
+/-- The address of the link word after the nodes `pre` of a chain from `a`. -/
+def lend {α : Type} (off a : Nat) : List (Blk × α) → Nat
+  | [] => a
+  | bx :: l => lend off (bx.1.pay + off) l
+
+/-- The link words of a chain from `a`: `a` and each node's. -/
+abbrev links {α : Type} (off a : Nat) (l : List (Blk × α)) : List Nat :=
+  a :: l.map (fun bx => bx.1.pay + off)
+
+theorem lend_mem {α : Type} (off : Nat) :
+    ∀ (a : Nat) (pre : List (Blk × α)), lend off a pre ∈ links off a pre
+  | a, [] => List.mem_cons_self
+  | a, bx :: l => List.mem_cons_of_mem _ (lend_mem off (bx.1.pay + off) l)
+
+theorem lend_append {α : Type} (off : Nat) :
+    ∀ (a : Nat) (pre : List (Blk × α)) (bx : Blk × α),
+      lend off a (pre ++ [bx]) = bx.1.pay + off
+  | a, [], bx => rfl
+  | a, _ :: l, bx => lend_append off _ l bx
+
+/-- A chain whose first word moved: read from `a'` at the new memory. -/
+theorem LChain.move {α : Type} {Mt Mt' : Mem} {off : Nat} {P P' : Blk → α → Prop} {a a' : Nat}
+    {l : List (Blk × α)} (h : LChain Mt off P a l) (ha : ldv .ld Mt' a' = ldv .ld Mt a)
+    (hb : ∀ bx ∈ l, P bx.1 bx.2 → P' bx.1 bx.2 ∧
+      ldv .ld Mt' (bx.1.pay + off) = ldv .ld Mt (bx.1.pay + off)) :
+    LChain Mt' off P' a' l := by
+  cases h with
+  | nil h0 => exact .nil (ha.trans h0)
+  | cons h0 hp hl =>
+    obtain ⟨hp', hw⟩ := hb _ List.mem_cons_self hp
+    exact .cons (ha.trans h0) hp' (hl.frame hw fun bx hm => hb bx (List.mem_cons_of_mem _ hm))
+
+/-- **A node spliced in** after the nodes `pre`: the link word there names
+`c`, `c`'s link holds the old one, every other link word is kept. -/
+theorem LChain.insert {α : Type} {Mt Mt' : Mem} {off : Nat} {P P' : Blk → α → Prop} {c : Blk}
+    {y : α} : ∀ {a : Nat} {pre post : List (Blk × α)}, LChain Mt off P a (pre ++ post) →
+    (links off a (pre ++ post)).Nodup →
+    (∀ bx ∈ pre ++ post, P bx.1 bx.2 → P' bx.1 bx.2) →
+    (∀ a' ∈ links off a (pre ++ post), a' ≠ lend off a pre → ldv .ld Mt' a' = ldv .ld Mt a') →
+    ldv .ld Mt' (lend off a pre) = BitVec.ofNat 64 c.pay → P' c y →
+    ldv .ld Mt' (c.pay + off) = ldv .ld Mt (lend off a pre) →
+    LChain Mt' off P' a (pre ++ (c, y) :: post)
+  | a, [], post, h, hnd, hp, hw, hl, hc, hc24 => by
+    refine .cons hl hc (h.move hc24 fun bx hm hq => ⟨hp bx hm hq, hw _ ?_ ?_⟩)
+    · exact List.mem_cons_of_mem _ (List.mem_map.mpr ⟨bx, hm, rfl⟩)
+    · intro e
+      exact (List.nodup_cons.mp hnd).1 (List.mem_map.mpr ⟨bx, hm, e⟩)
+  | a, (b, x) :: pre, post, h, hnd, hp, hw, hl, hc, hc24 => by
+    cases h with
+    | cons h0 hq hrest =>
+    have hnd' := (List.nodup_cons.mp hnd).2
+    have hne : a ≠ lend off a ((b, x) :: pre) := fun e => (List.nodup_cons.mp hnd).1 (by
+      rw [e]
+      have hm := lend_mem off (b.pay + off) pre
+      rcases List.mem_cons.mp hm with h1 | h1
+      · rw [show lend off a ((b, x) :: pre) = lend off (b.pay + off) pre from rfl, h1]
+        exact List.mem_map.mpr ⟨(b, x), List.mem_cons_self, rfl⟩
+      · obtain ⟨bx, hbx, h2⟩ := List.mem_map.mp h1
+        exact List.mem_map.mpr ⟨bx, List.mem_cons_of_mem _ (List.mem_append_left _ hbx), h2⟩)
+    refine .cons ((hw a List.mem_cons_self hne).trans h0) (hp _ List.mem_cons_self hq) ?_
+    exact LChain.insert hrest hnd' (fun bx hm => hp bx (List.mem_cons_of_mem _ hm))
+      (fun a' ha' hne' => hw a' (List.mem_cons_of_mem _ ha') hne') hl hc hc24
+
+/-- **A node's ghost replaced** in place, every link word kept. -/
+theorem LChain.update {α : Type} {Mt Mt' : Mem} {off : Nat} {P P' : Blk → α → Prop} {c : Blk}
+    {y y' : α} : ∀ {a : Nat} {pre post : List (Blk × α)}, LChain Mt off P a (pre ++ (c, y) :: post) →
+    (∀ bx ∈ pre ++ post, P bx.1 bx.2 → P' bx.1 bx.2) → (P c y → P' c y') →
+    (∀ a' ∈ links off a (pre ++ (c, y) :: post), ldv .ld Mt' a' = ldv .ld Mt a') →
+    LChain Mt' off P' a (pre ++ (c, y') :: post)
+  | a, [], post, h, hp, hc, hw => by
+    cases h with
+    | cons h0 hq hrest =>
+    refine .cons ((hw a List.mem_cons_self).trans h0) (hc hq) (hrest.frame
+      (hw _ (List.mem_cons_of_mem _ List.mem_cons_self)) fun bx hm hq' =>
+        ⟨hp bx hm hq', hw _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+          (List.mem_map.mpr ⟨bx, hm, rfl⟩)))⟩)
+  | a, (b, x) :: pre, post, h, hp, hc, hw => by
+    cases h with
+    | cons h0 hq hrest =>
+    exact .cons ((hw a List.mem_cons_self).trans h0) (hp _ List.mem_cons_self hq)
+      (LChain.update hrest (fun bx hm => hp bx (List.mem_cons_of_mem _ hm)) hc
+        fun a' ha' => hw a' (List.mem_cons_of_mem _ ha'))
+
+/-- A pairwise relation over an appended left list splits. -/
+theorem forall₂_split {α β : Type} {R : α → β → Prop} :
+    ∀ {l1 l2 : List α} {m : List β}, List.Forall₂ R (l1 ++ l2) m →
+      ∃ m1 m2, m = m1 ++ m2 ∧ List.Forall₂ R l1 m1 ∧ List.Forall₂ R l2 m2
+  | [], _, m, h => ⟨[], m, rfl, .nil, h⟩
+  | _ :: l1, l2, _ :: m, .cons h t => by
+    obtain ⟨m1, m2, e, h1, h2⟩ := forall₂_split (l1 := l1) t
+    exact ⟨_ :: m1, m2, by rw [e]; rfl, .cons h h1, h2⟩
+
+theorem forall₂_append {α β : Type} {R : α → β → Prop} :
+    ∀ {l1 l2 : List α} {m1 m2 : List β}, List.Forall₂ R l1 m1 → List.Forall₂ R l2 m2 →
+      List.Forall₂ R (l1 ++ l2) (m1 ++ m2)
+  | [], _, [], _, .nil, h2 => h2
+  | _ :: _, _, _ :: _, _, .cons h t, h2 => .cons h (forall₂_append t h2)
+
+/-- An array node through a memory agreeing on its first 24 bytes. -/
+theorem ANodeAt.congr24 {Mt Mt' : Mem} {c : Blk} {n : ANode} (hq : ANodeAt Mt c n)
+    (hag : ∀ x, c.pay ≤ x → x < c.pay + 24 → imgM Mt' x = imgM Mt x) : ANodeAt Mt' c n :=
+  ⟨by rw [ldv_congr .lw fun j hj => hag _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact hq.idx,
+    hq.idxLt, DatAt.congr16 (fun x h1 h2 => hag x (by omega) (by omega)) hq.dat, hq.sz⟩
+
+/-- An array node denotes an index and value. -/
+abbrev ARel (O : DObjs) (be : Blk × ANode) (iv : Nat × Val) : Prop :=
+  be.2.idx = iv.1 ∧ be.2.v.Den O iv.2
+
+/-- **A datum window inside a block is pending**. -/
+theorem pend_datIn {G : DcG} {b : Blk} (hb : b ∈ G.blocks) (hns : ∀ o ∈ G.strs, o.hb ≠ b ∧ o.tb ≠ b)
+    {a : Nat} (ha : b.pay ≤ a ∧ a + 16 ≤ b.pay + b.sz) (w0 w1 : BitVec 64) :
+    Pend G [b] (datWin a) (fun M => datW M a w0 w1) where
+  out M x hx := by
+    simp only [datWin] at hx
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
+  fix M M' x hx := by
+    simp only [datWin] at hx
+    by_cases h8 : x < a + 8
+    · have hm : x < a + 8 ∨ a + 8 + 8 ≤ x := .inl h8
+      rw [imgM_store_miss (writeLog M [(a, 8, w0)]) w1 hm,
+        imgM_store_miss (writeLog M' [(a, 8, w0)]) w1 hm]
+      exact imgM_store_same _ _ w0 (.inr rfl) ⟨hx.1, h8⟩
+    · exact imgM_store_same _ _ w1 (.inr rfl) ⟨by omega, by omega⟩
+  sub e he := by rw [List.mem_singleton.mp he]; exact hb
+  win x hx := ⟨b, List.mem_singleton_self _, by
+    simp only [datWin, Blk.In, Blk.pay, Blk.fin] at hx ha ⊢; omega⟩
+  nstr e he o ho := by
+    rw [List.mem_singleton.mp he]; exact ⟨(hns o ho).1.symm, (hns o ho).2.symm⟩
+
+/-- **A node's value replaced, before the old one is released**: viewed at
+the memory with the new datum stored over node `c`'s datum, the node holds
+`g` (denoting `v`) and the old datum is a handle; the machine memory is
+pending on the node's datum window. -/
+theorem DcAt.setNode {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {en : Entry} {es : List Entry} {pre post : List (Blk × ANode)}
+    {c : Blk} {x : ANode} {m1 m2 : List (Nat × Val)} {v : Val} {w0 w1 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hst : st.regs r = en :: es) (harr : e.arr = pre ++ (c, x) :: post)
+    (hm1 : List.Forall₂ (ARel ⟨L, G.strs⟩) pre m1) (hm2 : List.Forall₂ (ARel ⟨L, G.strs⟩) post m2)
+    (hd : DatRegs w0 w1 g) (hv : g.Den ⟨L, G.strs⟩ v) (hxv : ∃ w, x.v.Den ⟨L, G.strs⟩ w) :
+    DcAt S (datW M (c.pay + 8) w0 w1) H F L C
+        (G.setReg r ((b, { e with arr := pre ++ (c, ⟨x.idx, g⟩) :: post }) :: l)) (x.v :: hs)
+        (st.setReg r ({ en with arr := m1 ++ (x.idx, v) :: m2 } :: es)) ∧
+      Pend (G.setReg r ((b, { e with arr := pre ++ (c, ⟨x.idx, g⟩) :: post }) :: l)) [c]
+        (datWin (c.pay + 8)) (fun M => datW M (c.pay + 8) w0 w1) := by
+  have hi := h.heap.heap
+  have lo := G.levOnly h.nodup hr hl
+  have hbe : (b, e) ∈ G.regs r := by rw [hl]; exact List.mem_cons_self
+  have hcA : (c, x) ∈ e.arr := by rw [harr]; exact List.mem_append_right _ List.mem_cons_self
+  have hcG : c ∈ G.blocks := G.arr_mem hr hbe hcA
+  have hcl := h.heap.raw.live c hcG
+  obtain ⟨hw0, hp0⟩ := h.regWord hr hl
+  have hch0 := hp0.arr
+  rw [harr] at hch0
+  have hnc := hch0.forall (c, x) (List.mem_append_right _ List.mem_cons_self)
+  have hcsz := hnc.sz
+  have hcb : c ∈ RLev.blocks (b, e) := RLev.mem_blocks_arr (be := (b, e)) (bn := (c, x)) hcA
+  -- the stores touch only `c`'s datum
+  have hwin : ∀ y, ¬ (c.pay + 8 ≤ y ∧ y < c.pay + 24) → imgM (datW M (c.pay + 8) w0 w1) y = imgM M y :=
+    fun y hy => by rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
+  have hoth : ∀ c' ∈ H.live, c' ≠ c → ∀ y, c'.In y → imgM (datW M (c.pay + 8) w0 w1) y = imgM M y :=
+    fun c' hc' hne y hy => hwin y fun hw => live_apart hi hc' hcl hne hy (by
+      simp only [Blk.In, Blk.pay, Blk.fin] at hw hcsz ⊢; omega)
+  have hn : (pre.map (·.1) ++ c :: post.map (·.1)).Nodup := by
+    have := (List.nodup_cons.mp lo.nodup).2
+    simpa [RLev.blocks, harr] using this
+  have hpre : ∀ bx ∈ pre ++ post, bx.1 ≠ c := fun bx hm e1 => by
+    obtain ⟨-, hB, hdis⟩ := List.nodup_append.mp hn
+    rcases List.mem_append.mp hm with hm | hm
+    · exact hdis _ (List.mem_map.mpr ⟨bx, hm, rfl⟩) _ List.mem_cons_self e1
+    · exact (List.nodup_cons.mp hB).1 (e1 ▸ List.mem_map.mpr ⟨bx, hm, rfl⟩)
+  have hmemA : ∀ bx ∈ pre ++ post, bx ∈ e.arr := fun bx hm => by
+    rw [harr]
+    rcases List.mem_append.mp hm with hm | hm
+    · exact List.mem_append_left _ hm
+    · exact List.mem_append_right _ (List.mem_cons_of_mem _ hm)
+  have hbl := h.heap.raw.live b (G.reg_mem hr hbe)
+  have hbsz := hp0.sz
+  have hbc : b ≠ c := fun e1 => (List.nodup_cons.mp lo.nodup).1 (e1 ▸ List.mem_map.mpr ⟨_, hcA, rfl⟩)
+  have h1 := h.setArr (N := []) (hs := x.v :: hs) (arr' := pre ++ (c, ⟨x.idx, g⟩) :: post)
+    (am := m1 ++ (x.idx, v) :: m2) hr hl hst (fun _ h => (by cases h)) List.nodup_nil
+    (List.Perm.of_eq (by simp [harr]))
+    (fun y => by
+      rw [harr]
+      simp only [List.map_append, List.map_cons, List.count_append, List.count_cons]
+      omega)
+    (fun y hy => hwin y fun hw => hy (.inl ⟨c, by simp [harr], by
+      simp only [Blk.In, Blk.pay, Blk.fin] at hw hcsz ⊢; omega⟩))
+    (hch0.update (P' := ANodeAt (datW M (c.pay + 8) w0 w1))
+      (fun bx hm hq => hq.congr24 fun y h1 h2 => hoth bx.1
+        (h.heap.raw.live _ (G.arr_mem hr hbe (hmemA bx hm))) (hpre bx hm) y (by
+          have := hq.sz; simp only [Blk.In, Blk.pay, Blk.fin] at h1 h2 this ⊢; omega))
+      (fun hq => ⟨by
+          rw [ldv_congr .lw fun j hj => hwin _ (by simp only [widthOfM] at hj; omega)]; exact hq.idx,
+        hq.idxLt, slotMem_dat hd, hq.sz⟩)
+      fun a' ha' => ldv_congr .ld fun j hj => hwin _ fun hw => by
+        simp only [widthOfM] at hj
+        simp only [links, List.mem_cons, List.mem_map] at ha'
+        rcases ha' with rfl | ⟨bx, hbx, rfl⟩
+        · exact live_apart hi hbl hcl hbc (a := b.pay + 16 + j)
+            (by simp only [Blk.In, Blk.pay, Blk.fin] at hbsz ⊢; omega)
+            (by simp only [Blk.In, Blk.pay, Blk.fin] at hw hcsz ⊢; omega)
+        · by_cases hbc' : bx.1 = c
+          · rw [hbc'] at hw; omega
+          · have hbm : bx ∈ e.arr := by rw [harr]; exact hbx
+            have hq := hp0.arr.forall bx hbm
+            have := hq.sz
+            exact live_apart hi (h.heap.raw.live _ (G.arr_mem hr hbe hbm)) hcl hbc'
+              (a := bx.1.pay + 24 + j) (by simp only [Blk.In, Blk.pay, Blk.fin] at this ⊢; omega)
+              (by simp only [Blk.In, Blk.pay, Blk.fin] at hw hcsz ⊢; omega))
+    (forall₂_append hm1 (.cons ⟨rfl, hv⟩ hm2))
+    (fun g' hg' => (List.mem_cons.mp hg').elim (fun e1 => e1 ▸ hxv)
+      fun hg' => h.den.hsDen g' (List.mem_cons_of_mem _ hg'))
+  refine ⟨h1, pend_datIn (G := G.setReg r ((b, { e with arr := pre ++ (c, ⟨x.idx, g⟩) :: post }) :: l))
+    (a := c.pay + 8) ?_ (fun o ho => ⟨fun e1 => (lo.strs o ho).1 (e1 ▸ hcb),
+    fun e1 => (lo.strs o ho).2 (e1 ▸ hcb)⟩) (by simp only at hcsz; omega) w0 w1⟩
+  exact DcG.arr_mem hr (be := (b, { e with arr := pre ++ (c, ⟨x.idx, g⟩) :: post }))
+    (by simp [DcG.setReg]) (bn := (c, ⟨x.idx, g⟩)) (by simp)
+
 end Dc.Mach

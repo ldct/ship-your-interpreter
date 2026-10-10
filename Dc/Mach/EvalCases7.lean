@@ -95,7 +95,7 @@ theorem evs_reg_at (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
     obtain ⟨hfu', -, -⟩ := hfu.evalReg hres hg
     have hst := e.step.then (by rw [← List.append_assoc]; exact h4) (by rw [hsn.lk]; exact Nat.le_refl _)
       (by rw [List.append_assoc] at hpin4; exact hpin4)
-      fun a e1 e2 e3 e5 => hout a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))
+      fun a e1 e2 e3 e5 _ => hout a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))
         (by omega)
     obtain ⟨o', -, -, -, ev'⟩ := ev_advS e.ev e.kc e.c23 e.k1 e.e2 hst (e.hal hlc)
       (h1.push (h1.regGet hg)) (h2.stack _) (m := 1) (td' := td) (neg' := false) (by simp) e.ev.tdLt
@@ -112,7 +112,7 @@ theorem evs_reg_at (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
     obtain ⟨hfu', -, -⟩ := hfu.evalRegNone hres hg
     have hst := e.step.then (by rw [← List.append_assoc]; exact h3) (Nat.le_refl _)
       (StrPin.refl _ _)
-      fun a e1 e2 e3 e5 => hout a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))
+      fun a e1 e2 e3 e5 _ => hout a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))
         (by omega)
     obtain ⟨o', -, -, -, ev'⟩ := ev_advS e.ev e.kc e.c23 e.k1 e.e2 hst (e.hal hlc) h1 h2
       (m := 1) (td' := td) (neg' := false) (by simp) e.ev.tdLt

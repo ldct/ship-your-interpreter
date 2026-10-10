@@ -29,7 +29,7 @@ structure EvStep (S : Nat → Prop) (sp W al : Nat) (M : Mem) (G : DcG) (hs xs :
   ex : ex.length ≤ 2
   pin : StrPin G.strs G'.strs (xs ++ hs)
   out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn (sp - 176) (W - 176) a →
-    ¬ (sp - 176 ≤ a ∧ a < sp - 176 + 88) → imgM M' a = imgM M a
+    ¬ (sp - 176 ≤ a ∧ a < sp - 176 + 88) → ¬ InP a → imgM M' a = imgM M a
 
 /-- `dc_func`'s post after the lookahead store. -/
 theorem EvStep.ofPost {S : Nat → Prop} {sp W al : Nat} {M Mc : Mem} {G : DcG} {hs xs : List GV}
@@ -37,14 +37,14 @@ theorem EvStep.ofPost {S : Nat → Prop} {sp W al : Nat} {M Mc : Mem} {G : DcG} 
     {ex : List GV} (hmc : MemOnly (fun a => sp - 176 + 28 ≤ a ∧ a < sp - 176 + 32) Mc M)
     (hp : FnPost S al (sp - 176) (W - 176) Mc G (xs ++ hs) M' H' F' L' C' G' st' ex) :
     EvStep S sp W al M G hs xs M' H' F' L' C' G' st' ex :=
-  ⟨hp.dc, hp.lk, hp.ex, hp.pin, fun a e1 e2 e3 e4 e5 => by
+  ⟨hp.dc, hp.lk, hp.ex, hp.pin, fun a e1 e2 e3 e4 e5 _ => by
     rw [hp.out a e1 e2 e3 e4]; exact hmc a (fun hw => e5 (by omega))⟩
 
 /-- No step since the loop head. -/
 theorem EvStep.refl {S : Nat → Prop} {sp W : Nat} {M : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {hs xs : List GV} {st : St}
     (h : DcAt S M H F L C G (xs ++ hs) st) : EvStep S sp W 0 M G hs xs M H F L C G st [] :=
-  ⟨by simpa using h, by simp, by simp, StrPin.refl _ _, fun _ _ _ _ _ _ => rfl⟩
+  ⟨by simpa using h, by simp, by simp, StrPin.refl _ _, fun _ _ _ _ _ _ _ => rfl⟩
 
 /-- **Steps compose**: a later step (state `st''` over the same handles,
 no new lost references, the pinned strings kept) whose writes are confined
@@ -56,11 +56,11 @@ theorem EvStep.then {S : Nat → Prop} {sp W al : Nat} {M : Mem} {G : DcG} {hs x
     {st'' : St} (hdc : DcAt S M'' H'' F'' L'' C'' G'' (ex ++ (xs ++ hs)) st'')
     (hlk : G''.lk.length ≤ G'.lk.length) (hpin : StrPin G'.strs G''.strs (ex ++ (xs ++ hs)))
     (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn (sp - 176) (W - 176) a →
-      ¬ (sp - 176 ≤ a ∧ a < sp - 176 + 88) → imgM M'' a = imgM M' a) :
+      ¬ (sp - 176 ≤ a ∧ a < sp - 176 + 88) → ¬ InP a → imgM M'' a = imgM M' a) :
     EvStep S sp W al M G hs xs M'' H'' F'' L'' C'' G'' st'' ex :=
   ⟨hdc, by have := hp.lk; omega, hp.ex,
     hp.pin.trans (hpin.mono fun g hg => List.mem_append_right _ hg),
-    fun a e1 e2 e3 e4 e5 => (hout a e1 e2 e4 e5).trans (hp.out a e1 e2 e3 e4 e5)⟩
+    fun a e1 e2 e3 e4 e5 e6 => (hout a e1 e2 e4 e5 e6).trans (hp.out a e1 e2 e3 e4 e5 e6)⟩
 
 /-- **The invariant again** after the steps `EvStep` (the scratch words
 excepted). -/
@@ -85,7 +85,7 @@ theorem EvAt.step {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
     fun a ha hw => by
       have := above_sp (sp := sp - 176) (a := a) (by simp only [heapEnd] at hab ⊢; omega) ha
       rw [hp.out a this.1 (nglob_pin this.2.1) (not_ocG_of_ge (by simp only [heapEnd] at hab ⊢; omega) ha)
-        (this.2.2 _) hw]
+        (this.2.2 _) hw (fun h => by simp only [InP, inPtrAddr] at h; simp only [heapEnd] at hab; omega)]
   obtain ⟨o', ho', e1, e2, e3⟩ := hp.pin o ev.strIn (by
     have := ev.held; cases e : hs with
     | nil => rw [e] at this; cases this
@@ -131,19 +131,20 @@ theorem EvAt.step {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
             simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr, mulBaseAddr] at hg e1 e2; omega)
           (fun hf => by have := ho.2.2; simp only [frameIn, heapStart, heapEnd] at hf this hab; omega)
           (by simp only [mulBaseAddr, heapEnd] at e1 e2 hab; omega)
+          (fun h => by simp only [InP, inPtrAddr, mulBaseAddr] at h e1 e2; omega)
       err := ev.err
       globs := by
         have g := ev.globs
-        have hlow : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → a < heapStart →
-            imgM M' a = imgM M a := fun a e1 e2 e3 e4 => by
+        have hlow : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → a < heapStart → ¬ InP a →
+            imgM M' a = imgM M a := fun a e1 e2 e3 e4 e5 => by
           exact hp.out a e1 (nglob_pin e2) e3 (fun hf => by simp only [frameIn, heapStart, heapEnd] at hf e4 hab; omega)
-            (by simp only [heapStart, heapEnd] at e4 hab; omega)
+            (by simp only [heapStart, heapEnd] at e4 hab; omega) e5
         have hw : ∀ b, 0x8001cd30 ≤ b → b < 0x8001cd34 ∨ (0x8001cd84 ≤ b ∧ b < 0x8001cd88) →
             imgM M' b = imgM M b := fun b h1 h2 => hlow b
           (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
           (by simp only [DcGlob, dc_addrs]; omega)
           (by simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr]; omega)
-          (by simp only [heapStart]; omega)
+          (by simp only [heapStart]; omega) (by simp only [InP, inPtrAddr]; omega)
         exact ⟨g.intrOwn,
           by rw [ldv_congr .lw fun i hi => hw _ (by simp only [widthOfM] at hi; omega)
             (.inr (by simp only [widthOfM] at hi; omega))]; exact g.intr,
@@ -151,7 +152,7 @@ theorem EvAt.step {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
           by rw [ldv_congr .lw fun i hi => hw _ (by simp only [widthOfM] at hi; omega)
             (.inl (by simp only [widthOfM] at hi; omega))]; exact g.la, g.inOwn⟩
       out := fun a e1 e2 e3 e4 e5 e6 e7 => by
-        rw [hp.out a e1 e2 e3 e4 (fun hw => e5 (by omega))]
+        rw [hp.out a e1 e2 e3 e4 (fun hw => e5 (by omega)) e7]
         exact ev.out a e1 e2 e3 e4 e5 e6 e7 }
 
 /-- **The invariant after `dc_func` returns** (`EvAt.step` from its post). -/

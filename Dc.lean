@@ -127,3 +127,4 @@ import Dc.Mach.DcCmpop
 import Dc.Mach.DcPrint
 import Dc.Mach.DcPrintAll
 import Dc.Mach.DcNum2Int
+import Dc.Mach.DcMakeString

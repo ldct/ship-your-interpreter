@@ -57,7 +57,7 @@ structure BootPre (S : Nat → Prop) (M : Mem) (sp W : Nat) (s : List Nat) : Pro
   bcFree : ∀ a, bcFreeAddr ≤ a → a < bcFreeAddr + 8 → S a
   frame : StackFrame S sp W
   room : heapEnd + W ≤ sp
-  big : 400 ≤ W
+  big : 416 ≤ W
   script : OwnedCStr S M scriptAddr s.length
   text : ∀ i, i < s.length → imgM M (scriptAddr + i) = BitVec.ofNat 8 (s.getD i 0)
   byte : ∀ c ∈ s, c < 256

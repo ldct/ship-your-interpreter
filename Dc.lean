@@ -146,3 +146,6 @@ import Dc.Mach.DcFuncArm0
 import Dc.Mach.DcFuncArm1
 import Dc.Mach.DcFuncArm2
 import Dc.Mach.DcFuncPop
+import Dc.Mach.DcFuncArmV1
+import Dc.Mach.DcFuncArmV2
+import Dc.Mach.DcFuncArmV3

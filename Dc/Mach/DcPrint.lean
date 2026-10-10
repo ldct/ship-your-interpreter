@@ -113,7 +113,8 @@ theorem pr_num {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {x : NumObj}
     {ob sp : Nat} {nl keep : Bool}
-    (h : DcAt S M H F L C G (.num x.rep.p :: hs) st) (hx : x ∈ L) (hhs : hs.length + 1 ≤ 2 ^ 20)
+    (h : DcAt S M H F L C G hs st) (hd : keep = false → hs.head? = some (.num x.rep.p))
+    (hx : x ∈ L) (hhs : hs.length ≤ 2 ^ 20)
     (hsz : x.rep.len + x.rep.scale < 2 ^ 20) (hmb : MulBase S M) (hob2 : 2 ≤ ob) (hob : ob < 2 ^ 31)
     (herr : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a)
     (hsf : StackFrame S sp prN) (hab : heapEnd + prN ≤ sp)
@@ -121,7 +122,7 @@ theorem pr_num {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     (h11 : R 11 = BitVec.ofNat 64 x.rep.p) (h12 : R 12 = BitVec.ofNat 64 ob)
     (h13 : R 13 = boolWord nl) (h14 : R 14 = boolWord keep) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R → R' 2 = R 2 →
-      DcAt S M' H' F' L' C' G (if keep then .num x.rep.p :: hs else hs) st →
+      DcAt S M' H' F' L' C' G (if keep then hs else hs.tail) st →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a) →
       DWO live S Q (t ++ Dc.outStr (Dc.Num.out 70 ob x.rep.num ++ nlBytes nl)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp prN M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
@@ -160,7 +161,7 @@ theorem pr_num {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
   generalize writeLog (writeLog M [(sp - 48 + 40, 8, R 1)])
       [(sp - 48 + 8, 8, BitVec.ofNat 64 nl.toNat)] = M1 at hM1 h1 hmb1 m8 m40 ⊢
-  refine dc_out_num_spec hlive (keep := keep) h1 hx hhs hsz hmb1 hob2 hob herr
+  refine dc_out_num_spec hlive (keep := keep) h1 hd hx hhs hsz hmb1 hob2 hob herr
     (hsf.within (m := 48) (n := onN) (by omega) (by decide)) (by simp only [heapEnd]; omega) _
     (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
     (fun R' M' H' F' L' C' hk' e2 hD hfr => ?_)
@@ -215,13 +216,14 @@ theorem pr_str {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {o : StrObj}
     {sp : Nat} {nl keep : Bool}
-    (h : DcAt S M H F L C G (.str o.hb.pay :: hs) st) (ho : o ∈ G.strs)
+    (h : DcAt S M H F L C G hs st) (hd : keep = false → hs.head? = some (.str o.hb.pay))
+    (ho : o ∈ G.strs)
     (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : (R 10).toNat % 2 ^ 32 = 2)
     (h11 : R 11 = BitVec.ofNat 64 o.hb.pay) (h13 : R 13 = boolWord nl) (h14 : R 14 = boolWord keep)
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' G', Keeps cClob R' R → R' 2 = R 2 → SameNodes G G' →
-      DcAt S M' H' F L C G' (if keep then .str o.hb.pay :: hs else hs) st → StkOut sp 112 M' M →
+      DcAt S M' H' F L C G' (if keep then hs else hs.tail) st → StkOut sp 112 M' M →
       DWO live S Q (t ++ Dc.outStr (o.s ++ nlBytes nl)) (R 1) R' M') :
     DWO live S Q t 0x8000200c#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -249,7 +251,7 @@ theorem pr_str {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
   generalize writeLog (writeLog M [(sp - 48 + 40, 8, R 1)])
       [(sp - 48 + 8, 8, BitVec.ofNat 64 nl.toNat)] = M1 at hM1 h1 m8 m40 ⊢
-  refine dc_out_str_spec hlive (keep := keep) h1 ho
+  refine dc_out_str_spec hlive (keep := keep) h1 hd ho
     (hsf.within (m := 48) (n := 64) (by omega) (by decide)) (by simp only [heapEnd]; omega) _
     (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
     (fun R' M' H' G' hk' e2 hsn hD hstk => ?_)
@@ -278,12 +280,13 @@ theorem pr_str {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
 
 /-- **`dc_print (value, obase, newline, discard)`** at `0x8000200c`: the
 console extended by `Val.out 70 obase v` (and a newline when `nl`), the handle
-`g` kept when `keep` and released otherwise; `fflush` is a no-op. -/
+`g` (with `DC_TOSS`, the head of the handles `hs`) released unless `keep`; `fflush` is a no-op. -/
 theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {g : GV} {v : Val}
     {ob sp : Nat} {nl keep : Bool}
-    (h : DcAt S M H F L C G (g :: hs) st) (hv : g.Den ⟨L, G.strs⟩ v) (hhs : hs.length + 1 ≤ 2 ^ 20)
+    (h : DcAt S M H F L C G hs st) (hd : keep = false → hs.head? = some g)
+    (hv : g.Den ⟨L, G.strs⟩ v) (hhs : hs.length ≤ 2 ^ 20)
     (hsz : ∀ x ∈ L, g = .num x.rep.p → x.rep.len + x.rep.scale < 2 ^ 20) (hmb : MulBase S M)
     (hob2 : 2 ≤ ob) (hob : ob < 2 ^ 31)
     (herr : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a)
@@ -292,7 +295,7 @@ theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     (h11 : R 11 = BitVec.ofNat 64 g.ptr) (h12 : R 12 = BitVec.ofNat 64 ob)
     (h13 : R 13 = boolWord nl) (h14 : R 14 = boolWord keep) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps cClob R' R → R' 2 = R 2 → SameNodes G G' →
-      DcAt S M' H' F' L' C' G' (if keep then g :: hs else hs) st →
+      DcAt S M' H' F' L' C' G' (if keep then hs else hs.tail) st →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a) →
       DWO live S Q (t ++ Dc.outStr (Dc.Val.out 70 ob v ++ nlBytes nl)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp prN M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
@@ -301,14 +304,14 @@ theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
   have hrm : 224 ≤ rmStack (2 ^ 30) := by unfold rmStack; omega
   cases g <;> cases v <;> simp only [GV.Den] at hv
   · obtain ⟨x, hx, rfl, rfl⟩ := hv
-    exact pr_num hlive h hx hhs (hsz x hx rfl) hmb hob2 hob herr hsf hab R h2 h10 h11 h12 h13 h14 hal
+    exact pr_num hlive h hd hx hhs (hsz x hx rfl) hmb hob2 hob herr hsf hab R h2 h10 h11 h12 h13 h14 hal
       (fun R' M' H' F' L' C' hk' e2 hD hfr => hk R' M' H' F' L' C' G hk' e2 ⟨rfl, rfl, rfl⟩ hD hfr) hoom
   · obtain ⟨o, ho, rfl, rfl⟩ := hv
     have hsf' := hsf
     rw [hNW] at hsf' hab
     have hsf112 : StackFrame S sp 112 := by
       simpa using hsf'.within (m := 0) (n := 112) (by omega) (by decide)
-    exact pr_str hlive h ho hsf112 (by omega) R h2 h10 h11 h13 h14 hal fun R' M' H' G' hk' e2 hsn hD hstk =>
+    exact pr_str hlive h hd ho hsf112 (by omega) R h2 h10 h11 h13 h14 hal fun R' M' H' G' hk' e2 hsn hD hstk =>
         hk R' M' H' F L C G' hk' e2 hsn hD fun a e1 e2 _ e4 =>
           hstk a e1 e2 fun hf => e4 (by simp only [frameIn] at hf ⊢; rw [hNW]; omega)
 

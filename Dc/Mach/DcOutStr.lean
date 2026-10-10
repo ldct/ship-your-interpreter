@@ -196,19 +196,20 @@ theorem os_toss {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
 /-- The registers `dc_out_str` changes. -/
 abbrev outStrClob : List Nat := [10, 11, 12, 13, 14, 15]
 
-/-- **`dc_out_str (string, discard)`** at `0x800039e0` on the handle
-`.str o.hb.pay` the caller holds: the console extended by the string, the
+/-- **`dc_out_str (string, discard)`** at `0x800039e0` on the string
+`o` (with `DC_TOSS`, the head of the caller's handles `hs`): the console extended by the string, the
 handle kept (`keep`) or released. -/
 theorem dc_out_str_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {o : StrObj}
     {sp : Nat} {keep : Bool}
-    (h : DcAt S M H F L C G (.str o.hb.pay :: hs) st) (ho : o ∈ G.strs)
+    (h : DcAt S M H F L C G hs st) (hd : keep = false → hs.head? = some (.str o.hb.pay))
+    (ho : o ∈ G.strs)
     (hsf : StackFrame S sp 64) (hab : heapEnd + 64 ≤ sp)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : R 10 = BitVec.ofNat 64 o.hb.pay)
     (h11 : R 11 = boolWord keep) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' G', Keeps outStrClob R' R → R' 2 = R 2 → SameNodes G G' →
-      DcAt S M' H' F L C G' (if keep then .str o.hb.pay :: hs else hs) st → StkOut sp 64 M' M →
+      DcAt S M' H' F L C G' (if keep then hs else hs.tail) st → StkOut sp 64 M' M →
       DWO live S Q (t ++ Dc.outStr o.s) (R 1) R' M') :
     DWO live S Q t 0x800039e0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -298,7 +299,11 @@ theorem dc_out_str_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
   have q9 : R' 9 = boolWord keep := by rw [hk'.get 9 (by decide)]; bsimp []
   have hS' : HeapOwn S := fun a e1 e2 => hD.heap.heap.own a e1 e2
   cases keep
-  · have q9' : R' 9 = 0#64 := q9
+  · obtain ⟨hs0, rfl⟩ : ∃ hs0, hs = .str o.hb.pay :: hs0 := by
+      rcases hs with _ | ⟨g0, hs0⟩
+      · exact absurd (hd rfl) (by simp)
+      · exact ⟨hs0, by rw [Option.some.inj (hd rfl)]⟩
+    have q9' : R' 9 = 0#64 := q9
     bc_run hlive hS' [q2, q9']
     refine os_toss hlive hD ho (sp := sp) (by simpa using hsf.within (m := 0) (n := 32) (by omega) (by decide))
       (by simp only [heapEnd]; omega) R' q8 q2 f16 f8 f24 hal

@@ -121,7 +121,8 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M1 : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {x : NumObj}
     {ob sp : Nat} {keep : Bool} {s0v ra : BitVec 64}
-    (h1 : DcAt S M1 H F L C G (.num x.rep.p :: hs) st) (hx : x ∈ L) (hhs : hs.length + 1 ≤ 2 ^ 20)
+    (h1 : DcAt S M1 H F L C G hs st) (hd : keep = false → hs.head? = some (.num x.rep.p))
+    (hx : x ∈ L) (hhs : hs.length ≤ 2 ^ 20)
     (hsz : x.rep.len + x.rep.scale < 2 ^ 20) (hmb : MulBase S M1) (hob2 : 2 ≤ ob) (hob : ob < 2 ^ 31)
     (herr : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a)
     (hsf : StackFrame S sp onN) (hab : heapEnd + onN ≤ sp)
@@ -133,7 +134,7 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     (e12 : R0 12 = 0x800020d8#64) (e13 : R0 13 = 0#64) (e1 : R0 1 = 0x80002a78#64)
     (e8 : R0 8 = boolWord keep)
     (hk : ∀ R' M' H' F' L' C', Keeps (2 :: 8 :: cClob) R' R0 → R' 2 = BitVec.ofNat 64 sp → R' 8 = s0v →
-      DcAt S M' H' F' L' C' G (if keep then .num x.rep.p :: hs else hs) st →
+      DcAt S M' H' F' L' C' G (if keep then hs else hs.tail) st →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp onN a → imgM M' a = imgM M1 a) →
       DWO live S Q (t ++ Dc.outStr (Dc.Num.out 70 ob x.rep.num)) ra R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp onN M1 ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
@@ -165,8 +166,8 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
       hmb.own, fun a ha => h1.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega)⟩,
       Nat.le_refl _, by decide, e2, by rw [e1]; decide, by rw [e12]; decide, e13⟩
     ⟨hx, h1.den.norm x hx, h1.den.pos x hx, hsz,
-      fun y hy => by have := h1.refs_le hy; simp only [List.length_cons] at this; omega,
-      h1.den.live, h1.den.owns, h1.den.mz, h1.kzero (by simp only [List.length_cons]; omega),
+      fun y hy => by have := h1.refs_le hy; omega,
+      h1.den.live, h1.den.owns, h1.den.mz, h1.kzero (by omega),
       h1.den.mo, h1.view.ow, h1.den.ov, h1.den.norm _ h1.den.mo, h1.den.pos _ h1.den.mo, hmb.word,
       hob2, hob⟩
     ⟨fun R' M' t' H' F' hk' hI' hb' hfr' => ?_, fun t' R' M' sp' hlo hhi hr2 hfr' => ?_⟩
@@ -195,7 +196,11 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     have hfr : ∀ a, OutHeap a → ¬ ocG a → ¬ frameIn sp onN a → imgM M' a = imgM M1 a := fun a ho hg hf =>
       hfr' a ho hg fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
     cases keep
-    · have q8' : R' 8 = 0#64 := by rw [q8]; rfl
+    · obtain ⟨hs0, rfl⟩ : ∃ hs0, hs = .num x.rep.p :: hs0 := by
+        rcases hs with _ | ⟨g0, hs0⟩
+        · exact absurd (hd rfl) (by simp)
+        · exact ⟨hs0, by rw [Option.some.inj (hd rfl)]⟩
+      have q8' : R' 8 = 0#64 := by rw [q8]; rfl
       bc_run hlive hS' [q2, q8'] at 0x800048c0
       bc_run hlive hS' [q2, q8'] at 0x800048c0
       refine bc_free_num_dc hlive h' (hsf.slot (by omega) (by omega) (by omega))
@@ -241,8 +246,8 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     exact hoom t' R' M' sp' ⟨by omega, by omega, hr2, fun a ho _ hf hg =>
       hfr' a ho hg fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)⟩
 
-/-- **`dc_out_num (value, obase, discard)`** at `0x80002a4c` on the handle
-`.num x.rep.p` the caller holds: the console extended by `Num.out 70 ob` of
+/-- **`dc_out_num (value, obase, discard)`** at `0x80002a4c` on the number
+`x` (with `DC_TOSS`, the head of the caller's handles `hs`): the console extended by `Num.out 70 ob` of
 the number, the handle kept (`keep`, `DC_KEEP`) or released (`DC_TOSS`). Off
 the heap only `out_char`'s bytes and the stack below `sp` change; out of
 memory reaches `dc_memfail`. -/
@@ -250,14 +255,15 @@ theorem dc_out_num_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {x : NumObj}
     {ob sp : Nat} {keep : Bool}
-    (h : DcAt S M H F L C G (.num x.rep.p :: hs) st) (hx : x ∈ L) (hhs : hs.length + 1 ≤ 2 ^ 20)
+    (h : DcAt S M H F L C G hs st) (hd : keep = false → hs.head? = some (.num x.rep.p))
+    (hx : x ∈ L) (hhs : hs.length ≤ 2 ^ 20)
     (hsz : x.rep.len + x.rep.scale < 2 ^ 20) (hmb : MulBase S M) (hob2 : 2 ≤ ob) (hob : ob < 2 ^ 31)
     (herr : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a)
     (hsf : StackFrame S sp onN) (hab : heapEnd + onN ≤ sp)
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : R 10 = BitVec.ofNat 64 x.rep.p)
     (h11 : R 11 = BitVec.ofNat 64 ob) (h12 : R 12 = boolWord keep) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R → R' 2 = R 2 →
-      DcAt S M' H' F' L' C' G (if keep then .num x.rep.p :: hs else hs) st →
+      DcAt S M' H' F' L' C' G (if keep then hs else hs.tail) st →
       (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp onN a → imgM M' a = imgM M a) →
       DWO live S Q (t ++ Dc.outStr (Dc.Num.out 70 ob x.rep.num)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp onN M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
@@ -298,7 +304,7 @@ theorem dc_out_num_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
       [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 x.rep.p)])
       [(2147601808, 4, 0#64)]) a = imgM M a := fun a hg hf => hM1 a fun hp => by
     simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr, frameIn, hNW] at hg hf hp; omega
-  refine out_num_call hlive (s0v := R 8) (ra := R 1) (keep := keep) h1 hx hhs hsz hmb1 hob2 hob herr hsf hab
+  refine out_num_call hlive (s0v := R 8) (ra := R 1) (keep := keep) h1 hd hx hhs hsz hmb1 hob2 hob herr hsf hab
     ?_ ?_ ?_ ?_ hal _ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     (fun R' M' H' F' L' C' hk' e2 e8 hd hfr => hk R' M' H' F' L' C' ?_ (by rw [e2, h2]) hd
       fun a ho hg hc hf => (hfr a ho hg hc hf).trans (hfr1 a hc hf))

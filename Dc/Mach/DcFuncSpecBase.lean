@@ -61,6 +61,10 @@ structure FnPre (S : Nat → Prop) (sp W : Nat) (M : Mem) (H : Heap) (F : List B
   size : FnSize st
   c256 : c < 256
   pk : ∀ r, peek = some r → r < 256
+  /-- Every register's top array strictly sorted by index (open premise of
+  `dc_array_get_spec`, for `;`; supplier: an M10 state invariant, kept by
+  `arrSet`). -/
+  srt : ∀ r e es, st.regs r = e :: es → e.arr.Pairwise (fun a b => a.1 < b.1)
 
 /-- `dc_func`'s argument registers: `sp`, `c`, `peekc`, `negcmp`, an aligned `ra`. -/
 structure FnRegs (R : Nat → BitVec 64) (sp c : Nat) (peek : Option Nat) (neg : Bool) : Prop where

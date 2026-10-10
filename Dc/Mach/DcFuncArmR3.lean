@@ -50,19 +50,23 @@ theorem FnAt.popKeep {S : Nat → Prop} {sp W : Nat} {M0 M M' : Mem} {R0 R : Nat
     have := above_sp hab (a := sp - 192 + o + j) (by omega)
     exact hout _ this.1 this.2.1 (this.2.2 _) (.inl (by simp only [fnSlot, widthOfM] at hj ⊢; omega))
 
-/-- **`dc_pop (&datum)`** as `fn_pop0`, the popped route also keeping the
-frame word at `sp + 0`. -/
-theorem fn_popW (hlive : ∀ p ∈ dcText, live p.1) {p tgt0 : Nat}
+/-- **`dc_pop (&datum)`** as `fn_pop0`, the status tested by a branch `hb`
+at `p + 4` (`bnez` to `tE`, or `beqz` to `tN`), the popped route also keeping
+the frame words below the slot. -/
+theorem fn_popW (hlive : ∀ p ∈ dcText, live p.1) {p tE tN : Nat}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
     (h10 : R 10 = BitVec.ofNat 64 (fnSlot sp)) (hp : (p + 4) % 4 = 0 ∧ p + 4 < 2 ^ 64)
-    (hj : JalAt live S Q p 0x8000310c) (hb : BnezAt live S Q (p + 4) tgt0)
+    (hj : JalAt live S Q p 0x8000310c)
+    (hb : ∀ t R M, (R 10 ≠ 0#64 → DWO live S Q t (BitVec.ofNat 64 tE) R M) →
+      (R 10 = 0#64 → DWO live S Q t (BitVec.ofNat 64 tN) R M) →
+      DWO live S Q t (BitVec.ofNat 64 (p + 4)) R M)
     (hempty : st.stack = [] → ∀ R' M', FnAt S sp W M0 R0 R' M' → DcAt S M' H F L C G hs st →
-      DWO live S Q t (BitVec.ofNat 64 tgt0) R' M')
+      DWO live S Q t (BitVec.ofNat 64 tE) R' M')
     (hne : ∀ R' M' H' (G' : DcG) g v st', st = st'.push v →
       (∃ c, G = { G' with stk := (c, g) :: G'.stk }) → FnAt S sp W M0 R0 R' M' →
       DcAt S M' H' F L C G' (g :: hs) st' → g.Den ⟨L, G'.strs⟩ v → DatAt M' (fnSlot sp) g →
-      ldv .ld M' (sp - 192 + 0) = ldv .ld M (sp - 192 + 0) →
-      DWO live S Q t (BitVec.ofNat 64 (p + 8)) R' M') :
+      (∀ o, o + 8 ≤ 16 → ldv .ld M' (sp - 192 + o) = ldv .ld M (sp - 192 + o)) →
+      DWO live S Q t (BitVec.ofNat 64 tN) R' M') :
     DWO live S Q t (BitVec.ofNat 64 p) R M := by
   refine hj t R M fun R1 k1 e1 => ?_
   have hc1 := hc.mod (k1.mono (by decide))
@@ -79,7 +83,7 @@ theorem fn_popW (hlive : ∀ p ∈ dcText, live p.1) {p tgt0 : Nat}
       subst est
       cases hden with | cons hh _ => exact hh
     refine hb t R' M' (fun hne' => absurd e10 hne') fun _ => ?_
-    exact hne R' M' H' G' g v st' est eG hc2 h' hv hd (hc1.popKeep (by omega) hout)
+    exact hne R' M' H' G' g v st' est eG hc2 h' hv hd fun o ho => hc1.popKeep ho hout
   · rw [e1]
     exact hb t R' M' (fun _ => hempty he R' M' (hc1.popped hW k2 hout) h')
       fun e => absurd (e10.symm.trans e) (by decide)
@@ -102,11 +106,11 @@ macro "fr_pop_sites_eat " q:num : tactic =>
       have htx : tohostAddr = 0x8001ad00 := rfl
       bc_run hlive hlive [] at 0x8000310c
       exact k _ (by keeps_tac Keeps.refl _ _) (by bsimp [])
-    · refine BnezAt.of_step fun t R M k1 k2 => ?_
+    · intro t R M k1 k2
       simp only [Nat.reduceAdd] at k1 k2 ⊢
       have htx : tohostAddr = 0x8001ad00 := rfl
       bc_run hlive hlive [] at 0x80000d5c $q
-      all_goals first | exact k1 | exact k2))
+      all_goals first | exact k1 | exact k2 | exact fun hn => k2 (Classical.not_not.mp hn)))
 
 /-- `s` after the pop (`0x80000edc`): `dc_register_set (r, datum)`, then
 `DC_EATONE`. -/
@@ -156,7 +160,7 @@ theorem fa_s (hlive : ∀ p ∈ dcText, live p.1)
     bc_run hlive hlive [h11, chW, chW_ne hr, e2] at 0x80000ed4
     bc_run hlive hlive [h11, e2] at 0x80000ed4
     all_goals try exact frame_acc hsf (by omega) (by omega)
-    refine fn_popW (p := 0x80000ed4) (tgt0 := 0x80000d5c) hlive
+    refine fn_popW (p := 0x80000ed4) (tE := 0x80000d5c) (tN := 0x80000edc) hlive
       (h.fnStore hc (a := sp - 192) (by omega) _)
       ((hc.store (a := sp - 192) (by omega) (by omega) _).mod (by keeps_tac Keeps.refl _ _)) hW
       (by bsimp []) (by decide) ?_ ?_ ?_ ?_
@@ -164,8 +168,8 @@ theorem fa_s (hlive : ∀ p ∈ dcText, live p.1)
     · intro he R' M' hc' h'
       rw [dcFunc_s_nil he] at hk
       exact fa_eat hlive (ex := []) h' hc' hk (.eatOne _) (by simp) (by simp) (StrPin.refl _ _)
-    · intro R' M' H' G' g v st' est eG hc' h' hv hd hw
-      simp only [Nat.reduceAdd]
+    · intro R' M' H' G' g v st' est eG hc' h' hv hd hkeep
+      have hw := hkeep 0 (by omega)
       subst est
       rw [dcFunc_s_cons] at hk
       obtain ⟨c, rfl⟩ := eG
@@ -228,7 +232,7 @@ theorem fa_S (hlive : ∀ p ∈ dcText, live p.1)
     bc_run hlive hlive [h11, chW, chW_ne hr, e2] at 0x80001018
     bc_run hlive hlive [h11, e2] at 0x80001018
     all_goals try exact frame_acc hsf (by omega) (by omega)
-    refine fn_popW (p := 0x80001018) (tgt0 := 0x80000d5c) hlive
+    refine fn_popW (p := 0x80001018) (tE := 0x80000d5c) (tN := 0x80001020) hlive
       (h.fnStore hc (a := sp - 192) (by omega) _)
       ((hc.store (a := sp - 192) (by omega) (by omega) _).mod (by keeps_tac Keeps.refl _ _)) hW
       (by bsimp []) (by decide) ?_ ?_ ?_ ?_
@@ -236,8 +240,8 @@ theorem fa_S (hlive : ∀ p ∈ dcText, live p.1)
     · intro he R' M' hc' h'
       rw [dcFunc_S_nil he] at hk
       exact fa_eat hlive (ex := []) h' hc' hk (.eatOne _) (by simp) (by simp) (StrPin.refl _ _)
-    · intro R' M' H' G' g v st' est eG hc' h' hv hd hw
-      simp only [Nat.reduceAdd]
+    · intro R' M' H' G' g v st' est eG hc' h' hv hd hkeep
+      have hw := hkeep 0 (by omega)
       subst est
       rw [dcFunc_S_cons] at hk
       obtain ⟨c, rfl⟩ := eG

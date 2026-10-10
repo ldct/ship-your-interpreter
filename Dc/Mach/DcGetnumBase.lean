@@ -19,7 +19,7 @@ character is `chW w[j]?` (`EOF` past the end).
 - `input_str_spec`: one read.
 - The model: `readNum` over the indices the machine visits
   (`takeDigits_drop_digit`, `takeDigits_drop_stop`, `dropSpace_drop_*`),
-  integer arithmetic (`num_mul_int`, `num_add_int`, `ofInt_nat`).
+  integer arithmetic (`num_mul_int`, `num_add_int`).
 -/
 
 namespace Dc.Mach
@@ -40,7 +40,7 @@ abbrev inPtrAddr : Nat := 0x8001cd70
 def InP (a : Nat) : Prop := inPtrAddr ≤ a ∧ a < inPtrAddr + 8
 
 theorem InP.off {a : Nat} (h : InP a) : OutHeap a ∧ ¬ DcGlob a := by
-  simp only [InP] at h
+  simp only [InP, inPtrAddr] at h
   refine ⟨?_, fun hg => ?_⟩
   · simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
   · simp only [DcGlob, dc_addrs, stdFilesAddr] at hg; omega
@@ -77,28 +77,42 @@ theorem takeWhile_stop {p : Nat → Bool} :
       simpa using takeWhile_stop l (by omega)
     · simp [List.takeWhile_cons, hc]
 
+theorem mem_takeWhile_pred {p : Nat → Bool} :
+    ∀ {l : List Nat} {c : Nat}, c ∈ l.takeWhile p → p c = true
+  | [], _, h => by simp at h
+  | d :: l, c, h => by
+    by_cases hd : p d
+    · simp only [List.takeWhile_cons, hd, ↓reduceIte, List.mem_cons] at h
+      rcases h with rfl | h
+      · exact hd
+      · exact mem_takeWhile_pred h
+    · simp [List.takeWhile_cons, hd] at h
+
 /-- **A string object's text from byte `j0`**, for a string in the heap. -/
 theorem StrAt.rd {M : Mem} {o : StrObj} (h : StrAt M o) {j0 : Nat} (hj : j0 ≤ o.s.length)
     (hlo : heapStart ≤ o.tb.pay) (hhi : o.tb.pay + o.s.length < heapEnd) :
     Rd M (o.tb.pay + j0) (rdW o j0) := by
   have hl : (rdW o j0).length ≤ o.s.length - j0 := by
-    unfold rdW; exact (List.takeWhile_sublist _).length_le.trans (by simp)
+    have := (List.takeWhile_sublist (fun c => decide (c ≠ 0)) (l := o.s.drop j0)).length_le
+    simp only [List.length_drop] at this
+    exact this
   refine ⟨fun i hi => ?_, fun c hc => ?_, fun c hc => ?_, ?_, by omega, by omega⟩
   · rw [Nat.add_assoc, h.bytes _ (by omega)]
-    unfold rdW at hi ⊢
-    rw [takeWhile_getD _ _ hi]
+    have e := takeWhile_getD (p := fun c => decide (c ≠ 0)) (o.s.drop j0) i hi
+    simp only [rdW] at e ⊢
+    rw [e]
     simp [List.getD_eq_getElem?_getD, List.getElem?_drop]
-  · have := List.mem_takeWhile_imp hc; simp at this; omega
-  · exact h.byte c (List.mem_of_mem_drop (List.mem_of_mem_takeWhile hc))
+  · have := mem_takeWhile_pred hc; simp at this; omega
+  · exact h.byte c (List.mem_of_mem_drop ((List.takeWhile_prefix _).sublist.subset hc))
   · rw [Nat.add_assoc]
     rcases Nat.lt_or_ge (j0 + (rdW o j0).length) o.s.length with hlt | hge
     · rw [h.bytes _ hlt]
       have hs := takeWhile_stop (p := fun c => decide (c ≠ 0)) (o.s.drop j0)
-        (by simp only [List.length_drop]; unfold rdW at hlt ⊢; omega)
-      unfold rdW at hlt ⊢
-      simp only [decide_eq_false_iff_not, ne_eq, Decidable.not_not] at hs
-      simp only [List.getD_eq_getElem?_getD, List.getElem?_drop] at hs
-      simp only [List.getD_eq_getElem?_getD, hs]; rfl
+        (by simp only [List.length_drop]; simp only [rdW] at hlt; omega)
+      simp only [rdW] at hlt ⊢
+      simp only [decide_eq_false_iff_not, ne_eq, Decidable.not_not,
+        List.getD_eq_getElem?_getD, List.getElem?_drop] at hs
+      simp only [List.getD_eq_getElem?_getD, hs]
     · rw [show j0 + (rdW o j0).length = o.s.length by omega]; exact h.nul
 
 /-- The character the reader returns: a byte, or `EOF`. -/
@@ -109,11 +123,11 @@ def chW : Option Nat → BitVec 64
 theorem Rd.getD_lt {M : Mem} {src : Nat} {w : List Nat} (hr : Rd M src w) {j : Nat}
     (hj : j < w.length) : 0 < w.getD j 0 ∧ w.getD j 0 < 256 := by
   have hm : w.getD j 0 ∈ w := by
-    rw [List.getD_eq_getElem _ _ hj]; exact List.getElem_mem hj
+    rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj]; exact List.getElem_mem hj
   exact ⟨hr.pos _ hm, hr.lt _ hm⟩
 
 theorem getElem?_of_lt {w : List Nat} {j : Nat} (hj : j < w.length) : w[j]? = some (w.getD j 0) := by
-  rw [List.getD_eq_getElem _ _ hj]; exact List.getElem?_eq_getElem hj
+  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj]; rfl
 
 /-- **`input_str ()`** at `0x80000b70`, reading the character at `j`: the
 pointer moves past it unless it is the end; clobbers `a4`, `a5`. -/
@@ -127,33 +141,38 @@ theorem input_str_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat
     DW live S Q 0x80000b70#64 R M := by
   have hlo := hr.lo; have hhi := hr.hi
   simp only [heapStart, heapEnd] at hlo hhi
+  have htx : tohostAddr = 0x8001ad00 := rfl
   have hpa : ∀ b ∈ accAddrs inPtrAddr 8, S b := fun b hb => by
-    have := of_mem_accAddrs hb; exact hP b (by simp only [InP]; omega)
+    have := of_mem_accAddrs hb; exact hP b (by simp only [InP, inPtrAddr]; omega)
   rcases Nat.lt_or_ge j w.length with hlt | hge
   · obtain ⟨c0, c1⟩ := hr.getD_lt hlt
     have hb : ldv .lbu M (src + j) = BitVec.ofNat 64 (w.getD j 0) := by
       rw [ldv_lbu, hr.byte j hlt]
-      apply BitVec.eq_of_toNat_eq; simp [zero_extend]; omega
+      apply BitVec.eq_of_toNat_eq
+      rw [toNat_zext8, BitVec.toNat_ofNat, BitVec.toNat_ofNat]; omega
     have wq := sxw_ofNat (k := w.getD j 0) (by omega)
     have ws : BitVec.ofNat 64 (src + j) + 1#64 = BitVec.ofNat 64 (src + j + 1) := by
       rw [show (1#64) = BitVec.ofNat 64 1 from rfl, BitVec.ofNat_add_ofNat]
+    have hne : BitVec.ofNat 64 (w.getD j 0) ≠ 0#64 := fun hc => by
+      have := congrArg BitVec.toNat hc; simp only [BitVec.toNat_ofNat] at this; omega
     bc_run hlive hS [hp, hb, wq, ws]
-    all_goals first | exact hpa | exact acc_heap hS (by omega) (by omega) | skip
-    · intro hc; exfalso
-      have := congrArg BitVec.toNat hc; simp at this; omega
+    all_goals first | exact hpa | bc_addr | exact acc_heap hS (by omega) (by omega) | skip
+    · intro hc; exact absurd hc hne
     · intro _
       bc_run hlive hS [hp, hb, wq, ws]
-      all_goals first | exact hpa | exact hal | skip
-      refine hk _ _ (by keeps_tac Keeps.refl _ _) (by bsimp [getElem?_of_lt hlt]; rfl)
-        (fun a ha => imgM_store_miss _ _ (by simp only [InP] at ha; omega)) ?_
-      rw [ldv_store_hit, Nat.min_eq_left (by omega)]
+      all_goals first | exact hpa | exact hal | bc_addr | skip
+      refine hk _ _ (by keeps_tac Keeps.refl _ _) (by simp only [getElem?_of_lt hlt, chW]; bsimp [])
+        (fun a ha => imgM_store_miss _ _ (by simp only [InP, inPtrAddr] at ha; omega)) ?_
+      rw [show inPtrAddr = 2147601776 from rfl, ldv_store_hit, Nat.min_eq_left (by omega), Nat.add_assoc]
   · have hjw : j = w.length := by omega
     subst hjw
     have hb : ldv .lbu M (src + w.length) = 0#64 := by rw [ldv_lbu, hr.nul]; rfl
     bc_run hlive hS [hp, hb]
-    all_goals first | exact hpa | exact acc_heap hS (by omega) (by omega) | exact hal | skip
-    refine hk _ _ (by keeps_tac Keeps.refl _ _) (by bsimp [List.getElem?_eq_none (Nat.le_refl _)]; rfl)
-      (MemOnly.refl _ _) ?_
+    all_goals first | exact hpa | bc_addr | exact acc_heap hS (by omega) (by omega) | exact hal | skip
+    bc_run hlive hS [hp, hb]
+    all_goals first | exact hal | skip
+    refine hk _ _ (by keeps_tac Keeps.refl _ _)
+      (by rw [List.getElem?_eq_none (Nat.le_refl _)]; bsimp []; rfl) (MemOnly.refl _ _) ?_
     rw [hp, Nat.min_eq_right (by omega)]
 
 /-! ## The model over indices -/
@@ -164,12 +183,9 @@ theorem num_mul_int (a b : Nat) : Num.mul ⟨false, a, 0⟩ ⟨false, b, 0⟩ 0 
 theorem num_add_int (a b : Nat) : Num.add ⟨false, a, 0⟩ ⟨false, b, 0⟩ 0 = ⟨false, a + b, 0⟩ := by
   simp [Num.add, Num.align]
 
-theorem ofInt_nat (d : Nat) : Num.ofInt d = ⟨false, d, 0⟩ := by
-  simp [Num.ofInt]
-
 theorem drop_cons_getD {w : List Nat} {j : Nat} (hj : j < w.length) :
     w.drop j = w.getD j 0 :: w.drop (j + 1) := by
-  rw [List.getD_eq_getElem _ _ hj]; exact List.drop_eq_getElem_cons hj
+  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj]; exact List.drop_eq_getElem_cons hj
 
 /-- A digit at `j`: `takeDigits` takes it. -/
 theorem takeDigits_drop_digit {w : List Nat} {j d : Nat} (hj : j < w.length)
@@ -188,13 +204,13 @@ theorem takeDigits_drop_stop {w : List Nat} {j : Nat}
 theorem dropSpace_drop_space {w : List Nat} {j : Nat} (hj : j < w.length)
     (hs : isSpace (w.getD j 0) = true) :
     (w.drop j).dropWhile isSpace = (w.drop (j + 1)).dropWhile isSpace := by
-  rw [drop_cons_getD hj]; simp [List.dropWhile_cons, hs]
+  rw [drop_cons_getD hj, List.dropWhile_cons]; simp only [hs, ↓reduceIte]
 
 /-- No space at `j`: `dropWhile isSpace` stops. -/
 theorem dropSpace_drop_stop {w : List Nat} {j : Nat}
     (hs : ∀ c, w[j]? = some c → isSpace c = false) : (w.drop j).dropWhile isSpace = w.drop j := by
   rcases Nat.lt_or_ge j w.length with hj | hj
-  · rw [drop_cons_getD hj]; simp [List.dropWhile_cons, hs _ (getElem?_of_lt hj)]
+  · rw [drop_cons_getD hj, List.dropWhile_cons]; simp only [hs _ (getElem?_of_lt hj)]; rfl
   · rw [List.drop_eq_nil_of_le hj]; rfl
 
 /-! ## The reader from a dc function's frame -/
@@ -212,7 +228,7 @@ theorem DcAt.rd {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List
 /-- Words at or above `heapEnd` through a read. -/
 theorem ldv_inP {M M' : Mem} (hm : MemOnly InP M' M) {a : Nat} (ha : heapEnd ≤ a) (k : MKind) :
     ldv k M' a = ldv k M a :=
-  ldv_congr k fun j _ => hm _ fun hp => by simp only [InP, heapEnd] at hp ha; omega
+  ldv_congr k fun j _ => hm _ fun hp => by simp only [InP, inPtrAddr, heapEnd] at hp ha; omega
 
 /-- **`input_str ()` from a dc function's frame**, reading the character at
 `j` of a string object's text from byte `j0`: the state and the frame kept. -/
@@ -256,16 +272,18 @@ theorem dc_copy_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   have fbb := h.heap.heap.blk (List.mem_append_right _ hb.sLive)
   have hblo : 2147603920 ≤ x.sb.h := fbb.lo
   have hbhi : x.sb.fin ≤ 2273312768 := Nat.le_trans fbb.fin fbb.top
-  have hpl : 2147603936 ≤ x.rep.p ∧ x.rep.p + 40 ≤ 2273312768 := by
+  have hbal : x.sb.h % 16 = 0 := fbb.al
+  have hpl : 2147603936 ≤ x.rep.p ∧ x.rep.p + 40 ≤ 2273312768 ∧ x.rep.p % 16 = 0 := by
     rw [hsp]; simp only [Blk.pay, Blk.fin] at *; omega
-  obtain ⟨hpl1, hpl2⟩ := hpl
+  obtain ⟨hpl1, hpl2, hpl3⟩ := hpl
+  have htx : tohostAddr = 0x8001ad00 := rfl
   have hrl := h.numRefs_lt hhs hx
   have hrf := (h.heap.nums x hx).refs
   have wp := word_succ x.rep.refs
   have wq : BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (x.rep.refs + 1))) =
       BitVec.ofNat 64 (x.rep.refs + 1) := sxw_ofNat hrl
   bc_run hlive hS [h10, hrf, wp, wq]
-  all_goals first | exact hal | skip
+  all_goals first | exact hal | bc_addr | skip
   have hv : (BitVec.ofNat 64 (x.rep.refs + 1)).toNat % 2 ^ 32 = x.rep.refs + 1 :=
     toNat_ofNat_mod32 (by omega)
   refine hk _ _ _ _ (by keeps_tac Keeps.refl _ _) (h.bumpNum hhs hv)

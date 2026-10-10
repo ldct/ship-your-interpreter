@@ -16,7 +16,9 @@ at `sp - 176 + 168 … 88` (`evSaved`).
 `f = ⟨s, td, neg⟩` over the string object `o` held by the caller's handle
 (`hs.head? = some (.str o.hb.pay)`, the datum at `q = s6`), `s` being the
 rest of `o.s` from `s0`. The state is `DcAt` over the handles `xs ++ hs`,
-`xs` the strings lost by the commands run so far. The model-side budgets
+`xs` the strings lost by the commands run so far; the lost references and
+strings and the leak budget fit the handle and reference bounds together
+(`budget`). The model-side budgets
 are carried with it: the nesting depth `d` (each nested `evalstr` takes 176
 more bytes, `nestDepth`), the leaking commands `k` (`leakCount`), and the
 per-call premises of `dc_func` (`FnSize`, the SizeBound) for every call the
@@ -179,8 +181,7 @@ structure EvAt (S : Nat → Prop) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → Bi
   stk : 176 * (d + 1) + 1216 + rmStack (2 ^ 30) ≤ W
   stkPr : 176 * (d + 1) + 192 + 336 + prN ≤ W
   stkDn : 176 * (d + 1) + 192 + 336 + dnN ≤ W
-  hsLen : xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20
-  lkLen : G.lk.length + 4 * k + 2 ≤ 2 ^ 29
+  budget : G.lk.length + xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20
   mb : MulBase S M
   err : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a
   globs : EvGlobs S M
@@ -288,7 +289,7 @@ def EvalstrSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → 
     StackFrame S sp W → heapEnd + W ≤ sp →
     176 * (d + 1) + 1216 + rmStack (2 ^ 30) ≤ W → 176 * (d + 1) + 192 + 336 + prN ≤ W →
     176 * (d + 1) + 192 + 336 + dnN ≤ W →
-    xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20 → G.lk.length + 4 * k + 2 ≤ 2 ^ 29 →
+    G.lk.length + xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20 →
     MulBase S M → (∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a) → EvGlobs S M →
     EvOom live S Q sp W q M →
     EvK live S Q t0 sp W k q M R G hs xs st' r →

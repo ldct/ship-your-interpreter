@@ -87,8 +87,8 @@ theorem ev_enter {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   have hW1 : 176 ≤ W := by omega
   refine hfn t0 (sp - 176) (W - 176) Mc H F L C G (xs ++ hs) st c rest.head? neg _
     ⟨hdc, ev.frame.within (m := 176) (n := W - 176) (by omega) (by decide), by simp only [heapEnd] at *; omega,
-      by omega, by omega, by omega, by have := ev.hsLen; simp only [List.length_append]; omega,
-      by have := ev.lkLen; omega,
+      by omega, by omega, by omega, by have := ev.budget; simp only [List.length_append]; omega,
+      by have := ev.budget; omega,
       ev.mb.transport fun a e1 e2 => hmc a (by simp only [mulBaseAddr, heapEnd] at e1 e2 hab; omega),
       ev.err, ev.globs.laOwn,
       by rw [ldv_congr .lw fun j hj => hmc _ (by simp only [widthOfM, heapEnd] at hj hab; omega)]

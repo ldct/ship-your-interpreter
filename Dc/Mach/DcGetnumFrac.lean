@@ -52,7 +52,7 @@ theorem cf_copy {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     (hfr : CFr P fs sv M0 M R0 R sp) (hab : heapEnd ≤ sp - fs) (h : DcAt S M H F L C G hs st)
     (hhs : hs.length ≤ 2 ^ 30)
     (hx : x ∈ L) (h10 : R 10 = BitVec.ofNat 64 x.rep.p) (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' L' C', Keeps cClob R' R → CFr P fs sv M0 M' R0 R' sp →
+    (hk : ∀ R' M' L' C', Keeps [15] R' R → CFr P fs sv M0 M' R0 R' sp →
       DcAt S M' H F L' C' G (.num x.rep.p :: hs) st → C'.z.rep.p = C.z.rep.p →
       (GV.num x.rep.p).Den ⟨L', G.strs⟩ (.num x.rep.num) → HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs →
       (∀ a, OutHeap a → imgM M' a = imgM M a) → DWO live S Q t (R 1) R' M') :
@@ -60,7 +60,7 @@ theorem cf_copy {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
   dc_copy_spec hlive h hhs hx R h10 hal fun R' M' L' C' k h' hd hkp hout => by
     have k' : Keeps cClob R' R := k.mono (by decide)
     have hO : ∀ a, OutHeap a → ¬ DcGlob a → imgM M' a = imgM M a := fun a ho _ => hout a ho
-    refine hk R' M' L' C' k' { hfr.regs k' with
+    refine hk R' M' L' C' k { hfr.regs k' with
         saved := fun q hq => (ldv_congr .ld fun j _ => hout _ (outHeap_of_ge (by omega))).trans
           (hfr.saved q hq)
         out := fun a ho hg hf hp => (hout a ho).trans (hfr.out a ho hg hf hp) } h'
@@ -200,5 +200,124 @@ theorem gn_fexit {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
         (hkp2.mono fun g hg => hsub' g hg [_, _, _]))
       regs := hF.regs.keep kk
       rd := ⟨hrd.le, (kk.get 8).trans hrd.ch, (ho2.inP hcab).trans ((ho1.inP hcab).trans hrd.ptr)⟩ }
+
+/-- **The fraction's entry** (`0x800028e0`, after `.`): `build`, `temp`
+freed, `divisor = _one_`, `build = _zero_`, `s1 = 0`. -/
+theorem gn_fentry {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 : Mem} {R0 : Nat → BitVec 64} {sp : Nat}
+    {G : DcG} {hs0 : List GV} {st : St} {o : StrObj} {j0 ra : Nat} {s6 : BitVec 64}
+    {L0 : List NumObj} (gx : GnCtx S M0 sp G o j0) (hhs : hs0.length + 6 ≤ 2 ^ 20)
+    {R : Nat → BitVec 64} {M : Mem} {j v : Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {pr pt pd pb : Nat}
+    (hI : GnI S M0 R0 sp G hs0 st o j0 ra s6 L0 R M j v H F L C pr pt pd pb)
+    (hk : ∀ R' M' H' F' L' C' pd' pv',
+      GnF S M0 R0 sp G hs0 st ra s6 L0 R' M' 0 v 0 none H' F' L' C' pr pd' pv' pb →
+      R' 8 = R 8 → ldv .ld M' inPtrAddr = ldv .ld M inPtrAddr →
+      DWO live S Q t 0x80002968#64 R' M') :
+    DWO live S Q t 0x800028e0#64 R M := by
+  have cx := gx.cx
+  have hab := cx.abv
+  have hab' := cx.ab
+  have hsf := cx.sf
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  simp only [heapEnd] at hab hab'
+  have hcab : heapEnd + cfW ≤ sp - 144 := by simp only [heapEnd]; omega
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have h := hI.h
+  have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
+  have q2 := hI.fr.r2
+  bc_run hlive hS [q2] at 0x800048c0
+  refine cf_free hlive cx (hI.fr.regs (by keeps_tac Keeps.refl _ _)) (h.perm (perm_rev3 _ _ _ _))
+    (gnSv_above (by omega)) (o := 24) (by omega) (by omega) hI.w24 (by bsimp [q2]) (by bsimp [])
+    fun R1 M1 H1 F1 L1 C1 hk1 fr1 h1 _ ho1 hkp1 => ?_
+  have hS1 : HeapOwn S := fun a e1 e2 => h1.heap.heap.own a e1 e2
+  have q21 := fr1.r2
+  bsimp []
+  bc_run hlive hS1 [q21] at 0x800048c0
+  refine cf_free hlive cx (fr1.regs (by keeps_tac Keeps.refl _ _)) h1
+    (gnSv_above (by omega)) (o := 32) (by omega) (by omega) ((ho1.word cx.abv (by omega)).trans hI.w32)
+    (by bsimp [q21]) (by bsimp []) fun R2 M2 H2 F2 L2 C2 hk2 fr2 h2 z2 ho2 hkp2 => ?_
+  have hS2 : HeapOwn S := fun a e1 e2 => h2.heap.heap.own a e1 e2
+  have q22 := fr2.r2
+  have hG : ∀ a, DcGlob a → S a := h2.glob
+  have ow : ldv .ld M2 0x8001cdc0 = BitVec.ofNat 64 C2.o.rep.p := h2.view.ow
+  bsimp []
+  bc_run hlive hS2 [q22, ow] at 0x800049ac
+  refine cf_copy hlive (fr2.sregs ((by keeps_tac Keeps.refl _ _ : Keeps [9, 21, 10, 1] _ R2).mono (by decide))
+      (by bsimp [])) cx.abv h2 (by simp only [List.length_cons]; omega) h2.den.mo (by bsimp [])
+    (by bsimp []) fun R3 M3 L3 C3 k3 fr3 h3 ez3 hd3 hkp3 hout3 => ?_
+  have e10 : R3 10 = BitVec.ofNat 64 C2.o.rep.p := by rw [k3.get 10]; bsimp []
+  have q23 : R3 2 = BitVec.ofNat 64 (sp - 144) := by rw [k3.get 2]; bsimp [q22]
+  have hS3 : HeapOwn S := fun a e1 e2 => h3.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS3 [q23, e10] at 0x80002908
+  case hk.hS => exact frame_acc hsf (by omega) (by omega)
+  obtain ⟨fr4, h4, w4, ho4⟩ := cf_sd (v := BitVec.ofNat 64 C2.o.rep.p) (o := 40) cx fr3 h3 (gnSv_above (by omega))
+    (by omega)
+  generalize writeLog M3 [(sp - 144 + 40, 8, BitVec.ofNat 64 C2.o.rep.p)] = M4 at fr4 h4 w4 ho4 ⊢
+  have kk3 : Keeps (9 :: 21 :: cClob) R3 R :=
+    (k3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac
+      ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))))
+  have r20 : R3 20 = 0x8001cdc8#64 := (kk3.get 20).trans hI.regs.r20
+  have zw : ldv .ld M4 0x8001cdc8 = BitVec.ofNat 64 C3.z.rep.p := h4.view.zw
+  have hS4 : HeapOwn S := fun a e1 e2 => h4.heap.heap.own a e1 e2
+  have hG4 : ∀ a, DcGlob a → S a := h4.glob
+  bc_run hlive hS4 [q23, r20, zw] at 0x800049ac
+  case hk.hk.hLDS =>
+    intro b hb; have := of_mem_accAddrs hb; exact hG4 b (by simp only [DcGlob, dc_addrs]; omega)
+  refine cf_copy hlive (fr4.sregs ((by keeps_tac Keeps.refl _ _ : Keeps [23, 10, 1] _ R3).mono (by decide))
+      (by bsimp [])) cx.abv h4 (by simp only [List.length_cons]; omega) h4.den.mz (by bsimp [])
+    (by bsimp []) fun R5 M5 L5 C5 k5 fr5 h5 ez5 hd5 hkp5 hout5 => ?_
+  have e10' : R5 10 = BitVec.ofNat 64 C3.z.rep.p := by rw [k5.get 10]; bsimp []
+  have q25 : R5 2 = BitVec.ofNat 64 (sp - 144) := by rw [k5.get 2]; bsimp [q23]
+  have hS5 : HeapOwn S := fun a e1 e2 => h5.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS5 [q25, e10'] at 0x80002918
+  case hk.hS => exact frame_acc hsf (by omega) (by omega)
+  obtain ⟨fr6, h6, w6, ho6⟩ := cf_sd (v := BitVec.ofNat 64 C3.z.rep.p) (o := 24) cx fr5 h5 (gnSv_above (by omega))
+    (by omega)
+  generalize writeLog M5 [(sp - 144 + 24, 8, BitVec.ofNat 64 C3.z.rep.p)] = M6 at fr6 h6 w6 ho6 ⊢
+  have hS6 : HeapOwn S := fun a e1 e2 => h6.heap.heap.own a e1 e2
+  bc_run hlive hS6 [] at 0x80002968
+  have kk5 : Keeps (9 :: 21 :: 23 :: cClob) R5 R :=
+    (k5.mono (by decide)).trans (by keeps_tac ((kk3.mono (by decide))))
+  have gO : ∀ {Ma Mb : Mem}, (∀ a, OutHeap a → imgM Mb a = imgM Ma a) → ∀ o', o' + 8 ≤ 144 →
+      ldv .ld Mb (sp - 144 + o') = ldv .ld Ma (sp - 144 + o') := fun hout o' _ =>
+    ldv_congr .ld fun j _ => hout _ (outHeap_of_ge (by omega))
+  have gP : ∀ {Ma Mb : Mem}, (∀ a, OutHeap a → imgM Mb a = imgM Ma a) →
+      ldv .ld Mb inPtrAddr = ldv .ld Ma inPtrAddr := fun hout =>
+    ldv_congr .ld fun j hj => hout _ (InP.off (by simp only [InP, widthOfM] at hj ⊢; omega)).1
+  have chn : ∀ o', o' + 8 ≤ 144 → (o' + 8 ≤ 24 ∨ 48 ≤ o') →
+      ldv .ld M6 (sp - 144 + o') = ldv .ld M (sp - 144 + o') := fun o' h1 h2 =>
+    (ho6.word cx.abv (by omega)).trans ((gO hout5 o' h1).trans ((ho4.word cx.abv (by omega)).trans
+      ((gO hout3 o' h1).trans ((ho2.word cx.abv (by omega)).trans (ho1.word cx.abv (by omega))))))
+  have hsub : ∀ g ∈ hs0, ∀ l : List GV, g ∈ l ++ hs0 := fun g hg l => List.mem_append_right _ hg
+  have hpr : ∀ l : List GV, GV.num pr ∈ l ++ GV.num pr :: GV.num pb :: hs0 := fun l => by simp
+  have hpb : ∀ l : List GV, GV.num pb ∈ l ++ GV.num pr :: GV.num pb :: hs0 := fun l => by simp
+  refine hk R5 M6 H2 F2 L5 C5 C3.z.rep.p C2.o.rep.p
+    { fr := fr6
+      h := h6.perm (List.perm_middle (l₁ := [_, _]))
+      w16 := (chn 16 (by omega) (.inl (by omega))).trans hI.w16
+      w24 := w6
+      w32 := (ho6.word cx.abv (by omega)).trans ((gO hout5 32 (by omega)).trans
+        ((ho4.word cx.abv (by omega)).trans ((gO hout3 32 (by omega)).trans z2)))
+      w40 := (ho6.word cx.abv (by omega)).trans ((gO hout5 40 (by omega)).trans w4)
+      w8 := (chn 8 (by omega) (.inl (by omega))).trans hI.w8
+      dr := hkp5 _ (hpr [_]) _ (hkp3 _ (hpr []) _ (hkp2 _ (hpr []) _ (hkp1 _ (hpr [_]) _ hI.dr)))
+      dd := by have := h4.den.zv; rw [this] at hd5; exact hd5
+      dv := hkp5 _ List.mem_cons_self _ (by
+        have := h2.den.ov; rw [this] at hd3; simpa [Num.one] using hd3)
+      db := hkp5 _ (hpb [_]) _ (hkp3 _ (hpb []) _ (hkp2 _ (hpb []) _ (hkp1 _ (hpb [_]) _ hI.db)))
+      keep := hI.keep.trans ((((hkp1.mono fun g hg => hsub g hg [_, _, _]).trans
+        (hkp2.mono fun g hg => hsub g hg [_, _])).trans (hkp3.mono fun g hg => hsub g hg [_, _])).trans
+        (hkp5.mono fun g hg => hsub g hg [_, _, _]))
+      regs := ⟨(kk5.get 18).trans hI.regs.r18, (kk5.get 19).trans hI.regs.r19, (kk5.get 20).trans hI.regs.r20,
+        by rw [k5.get 21]; bsimp []; rw [k3.get 21]; bsimp [],
+        (kk5.get 22).trans hI.regs.r22, by rw [k5.get 23]; bsimp []⟩
+      r9 := by rw [k5.get 9]; bsimp []; rw [k3.get 9]; bsimp []
+      z0 := fun _ => ez5.symm }
+    ((kk5.get 8))
+    ((ho6.inP hcab).trans ((gP hout5).trans ((ho4.inP hcab).trans ((gP hout3).trans
+      ((ho2.inP hcab).trans (ho1.inP hcab))))))
 
 end Dc.Mach

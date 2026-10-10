@@ -62,6 +62,15 @@ theorem RH.cnt_ne {h : RH} {p : Nat} (hp : h.p ≠ p) : RH.cnt p h = 0 := by
   | own y => rfl
   | ref y => simp only [RH.cnt]; rw [if_neg (show y.rep.p ≠ p from hp)]
 
+/-- The object a handle names owns its blocks. -/
+theorem RH.obj_owns {hs hs' : List RH} {L : List NumObj} {h : RH} (hown : RHOwn hs L)
+    (hm : h ∈ hs) (ok : RHOK L h) : (RH.obj hs' h).Owns := by
+  cases h with
+  | own y => exact hown.temps y hm
+  | ref o =>
+    obtain ⟨A, B, e, _⟩ := ok
+    exact hown.caller o (by rw [e]; simp)
+
 /-- The handle's object with its own reference. -/
 theorem RH.obj_ref1 (y : NumObj) : RH.obj [.ref y] (.ref y) = y.withRefs (y.rep.refs + 1) := by
   simp [RH.obj, RH.cnt]
@@ -70,7 +79,8 @@ theorem RH.obj_ref1 (y : NumObj) : RH.obj [.ref y] (.ref y) = y.withRefs (y.rep.
 reference to `hX`'s number added, then one to `hT`'s. -/
 theorem RList.final {hT hX : RH} {L : List NumObj} (hd : PDist (RList [hT, hX] L))
     (okT : RHOK L hT) (okX : RHOK L hX) (tx : hT.p ≠ hX.p) :
-    ∃ w Lw Lm, AddRef L w Lw ∧ AddRef Lw (RH.obj [hT] hT) Lm ∧ RList [hT, hX] L = Lm := by
+    ∃ w Lw Lm, AddRef L w Lw ∧ AddRef Lw (RH.obj [hT] hT) Lm ∧ RList [hT, hX] L = Lm ∧
+      w = RH.obj [hX] hX := by
   have hdL := hd.caller
   -- the second handle, then the first on the list it leaves
   have step2 : ∀ (Lw : List NumObj), PDist Lw → (∀ y, hT = .ref y → y ∈ Lw) →
@@ -93,7 +103,7 @@ theorem RList.final {hT hX : RH} {L : List NumObj} (hd : PDist (RList [hT, hX] L
       rw [← e1]; exact hd
     obtain ⟨Lm, h2, e⟩ := step2 (w :: L) hd'.caller (fun y e => by
         subst e; obtain ⟨A, B, rfl, _⟩ := okT; simp)
-    refine ⟨w, w :: L, Lm, .fresh okX.1, h2, ?_⟩
+    refine ⟨w, w :: L, Lm, .fresh okX.1, h2, ?_, rfl⟩
     rw [show [hT, RH.own w] = [hT] ++ [RH.own w] from rfl, RList.snoc_own [hT] L hc, e]
   | ref z =>
     obtain ⟨A, B, rfl, _⟩ := okX
@@ -110,7 +120,7 @@ theorem RList.final {hT hX : RH} {L : List NumObj} (hd : PDist (RList [hT, hX] L
       · exact .inl h
       · exact absurd h hyz
       · exact .inr (.inr h))
-    refine ⟨_, _, Lm, .share, h2, ?_⟩
+    refine ⟨_, _, Lm, .share, h2, ?_, (RH.obj_ref1 z).symm⟩
     rw [show [hT, RH.ref z] = [hT] ++ [RH.ref z] from rfl, RList.snoc_ref [hT] hdz, e]
 
 /-! ## The epilogues -/
@@ -214,6 +224,7 @@ theorem rx_ret {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (hb : BcHeap S X M H F (RList [hT, hX] L)) (hown : RHOwn [hT, hX] L)
     (okT : RHOK L hT) (okX : RHOK L hX) (tx : hT.p ≠ hX.p)
     (hn : hT.base.rep.num = n) (hnn : hT.base.rep.Norm) (hl : 1 ≤ hT.base.rep.len)
+    (nX : hX.base.rep.Norm) (lX : 1 ≤ hX.base.rep.len)
     (hs : RxSlot M L xr q)
     (hret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
       RxPost S X Mt0 Mt' H' F' L xr q sp W n Lf y → DW live S Q (R0 1) R' Mt') :
@@ -226,7 +237,10 @@ theorem rx_ret {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   have hap := hsl.apart
   have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
   have h2 := ra.r2
-  obtain ⟨w, Lw, Lm, hw1, hw2, e⟩ := RList.final hb.pdist okT okX tx
+  obtain ⟨w, Lw, Lm, hw1, hw2, e, hwe⟩ := RList.final hb.pdist okT okX tx
+  have hwn : w.rep.Norm := by rw [hwe]; exact (RH.obj_norm _ _).mpr nX
+  have hwl : 1 ≤ w.rep.len := by rw [hwe, RH.obj_len]; exact lX
+  have hwo : w.Owns := by rw [hwe]; exact RH.obj_owns hown (by simp) okX
   have hall := hown.all
   rw [e] at hb hall
   have hxm : rBump [hT, hX] xr ∈ Lm := by rw [← e]; exact RList.mem_caller _ hs.mr
@@ -258,7 +272,7 @@ theorem rx_ret {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       (by keeps_tac ra.keep))) (by bsimp []; rw [hk1.get 22 (by decide)]; bsimp [h22])
     fun R' hk' h10' => hret R' _ H1 F1 L' (RH.obj [hT] hT) hk' (by rw [h10']; bsimp [])
       { heap := hb2
-        mid := ⟨w, Lw, _, hw1, hw2, L1, L2, _, rfl, rfl, hfr⟩
+        mid := ⟨w, Lw, _, hw1, hw2, ⟨L1, L2, _, rfl, rfl, hfr⟩, hwn, hwl, hwo⟩
         num := by rw [RH.obj_num]; exact hn
         norm := (RH.obj_norm _ _).mpr hnn
         pos := by rw [RH.obj_len]; exact hl
@@ -319,6 +333,7 @@ theorem rx_exitE {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (hb : BcHeap S X M H F (RList [hE, hT, hX] L)) (hown : RHOwn [hE, hT, hX] L)
     (okE : RHOK L hE) (okT : RHOK L hT) (okX : RHOK L hX) (tx : hT.p ≠ hX.p)
     (hn : hT.base.rep.num = n) (hnn : hT.base.rep.Norm) (hl : 1 ≤ hT.base.rep.len)
+    (nX : hX.base.rep.Norm) (lX : 1 ≤ hX.base.rep.len)
     (hs : RxSlot M L xr q)
     (hret : ∀ R' Mt' H' F' Lf y, Keeps binClob R' R0 → R' 10 = 0#64 →
       RxPost S X Mt0 Mt' H' F' L xr q sp W n Lf y → DW live S Q (R0 1) R' Mt') :
@@ -335,7 +350,7 @@ theorem rx_exitE {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       have hag : ∀ a, OutHeap a → imgM M' a = imgM M a := fun a ha => hof a ha id
       exact rx_ret hlive cx ((ra.heap cx (hag := hag)).regs hk) (by rw [hk.get 22 (by decide)]; exact h22)
         (by rw [hk.get 23 (by decide)]; exact h23) (by rw [hk.get 21 (by decide)]; exact h21)
-        hb1 (show RHOwn ([] ++ hE :: [hT, hX]) L from hown).drop okT okX tx hn hnn hl
+        hb1 (show RHOwn ([] ++ hE :: [hT, hX]) L from hown).drop okT okX tx hn hnn hl nX lX
         (hs.congr fun a ha => hag a (cx.slot.out a ha)) hret
   exact ffree_800063ec hlive hb' hr hnv hx k k k
 
@@ -356,6 +371,8 @@ structure RxX (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec
   num : hT.base.rep.num = n
   norm : hT.base.rep.Norm
   len : 1 ≤ hT.base.rep.len
+  nX : hX.base.rep.Norm
+  lX : 1 ≤ hX.base.rep.len
   r8 : R 8 = BitVec.ofNat 64 hP.p
   r24 : R 24 = BitVec.ofNat 64 hE.p
   r21 : R 21 = BitVec.ofNat 64 hT.p
@@ -384,7 +401,7 @@ theorem rx_exit {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
         (by rw [hk.get 22 (by decide)]; exact st.r22) (by rw [hk.get 23 (by decide)]; exact st.r23)
         (by rw [hk.get 21 (by decide)]; exact st.r21) (by rw [hk.get 24 (by decide)]; exact st.r24)
         hb1 (show RHOwn ([] ++ hP :: [hE, hT, hX]) L from st.own).drop st.okE st.okT st.okX st.tx
-        st.num st.norm st.len (hs.congr fun a ha => hag a (cx.slot.out a ha)) hret
+        st.num st.norm st.len st.nX st.lX (hs.congr fun a ha => hag a (cx.slot.out a ha)) hret
   rcases (show x.rep.refs = 1 ∨ 2 ≤ x.rep.refs from by omega) with hr1 | hr2
   · exact ffree_rel_800063b8 hlive hb' hr1 (hnv hr1) hx k k
   · exact ffree_dec_800063b8 hlive hb' hr2 hx k
@@ -434,6 +451,8 @@ theorem rx_fin {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       num := st.vT.num
       norm := st.nT
       len := st.vT.len
+      nX := st.nX
+      lX := st.lX
       r8 := by bsimp [st.r8]
       r24 := by bsimp [r24]
       r21 := by bsimp [st.r21] } hs hret

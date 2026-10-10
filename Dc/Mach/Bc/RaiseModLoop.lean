@@ -239,6 +239,8 @@ structure RxM (S : Nat → Prop) (X : Raws) (Mt0 M : Mem) (R0 R : Nat → BitVec
   vE : RxNum hE ⟨false, m, 0⟩ Ee 0
   nT : hT.base.rep.Norm
   nE : hE.base.rep.Norm
+  nX : hX.base.rep.Norm
+  lX : 1 ≤ hX.base.rep.len
   w0 : ldv .ld M (sp - 112 + 0) = BitVec.ofNat 64 hP.p
   w8 : ldv .ld M (sp - 112 + 8) = BitVec.ofNat 64 hE.p
   w16 : ldv .ld M (sp - 112 + 16) = BitVec.ofNat 64 hX.p
@@ -440,6 +442,8 @@ theorem rx_halve {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       vE := ⟨hq.num, hq.pos, hhalf.1, hhalf.2⟩
       nT := st.nT
       nE := hq.norm
+      nX := hr.norm
+      lX := hr.pos
       w0 := by rw [hw 0 (.inl rfl)]; exact st.w0
       w8 := by rw [hq.slot, ← hqp]; rfl
       w16 := by rw [hr.slot, ← hrp]; rfl
@@ -661,6 +665,8 @@ theorem rx_tmul {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       vE := st.vE
       nT := hres.norm
       nE := st.nE
+      nX := st.nX
+      lX := st.lX
       w0 := by rw [hw 0 (by omega)]; exact st.w0
       w8 := by rw [hw 8 (by omega)]; exact st.w8
       w16 := by rw [hw 16 (by omega)]; exact st.w16
@@ -805,6 +811,8 @@ theorem rx_psq {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
           vE := st.vE
           nT := st.nT
           nE := st.nE
+          nX := st.nX
+          lX := st.lX
           w0 := hw2
           w8 := hw8
           w16 := by rw [hw 16 (by omega) (by omega)]; exact st.w16

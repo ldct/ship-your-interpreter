@@ -211,6 +211,8 @@ theorem rx_one {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       num := ha.oneNum
       norm := ha.oneNorm
       len := ha.oneLen
+      nX := Or.inl (by have := ha.zero.len; show z.rep.len ≤ 1; omega)
+      lX := by have := ha.zero.len; show 1 ≤ z.rep.len; omega
       r8 := st.r8
       r24 := st.r24
       r21 := st.r21 } (hs0.transport cx st.ra.out) hret
@@ -296,6 +298,8 @@ theorem rx_start {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       vE := st.vE
       nT := ha.oneNorm
       nE := st.nE
+      nX := Or.inl (by have := ha.zero.len; show z.rep.len ≤ 1; omega)
+      lX := by have := ha.zero.len; show 1 ≤ z.rep.len; omega
       w0 := by rw [hw 0 (by omega)]; exact st.w0
       w8 := by rw [hw 8 (by omega)]; exact st.w8
       w16 := by rw [hw 16 (by omega)]; exact st.w16

@@ -97,13 +97,25 @@ structure RxSlot (M : Mem) (L : List NumObj) (xr : NumObj) (q : Nat) : Prop wher
   rr : 1 ≤ xr.rep.refs
   wr : ldv .ld M q = BitVec.ofNat 64 xr.rep.p
 
+/-- The references `bc_raisemod` moves: one added to the leaked `parity`
+(`w`, a number with digits), one to the result `y`, then the slot's old
+number at `p` dropped. -/
+structure RxMid (L : List NumObj) (w : NumObj) (Lw : List NumObj) (y : NumObj) (Lm : List NumObj)
+    (p : Nat) (Lf : List NumObj) : Prop where
+  addW : AddRef L w Lw
+  addY : AddRef Lw y Lm
+  drop : DropAt Lm p Lf
+  normW : w.rep.Norm
+  posW : 1 ≤ w.rep.len
+  ownsW : w.Owns
+
 /-- The result `y` for `n` in the slot `q`: one reference added to the
 leaked `parity` (`w`), one to `y`, then the old number `xr` dropped. Off the
 heap only the slot and the window changed. -/
 structure RxPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
     (xr : NumObj) (q sp W : Nat) (n : Num) (Lf : List NumObj) (y : NumObj) : Prop where
   heap : BcHeap S X Mt H F Lf
-  mid : ∃ w Lw Lm, AddRef L w Lw ∧ AddRef Lw y Lm ∧ DropAt Lm xr.rep.p Lf
+  mid : ∃ w Lw Lm, RxMid L w Lw y Lm xr.rep.p Lf
   num : y.rep.num = n
   norm : y.rep.Norm
   pos : 1 ≤ y.rep.len

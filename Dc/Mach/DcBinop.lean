@@ -116,11 +116,12 @@ structure OpFail (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : 
 
 /-- **The contract of an operation at `fa`** computing `f k a b` within the
 stack window `N`, losing at most `lk` references. -/
-def DcOp (live S : Nat → Prop) (fa N lk : Nat) (f : Nat → Num → Num → Option Num) : Prop :=
+def DcOp (live S : Nat → Prop) (fa N lk : Nat) (ok : Nat → Num → Num → Prop)
+    (f : Nat → Num → Num → Option Num) : Prop :=
   ∀ (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) (t : String) (M : Mem) (H : Heap)
     (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs : List GV) (st : St)
     (pa pb : Nat) (na nb : Num) (R : Nat → BitVec 64) (sp q : Nat),
-    OpIn S M H F L C G hs st pa pb na nb R sp q N lk →
+    OpIn S M H F L C G hs st pa pb na nb R sp q N lk → ok st.scale na nb →
     (∀ R' M' H' F' L' C' G' y r, Keeps opClob R' R →
       OpRet S M M' H' F' L' C' G G' hs st pa pb na nb f R' sp q N lk y r → DWO live S Q t (R 1) R' M') →
     (∀ R' M' H' F' L' C' G', Keeps opClob R' R →
@@ -804,9 +805,11 @@ theorem binop_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
 the state becomes `binop st (f st.scale)`, losing at most `lk` references. -/
 theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {fa N lk : Nat} {f : Nat → Num → Num → Option Num}
-    (hop : DcOp live S fa N lk f) (hfa : fa % 4 = 0) (hfa2 : fa < 2 ^ 64)
+    {ok : Nat → Num → Num → Prop} (hop : DcOp live S fa N lk ok f) (hfa : fa % 4 = 0)
+    (hfa2 : fa < 2 ^ 64)
     {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
-    {st : St} (h : DcAt S M H F L C G hs st) (hsLen : hs.length + 3 ≤ 2 ^ 20) (hmb : MulBase S M)
+    {st : St} (h : DcAt S M H F L C G hs st)
+    (hok : ∀ b a rest, st.stack = .num b :: .num a :: rest → ok st.scale a b) (hsLen : hs.length + 3 ≤ 2 ^ 20) (hmb : MulBase S M)
     (hlk : G.lk.length + lk ≤ 2 ^ 29) {sp W : Nat} (hsf : StackFrame S sp W) (hab : heapEnd + W ≤ sp)
     (hW : 448 ≤ W) (hN : 112 + N ≤ W)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 fa) (h11 : R 11 = BitVec.ofNat 64 st.scale)
@@ -867,6 +870,7 @@ theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
       e10, e11, e12, e13, e2, by rw [e1]; decide, hmb.transport fun a e1 e2 => by
         have ⟨o1, o2, o3⟩ := mulBase_off e1 e2
         exact hout2 a o1 o2 fun hf => by simp only [frameIn, heapStart] at hf o3; omega⟩
+    (hok nb na st2.stack rfl)
     (fun R' M' H' F' L' C' G' y r hk' hr => ?_) (fun R' M' H' F' L' C' G' hk' hf => ?_)
     fun R' M' sp' ho => hoom R' M' sp' ⟨by have := ho.lo; omega, by have := ho.hi; omega, ho.r2,
       fun a o1 o2 o3 _ => by

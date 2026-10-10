@@ -5228,6 +5228,9 @@ Checked so far:
 - `dc_array_free_spec` (`DcArrFree.lean`): a chain of array nodes off the state (`AfNodes`: fresh nodes over a pointer chain `PChain`, data held as caller handles) freed node by node (`af_body`/`af_num`/`af_str`, induction `af_loop`); post `AfPost` (same nodes, bytes off the heap, other fresh blocks kept). The free specs accept a slot inside a fresh block (`SlotPlace.fresh`) and keep every fresh block.
 - `dc_register_pop_spec` (`DcRegPop.lean`): a level with a value moves the datum to the slot, sets the register word to the next level, frees the level's array (`dc_array_free_spec`) and node; the state step is `DcAt.unconsLev` (`LevPopped`), the pushed counterpart `DcAt.consLev`. An empty register or a level without value prints `"%s: stack register "`, the name and `" is empty\n"` and returns `2` with the state unchanged (`rpop_err`). Handle values held by the caller survive as `HsKeep`.
 - `dc_register_push_spec` (`DcRegPop.lean`): `dc_malloc(32)`, then the caller's datum, an empty array and the old top stored into the node and register `r` set to it (`rpush_tail`, `rpush_stores`, state step `DcAt.consLev`); `dc_malloc` may reach `out_of_memory`.
+- `dc_array_get_spec` (`DcArray.lean`): `arrayGet st r i` into `a0`/`a1` with one more reference. `get_stacked` reads the top level's array head (`DcAt.topArr`: chain, bounds, values against `topArrSt`), the search loop is `ag_walk` over `afind`, a hit ends in `dc_dup` (`ag_found`), a miss or empty array in `dc_int2data(0)` (`ag_zero`, may reach `out_of_memory`).
+
+Open premise: `dc_array_get_spec` takes `hsrt` (the top array of `r` is strictly sorted by index), so the machine's early-exit search agrees with `find?` (`afind_find`). The M10 state invariant must supply it: every register array strictly sorted, preserved by `arrSet`.
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come
 from counting live blocks (heap below `2^27` bytes).

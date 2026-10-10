@@ -4468,11 +4468,21 @@ The reflected block model has no signed byte load, so dc's two `lb`s
 (`_bc_shift_addsub`, `0x80004120`, `0x800041c8`) had no step lemma. They are
 observed ALU steps over one owned byte read totally: `aluStepT_of_obs`,
 `swp_aluM`, `exec_lb_tot` (`Dc/Mach/LoadObs.lean`), instantiated by the
-generator as `stL_<pc>`. Still open for dc and scheduled in `Dc/PLAN.md`
-M11: the `_start` `gp` pair (no `DW` step: `gp` is read-only in `DW`) and
-the `Halts` conclusion from a printing run (`dcExit_haltFact` supplies the
-halting step; the boot ownership split and adequacy are the missing
-suppliers).
+generator as `stL_<pc>`.
+
+M11 boot (2026-10-10): the `_start` `gp` pair runs owning `gp`
+(`SWPR`/`swpr_segL`, `VsaIris/Vsa/SymRunRO.lean`; `gp_pair`, `wp_gpBoot`,
+`Dc/Mach/BootGp.lean`); `Halts`/`Diverges` follow from the boot ownership
+split and adequacy (`VsaIris/Vsa/BootSplit.lean`; `dc_halts`, `dc_halts_wp`,
+`dc_stuck`, `Dc/Mach/Halts.lean`, `HaltsP.lean`). The boot image `dcBoot prog`
+(`Dc/Mach/BootImage.lean`: `DcElfLoads`, `dc_initializeMemory_eq`,
+`DcLoaded`, `dcBoot_loaded`) is linked to the ELF by the native replay
+`scripts/dc/DcBootReplay.lean`; the loaded configuration's facts are
+`HaltsLoaded.lean`. Replay sample (2026-10-10): 20 corpus programs (the
+`difftest.py` cases across arithmetic, output bases, registers, arrays,
+macros, comments, `!`, unbalanced brackets, a 1236-digit product, an
+8191-byte and an 8002-byte program), 0 failing, 929 s CPU (about 46 s per
+program, dominated by the interpreted ELF parse and `setupElf`).
 
 
 ## Dc number-heap and reference-release obligations

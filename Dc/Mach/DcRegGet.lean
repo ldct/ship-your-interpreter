@@ -342,7 +342,7 @@ theorem dc_register_get_spec {live S : Nat → Prop}
       (by bsimp [h11]) (ldv_store_hit _ _ _) hal (fun R' M' H' F' L' C' g hk1 e1 e2 e10 h' hden hdat hfr => ?_)
       (fun R' M' hfr => hoom R' M' (hout M' hfr))
     exact hk R' M' H' F' L' C' G g _ hget
-      (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) e10 ⟨rfl, rfl, rfl⟩ h' hden hdat
+      (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) e10 ⟨rfl, rfl, rfl, rfl⟩ h' hden hdat
       (hout M' hfr) (StrPin.refl _ _)
   | @cons _ b e l' h0 hb hl' =>
     obtain ⟨v0, rest, hst, hde⟩ : ∃ v0 rest, st.regs r = v0 :: rest ∧ e.Den ⟨L, G.strs⟩ v0 := by

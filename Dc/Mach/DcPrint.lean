@@ -309,7 +309,7 @@ theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     have hsz := NumRep.len_le_wid (h.heap.nums x hx).shape (h.den.norm x hx)
     have := hw _ rfl
     exact pr_num hlive h hd hx hhs (by omega) hmb hob2 hob herr hsf hab R h2 h10 h11 h12 h13 h14 hal
-      (fun R' M' H' F' L' C' hk' e2 hD hfr => hk R' M' H' F' L' C' G hk' e2 ⟨rfl, rfl, rfl⟩ hD hfr (StrPin.refl _ _)) hoom
+      (fun R' M' H' F' L' C' hk' e2 hD hfr => hk R' M' H' F' L' C' G hk' e2 ⟨rfl, rfl, rfl, rfl⟩ hD hfr (StrPin.refl _ _)) hoom
   · obtain ⟨o, ho, rfl, rfl⟩ := hv
     have hsf' := hsf
     rw [hNW] at hsf' hab

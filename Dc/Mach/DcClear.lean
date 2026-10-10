@@ -202,7 +202,7 @@ theorem cs_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   bc_run hlive hS [] at 0x80002d24
   refine cs_tail hlive h3 (hfc b hfb).1 hsz harr3 (.inl rfl) R1 q8 q9 fun R2 M4 H4 hk2 h4 hfr4 => ?_
   refine hk R2 M4 H4 F' L' C' G ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
-    (by keeps_tac Keeps.refl _ _)))) ⟨rfl, rfl, rfl⟩ h4 (fun a ho hg hf => (hfr4 a ho).trans
+    (by keeps_tac Keeps.refl _ _)))) ⟨rfl, rfl, rfl, rfl⟩ h4 (fun a ho hg hf => (hfr4 a ho).trans
       (hfr a ho hg hf fun hs' => ho.1 (live_in_heap hi hfb.live (hqb a hs')))) (StrPin.refl _ _)
 
 /-- A node holding a string (`0x80002d58`): `dc_free_str` through the node's
@@ -327,7 +327,7 @@ theorem cs_body {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
     refine cs_num hlive h1' hfb hsz hptr harr hsf (by simp only [heapEnd]; omega) R1 r2 r8 r9
       fun R' M' H' F' L' C' G' hk2 hsn' h' hfr hpin => ?_
     exact hk R' M' H' F' L' C' G' ((hk2.mono (by decide)).trans (hk1.mono (by decide)))
-      (by rw [hk2.get 9 (by decide)]; exact r9) ⟨hsn'.stk, hsn'.regs, hsn'.lbuf⟩ h' hfr hpin
+      (by rw [hk2.get 9 (by decide)]; exact r9) ⟨hsn'.stk, hsn'.regs, hsn'.lbuf, hsn'.lk⟩ h' hfr hpin
   | str p =>
     simp only [GV.tag, GV.ptr] at hlw hptr
     refine cs_disp hlive hS (tg := 2) (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
@@ -336,7 +336,7 @@ theorem cs_body {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
     refine cs_str hlive h1' hfb hsz hptr harr hsf (by simp only [heapEnd]; omega) R1 r2 r8 r9
       fun R' M' H' F' L' C' G' hk2 hsn' h' hfr hpin => ?_
     exact hk R' M' H' F' L' C' G' ((hk2.mono (by decide)).trans (hk1.mono (by decide)))
-      (by rw [hk2.get 9 (by decide)]; exact r9) ⟨hsn'.stk, hsn'.regs, hsn'.lbuf⟩ h' hfr hpin
+      (by rw [hk2.get 9 (by decide)]; exact r9) ⟨hsn'.stk, hsn'.regs, hsn'.lbuf, hsn'.lk⟩ h' hfr hpin
 
 /-- Frames compose. -/
 theorem StkOut.trans {sp W : Nat} {M2 M1 M0 : Mem} (h2 : StkOut sp W M2 M1) (h1 : StkOut sp W M1 M0) :
@@ -378,7 +378,7 @@ theorem cs_loop {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
       rw [hst] at hd
       have et : st.stack.tail = [] := key _ _ hd
       rw [et] at h'
-      exact hk R' M' H' F' L' C' G' hk1 ⟨hst, hsn.regs, hsn.lbuf⟩ h' hfr hpin
+      exact hk R' M' H' F' L' C' G' hk1 ⟨hst, hsn.regs, hsn.lbuf, hsn.lk⟩ h' hfr hpin
     | (b', g') :: rest', hv, hst =>
       cases hv with
       | cons h0 _ _ =>
@@ -392,7 +392,7 @@ theorem cs_loop {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
       refine cs_loop hlive hsf hab rest' h' hst R' k2 e9 k18 k19
         fun R'' M'' H'' F'' L'' C'' G'' hk2 hsn2 h'' hfr2 hpin2 => ?_
       exact hk R'' M'' H'' F'' L'' C'' G'' (hk2.trans hk1)
-        ⟨hsn2.stk, hsn2.regs.trans hsn.regs, hsn2.lbuf.trans hsn.lbuf⟩ h'' (hfr2.trans hfr)
+        ⟨hsn2.stk, hsn2.regs.trans hsn.regs, hsn2.lbuf.trans hsn.lbuf, hsn2.lk.trans hsn.lk⟩ h'' (hfr2.trans hfr)
         (hpin.trans hpin2)
 
 /-- `dc_clear_stack`'s exit (`0x80002d74`, `sp` lowered by 48): the saved
@@ -482,7 +482,7 @@ theorem dc_clear_stack_spec {live S : Nat → Prop}
       rw [est]; exact h1.congr fun x => imgM_store_self M2 gdc x
     refine hk _ _ H F L C G
       (Keeps.restore (by rw [h2]; congr 1; omega) (Keeps.restore rfl (by keeps_tac Keeps.refl _ _)))
-      (show BitVec.ofNat 64 (sp - 48 + 48) = R 2 by rw [h2]; congr 1; omega) ⟨hst, rfl, rfl⟩ h1'
+      (show BitVec.ofNat 64 (sp - 48 + 48) = R 2 by rw [h2]; congr 1; omega) ⟨hst, rfl, rfl, rfl⟩ h1'
       (fun a ho hg hf => ?_) (StrPin.refl _ _)
     rw [imgM_store_miss _ _ (Classical.byContradiction fun hc => hg (by simp only [DcGlob, dc_addrs]; omega))]
     exact hM2 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)

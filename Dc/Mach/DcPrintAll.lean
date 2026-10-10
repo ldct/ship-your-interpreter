@@ -36,7 +36,7 @@ theorem forall2_at {α β : Type} {r : α → β → Prop} :
       exact ⟨v, hv, by simpa using e⟩
 
 theorem SameNodes.trans {G G' G'' : DcG} (h1 : SameNodes G G') (h2 : SameNodes G' G'') :
-    SameNodes G G'' := ⟨h2.stk.trans h1.stk, h2.regs.trans h1.regs, h2.lbuf.trans h1.lbuf⟩
+    SameNodes G G'' := ⟨h2.stk.trans h1.stk, h2.regs.trans h1.regs, h2.lbuf.trans h1.lbuf, h2.lk.trans h1.lk⟩
 
 /-- The text `dc_printall` sends for the values `l`. -/
 def paOut (ob : Nat) (l : List Val) : List Nat := l.flatMap fun v => Dc.Val.out 70 ob v ++ [10]
@@ -244,7 +244,7 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
     all_goals first | exact frame_acc hsf' (by omega) (by omega) | exact hal | skip
     have hnil : st.stack = [] := List.eq_nil_of_length_eq_zero (by rw [← hlen, hstk]; rfl)
     rw [show t = t ++ Dc.outStr (paOut ob st.stack) by rw [hnil]; simp [paOut, Dc.outStr]]
-    refine hk _ M1 H F L C G ?_ ?_ ⟨rfl, rfl, rfl⟩ h1 (StrPin.refl _ _) fun a _ _ _ hf =>
+    refine hk _ M1 H F L C G ?_ ?_ ⟨rfl, rfl, rfl, rfl⟩ h1 (StrPin.refl _ _) fun a _ _ _ hf =>
       hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
     · refine Keeps.restoreAll (rs := [2, 8]) (show Keeps ([2, 8] ++ cClob) _ R by
         keeps_tac Keeps.refl _ _) fun z hz => ?_
@@ -289,7 +289,7 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
       (fun t' R' M' sp' ho => hoom t' R' M' sp' ⟨by have := ho.lo; omega, by have := ho.hi; omega, ho.r2,
         fun a e1 e2 e3 e4 => (ho.out a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)) e4).trans
           (hM1 a fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))⟩)
-      rest [] (b := b) (g := g) _ h1 (by rw [hstk]; rfl) ⟨rfl, rfl, rfl⟩ (StrPin.refl _ _) hmb1 (fun _ _ _ _ _ => rfl)
+      rest [] (b := b) (g := g) _ h1 (by rw [hstk]; rfl) ⟨rfl, rfl, rfl, rfl⟩ (StrPin.refl _ _) hmb1 (fun _ _ _ _ _ => rfl)
       ?r2 ?r8 ?r9 fun R' M' H' F' L' C' G' hk' e2 hsn hD hpin hfr => ?_
     case r2 => bsimp []
     case r8 => bsimp []

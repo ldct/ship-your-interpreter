@@ -182,6 +182,7 @@ structure SameNodes (G G' : DcG) : Prop where
   stk : G'.stk = G.stk
   regs : G'.regs = G.regs
   lbuf : G'.lbuf = G.lbuf
+  lk : G'.lk = G.lk
 
 /-- **`dc_dup (value)`** at `0x800020a0`: one more reference to the datum
 `g`, returned in `a0`/`a1` and added to the handles. -/
@@ -224,7 +225,7 @@ theorem dc_dup_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     · bsimp [h2]
     · bsimp []; exact hal
     subst e1
-    exact hk R' M' _ _ G (hk1.trans (by keeps_tac Keeps.refl _ _)) hd' ⟨rfl, rfl, rfl⟩ h'
+    exact hk R' M' _ _ G (hk1.trans (by keeps_tac Keeps.refl _ _)) hd' ⟨rfl, rfl, rfl, rfl⟩ h'
       (hv.relist (DObjs.sub_swapNum (x := x) (x' := x.withRefs (x.rep.refs + 1)) rfl rfl)) hfr
       (StrPin.refl _ _)
   | str p =>
@@ -251,7 +252,7 @@ theorem dc_dup_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     subst e1
     rw [he] at hv
     exact hk R' M' _ _ (G.withStr A B (o.withRefs (o.refs + 1))) (hk1.trans (by keeps_tac Keeps.refl _ _))
-      hd' ⟨rfl, rfl, rfl⟩ h' (hv.relist (DObjs.sub_swapStr (o := o) (o' := o.withRefs (o.refs + 1)) rfl rfl)) hfr
+      hd' ⟨rfl, rfl, rfl, rfl⟩ h' (hv.relist (DObjs.sub_swapStr (o := o) (o' := o.withRefs (o.refs + 1)) rfl rfl)) hfr
       (by rw [he]; exact StrPin.withRefs _ _)
 
 end Dc.Mach

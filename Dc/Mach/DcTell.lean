@@ -593,7 +593,7 @@ theorem dc_tell_length_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) →
   match g, v, hv with
   | .num _, .num _, ⟨x, hx, rfl, rfl⟩ =>
     exact tl_num hlive h hx hsf hab R h2 h10 h11 h12 hal fun R' M' H' F' L' C' k1 k2 k3 k4 k5 =>
-      hk R' M' H' F' L' C' G k1 k2 k3 ⟨rfl, rfl, rfl⟩ k4 k5 (StrPin.refl _ _)
+      hk R' M' H' F' L' C' G k1 k2 k3 ⟨rfl, rfl, rfl, rfl⟩ k4 k5 (StrPin.refl _ _)
   | .str _, .str _, ⟨o, ho, rfl, rfl⟩ =>
     exact tl_str hlive h ho hsf hab R h2 h10 h11 h12 hal fun R' M' H' G' k1 k2 k3 k4 k5 k6 k7 =>
       hk R' M' H' F L C G' k1 k2 k3 k4 k5 k6 k7

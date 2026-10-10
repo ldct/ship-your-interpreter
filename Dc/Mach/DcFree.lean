@@ -967,7 +967,7 @@ theorem dc_free_str_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     refine free_str_relP hlive (hpd.dropStr he) h1' fh ft (Ne.symm hss.1) (by omega) hptr hsf (by simp only [heapEnd]; omega)
       _ (by bsimp []) (by bsimp [h2]) (by bsimp []; exact hal) fun R' M' H' hk1 h' hfr hfc => ?_
     have hperm := DcG.blocks_perm_drop he
-    refine hk R' M' H' (G.dropStr A B) (hk1.trans (by keeps_tac Keeps.refl _ _)) ⟨rfl, rfl, rfl⟩ h'
+    refine hk R' M' H' (G.dropStr A B) (hk1.trans (by keeps_tac Keeps.refl _ _)) ⟨rfl, rfl, rfl, rfl⟩ h'
       (fun a ho' hg hf => ?_) (fun c hc => ?_) (by rw [he]; exact HsKeep.dropStr h.den he h1)
       (by rw [he]; exact StrPin.dropStr h.den he h1)
     · rw [hfr a ho' hg hf, hout a ho']
@@ -990,7 +990,7 @@ theorem dc_free_str_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     · bsimp []; exact hpos
     bc_run hlive hS [h10, hw, hrf, wp, wq]
     refine hk _ _ H (G.withStr A B (o.withRefs (o.refs - 1))) (by keeps_tac Keeps.refl _ _)
-      ⟨rfl, rfl, rfl⟩ ((h.decStr he h2r hv1).congr (hpd.store M _ (.inl rfl) fun x hx => hoE x (by
+      ⟨rfl, rfl, rfl, rfl⟩ ((h.decStr he h2r hv1).congr (hpd.store M _ (.inl rfl) fun x hx => hoE x (by
         simp only [Blk.In, Blk.pay, Blk.fin] at hx ⊢; omega))) (fun a ho' hg hf => hout a ho')
       (fun c hc => ⟨⟨hc.live, by rw [G.withStr_blocks (o' := o.withRefs (o.refs - 1)) he rfl rfl]; exact hc.notG, hc.notNum⟩,
         fun a hca => hm a fun hb => live_apart h.heap.heap hc.live

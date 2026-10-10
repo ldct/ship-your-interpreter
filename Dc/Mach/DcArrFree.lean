@@ -109,14 +109,14 @@ structure AfPost (sp W : Nat) (M : Mem) (H : Heap) (F : List Blk) (L : List NumO
 
 theorem AfPost.refl (sp W : Nat) (M : Mem) (H : Heap) (F : List Blk) (L : List NumObj) (G : DcG)
     (bs : List Blk) : AfPost sp W M H F L G bs M H F L G :=
-  ⟨⟨rfl, rfl, rfl⟩, fun _ _ _ _ => rfl, fun _ hc _ => ⟨hc, fun _ _ => rfl⟩⟩
+  ⟨⟨rfl, rfl, rfl, rfl⟩, fun _ _ _ _ => rfl, fun _ hc _ => ⟨hc, fun _ _ => rfl⟩⟩
 
 theorem AfPost.trans {sp W : Nat} {M M1 M2 : Mem} {H H1 H2 : Heap} {F F1 F2 : List Blk}
     {L L1 L2 : List NumObj} {G G1 G2 : DcG} {bs1 bs2 : List Blk}
     (h1 : AfPost sp W M H F L G bs1 M1 H1 F1 L1 G1) (h2 : AfPost sp W M1 H1 F1 L1 G1 bs2 M2 H2 F2 L2 G2) :
     AfPost sp W M H F L G (bs1 ++ bs2) M2 H2 F2 L2 G2 where
   same := ⟨h2.same.stk.trans h1.same.stk, h2.same.regs.trans h1.same.regs,
-    h2.same.lbuf.trans h1.same.lbuf⟩
+    h2.same.lbuf.trans h1.same.lbuf, h2.same.lk.trans h1.same.lk⟩
   out a ho hg hf := (h2.out a ho hg hf).trans (h1.out a ho hg hf)
   fresh c hc hm := by
     obtain ⟨hc1, hb1⟩ := h1.fresh c hc fun h => hm (List.mem_append_left _ h)
@@ -143,7 +143,7 @@ theorem af_freeNode {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   obtain ⟨lpre, lpost, hl⟩ := List.append_of_mem hfb.live
   refine free_spec hlive hi hl R h10 hal fun R' M' hk1 hp => ?_
   have hpost : AfPost 0 0 M H F L G [b] M' ⟨H.braw, b :: H.free, lpre ++ lpost⟩ F L G :=
-    ⟨⟨rfl, rfl, rfl⟩, fun a ho _ _ => hp.frame a (OutHeap.not_alloc hi ho), fun c hc hcb =>
+    ⟨⟨rfl, rfl, rfl, rfl⟩, fun a ho _ _ => hp.frame a (OutHeap.not_alloc hi ho), fun c hc hcb =>
       ⟨hc.afterFree hl (fun e => hcb (e ▸ List.mem_singleton_self _)) _ _,
         fun a ha => hp.frame a (live_not_alloc hi hc.live ha)⟩⟩
   refine hk R' M' _ hk1 (h.free hfb hl hp) (hr.transport fun bn hm => hpost.fresh bn.1 (hr.fresh bn hm)
@@ -212,7 +212,7 @@ theorem af_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   have hslot : ∀ c, DcFresh H F L G c → c ≠ b → ∀ a, c.In a → ¬ slotBytes (b.pay + 16) a :=
     fun c hc hcb a hca hs => live_apart hi hc.live hfb.live hcb hca (hqb a hs)
   have hp1 : AfPost (sp - 48) 32 M H F L G [b] M3 H' F' L' G :=
-    ⟨⟨rfl, rfl, rfl⟩, fun a ho hg hf => hfr a ho hg hf fun hs => by
+    ⟨⟨rfl, rfl, rfl, rfl⟩, fun a ho hg hf => hfr a ho hg hf fun hs => by
         have := (hqb a hs); have := live_in_heap hi hfb.live this; exact ho.1 this,
       fun c hc hcb => ⟨(hfc c hc).1, fun a ha => (hfc c hc).2 a ha
         (hslot c hc (fun e => hcb (e ▸ List.mem_singleton_self _)) a ha)⟩⟩

@@ -1,0 +1,163 @@
+import Dc.Mach.DcDivrem
+import Dc.Mach.DcPrint
+
+/-!
+# `dc_dump_num`'s state (M9)
+
+    dc_dump_num (dcvalue, discard):
+      bc_init_num (&value); bc_init_num (&obase); bc_init_num (&digit);
+      bc_divide (dcvalue, _one_, &value, 0); value->n_sign = PLUS;
+      if (discard == DC_TOSS) dc_free_num (&dcvalue);
+      bc_int2num (&obase, 256);
+      do { bc_divmod (value, obase, &value, &digit, 0);
+           cur = dc_malloc (16); cur->digit = bc_num2long (digit);
+           cur->link = top; top = cur; } while (!bc_is_zero (value));
+      for (cur = top; cur; cur = next) { putchar (cur->digit); next = cur->link; free (cur); }
+      bc_free_num (&digit); bc_free_num (&obase); bc_free_num (&value);
+
+The three numbers are handles of the dc state (`hs`), so the bc callees run
+through the `DcAt` wrappers. The digit cells are `malloc (16)` blocks fresh to
+the state; a bc callee gets them as raw blocks beside the state's
+(`DcAt.withCells`), and keeps their bytes.
+
+- `DcDen.perm`, `DcAt.perm`: the handles in another order.
+- `DcAt.refs2`: a number with two handles has two references.
+- `CellsK`: a stack of `[word, next]` cells with the word read as `k`.
+- `DnStk`: the digit cells, fresh to the state.
+- `DcAt.withCells`, `DnStk.ofRaw`: the cells as a callee's raw blocks.
+-/
+
+namespace Dc.Mach
+
+open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
+open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
+
+set_option linter.unusedSimpArgs false
+
+/-! ## Handles -/
+
+/-- **The handles in another order.** -/
+theorem DcDen.perm {L : List NumObj} {C : BcConsts} {G : DcG} {hs hs' : List GV} {st : St}
+    (d : DcDen L C G hs st) (hp : hs.Perm hs') : DcDen L C G hs' st :=
+  { d with
+    hsDen := fun g hg => d.hsDen g (hp.mem_iff.mpr hg)
+    numRefs := fun x hx => by
+      rw [d.numRefs x hx, ((List.Perm.append_left G.vals hp).count_eq (.num x.rep.p))]
+    strRefs := fun o ho => by
+      rw [d.strRefs o ho, ((List.Perm.append_left G.vals hp).count_eq (.str o.hb.pay))] }
+
+theorem DcAt.perm {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs hs' : List GV} {st : St} (h : DcAt S M H F L C G hs st)
+    (hp : hs.Perm hs') : DcAt S M H F L C G hs' st :=
+  { h with den := h.den.perm hp }
+
+/-- **Two handles, two references.** -/
+theorem DcAt.refs2 {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
+    {x : NumObj} (hx : x ∈ L) (h2 : 2 ≤ hs.count (.num x.rep.p)) : 2 ≤ x.rep.refs := by
+  rw [h.den.numRefs x hx, List.count_append]; omega
+
+/-! ## Cells -/
+
+/-- **A stack of `[word, next]` cells** from `p` at the image `M`, each word
+read as `k` (`dc_dump_num`'s `int` digit is `.lw`): each cell a block of at
+least 16 bytes holding its word at the payload and the next cell's address
+at `+8`, distinct from the later cells and from `Xb`; `0` ends the stack.
+(`Cells` of `RawCells.lean` is the `.ld` case.) -/
+def CellsK (k : MKind) (M : Mem) (Xb : List Blk) : List Blk → List Nat → Nat → Prop
+  | [], [], p => p = 0
+  | c :: cs, d :: ds, p =>
+      p = c.pay ∧ 16 ≤ c.sz ∧ ldv k M c.pay = BitVec.ofNat 64 d ∧ c ∉ cs ++ Xb ∧
+        CellsK k M Xb cs ds (ldv .ld M (c.pay + 8)).toNat
+  | _, _, _ => False
+
+/-- The cells at an image agreeing on their bytes. -/
+theorem CellsK.transport {k : MKind} (hk : widthOfM k ≤ 8) {M M' : Mem} {Xb : List Blk} :
+    ∀ {cs : List Blk} {ds : List Nat} {p : Nat}, CellsK k M Xb cs ds p →
+      (∀ c ∈ cs, ∀ a, c.In a → imgM M' a = imgM M a) → CellsK k M' Xb cs ds p
+  | [], [], _, h, _ => h
+  | c :: cs, d :: ds, _, ⟨hp, hsz, hd, hn, hr⟩, hm => by
+      have hc : ∀ j, j < 16 → imgM M' (c.pay + j) = imgM M (c.pay + j) := fun j hj =>
+        hm c List.mem_cons_self _ (by simp only [Blk.In, Blk.pay, Blk.fin]; omega)
+      have e0 : ldv k M' c.pay = ldv k M c.pay := ldv_congr k fun j hj => hc j (by omega)
+      have e8 : ldv .ld M' (c.pay + 8) = ldv .ld M (c.pay + 8) :=
+        ldv_congr .ld fun j hj => by
+          rw [Nat.add_assoc]; exact hc _ (by simp only [widthOfM] at hj; omega)
+      exact ⟨hp, hsz, e0 ▸ hd, hn,
+        e8 ▸ CellsK.transport hk hr fun c' hc' => hm c' (List.mem_cons_of_mem _ hc')⟩
+  | [], _ :: _, _, h, _ => h.elim
+  | _ :: _, [], _, h, _ => h.elim
+
+/-- The head cell, by name. -/
+structure CellKHead (k : MKind) (M : Mem) (Xb : List Blk) (c : Blk) (cs : List Blk) (d : Nat)
+    (ds : List Nat) (p : Nat) : Prop where
+  p : p = c.pay
+  sz : 16 ≤ c.sz
+  word : ldv k M c.pay = BitVec.ofNat 64 d
+  fresh : c ∉ cs ++ Xb
+  rest : CellsK k M Xb cs ds (ldv .ld M (c.pay + 8)).toNat
+
+theorem CellsK.head {k : MKind} {M : Mem} {Xb : List Blk} {c : Blk} {cs : List Blk} {d : Nat}
+    {ds : List Nat} {p : Nat} (h : CellsK k M Xb (c :: cs) (d :: ds) p) :
+    CellKHead k M Xb c cs d ds p :=
+  ⟨h.1, h.2.1, h.2.2.1, h.2.2.2.1, h.2.2.2.2⟩
+
+theorem CellsK.length {k : MKind} {M : Mem} {Xb : List Blk} :
+    ∀ {cs : List Blk} {ds : List Nat} {p : Nat}, CellsK k M Xb cs ds p → cs.length = ds.length
+  | [], [], _, _ => rfl
+  | _ :: _, _ :: _, _, ⟨_, _, _, _, hr⟩ => congrArg (· + 1) (CellsK.length hr)
+  | [], _ :: _, _, h => h.elim
+  | _ :: _, [], _, h => h.elim
+
+/-- An empty stack's address is `0`; a nonempty one's is its head's payload. -/
+theorem CellsK.zero_iff {k : MKind} {M : Mem} {Xb : List Blk} {cs : List Blk} {ds : List Nat}
+    {p : Nat} (h : CellsK k M Xb cs ds p) : p = 0 ↔ cs = [] := by
+  match cs, ds, h with
+  | [], [], h => exact ⟨fun _ => rfl, fun _ => h⟩
+  | _ :: _, _ :: _, ⟨hp, _⟩ =>
+    exact ⟨fun e => by simp only [Blk.pay] at hp; omega, fun e => by cases e⟩
+
+/-- **`dc_dump_num`'s digit cells** from `p`: blocks fresh to the state
+holding the digits `ds` (bytes) as `int`s. -/
+structure DnStk (H : Heap) (F : List Blk) (L : List NumObj) (G : DcG) (M : Mem)
+    (cells : List Blk) (ds : List Nat) (p : Nat) : Prop where
+  fresh : ∀ c ∈ cells, DcFresh H F L G c
+  stk : CellsK .lw M G.blocks cells ds p
+  dig : ∀ d ∈ ds, d < 256
+
+/-- No cells. -/
+theorem DnStk.nil (H : Heap) (F : List Blk) (L : List NumObj) (G : DcG) (M : Mem) :
+    DnStk H F L G M [] [] 0 := ⟨fun _ h => (nomatch h), rfl, fun _ h => (nomatch h)⟩
+
+/-- **The cells as raw blocks beside the state's**, imaged at the current
+memory. -/
+theorem DcAt.withCells {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {cells : List Blk} {ds : List Nat} {p : Nat}
+    (h : DcAt S M H F L C G hs st) (sk : DnStk H F L G M cells ds p) :
+    BcHeap S ⟨cells ++ G.blocks, M⟩ M H F L :=
+  { h.heap with
+    raw :=
+      ⟨fun b hb => (List.mem_append.mp hb).elim (fun hc => (sk.fresh b hc).live)
+          (fun hc => h.heap.raw.live b hc),
+        fun b hb => (List.mem_append.mp hb).elim (fun hc => (sk.fresh b hc).notNum)
+          (fun hc => h.heap.raw.out b hc),
+        fun _ _ _ _ => rfl⟩ }
+
+/-- The state's own raws from the raws with the cells. -/
+theorem BcHeap.dropCells {S : Nat → Prop} {G : DcG} {cells : List Blk} {M M' : Mem} {H : Heap}
+    {F : List Blk} {L : List NumObj} (h : BcHeap S ⟨cells ++ G.blocks, M⟩ M' H F L) :
+    BcHeap S (G.raws M) M' H F L :=
+  h.subRaw (fun b hb => List.mem_append_right _ hb) fun _ _ _ _ => rfl
+
+/-- **The cells after a callee** that kept them as raw blocks. -/
+theorem DnStk.ofRaw {S : Nat → Prop} {G : DcG} {cells : List Blk} {ds : List Nat} {p : Nat}
+    {M M' : Mem} {H H' : Heap} {F F' : List Blk} {L L' : List NumObj}
+    (sk : DnStk H F L G M cells ds p) (hb : BcHeap S ⟨cells ++ G.blocks, M⟩ M' H' F' L') :
+    DnStk H' F' L' G M' cells ds p where
+  fresh := fun c hc =>
+    ⟨hb.raw.live c (List.mem_append_left _ hc), (sk.fresh c hc).notG,
+      hb.raw.out c (List.mem_append_left _ hc)⟩
+  stk := sk.stk.transport (by decide) fun c hc a ha => hb.raw.img c (List.mem_append_left _ hc) a ha
+  dig := sk.dig
+
+end Dc.Mach

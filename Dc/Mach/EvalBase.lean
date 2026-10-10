@@ -1,5 +1,6 @@
 import Dc.Mach.DcFuncSpec
 import Dc.Mach.EvalLeak
+import Dc.Adequacy
 
 /-!
 # `evalstr`: the loop invariant and the statements (M10)
@@ -105,6 +106,32 @@ structure TosBudget (lm d k : Nat) (st : St) (rest : List Nat) (td : Nat) : Prop
   size : ∀ n, TosCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st rest td
   restLen : rest.length < 2 ^ 24
 
+/-- **The budgets at a fuel `n`** where the evaluation completes
+(`run lm n st f = some (st', r)`): the loop proof inducts on `n`, every
+sub-evaluation completing at a smaller fuel with its budgets read off the
+same equations (`EvBudget.fuel` gives it from a derivation). -/
+structure EvFuel (lm n d k : Nat) (st : St) (f : Frame) (st' : St) (r : Status) : Prop where
+  run : run lm n st f = some (st', r)
+  nest : nestDepth lm n st f ≤ d
+  leak : leakCount lm n st f ≤ k
+  size : AllCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st f
+  len : f.s.length < 2 ^ 24
+
+/-- `EvFuel` for the `DC_EVALTOS` code. -/
+structure TosFuel (lm n d k : Nat) (st : St) (rest : List Nat) (td : Nat) (st' : St) (r : Status) :
+    Prop where
+  run : tos lm n st rest td = some (st', r)
+  nest : tosDepth lm n st rest td ≤ d
+  leak : tosLeak lm n st rest td ≤ k
+  size : TosCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st rest td
+  len : rest.length < 2 ^ 24
+
+/-- A derivation with its budgets completes at some fuel. -/
+theorem EvBudget.fuel {lm d k : Nat} {st st' : St} {f : Frame} {r : Status}
+    (hl : Loop lm st f st' r) (hb : EvBudget lm d k st f) : ∃ n, EvFuel lm n d k st f st' r := by
+  obtain ⟨n, hn⟩ := hl.complete
+  exact ⟨n, hn, hb.nest n, hb.leak n, hb.size n, hb.frameLen⟩
+
 /-! ## The machine side -/
 
 /-- `evalstr`'s saved registers (`ra`, `s0`–`s9`) and their frame offsets. -/
@@ -196,15 +223,16 @@ def EvK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat →
 
 /-! ## The statements -/
 
-/-- **The loop** (term direction): a derivation `Loop 70 st f st' r` and the
-machine at the loop head representing `st` and `f` (nonempty) run to the
-caller's continuation for `st'` and `r`. -/
+/-- **The loop** (term direction): an evaluation completing at fuel `n`
+(`EvFuel`, from a derivation `Loop 70 st f st' r`) and the machine at the
+loop head representing `st` and `f` (nonempty) run to the caller's
+continuation for `st'` and `r`. -/
 def EvLoopSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) :
     Prop :=
   ∀ (t0 : String) (sp W d k q : Nat) (M0 : Mem) (R0 R : Nat → BitVec 64) (M : Mem) (H : Heap)
     (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st st' : St)
     (f : Frame) (o : StrObj) (r : Status),
-    Loop 70 st f st' r → f.s ≠ [] → EvBudget 70 d k st f →
+    ∀ n, EvFuel 70 n d k st f st' r → f.s ≠ [] →
     EvAt S sp W d k q M0 R0 R M H F L C G hs xs st f o → R 12 = boolWord f.neg →
     FnOom live S Q (sp - 176) (W - 176) M →
     EvK live S Q t0 sp W k q M0 R0 G hs xs st' r →
@@ -212,7 +240,7 @@ def EvLoopSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (
 
 /-- **The `DC_EVALTOS` code** (term direction) at `0x80001748` (the
 whitespace and comment skip, then `dc_pop (&evalstr)` into `s9 = sp - 176 +
-32`): a derivation `Tos 70 st rest td st' r`, the machine representing `st`
+32`): an evaluation `tos 70 n st rest td = some (st', r)` with its budgets, the machine representing `st`
 and the frame `⟨rest, td, false⟩` (`rest` possibly empty), runs to the
 continuation. -/
 def EvTosSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) :
@@ -220,7 +248,7 @@ def EvTosSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (N
   ∀ (t0 : String) (sp W d k q : Nat) (M0 : Mem) (R0 R : Nat → BitVec 64) (M : Mem) (H : Heap)
     (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st st' : St)
     (rest : List Nat) (td : Nat) (o : StrObj) (r : Status),
-    Tos 70 st rest td st' r → TosBudget 70 d k st rest td →
+    ∀ n, TosFuel 70 n d k st rest td st' r →
     EvAt S sp W d k q M0 R0 R M H F L C G hs xs st ⟨rest, td, false⟩ o →
     R 25 = BitVec.ofNat 64 (sp - 176 + 32) →
     FnOom live S Q (sp - 176) (W - 176) M →

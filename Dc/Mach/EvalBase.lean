@@ -250,11 +250,13 @@ def EvLoopSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (
     Prop :=
   ∀ (t0 : String) (sp W d k q : Nat) (M0 : Mem) (R0 R : Nat → BitVec 64) (M : Mem) (H : Heap)
     (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st st' : St)
-    (f : Frame) (o : StrObj) (r : Status),
+    (f : Frame) (o : StrObj) (r : Status) (Ge : DcG) (hse xse : List GV) (ke : Nat),
     ∀ n, EvFuel 70 n d k st f st' r → f.s ≠ [] →
     EvAt S sp W d k q M0 R0 R M H F L C G hs xs st f o → R 12 = boolWord f.neg →
     EvOom live S Q sp W q M0 →
-    EvK live S Q t0 sp W k q M0 R0 G hs xs st' r →
+    hs.tail = hse.tail → G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke →
+    StrPin Ge.strs G.strs hs.tail →
+    EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st' r →
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800014f8#64 R M
 
 /-- **The `DC_EVALTOS` code** (term direction) at `0x80001748` (the
@@ -266,12 +268,14 @@ def EvTosSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (N
     Prop :=
   ∀ (t0 : String) (sp W d k q : Nat) (M0 : Mem) (R0 R : Nat → BitVec 64) (M : Mem) (H : Heap)
     (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st st' : St)
-    (rest : List Nat) (td : Nat) (o : StrObj) (r : Status),
+    (rest : List Nat) (td : Nat) (o : StrObj) (r : Status) (Ge : DcG) (hse xse : List GV) (ke : Nat),
     ∀ n, TosFuel 70 n d k st rest td st' r →
     EvAt S sp W d k q M0 R0 R M H F L C G hs xs st ⟨rest, td, false⟩ o →
     R 25 = BitVec.ofNat 64 (sp - 176 + 32) →
     EvOom live S Q sp W q M0 →
-    EvK live S Q t0 sp W k q M0 R0 G hs xs st' r →
+    hs.tail = hse.tail → G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke →
+    StrPin Ge.strs G.strs hs.tail →
+    EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st' r →
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001748#64 R M
 
 /-- **`evalstr (string)`** at `0x80001448`: a derivation

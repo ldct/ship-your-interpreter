@@ -62,7 +62,7 @@ ARMS = {
     0x80000FB8: ("Dc.Mach.DcFuncArmV7", "fa_Z", f"hlive h hc {W} ho {HS} hk"),
     0x80000FE0: ("Dc.Mach.DcFuncArmV1", "fa_X", f"hlive h hc {W} ho {HS} (by decide) hk"),
     0x80001008: ("Dc.Mach.DcFuncArmR3", "fa_S", None),
-    0x80001038: ("Dc.Mach.DcFuncArmR3", "fa_R", None),
+    0x80001038: ("Dc.Mach.DcFuncArmR2", "fa_R", f"hlive h hc {W} (by decide) hk"),
     0x80001058: ("Dc.Mach.DcFuncArmR1", "fa_Q", f"hlive h hc {W} (by decide) hk"),
     0x800010A8: ("Dc.Mach.DcFuncArm2", "fa_add", f"{OP} {HS} hp.lkLen hk"),
     0x800010C0: ("Dc.Mach.DcFuncArm2", "fa_div", f"{OP} hp.size.div {HS} hp.lkLen (by decide) hk"),

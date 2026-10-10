@@ -177,3 +177,4 @@ import Dc.EndToEnd
 import Dc.Mach.EvalDivModel
 import Dc.Mach.EvalDivLob
 import Dc.Mach.EvalEntryB
+import Dc.Mach.EvalStrB

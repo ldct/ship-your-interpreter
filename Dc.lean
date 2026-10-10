@@ -137,3 +137,5 @@ import Dc.Mach.DcMemfail
 import Dc.Mach.DcReadString
 import Dc.Mach.DcSystem
 import Dc.Mach.DcGetnumSpec
+import Dc.Mach.DcFuncBase
+import Dc.Mach.DcFuncDisp

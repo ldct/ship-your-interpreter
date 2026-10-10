@@ -80,6 +80,8 @@ python3 -B scripts/dc/gen_rt_msg.py --check \
   || fail "stage a3: Dc/Mach/RtMsgSites.lean is stale (scripts/dc/gen_rt_msg.py)"
 python3 -B scripts/dc/gen_stk_check.py --check \
   || fail "stage a3: Dc/Mach/DcStkCheckSites.lean is stale (scripts/dc/gen_stk_check.py)"
+python3 -B scripts/dc/gen_dcf_disp.py --check \
+  || fail "stage a3: Dc/Mach/DcFuncDisp.lean is stale (scripts/dc/gen_dcf_disp.py)"
 
 # ------------------------------------------------------------ (b) grep gate
 echo "== stage a4: proof-discipline gate (exponentiating layer mandatory for new files)"

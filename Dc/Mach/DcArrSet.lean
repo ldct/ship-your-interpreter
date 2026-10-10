@@ -242,4 +242,135 @@ theorem DcAt.setArr {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L
     · have hne : r' ≠ r := by omega
       simp only [DcG.setReg, St.setReg, hne, ite_false]; exact hd.regsHi r' hr'
 
+/-! ## The search loop -/
+
+/-- The word naming the last node of `pre`, or `0`. -/
+def lastPtr (pre : List (Blk × ANode)) : BitVec 64 :=
+  match pre.getLast? with
+  | none => 0#64
+  | some bx => BitVec.ofNat 64 bx.1.pay
+
+/-- The word naming the first node of `post`, or `0`. -/
+def headPtr : List (Blk × ANode) → BitVec 64
+  | [] => 0#64
+  | bx :: _ => BitVec.ofNat 64 bx.1.pay
+
+theorem lastPtr_concat (pre : List (Blk × ANode)) (bx : Blk × ANode) :
+    lastPtr (pre ++ [bx]) = BitVec.ofNat 64 bx.1.pay := by
+  simp [lastPtr]
+
+/-- `dc_array_set`'s search loop (`0x80003cc4`, `s0` the node `b`, `a4` the
+node before, `s1` the index `i`): it stops at the node with index `i`
+(`0x80003d20`) or before the first node with a larger index (`0x80003cd0`). -/
+theorem as_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {i : Nat} (hi : i < 2 ^ 31)
+    {all : List (Blk × ANode)} :
+    ∀ {b : Blk} {x : ANode} {l pre0 : List (Blk × ANode)},
+    all = pre0 ++ (b, x) :: l →
+    PChain M 24 (ANodeAt M) (BitVec.ofNat 64 b.pay) ((b, x) :: l) →
+    (∀ bx ∈ (b, x) :: l, heapStart + 16 ≤ bx.1.pay ∧ bx.1.pay + 32 ≤ heapEnd ∧ bx.1.pay % 16 = 0) →
+    (∀ bx ∈ pre0, bx.2.idx < i) →
+    ∀ (R : Nat → BitVec 64), R 8 = BitVec.ofNat 64 b.pay → R 9 = BitVec.ofNat 64 i →
+    R 14 = lastPtr pre0 →
+    (∀ R' pre c y post, all = pre ++ (c, y) :: post → (∀ bx ∈ pre, bx.2.idx < i) → y.idx = i →
+      Keeps [8, 14, 15] R' R → R' 8 = BitVec.ofNat 64 c.pay → DW live S Q 0x80003d20#64 R' M) →
+    (∀ R' pre post, all = pre ++ post → (∀ bx ∈ pre, bx.2.idx < i) →
+      (∀ bx ∈ post.head?, i < bx.2.idx) → Keeps [8, 14, 15] R' R → R' 8 = headPtr post →
+      R' 14 = lastPtr pre → DW live S Q 0x80003cd0#64 R' M) →
+    DW live S Q 0x80003cc4#64 R M := by
+  intro b x l
+  induction l generalizing b x with
+  | nil => ?_
+  | cons y l ih => ?_
+  all_goals
+    intro pre0 hall hc hb hpre R h8 h9 h14 hfd hins
+    have htx : tohostAddr = 0x8001ad00 := rfl
+    obtain ⟨hb1, hb2, hb3⟩ := hb (b, x) List.mem_cons_self
+    simp only [heapStart, heapEnd] at hb1 hb2
+    obtain ⟨hn, hl⟩ := hc.uncons
+    have hidx := hn.idx
+    have hil := hn.idxLt
+    have ci : (BitVec.ofNat 64 x.idx).toInt = x.idx := toInt_ofNat_small (by omega)
+    have cj : (BitVec.ofNat 64 i).toInt = i := toInt_ofNat_small (by omega)
+    bc_run hlive hS [h8, h9, hidx, ci, cj] at 0x80003ccc
+    all_goals first | (intro hlt; bc_run hlive hS [h8, h9, hidx, ci, cj] at 0x80003cb4) | skip
+  -- the empty rest: the link is null, insert at the end
+  · intro hlt
+    have hlt' : x.idx < i := by
+      have c1 : (BitVec.ofNat 64 x.idx).toInt = x.idx := toInt_ofNat_small (by omega)
+      have c2 : (BitVec.ofNat 64 i).toInt = i := toInt_ofNat_small (by omega)
+      omega
+    have hz := hl.nil_eq
+    bc_run hlive hS [h8, hz] at 0x80003cd0
+    all_goals try (intro hc; exact (hc rfl).elim)
+    try intro _
+    bc_run hlive hS [] at 0x80003cd0
+    refine hins _ (pre0 ++ [(b, x)]) [] (by rw [hall, List.append_nil]) (fun bx hm => (List.mem_append.mp hm).elim
+      (hpre bx) fun hm => by rw [List.mem_singleton.mp hm]; exact hlt') (fun _ h => (by cases h))
+      ?_ ?_ ?_
+    · keeps_tac Keeps.refl _ _
+    · bsimp []; rfl
+    · rw [lastPtr_concat]; bsimp []
+  · intro heq
+    have e : x.idx = i := by
+      have := congrArg BitVec.toNat heq; simp only [BitVec.toNat_ofNat] at this; omega
+    refine hfd _ pre0 b x [] hall hpre e ?_ ?_
+    · keeps_tac Keeps.refl _ _
+    · bsimp [h8]
+  · intro hne
+    have hge : ¬ x.idx < i := fun h => by
+      have c1 : (BitVec.ofNat 64 x.idx).toInt = x.idx := toInt_ofNat_small (by omega)
+      have c2 : (BitVec.ofNat 64 i).toInt = i := toInt_ofNat_small (by omega)
+      omega
+    have e : x.idx ≠ i := fun e => hne (by rw [e])
+    refine hins _ pre0 ((b, x) :: []) hall hpre (fun bx hm => ?_) ?_ ?_ ?_
+    · simp only [List.head?_cons, Option.mem_def, Option.some.injEq] at hm; subst hm
+      show i < x.idx; omega
+    · keeps_tac Keeps.refl _ _
+    · bsimp [h8]; rfl
+    · bsimp [h14]
+  -- a next node: around the loop
+  · intro hlt
+    have hlt' : x.idx < i := by
+      have c1 : (BitVec.ofNat 64 x.idx).toInt = x.idx := toInt_ofNat_small (by omega)
+      have c2 : (BitVec.ofNat 64 i).toInt = i := toInt_ofNat_small (by omega)
+      omega
+    obtain ⟨b', x'⟩ := y
+    have he := hl.head_eq
+    obtain ⟨hb1', hb2', -⟩ := hb (b', x') (List.mem_cons_of_mem _ List.mem_cons_self)
+    simp only [heapStart, heapEnd] at hb1' hb2'
+    have hnz : BitVec.ofNat 64 b'.pay ≠ 0#64 := ofNat_ne_small (by omega) (by decide) (by omega)
+    bc_run hlive hS [h8, he] at 0x80003cc4
+    all_goals try (intro hc; exact (hnz hc).elim)
+    try intro _
+    bc_run hlive hS [] at 0x80003cc4
+    rw [he] at hl
+    refine ih (pre0 := pre0 ++ [(b, x)]) (by rw [hall, List.append_assoc]; rfl) hl
+      (fun bx hm => hb bx (List.mem_cons_of_mem _ hm))
+      (fun bx hm => (List.mem_append.mp hm).elim (hpre bx) fun hm => by
+        rw [List.mem_singleton.mp hm]; exact hlt') _ ?_ ?_ ?_
+      (fun R' pre c y post e1 e2 e3 hk1 e4 => ?_) fun R' pre post e1 e2 e3 hk1 e4 e5 => ?_
+    · bsimp []
+    · bsimp [h9]
+    · rw [lastPtr_concat]; bsimp []
+    · exact hfd R' pre c y post e1 e2 e3 (hk1.trans (by keeps_tac Keeps.refl _ _)) e4
+    · exact hins R' pre post e1 e2 e3 (hk1.trans (by keeps_tac Keeps.refl _ _)) e4 e5
+  · intro heq
+    have e : x.idx = i := by
+      have := congrArg BitVec.toNat heq; simp only [BitVec.toNat_ofNat] at this; omega
+    refine hfd _ pre0 b x _ hall hpre e ?_ ?_
+    · keeps_tac Keeps.refl _ _
+    · bsimp [h8]
+  · intro hne
+    have e : x.idx ≠ i := fun e => hne (by rw [e])
+    refine hins _ pre0 ((b, x) :: _) hall hpre (fun bx hm => ?_) ?_ ?_ ?_
+    · simp only [List.head?_cons, Option.mem_def, Option.some.injEq] at hm; subst hm
+      show i < x.idx
+      have c1 : (BitVec.ofNat 64 x.idx).toInt = x.idx := toInt_ofNat_small (by omega)
+      have c2 : (BitVec.ofNat 64 i).toInt = i := toInt_ofNat_small (by omega)
+      omega
+    · keeps_tac Keeps.refl _ _
+    · bsimp [h8]; rfl
+    · bsimp [h14]
+
 end Dc.Mach

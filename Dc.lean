@@ -125,3 +125,4 @@ import Dc.Mach.DcRotate
 import Dc.Mach.DcClear
 import Dc.Mach.DcCmpop
 import Dc.Mach.DcPrint
+import Dc.Mach.DcPrintAll

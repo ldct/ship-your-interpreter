@@ -287,7 +287,7 @@ theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     {ob sp : Nat} {nl keep : Bool}
     (h : DcAt S M H F L C G hs st) (hd : keep = false → hs.head? = some g)
     (hv : g.Den ⟨L, G.strs⟩ v) (hhs : hs.length ≤ 2 ^ 20)
-    (hsz : ∀ x ∈ L, g = .num x.rep.p → x.rep.len + x.rep.scale < 2 ^ 20) (hmb : MulBase S M)
+    (hw : ∀ n, v = .num n → n.wid < 2 ^ 20) (hmb : MulBase S M)
     (hob2 : 2 ≤ ob) (hob : ob < 2 ^ 31)
     (herr : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a)
     (hsf : StackFrame S sp prN) (hab : heapEnd + prN ≤ sp)
@@ -304,7 +304,9 @@ theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
   have hrm : 224 ≤ rmStack (2 ^ 30) := by unfold rmStack; omega
   cases g <;> cases v <;> simp only [GV.Den] at hv
   · obtain ⟨x, hx, rfl, rfl⟩ := hv
-    exact pr_num hlive h hd hx hhs (hsz x hx rfl) hmb hob2 hob herr hsf hab R h2 h10 h11 h12 h13 h14 hal
+    have hsz := NumRep.len_le_wid (h.heap.nums x hx).shape (h.den.norm x hx)
+    have := hw _ rfl
+    exact pr_num hlive h hd hx hhs (by omega) hmb hob2 hob herr hsf hab R h2 h10 h11 h12 h13 h14 hal
       (fun R' M' H' F' L' C' hk' e2 hD hfr => hk R' M' H' F' L' C' G hk' e2 ⟨rfl, rfl, rfl⟩ hD hfr) hoom
   · obtain ⟨o, ho, rfl, rfl⟩ := hv
     have hsf' := hsf

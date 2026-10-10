@@ -159,3 +159,5 @@ import Dc.Mach.EvalBase
 import Dc.Mach.BootInit
 import Dc.Mach.BootMain
 import Dc.Mach.BootStart
+import Dc.Mach.BootGp
+import Dc.Mach.Halts

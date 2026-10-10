@@ -68,9 +68,9 @@ theorem EvAt.mbGlobs {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Na
     {hs xs : List GV} {st : St} {f : Frame} {o : StrObj}
     (ev : EvAt S sp W d k q M0 R0 R M H F L C G hs xs st f o) {M' : Mem}
     (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn (sp - 176) (W - 176) a →
-      ¬ (sp - 176 ≤ a ∧ a < sp - 176 + 88) → ¬ InP a → imgM M' a = imgM M a) :
+      ¬ (sp - 176 ≤ a ∧ a < sp - 176 + 88) → ¬ InP a → ¬ (q ≤ a ∧ a < q + 16) → imgM M' a = imgM M a) :
     MulBase S M' ∧ EvGlobs S M' := by
-  have hab := ev.room; have hstk := ev.stk
+  have hab := ev.room; have hstk := ev.stk; have hql := ev.slotPlace.lo
   refine ⟨ev.mb.transport fun a e1 e2 => ?_, ?_⟩
   · have ho := mulBase_off e1 e2
     exact hout a ho.1 (nglob_pin ho.2.1) (fun hg => by
@@ -78,11 +78,13 @@ theorem EvAt.mbGlobs {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Na
       (fun hf => by have := ho.2.2; simp only [frameIn, heapStart, heapEnd] at hf this hab; omega)
       (by simp only [mulBaseAddr, heapEnd] at e1 e2 hab; omega)
       (fun h => by simp only [InP, inPtrAddr, mulBaseAddr] at h e1 e2; omega)
+      (fun h => by simp only [mulBaseAddr, heapEnd] at e1 e2 hab; omega)
   · have g := ev.globs
     have hlow : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → a < heapStart → ¬ InP a →
         imgM M' a = imgM M a := fun a e1 e2 e3 e4 e5 => by
       exact hout a e1 (nglob_pin e2) e3 (fun hf => by simp only [frameIn, heapStart, heapEnd] at hf e4 hab; omega)
         (by simp only [heapStart, heapEnd] at e4 hab; omega) e5
+        (fun h => by simp only [heapStart, heapEnd] at e4 hab; omega)
     have hw : ∀ b, 0x8001cd30 ≤ b → b < 0x8001cd34 ∨ (0x8001cd84 ≤ b ∧ b < 0x8001cd88) →
         imgM M' b = imgM M b := fun b h1 h2 => hlow b
       (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
@@ -158,9 +160,9 @@ theorem EvAt.step {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
       stkPr := ev.stkPr
       stkDn := ev.stkDn
       budget := by have := ev.budget; simp only [List.length_append]; omega
-      mb := (ev.mbGlobs hp.out).1
+      mb := (ev.mbGlobs fun a e1 e2 e3 e4 e5 e6 _ => hp.out a e1 e2 e3 e4 e5 e6).1
       err := ev.err
-      globs := (ev.mbGlobs hp.out).2
+      globs := (ev.mbGlobs fun a e1 e2 e3 e4 e5 e6 _ => hp.out a e1 e2 e3 e4 e5 e6).2
       out := fun a e1 e2 e3 e4 e5 e6 e7 => by
         rw [hp.out a e1 e2 e3 e4 (fun hw => e5 (by omega)) e7]
         exact ev.out a e1 e2 e3 e4 e5 e6 e7 }

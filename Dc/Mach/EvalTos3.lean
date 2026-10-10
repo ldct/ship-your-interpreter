@@ -51,10 +51,10 @@ theorem EvAt.nestEntry {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : 
       stkPr := by have := ev.stkPr; omega
       stkDn := by have := ev.stkDn; omega
       budget := by simp only [List.length_append, List.length_cons, List.length_nil, hlk] at hbud ⊢; omega
-      mb := (ev.mbGlobs fun a e1 e2 _ e4 e5 _ => hpo a e1 e2
+      mb := (ev.mbGlobs fun a e1 e2 _ e4 e5 _ _ => hpo a e1 e2
         (fun hf => e4 (by simp only [frameIn] at hf ⊢; omega)) (by omega)).1
       err := ev.err
-      globs := (ev.mbGlobs fun a e1 e2 _ e4 e5 _ => hpo a e1 e2
+      globs := (ev.mbGlobs fun a e1 e2 _ e4 e5 _ _ => hpo a e1 e2
         (fun hf => e4 (by simp only [frameIn] at hf ⊢; omega)) (by omega)).2 }
 
 /-- **The nested activation's out-of-memory continuation** from the
@@ -181,5 +181,66 @@ theorem nest_return {live S : Nat → Prop}
     · exact hq0 rfl h0 _ R4 M3 H3 F2 L2 C2 G3 _ _ o' (ev'.mod (k4.mono (by decide))) hg hp
     · exact hq1 rfl h1 _ R4 M4 H3 F2 L2 C2 G3 _ _ o' (ev4.mod (Keeps.refl _ _)) (by rw [e10']; rfl) hg hp
 
+
+/-- **The invariant over a new string** (the tail call: `*string` replaced,
+the held handle the new string's, its text from the start). -/
+theorem EvAt.retarget {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat → BitVec 64}
+    {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG}
+    {hs xs : List GV} {st : St} {f : Frame} {o : StrObj}
+    (ev : EvAt S sp W d k q M0 R0 R M H F L C G hs xs st f o) {M5 : Mem} {H5 : Heap} {G5 : DcG}
+    {hs' : List GV} {st5 : St} {o' : StrObj} {td' : Nat}
+    (hdc : DcAt S M5 H5 F L C G5 (xs ++ hs') st5) (hlk : G5.lk.length ≤ G.lk.length)
+    (hlen : hs'.length = hs.length) (ho' : o' ∈ G5.strs)
+    (hheld : hs'.head? = some (.str o'.hb.pay)) (hslot : DatAt M5 q (.str o'.hb.pay))
+    (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a →
+      ¬ frameIn (sp - 176) (W - 176) a → ¬ (sp - 176 ≤ a ∧ a < sp - 176 + 88) → ¬ InP a →
+      ¬ (q ≤ a ∧ a < q + 16) → imgM M5 a = imgM M a)
+    (hsb : StrBound (2 ^ 24) st5) (hsrt : ArrSorted st5) (hlen' : o'.s.length < 2 ^ 24)
+    {R5 : Nat → BitVec 64} (h8 : R5 8 = BitVec.ofNat 64 o'.tb.pay)
+    (h9 : R5 9 = BitVec.ofNat 64 (o'.tb.pay + o'.s.length)) (h22 : R5 22 = R 22)
+    (h24 : R5 24 = BitVec.ofNat 64 td') (htd : td' < 2 ^ 31) (hcs : EvConsts R5)
+    (h2 : R5 2 = R 2) (hkeep : Keeps evClob R5 R) :
+    EvAt S sp W d k q M0 R0 R5 M5 H5 F L C G5 hs' xs st5 ⟨o'.s, td', false⟩ o' := by
+  have hab := ev.room; have hstk := ev.stk; have hfl := ev.frame.lo
+  have hq := ev.slotPlace
+  have hql := hq.lo
+  have hup : ∀ a, sp - 176 + 88 ≤ a → a < sp → imgM M5 a = imgM M a := fun a h1 h2 => by
+    have := above_sp (sp := sp - 176) (a := a) (by simp only [heapEnd] at hab ⊢; omega) (by omega)
+    exact hout a this.1 (nglob_pin this.2.1)
+      (not_ocG_of_ge (sp := sp - 176) (by simp only [heapEnd] at hab ⊢; omega) (by omega))
+      (this.2.2 _) (by omega) (fun h => by simp only [InP, inPtrAddr] at h; simp only [heapEnd] at hab; omega)
+      (by omega)
+  exact
+    { dc := hdc
+      strIn := ho'
+      strLen := hlen'
+      sb := hsb
+      srt := hsrt
+      held := hheld
+      slot := hslot
+      slotPlace := hq
+      pos := ⟨0, Nat.zero_le _, rfl, by rw [h8]⟩
+      s1 := h9
+      s6 := h22.trans ev.s6
+      s8 := h24
+      tdLt := htd
+      cs := hcs
+      r2 := h2.trans ev.r2
+      saved := ev.saved.transport (lo := 88) (top := 176) (hag := fun a h1 h2 => hup a (by omega) (by omega))
+      keep := hkeep.trans ev.keep
+      al := ev.al
+      r20 := ev.r20
+      frame := ev.frame
+      room := ev.room
+      stk := ev.stk
+      stkPr := ev.stkPr
+      stkDn := ev.stkDn
+      budget := by have := ev.budget; omega
+      mb := (ev.mbGlobs hout).1
+      err := ev.err
+      globs := (ev.mbGlobs hout).2
+      out := fun a e1 e2 e3 e4 e5 e6 e7 => by
+        rw [hout a e1 e2 e3 e4 (fun hw => e5 (by omega)) e7 e6]
+        exact ev.out a e1 e2 e3 e4 e5 e6 e7 }
 
 end Dc.Mach

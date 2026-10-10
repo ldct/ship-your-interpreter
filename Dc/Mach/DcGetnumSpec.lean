@@ -253,4 +253,133 @@ theorem gn_first {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     · rw [rdSign_no ne]; rfl
     · rw [rdSign_no ne]; rfl
 
+/-! ## After the integer digits -/
+
+/-- The integer loop's state as the exit's: `temp` held. -/
+theorem GnX.ofI {S : Nat → Prop} {M0 : Mem} {R0 : Nat → BitVec 64} {sp : Nat} {G : DcG}
+    {hs0 : List GV} {st : St} {o : StrObj} {j0 ra : Nat} {s6 : BitVec 64} {L0 : List NumObj}
+    {R : Nat → BitVec 64} {M : Mem} {j v : Nat} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {pr pt pd pb : Nat} (hI : GnI S M0 R0 sp G hs0 st o j0 ra s6 L0 R M j v H F L C pr pt pd pb) :
+    GnX S M0 R0 sp G hs0 st o j0 ra s6 L0 R M j ⟨false, v, 0⟩ (some pt) H F L C pr pd pb where
+  fr := hI.fr
+  h := hI.h.perm (List.Perm.cons _ ((List.Perm.swap _ _ _).trans (List.Perm.cons _ (List.Perm.swap _ _ _))))
+  w16 := hI.w16
+  w24 := hI.w24
+  w32 := hI.w32
+  w8 := hI.w8
+  dr := hI.dr
+  keep := hI.keep
+  regs := hI.regs
+  rd := hI.rd
+
+/-- **The sign test** at `0x8000283c` (`bnez s6`). -/
+theorem gn_neg0 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 : Mem} {R0 : Nat → BitVec 64} {sp : Nat}
+    {G : DcG} {hs0 : List GV} {st : St} {o : StrObj} {j0 ra : Nat} {neg : Bool}
+    {L0 : List NumObj} (cx : CfCtx S 144 sp) (hoom : GnOom live S Q t M0 sp)
+    {R : Nat → BitVec 64} {M : Mem} {jE : Nat} {n : Num} {og : Option Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {pr pd pb : Nat}
+    (hX : GnX S M0 R0 sp G hs0 st o j0 ra (if neg then chW (some 95) else 0#64) L0 R M jE n og H F L C pr pd pb)
+    (hk : ∀ R' M' H' F' L' C' pr',
+      GnX S M0 R0 sp G hs0 st o j0 ra (if neg then chW (some 95) else 0#64) L0 R' M' jE
+        (if neg then Num.sub (Num.zero 0) n 0 else n) og H' F' L' C' pr' pd pb →
+      DWO live S Q t 0x80002840#64 R' M') :
+    DWO live S Q t 0x8000283c#64 R M := by
+  have hS : HeapOwn S := fun a e1 e2 => hX.h.heap.heap.own a e1 e2
+  cases neg with
+  | false =>
+    have r22 : R 22 = 0#64 := hX.regs.r22
+    bc_run hlive hS [r22] at 0x80002840
+    exact hk R M H F L C pr hX
+  | true =>
+    have r22 : R 22 = 95#64 := hX.regs.r22
+    bc_run hlive hS [r22] at 0x800029ac
+    exact gn_sign hlive cx hoom hX hk
+
+/-- **The sign test** at `0x800029a8` (`beqz s6`) after a fraction. -/
+theorem gn_neg1 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 : Mem} {R0 : Nat → BitVec 64} {sp : Nat}
+    {G : DcG} {hs0 : List GV} {st : St} {o : StrObj} {j0 ra : Nat} {neg : Bool}
+    {L0 : List NumObj} (cx : CfCtx S 144 sp) (hoom : GnOom live S Q t M0 sp)
+    {R : Nat → BitVec 64} {M : Mem} {jE : Nat} {n : Num} {og : Option Nat} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {pr pd pb : Nat}
+    (hX : GnX S M0 R0 sp G hs0 st o j0 ra (if neg then chW (some 95) else 0#64) L0 R M jE n og H F L C pr pd pb)
+    (hk : ∀ R' M' H' F' L' C' pr',
+      GnX S M0 R0 sp G hs0 st o j0 ra (if neg then chW (some 95) else 0#64) L0 R' M' jE
+        (if neg then Num.sub (Num.zero 0) n 0 else n) og H' F' L' C' pr' pd pb →
+      DWO live S Q t 0x80002840#64 R' M') :
+    DWO live S Q t 0x800029a8#64 R M := by
+  have hS : HeapOwn S := fun a e1 e2 => hX.h.heap.heap.own a e1 e2
+  cases neg with
+  | false =>
+    have r22 : R 22 = 0#64 := hX.regs.r22
+    bc_run hlive hS [r22] at 0x80002840
+    exact hk R M H F L C pr hX
+  | true =>
+    have r22 : R 22 = 95#64 := hX.regs.r22
+    bc_run hlive hS [r22] at 0x800029ac
+    exact gn_sign hlive cx hoom hX hk
+
+/-- **After the integer digits** (`0x80002834`, the character at `j` in
+`s0`): a `.` reads the fraction (one lost reference, `lks = [pv]`); then the
+sign. On to the exit at `0x80002840` with `rdFrac`'s number signed and the
+reader after `rdFrac`'s rest. -/
+theorem gn_after {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 : Mem} {R0 : Nat → BitVec 64} {sp : Nat}
+    {G : DcG} {hs0 : List GV} {st : St} {o : StrObj} {j0 ra : Nat} {neg : Bool}
+    {L0 : List NumObj} (gx : GnCtx S M0 sp G o j0) (hhs : hs0.length + 6 ≤ 2 ^ 20)
+    (hoom : GnOom live S Q t M0 sp) (hl : G.lk.length < 2 ^ 29) (hsz : (rdW o j0).length < 2 ^ 24)
+    {R : Nat → BitVec 64} {M : Mem} {j v : Nat} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {pr pt pd pb : Nat}
+    (hI : GnI S M0 R0 sp G hs0 st o j0 ra (if neg then chW (some 95) else 0#64) L0 R M j v H F L C pr pt pd pb)
+    (hk : ∀ R' M' H' F' L' C' (lks : List Nat) pr' pd' og jE, lks.length ≤ 1 →
+      GnX S M0 R0 sp { G with lk := lks ++ G.lk } hs0 st o j0 ra (if neg then chW (some 95) else 0#64)
+        L0 R' M' jE
+        (if neg then Num.sub (Num.zero 0) (rdFrac st.ibase ⟨false, v, 0⟩ ((rdW o j0).drop j)).1 0
+          else (rdFrac st.ibase ⟨false, v, 0⟩ ((rdW o j0).drop j)).1) og H' F' L' C' pr' pd' pb →
+      (rdFrac st.ibase ⟨false, v, 0⟩ ((rdW o j0).drop j)).2 = (rdW o j0).drop jE →
+      DWO live S Q t 0x80002840#64 R' M') :
+    DWO live S Q t 0x80002834#64 R M := by
+  have cx := gx.cx
+  have h := hI.h
+  have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
+  have hib := h.den.ibase
+  have hr := h.rd gx.mem gx.j0
+  have hc : ∀ c, (rdW o j0)[j]? = some c → c < 256 := fun c e => hr.lt c (List.mem_of_getElem? e)
+  obtain ⟨hx1, hx2⟩ := chI_bounds hc
+  have h8 : R 8 = BitVec.ofInt 64 (chI (rdW o j0)[j]?) := hI.rd.ch.trans (chW_eq _)
+  bc_run hlive hS [h8] at 0x8000283c
+  all_goals rw [ofInt_eq_lit (k := 46) (by decide) hx1 hx2]
+  · intro e
+    have ed : (rdW o j0)[j]? = some 46 := by
+      cases e' : (rdW o j0)[j]? with
+      | none => rw [e'] at e; simp [chI] at e
+      | some c => rw [e'] at e; simp only [chI] at e; rw [show c = 46 by omega]
+    have hj : j < (rdW o j0).length := by
+      rcases Nat.lt_or_ge j (rdW o j0).length with h' | h'
+      · exact h'
+      · rw [List.getElem?_eq_none h'] at ed; cases ed
+    have hI' := hI.keepT (R' := upd R 15 46#64) (by keeps_tac Keeps.refl _ _)
+    refine gn_fentry hlive gx hhs hI' fun R1 M1 H1 F1 L1 C1 pd1 pv1 hF e8 ep => ?_
+    refine gnf_loop hlive gx hhs hoom _ j 0 0 R1 M1 none H1 F1 L1 C1 pd1 pv1 rfl hj (Nat.zero_le _) hF
+      ⟨hI.rd.le, e8.trans hI'.rd.ch, ep.trans hI'.rd.ptr⟩
+      fun R2 M2 og2 H2 F2 L2 C2 pd2 pv2 hF2 hrd2 => ?_
+    have hd16 := takeDigits_lt16 ((rdW o j0).drop (j + 1))
+    have hlen := takeDigits_len ((rdW o j0).drop (j + 1))
+    simp only [List.length_drop] at hlen
+    refine gn_fexit hlive cx hoom hl (by simpa using hF2) hrd2
+      (frac_size hib.2 hd16 (Nat.zero_add _).symm (by omega)) fun R3 M3 H3 F3 L3 C3 pr3 pd3 hX3 => ?_
+    refine gn_neg1 hlive cx hoom hX3 fun R4 M4 H4 F4 L4 C4 pr4 hX4 => ?_
+    refine hk R4 M4 H4 F4 L4 C4 [pv2] pr4 pd3 og2
+      (j + 1 + (takeDigits ((rdW o j0).drop (j + 1))).1.length) (by simp) ?_ ?_
+    · rw [rdFrac_dot (by omega) _ ed]
+      simpa [ofDigits] using hX4
+    · rw [rdFrac_dot (by omega) _ ed, drop_drop_takeDigits]
+  · intro e
+    have ed : (rdW o j0)[j]? ≠ some 46 := fun e' => e (by rw [e']; rfl)
+    refine gn_neg0 hlive cx hoom (GnX.ofI (hI.keepT (by keeps_tac Keeps.refl _ _))) fun R4 M4 H4 F4 L4 C4 pr4 hX4 => ?_
+    refine hk R4 M4 H4 F4 L4 C4 [] pr4 pd (some pt) j (by simp) ?_ ?_
+    · rw [rdFrac_no _ ed]; exact hX4
+    · rw [rdFrac_no _ ed]
+
 end Dc.Mach

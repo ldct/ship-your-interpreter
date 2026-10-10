@@ -1250,4 +1250,102 @@ theorem ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   · keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
   · bsimp [q2]; congr 1; omega
 
+/-! ## Inserting: the state -/
+
+/-- The link word after `pre` names the first node of `post`. -/
+theorem LChain.lend_word {Mt : Mem} {P : Blk → ANode → Prop} {post : List (Blk × ANode)} :
+    ∀ {a : Nat} {pre : List (Blk × ANode)}, LChain Mt 24 P a (pre ++ post) →
+      ldv .ld Mt (lend 24 a pre) = headPtr post
+  | a, [], h => by
+    cases post with
+    | nil => cases h with | nil h0 => exact h0
+    | cons bx post => cases h with | cons h0 _ _ => exact h0
+  | a, bx :: pre, h => by
+    cases h with
+    | cons _ _ hl => exact LChain.lend_word (pre := pre) hl
+
+/-- The link word after `pre` in register `r`'s top array: an aligned heap
+word outside any fresh block. -/
+theorem DcAt.lendOut {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {pre post : List (Blk × ANode)} {c : Blk}
+    (h : DcAt S M H F L C G hs st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (harr : e.arr = pre ++ post) (hf : DcFresh H F L G c) :
+    heapStart ≤ lend 24 (b.pay + 16) pre ∧ lend 24 (b.pay + 16) pre + 8 ≤ heapEnd ∧
+      lend 24 (b.pay + 16) pre % 8 = 0 ∧
+      ∀ y, lend 24 (b.pay + 16) pre ≤ y → y < lend 24 (b.pay + 16) pre + 8 → ¬ c.In y := by
+  have hi := h.heap.heap
+  have hbe : (b, e) ∈ G.regs r := by rw [hl]; exact List.mem_cons_self
+  obtain ⟨-, hp0⟩ := h.regWord hr hl
+  have hbG : b ∈ G.blocks := G.reg_mem hr hbe
+  have hbsz := hp0.sz
+  have hcl := hf.live
+  rcases List.mem_cons.mp (lend_mem 24 (b.pay + 16) pre) with he | he
+  · rw [he]
+    obtain ⟨hb1, hb2, hb3⟩ := h.node_bounds hbG hbsz
+    refine ⟨by omega, by omega, by omega, fun y h1 h2 hc => live_apart hi
+      (h.heap.raw.live b hbG) hcl (fun e1 => hf.notG (e1 ▸ hbG))
+      (by simp only [Blk.In, Blk.pay, Blk.fin] at hbsz h1 h2 ⊢; omega) hc⟩
+  · obtain ⟨bx, hm, he⟩ := List.mem_map.mp he
+    rw [← he]
+    have hbm : bx ∈ e.arr := by rw [harr]; exact List.mem_append_left _ hm
+    have hxG := G.arr_mem hr hbe hbm
+    have hxsz := (hp0.arr.forall bx hbm).sz
+    obtain ⟨hb1, hb2, hb3⟩ := h.node_bounds hxG hxsz
+    refine ⟨by omega, by omega, by omega, fun y h1 h2 hc => live_apart hi
+      (h.heap.raw.live _ hxG) hcl (fun e1 => hf.notG (e1 ▸ hxG))
+      (by simp only [Blk.In, Blk.pay, Blk.fin] at hxsz h1 h2 ⊢; omega) hc⟩
+
+/-- **A fresh node stored and linked** after the nodes `pre` (the machine's
+stores: `nodeW`, then the link word). -/
+theorem DcAt.insNodeW {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {en : Entry} {es : List Entry} {pre post : List (Blk × ANode)}
+    {c : Blk} {i : Nat} {m1 m2 : List (Nat × Val)} {v : Val} {w0 w1 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hst : st.regs r = en :: es) (harr : e.arr = pre ++ post)
+    (hm1 : List.Forall₂ (ARel ⟨L, G.strs⟩) pre m1) (hm2 : List.Forall₂ (ARel ⟨L, G.strs⟩) post m2)
+    (hf : DcFresh H F L G c) (hcsz : 32 ≤ c.sz) (hi : i < 2 ^ 31) (hd : DatRegs w0 w1 g)
+    (hv : g.Den ⟨L, G.strs⟩ v) :
+    DcAt S (writeLog (nodeW M c.pay i (headPtr post) w0 w1)
+        [(lend 24 (b.pay + 16) pre, 8, BitVec.ofNat 64 c.pay)]) H F L C
+      (G.setReg r ((b, { e with arr := pre ++ (c, ⟨i, g⟩) :: post }) :: l)) hs
+      (st.setReg r ({ en with arr := m1 ++ (i, v) :: m2 } :: es)) := by
+  obtain ⟨hw0, hp0⟩ := h.regWord hr hl
+  have hch := hp0.arr
+  rw [harr] at hch
+  have hnx := hch.lend_word
+  obtain ⟨hl1, hl2, hl3, hlc⟩ := h.lendOut hr hl harr hf
+  have hcb := blk_bounds h.heap.heap hf.live
+  obtain ⟨hc1, hc2, hc3⟩ := hcb
+  have hq : lend 24 (b.pay + 16) pre + 8 ≤ c.pay ∨ c.pay + 32 ≤ lend 24 (b.pay + 16) pre := by
+    rcases Nat.lt_or_ge (lend 24 (b.pay + 16) pre) c.pay with h1 | h1
+    · omega
+    · refine Or.inr (Classical.byContradiction fun h2 => hlc _ (Nat.le_refl _) (by omega) ?_)
+      simp only [Blk.In, Blk.pay, Blk.fin] at hcsz h1 h2 ⊢; omega
+  have hqi : ∀ k, k + 8 ≤ 32 → c.pay + k + 8 ≤ lend 24 (b.pay + 16) pre ∨
+      lend 24 (b.pay + 16) pre + 8 ≤ c.pay + k := fun k hk => by omega
+  refine h.insNode (M' := writeLog (nodeW M c.pay i (headPtr post) w0 w1)
+    [(lend 24 (b.pay + 16) pre, 8, BitVec.ofNat 64 c.pay)]) (i := i)
+    hr hl hst harr hm1 hm2 hf (fun y hy => ?_) (ldv_store_hit _ _ _) ?_ ?_ hv
+  · have e1c : c.fin = c.pay + c.sz := rfl
+    simp only [Blk.In, e1c, not_or] at hy
+    simp only [nodeW]
+    repeat rw [imgM_store_miss _ _ (by omega)]
+  · refine ⟨?_, hi, ⟨?_, ?_⟩, hcsz⟩
+    · simp only [nodeW]
+      rw [ldv_lw_miss _ _ (by omega), ldv_lw_miss _ _ (by omega), ldv_lw_miss _ _ (by omega),
+        ldv_lw_miss _ _ (by omega)]
+      exact ldv_lw_hitN _ rfl (toNat_ofNat_mod32 (by omega)) hi
+    · simp only [nodeW]
+      rw [ldv_ld_miss _ _ (hqi 8 (by omega)), ldv_ld_miss _ _ (by omega), ldv_store_hit]
+      exact hd.tag
+    · simp only [nodeW]
+      rw [show c.pay + 8 + 8 = c.pay + 16 by omega, ldv_ld_miss _ _ (hqi 16 (by omega)),
+        ldv_store_hit]
+      exact hd.ptr
+  · simp only [nodeW]
+    rw [ldv_ld_miss _ _ (hqi 24 (by omega)), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+      ldv_store_hit, hnx]
+
 end Dc.Mach

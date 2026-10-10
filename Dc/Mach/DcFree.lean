@@ -76,7 +76,8 @@ theorem DcDen.rel {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
   have hcx : ∀ c ∈ [C.z, C.o, C.t], c ≠ x := fun c hc e => by
     subst e
     have : 0 < C.cnt c.rep.p := by
-      unfold BcConsts.cnt; exact List.countP_pos_iff.mpr ⟨c, hc, by simp⟩
+      unfold BcConsts.cnt
+      exact Nat.lt_of_lt_of_le (List.countP_pos_iff.mpr ⟨c, hc, by simp⟩) (Nat.le_add_right _ _)
     omega
   have hmem : ∀ c ∈ [C.z, C.o, C.t], c ∈ L1 ++ x :: L2 → c ∈ L1 ++ L2 := fun c hc hm => by
     rcases mem_split_cases hm with e | hm
@@ -99,6 +100,14 @@ theorem DcDen.rel {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
       numRefs := fun y hy => by
         rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hpn y hy (GV.num.inj e).symm]
       strRefs := fun o ho => by rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+      lkLen := d.lkLen
+      lkIn := fun p hp => by
+        obtain ⟨y, hy, e⟩ := d.lkIn p hp
+        rcases mem_split_cases hy with rfl | hy
+        · subst e
+          have : 0 < C.lk.count y.rep.p := List.count_pos_iff.mpr hp
+          unfold BcConsts.cnt at hc0; omega
+        · exact ⟨y, hy, e⟩
       mz := hmem _ (by simp) d.mz
       mo := hmem _ (by simp) d.mo
       mt := hmem _ (by simp) d.mt
@@ -134,6 +143,9 @@ theorem DcDen.dec {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
     pos := fun y hy => ?_
     numRefs := fun y hy => ?_
     strRefs := fun o ho => ?_
+    lkIn := fun p hp => by
+      obtain ⟨y, hy, e⟩ := d.lkIn p hp
+      exact ⟨_, hcz y hy, (ite_rep hp' hn' y _).1.trans e⟩
     mz := hcz _ d.mz
     mo := hcz _ d.mo
     mt := hcz _ d.mt
@@ -215,6 +227,9 @@ theorem DcDen.addNum {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {
     | str s => exact hv
   have hc0 : C.cnt y.rep.p = 0 := by
     unfold BcConsts.cnt
+    have hl : C.lk.count y.rep.p = 0 := List.count_eq_zero.mpr fun hm => by
+      obtain ⟨z, hz, e⟩ := d.lkIn _ hm; exact hne z hz e
+    rw [hl, Nat.add_zero]
     refine List.countP_eq_zero.mpr fun c hc e => ?_
     simp only [decide_eq_true_eq] at e
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
@@ -231,6 +246,9 @@ theorem DcDen.addNum {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {
     pos := fun z hz => ?_
     numRefs := fun z hz => ?_
     strRefs := fun o ho => ?_
+    lkIn := fun p hp => by
+      obtain ⟨y, hy, e⟩ := d.lkIn p hp
+      exact ⟨y, List.mem_cons_of_mem _ hy, e⟩
     mz := List.mem_cons_of_mem _ d.mz
     mo := List.mem_cons_of_mem _ d.mo
     mt := List.mem_cons_of_mem _ d.mt }
@@ -676,6 +694,8 @@ theorem DcAt.dropStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L :
               (hss.2 o2 ho2).1 (a := o2.hb.pay) (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)
               (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)]
           rfl
+        lkLen := d.lkLen
+        lkIn := d.lkIn
         mz := d.mz
         mo := d.mo
         mt := d.mt

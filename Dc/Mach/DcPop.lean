@@ -260,8 +260,8 @@ theorem pop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by simp only [dc_addrs]; omega),
     imgM_store_miss _ _ (by omega)]
 
-/-- **`dc_pop (result)`** at `0x8000310c`: the top datum moves to the slot `q`
-(`0` returned), or, on an empty stack, the message to `stderr` and `2`. -/
+/-- **`dc_pop (result)`** at `0x8000310c`: the top datum (node `c`) moves to the
+slot `q` (`0` returned), or, on an empty stack, the message to `stderr` and `2`. -/
 theorem dc_pop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
     {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
@@ -269,7 +269,8 @@ theorem dc_pop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     (hsf : StackFrame S sp 336) (hab : heapEnd + 336 ≤ sp) (hq : DatSlot S sp q)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
     (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' H' (G' : DcG) g v st', st = st'.push v → Keeps popClob R' R → R' 10 = 0#64 →
+    (hk : ∀ R' M' H' (G' : DcG) g v st', st = st'.push v →
+      (∃ c, G = { G' with stk := (c, g) :: G'.stk }) → Keeps popClob R' R → R' 10 = 0#64 →
       DcAt S M' H' F L C G' (g :: hs) st' → DatAt M' q g → PopOut sp q M' M →
       DWO live S Q t (R 1) R' M')
     (hk0 : st.stack = [] → ∀ R' M', Keeps popClob R' R → R' 10 = 2#64 →
@@ -352,7 +353,7 @@ theorem dc_pop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     · bsimp []
     · bsimp []; rw [ldv_ld_miss _ _ (by omega), h0]
     · bsimp [h10]
-    refine hk R' M' H' _ g v _ rfl (hk1.restore3 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2]) e8)
+    refine hk R' M' H' _ g v _ rfl ⟨c, rfl⟩ (hk1.restore3 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2]) e8)
       e10 h' hd fun a ho hg hf hqa => ?_
     rw [hfr a ho hg hf hqa]
     exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)

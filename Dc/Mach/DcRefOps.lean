@@ -50,7 +50,7 @@ theorem RLev.Den.relist {O O' : DObjs} (hs : O.Sub O') {e : RLev} {v : Entry} (h
 open Classical in
 /-- The constants with `x` replaced by `x'`. -/
 noncomputable def BcConsts.subst (C : BcConsts) (x x' : NumObj) : BcConsts :=
-  ⟨if C.z = x then x' else C.z, if C.o = x then x' else C.o, if C.t = x then x' else C.t⟩
+  ⟨if C.z = x then x' else C.z, if C.o = x then x' else C.o, if C.t = x then x' else C.t, C.lk⟩
 
 /-- Replacing `x` by an object with its pointer and value. -/
 theorem ite_rep {x x' : NumObj} (hp : x'.rep.p = x.rep.p) (hn : x'.rep.num = x.rep.num)
@@ -150,6 +150,9 @@ theorem DcAt.bumpNum {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L1 
       pos := fun y hy => ?_
       numRefs := fun y hy => ?_
       strRefs := fun o ho => ?_
+      lkIn := fun p hp => by
+        obtain ⟨y, hy, e⟩ := d.lkIn p hp
+        exact ⟨_, hcz y hy, (ite_rep hp' hn' y _).1.trans e⟩
       mz := hcz _ d.mz
       mo := hcz _ d.mo
       mt := hcz _ d.mt

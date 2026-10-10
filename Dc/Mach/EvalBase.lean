@@ -220,6 +220,25 @@ def EvK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat →
     EvPost S sp W k q M0 G hs xs M' H' F' L' C' G' xs' p' st' →
     DWO live S Q (t0 ++ Dc.outStr st'.out) (R0 1) R' M'
 
+/-- **Out of memory inside an activation** (frame `W` below `sp`, entry
+memory `M0`): `dc_memfail` from any `sp'` in the frame, the bytes off the
+heap, the globals, the frame, `out_char`'s words and `*string` as at entry. -/
+def EvOom (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (sp W q : Nat) (M0 : Mem) : Prop :=
+  ∀ t' R' M' sp', OomAt S sp W M0 (fun a => ocG a ∨ (q ≤ a ∧ a < q + 16)) sp' R' M' →
+    DWO live S Q t' 0x80001e74#64 R' M'
+
+/-- **`dc_func`'s contract** as a hypothesis (`dc_func_spec`, once every arm
+is in; `dc_func_spec_done` for the characters done). -/
+def FnSpecH (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) :
+    Prop :=
+  ∀ (t0 : String) (sp W : Nat) (M : Mem) (H : Heap) (F : List Blk) (L : List NumObj) (C : BcConsts)
+    (G : DcG) (hs : List GV) (st : St) (c : Nat) (peek : Option Nat) (neg : Bool)
+    (R : Nat → BitVec 64),
+    FnPre S sp W M H F L C G hs st c peek → FnRegs R sp c peek neg → FnOom live S Q sp W M →
+    FnK live S Q (leakAllow c) t0 st (dcFunc 70 st c peek neg) G hs sp W M R →
+    DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M
+
 /-! ## The statements -/
 
 /-- **The loop** (term direction): an evaluation completing at fuel `n`
@@ -233,7 +252,7 @@ def EvLoopSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (
     (f : Frame) (o : StrObj) (r : Status),
     ∀ n, EvFuel 70 n d k st f st' r → f.s ≠ [] →
     EvAt S sp W d k q M0 R0 R M H F L C G hs xs st f o → R 12 = boolWord f.neg →
-    FnOom live S Q (sp - 176) (W - 176) M →
+    EvOom live S Q sp W q M0 →
     EvK live S Q t0 sp W k q M0 R0 G hs xs st' r →
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800014f8#64 R M
 
@@ -250,7 +269,7 @@ def EvTosSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (N
     ∀ n, TosFuel 70 n d k st rest td st' r →
     EvAt S sp W d k q M0 R0 R M H F L C G hs xs st ⟨rest, td, false⟩ o →
     R 25 = BitVec.ofNat 64 (sp - 176 + 32) →
-    FnOom live S Q (sp - 176) (W - 176) M →
+    EvOom live S Q sp W q M0 →
     EvK live S Q t0 sp W k q M0 R0 G hs xs st' r →
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001748#64 R M
 
@@ -271,7 +290,7 @@ def EvalstrSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → 
     176 * (d + 1) + 192 + 336 + dnN ≤ W →
     xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20 → G.lk.length + 4 * k + 2 ≤ 2 ^ 29 →
     MulBase S M → (∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a) → EvGlobs S M →
-    FnOom live S Q (sp - 176) (W - 176) M →
+    EvOom live S Q sp W q M →
     EvK live S Q t0 sp W k q M R G hs xs st' r →
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001448#64 R M
 

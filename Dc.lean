@@ -129,3 +129,4 @@ import Dc.Mach.DcPrintAll
 import Dc.Mach.DcNum2Int
 import Dc.Mach.DcMakeString
 import Dc.Mach.DcMemfail
+import Dc.Mach.DcReadString

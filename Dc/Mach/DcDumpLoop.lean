@@ -5,6 +5,8 @@ import Dc.Mach.DcDump
 
 - `dn_cell`: the cell `dc_malloc` returns, holding the digit and the old top,
   then `bc_is_zero (value)`.
+- `DnPr`: the print loop's head; `dn_loop`: the digit loop, by induction on
+  the quotient left, ends there with the bytes `dumpDs n0` on the cells.
 -/
 
 namespace Dc.Mach
@@ -139,5 +141,55 @@ theorem dn_cell {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
       fun a ho hg hf _ => ?_⟩
     rw [hout a (OutHeap.not_alloc hi ho) fun h => hf (by simp only [frameIn, dnN, dnW] at h ⊢; omega)]
     exact hm.fr.out a ho hg hf
+
+/-- **The print loop's head** (`0x80002b50`): the cells from `s0`, at least
+one, holding the bytes still to print. -/
+structure DnPr (S : Nat → Prop) (M0 M : Mem) (R0 R : Nat → BitVec 64) (sp : Nat) (H : Heap)
+    (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs : List GV) (st : St)
+    (pd pv pb : Nat) (cells : List Blk) (ds : List Nat) (p : Nat) : Prop where
+  fr : DnAt S M0 M R0 R sp
+  h : DcAt S M H F L C G (.num pd :: .num pv :: .num pb :: hs) st
+  w24 : ldv .ld M (sp - 80 + 24) = BitVec.ofNat 64 pv
+  w32 : ldv .ld M (sp - 80 + 32) = BitVec.ofNat 64 pb
+  w40 : ldv .ld M (sp - 80 + 40) = BitVec.ofNat 64 pd
+  s0 : R 8 = BitVec.ofNat 64 p
+  stk : DnStk H F L G M cells ds p
+  ne : cells ≠ []
+
+/-- **The digit loop** from its head with the quotient `v` left: the cells
+end holding `dumpDs n0`. -/
+theorem dn_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 : Mem} {G : DcG} {hs : List GV} {st : St}
+    {pb n0 sp : Nat} {R0 : Nat → BitVec 64}
+    (hmb : MulBase S M0) (hsz : decLen n0 < 2 ^ 20) (hhs : hs.length + 3 ≤ 2 ^ 20)
+    (hsf : StackFrame S sp dnN) (hab : heapEnd + dnN ≤ sp)
+    (hk : ∀ R' M' H' F' L' C' pd' pv' cells' p', DnPr S M0 M' R0 R' sp H' F' L' C' G hs st pd' pv' pb
+      cells' (dumpDs n0) p' → DWO live S Q t 0x80002b50#64 R' M')
+    (hoom : ∀ R' M' sp', OomAt S sp dnN M0 (fun _ => False) sp' R' M' →
+      DWO live S Q t 0x80001e74#64 R' M') :
+    ∀ v R M H F L C pd pv cells ds p,
+      DnLoop S M0 M R0 R sp H F L C G hs st pd pv pb n0 v cells ds p →
+      DWO live S Q t 0x80002b08#64 R M := by
+  intro v
+  induction v using Nat.strongRecOn with
+  | ind v ih =>
+  intro R M H F L C pd pv cells ds p hl
+  refine dn_dm hlive hl hmb hsz hhs hsf hab (fun R1 M1 H1 F1 L1 C1 pd1 pv1 hm => ?_) hoom
+  refine dn_cell hlive hm (Nat.mod_lt _ (by decide)) hsf hab (fun R2 M2 H2 c hm2 h20 => ?_) hoom
+  have hS : HeapOwn S := fun a e1 e2 => hm2.h.heap.heap.own a e1 e2
+  have hinv := hl.inv.step hl.cont
+  by_cases hz : v / 256 = 0
+  · have h20' : R2 10 = 1#64 := by rw [h20]; simp [Dc.Num.isZero, hz]; rfl
+    bc_run hlive hS [h20']
+    rw [hz] at hinv
+    have hds := hinv.exit (List.cons_ne_nil _ _)
+    exact hk R2 M2 H2 F1 L1 C1 pd1 pv1 (c :: cells) c.pay ⟨hm2.fr, hm2.h, hm2.w24, hm2.w32, hm2.w40,
+      hm2.s0, hds ▸ hm2.stk, List.cons_ne_nil _ _⟩
+  · have h20' : R2 10 = 0#64 := by
+      rw [h20, show Dc.Num.isZero ⟨false, v / 256, 0⟩ = false from by simpa [Dc.Num.isZero] using hz]; rfl
+    bc_run hlive hS [h20']
+    exact ih (v / 256) (Nat.div_lt_self (by omega) (by decide)) R2 M2 H2 F1 L1 C1 pd1 pv1 (c :: cells)
+      (v % 256 :: ds) c.pay ⟨hm2.fr, hm2.h, hm2.dv, hm2.db, hm2.w24, hm2.w32, hm2.w40, hm2.s0,
+        hm2.stk, hinv, fun _ => hz, Nat.le_trans (Nat.div_le_self _ _) hl.vle⟩
 
 end Dc.Mach

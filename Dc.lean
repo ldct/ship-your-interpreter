@@ -126,6 +126,10 @@ import Dc.Mach.DcClear
 import Dc.Mach.DcCmpop
 import Dc.Mach.DcPrint
 import Dc.Mach.DcPrintAll
+import Dc.Mach.DcDumpBase
+import Dc.Mach.DcDump
+import Dc.Mach.DcDumpLoop
+import Dc.Mach.DcDumpOut
 import Dc.Mach.DcNum2Int
 import Dc.Mach.DcMakeString
 import Dc.Mach.DcMemfail

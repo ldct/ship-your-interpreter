@@ -1,0 +1,65 @@
+/-- `@FN@`'s two-node check from `@B@` (`a5` the stack head): with two
+numbers on top the run goes on at `@GO@` (`@RTN@` the second's type `1`);
+otherwise at `@EM@` (stack empty) or `@NN@` (non-numeric). -/
+theorem stkchk_@BX@ {live S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    (h : DcAt S M H F L C G hs st) (R : Nat → BitVec 64) (h15 : R 15 = ldv .ld M dcStackAddr)
+    (hmsg : ∀ {pc : BitVec 64}, (pc = @NN@#64 ∨ pc = @EM@#64) → No2 st →
+      ∀ R', Keeps @KNO@ R' R → DWO live S Q t pc R' M)
+    (hgo : ∀ cb ca pb pa rest, G.stk = (cb, .num pb) :: (ca, .num pa) :: rest → ∀ R',
+      Keeps @KGO@ R' R → R' @RT@ = 1#64 → DWO live S Q t @GO@#64 R' M) :
+    DWO live S Q t @B@#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hG := h.glob
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  refine h.top2 (fun h0 hno => ?_) (fun c1 h0 hl0 hc1 hno => ?_)
+    fun c1 c2 g1 g2 rest hstk h0 h0' ht1 ht2 hc1 hc2 hno => ?_
+  · bc_run hlive hS [h15, h0] at @EM@
+    exact hmsg (.inr rfl) hno _ (by keeps_tac Keeps.refl _ _)
+  · have hc0 := hc1.ne0
+    bc_run hlive hS [h15, h0, hl0] at @EM@
+    all_goals try (intro hc; exact absurd hc hc0)
+    (try intro _); (try bsimp [])
+    bc_run hlive hS [h15, h0, hl0] at @EM@
+    exact hmsg (.inr rfl) hno _ (by keeps_tac Keeps.refl _ _)
+  · have hc0 := hc1.ne0
+    have hc0' := hc2.ne0
+    bc_run hlive hS [h15, h0, h0', ht1, ht2] at @NN@
+    all_goals try (intro hc; exact absurd hc hc0)
+    intro _
+    bsimp []
+    bc_run hlive hS [h15, h0, h0', ht1, ht2] at @NN@
+    all_goals try (intro hc; exact absurd hc hc0')
+    intro _
+    bsimp []
+    obtain e1 | e1 := g1.tag_cases
+    · rw [e1] at ht1
+      obtain e2 | e2 := g2.tag_cases
+      · rw [e2] at ht2
+        bc_run hlive hS [h15, h0, h0', ht1, ht2] at @GO@
+        all_goals try (intro hc; exact absurd hc (by decide))
+        (try intro _); (try bsimp [])
+        bc_run hlive hS [h15, h0, h0', ht1, ht2] at @GO@
+        all_goals try (intro hc; exact absurd hc (by decide))
+        (try intro _); (try bsimp [])
+        cases g1 with
+        | str _ => simp [GV.tag] at e1
+        | num pb =>
+        cases g2 with
+        | str _ => simp [GV.tag] at e2
+        | num pa => exact hgo c1 c2 pb pa rest hstk _ (by keeps_tac Keeps.refl _ _) (by bsimp [])
+      · rw [e2] at ht2
+        bc_run hlive hS [h15, h0, h0', ht1, ht2] at @NN@
+        all_goals try (intro hc; exact absurd hc (by decide))
+        (try intro _); (try bsimp [])
+        bc_run hlive hS [h15, h0, h0', ht1, ht2] at @NN@
+        all_goals try (intro hc; exact absurd hc (by decide))
+        (try intro _); (try bsimp [])
+        exact hmsg (.inl rfl) (hno (.inr (by omega))) _ (by keeps_tac Keeps.refl _ _)
+    · rw [e1] at ht1
+      bc_run hlive hS [h15, h0, h0', ht1, ht2] at @NN@
+      all_goals try (intro hc; exact absurd hc (by decide))
+      (try intro _); (try bsimp [])
+      exact hmsg (.inl rfl) (hno (.inl (by omega))) _ (by keeps_tac Keeps.refl _ _)

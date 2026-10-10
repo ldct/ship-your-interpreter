@@ -1,0 +1,72 @@
+
+/-- After `d1`'s `bc_sub` (`0x@B@`): `d1` into `s5`, its digit count to `0(sp)`,
+then `d2 = v0 - v1` into `0x48(sp)`. -/
+theorem ksubsB_@B@ {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {M0 Ms M : Mem} {R0 R : Nat → BitVec 64} {sp q W n la lb : Nat} {A B : List NumObj}
+    {z : NumObj} {u v : NumRep} {H : Heap} {F : List Blk} {hu1 hu0 hv1 hv0 : Hd} {hs : List Hd}
+    {y1 : NumObj} (cx : RmCtx S R0 sp q W) (hk : RmK live S X Q R0 M0 (A ++ z :: B) u v la lb q sp W)
+    (hW : 368 ≤ W) (pk : KM1 S M0 M R0 R sp q W n la lb z hu1 hu0 hv1 hv0)
+    (hb : BcHeap S X M H F (KList [] (none :: some y1 :: hs) A B z))
+    (h64 : ldv .ld M (sp - 192 + 64) = BitVec.ofNat 64 y1.sb.pay)
+    (h72 : ldv .ld M (sp - 192 + 72) = BitVec.ofNat 64 z.rep.p)
+    (hv0m : hv0 ∈ hs) (hv1m : hv1 ∈ hs) (sa : KSubArgs z hv0 hv1) (hzr : 1 ≤ z.rep.refs)
+    (d1 : KDiff y1 ((Hd.o z hu1).rep.subM (Hd.o z hu0).rep 0))
+    (hga : GlobAgree M Ms)@H26P@
+    (hnext : KSubsK live S X Q M0 Ms R0 sp q W n la lb z hu1 hu0 hv1 hv0 hs A B 0x@E@#64) :
+    DW live S Q 0x@B@#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+  have hbs : BcHeap S X M H F (KList [] (some y1 :: none :: hs) A B z) := by
+    rw [KList_swapNone]; exact hb
+  obtain ⟨hy1, hyp⟩ := hbs.khead
+  num_facts hy1
+  have hlen := hy1.len
+  rw [hyp] at hlen
+  have h2 := pk.st.rm.r2
+  have h20 := pk.v0; have h27 := pk.v1
+  have hsf := cx.frame
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab := cx.above; have hW' := cx.big
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  bc_run hlive hS [h2, h64, hlen, h20, h27, sxw_ofNat (show y1.rep.len < 2 ^ 31 by omega)] at 0x@J@
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact acc_heap hS (by omega) (by omega) | skip
+  apply st_@J@ hlive
+  have st1 := pk.st.storeSlot cx 0 (BitVec.ofNat 64 y1.rep.len) (by omega)
+  have hb1 := hb.out_frame (MemOnly.store _ (sp - 192 + 0) 8 (BitVec.ofNat 64 y1.rep.len))
+    fun a ha => by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
+  have hga1 : GlobAgree (writeLog M [(sp - 192 + 0, 8, BitVec.ofNat 64 y1.rep.len)]) Ms :=
+    (GlobAgree.store _ (by omega)).trans hga
+  refine kara_subCall hlive cx hk (st1.rm.keeps (by keeps_tac Keeps.refl _ _) (by bsimp [h2])) 72
+    (by omega) (by decide) hW
+    (sa.binArgs (P := []) (A := A) (B := B) (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hv0m))
+      (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hv1m)))
+    (sa.noAdd _)
+    hb1 (KList.resSlot hzr (by rw [ldv_ld_miss _ _ (by omega)]; exact h72)) (by bsimp [])
+    (by bsimp [Hd.objIn_p]) (by bsimp [Hd.objIn_p]) (by bsimp [h2]) (by bsimp []) ?_
+  intro R' M' H' F' L' y2 kk post
+  bsimp []
+  have hrest := post.rest
+  cases hrest with
+  | rel h => simp only [NumObj.withRefs, zeroCount_none] at h; omega
+  | dec _ =>
+  have hb2 := post.heap
+  rw [KList_subDec y2 (some y1 :: hs) A B z] at hb2
+  have st2 := st1.subCall cx 72 (by omega) hW post.out
+  have hfr : ∀ a, sp - 192 ≤ a → a < sp - 192 + 8 → imgM M' a = imgM
+      (writeLog M [(sp - 192 + 0, 8, BitVec.ofNat 64 y1.rep.len)]) a := fun a h1 h2 =>
+    post.out a (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
+      (by simp only [slotBytes]; omega) (by simp only [frameIn]; omega)
+  have hl1 : ldv .ld M' (sp - 192) = BitVec.ofNat 64 y1.rep.len := by
+    rw [ldv_congr .ld fun j hj => hfr _ (by omega) (by simp only [widthOfM] at hj; omega)]
+    rw [show sp - 192 = sp - 192 + 0 by omega]; exact ldv_store_hit _ _ _
+  have hga2 : GlobAgree M' Ms :=
+    (GlobAgree.call (W' := 176) (sp' := sp - 192) (qs := sp - 192 + 72) (by omega) (by omega)
+      post.out).trans hga1
+  have kk' : Keeps (21 :: 1 :: binClob) R' R :=
+    (kk.mono (fun r hr => List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hr))).trans
+      (by keeps_tac Keeps.refl _ _)
+  exact ksubsC_@C@ hlive cx ((pk.mem st2).keeps kk')
+    (by rw [kk.get 21 (by decide)]; bsimp [hyp]) hl1 hb2 post.slot d1
+    ⟨by rw [post.num, Hd.objIn_subM], post.norm, post.refs, post.owns,
+      post.pos⟩ hga2@H26A@ hnext

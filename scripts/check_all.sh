@@ -66,6 +66,24 @@ python3 -B scripts/gen_iris_cases.py --check \
   || fail "stage a3: VsaIris/Interp/Case/*.lean is stale (gen_iris_cases.py from scripts/iris_arms/arms.tsv)"
 python3 -B scripts/gen_resp.py --check \
   || fail "stage a3: Vsa/Densify/Gen*.lean is stale (gen_resp.py from experiments/densify/closure.tsv)"
+python3 -B scripts/dc/gen_dc_steps.py --check \
+  || fail "stage a3: Dc/Mach/{Code,Tohost,Steps}*.lean is stale (scripts/dc/gen_dc_steps.py)"
+for g in gen_kara_free gen_kara_shift gen_kara_scan gen_kara_subs gen_kara_trim gen_kara_pop; do
+  python3 -B "scripts/dc/$g.py" --check \
+    || fail "stage a3: a generated Dc/Mach/Bc/Kara*Sites.lean is stale (scripts/dc/$g.py)"
+done
+python3 -B scripts/dc/gen_bc_free.py --check \
+  || fail "stage a3: Dc/Mach/Bc/FreeSites.lean is stale (scripts/dc/gen_bc_free.py)"
+python3 -B scripts/dc/gen_zero_scan.py --check \
+  || fail "stage a3: Dc/Mach/Bc/ZeroScanSites.lean is stale (scripts/dc/gen_zero_scan.py)"
+python3 -B scripts/dc/gen_rt_msg.py --check \
+  || fail "stage a3: Dc/Mach/RtMsgSites.lean is stale (scripts/dc/gen_rt_msg.py)"
+python3 -B scripts/dc/gen_stk_check.py --check \
+  || fail "stage a3: Dc/Mach/DcStkCheckSites.lean is stale (scripts/dc/gen_stk_check.py)"
+python3 -B scripts/dc/gen_dcf_disp.py --check \
+  || fail "stage a3: Dc/Mach/DcFuncDisp.lean is stale (scripts/dc/gen_dcf_disp.py)"
+python3 -B scripts/dc/gen_dcf_spec.py --check \
+  || fail "stage a3: Dc/Mach/DcFuncSpec*.lean are stale (scripts/dc/gen_dcf_spec.py)"
 
 # ------------------------------------------------------------ (b) grep gate
 echo "== stage a4: proof-discipline gate (exponentiating layer mandatory for new files)"
@@ -83,8 +101,9 @@ echo "== stage b: sorry / native_decide / bv_decide / axiom gate"
 python3 - <<'PYEOF' || fail "stage b: forbidden token(s) found (see above)"
 import pathlib, re, sys
 
-files = sorted(pathlib.Path("Vsa").rglob("*.lean")) + sorted(pathlib.Path("VsaIris").rglob("*.lean"))
-for root in ("Vsa.lean", "VsaIris.lean", "VsaRun.lean"):
+files = (sorted(pathlib.Path("Vsa").rglob("*.lean")) + sorted(pathlib.Path("VsaIris").rglob("*.lean"))
+         + sorted(pathlib.Path("Dc").rglob("*.lean")))
+for root in ("Vsa.lean", "VsaIris.lean", "VsaRun.lean", "Dc.lean"):
     if pathlib.Path(root).exists():
         files.append(pathlib.Path(root))
 
@@ -147,6 +166,10 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 fi
 python3 scripts/check_validation.py --backend "$VSA_PRIVATE_BUILD" \
   --verify-backend-only || fail "stage a: stale or incomplete private build"
+
+# The dc decode table: re-evaluates the Sail decoder on dc's words (needs the build).
+python3 -B scripts/dc/gen_dc_decode.py --vsa-olean "$VSA_PRIVATE_BUILD" --check \
+  || fail "stage a: Dc/Mach/DecodeTable*.lean is stale (scripts/dc/gen_dc_decode.py)"
 
 # Direct initial-state cases are mandatory, including when the build is reused.
 VALIDATION_BASE=$(mktemp -d)

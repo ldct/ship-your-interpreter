@@ -4461,3 +4461,815 @@ Obstructions recorded (not fixed):
 - **`IrisHoles` removed (lane V2, user request, 2026-09-25).** The record was
   empty; `endToEnd_refinement` and every capstone now take no hypothesis
   (INTERP_DESIGN.md "STATEMENT CHANGE (lane V2)").
+
+## dc machine layer: `lb` is outside `MKind` (dc M1, 2026-09-29; RESOLVED)
+
+The reflected block model has no signed byte load, so dc's two `lb`s
+(`_bc_shift_addsub`, `0x80004120`, `0x800041c8`) had no step lemma. They are
+observed ALU steps over one owned byte read totally: `aluStepT_of_obs`,
+`swp_aluM`, `exec_lb_tot` (`Dc/Mach/LoadObs.lean`), instantiated by the
+generator as `stL_<pc>`. Still open for dc and scheduled in `Dc/PLAN.md`
+M11: the `_start` `gp` pair (no `DW` step: `gp` is read-only in `DW`) and
+the `Halts` conclusion from a printing run (`dcExit_haltFact` supplies the
+halting step; the boot ownership split and adequacy are the missing
+suppliers).
+
+
+## Dc number-heap and reference-release obligations
+
+The dc milestones proceed serially from `Dc/PLAN.md` M3 to M4. Existing declarations in
+`Dc/Mach/Bc/{Rep,Heap,New,Small,Scan,Compare}.lean` already supply number
+representations, allocation, sharing, predicates, conversion to long, and
+comparison. The following suppliers remain explicit:
+
+- `NewNumK.oom` requires an execution from `out_of_memory` at `0x80002bcc`;
+  `bc_new_num_spec` reaches that continuation but does not itself prove a
+  status-1 halt. The concrete error/exit chain must supply it.
+- `BcHeap` records object reference counts but does not equate them to all
+  references in the dc state. M9's stack/register/array/global representation
+  must supply that correspondence and the `refs + 1 < 2^31` bound required by
+  sharing operations.
+- Comparison consumes `NumRep.Norm`; number-producing function specs must
+  preserve normalization. Boot and runtime invariants must supply live code,
+  owned globals, initial allocator resources, and stack bounds.
+- M4 still needs `bc_int2num` and `bc_out_long`, followed
+  by their callers. Inlined leading-zero removal has a representation-level
+  model but still needs its machine-site proofs.
+
+`bc_free_num` resource scope must include pointer slots inside other live heap
+objects: `dc_clear_stack` passes `node + 8` at `0x80002d9c`,
+`dc_register_set` passes `node + 8` at `0x800030b4`, and `dc_array_set` /
+`dc_array_free` pass `node + 16` at `0x80003d9c` / `0x80003eb0`, through
+`dc_free_num`'s tail jump at `0x80002ba0` (evidence:
+`experiments/dc/disasm.txt`). Requiring the slot to lie outside the entire heap
+would exclude these callers. The release contract instead needs explicit
+separation from allocator bytes, the released digit block, the retained struct,
+the cached dead-chain links, the global head, and the callee frame. Callers must
+supply these from ownership of their distinct live node blocks.
+
+### M4 `bc_free_num` (checked)
+
+`Dc/Mach/Bc/Free.lean`, imported by `Dc.lean`, proves `bc_free_num_spec` at
+`0x800048c0` from `FreeEntry` (the slot's object `x` in `L1 ++ x :: L2`, the
+slot separation `SlotOff`, the 32-byte callee frame) into `FreeNumK`:
+
+- `dec` (`n_refs ≥ 2`): `free_num_dec_heap` rebuilds `BcHeap` with
+  `x.decRef`; `free_num_dec_frame` limits writes to the count and the slot.
+- `rel` (`n_refs = 1`): `free_num_release` runs to the `free` call,
+  `free_spec` releases the digit block, `free_num_ret` runs the epilogue, and
+  `release_post` supplies `ReleasePost` (struct pushed on the dead chain,
+  digit block free, slot `NULL`, frame limited to allocator bytes, struct,
+  slot, callee frame, and `_bc_Free_list`).
+- `bc_free_num_null`: a `NULL` slot returns at once.
+
+- `free_num_view` (`n_refs = 1`, `n_ptr = NULL`, `0x80004924`): a view made
+  by `new_sub_num` pushes its struct on the dead chain without calling `free`;
+  `release_post_view` supplies `ReleasePost` with the allocator unchanged
+  (`ReleasePost.view`). An owner's release (`ReleasePost.owned`) requires
+  `FreeEntry.noView`: no object before it in the heap list reads its buffer.
+Decrements reloaded by `lw` need `word_pred` and `sxw_ofNat` passed to
+`bc_run` as instantiated facts: the generic second `bsimp` pass otherwise
+produces a sub-of-sum literal whose kernel check recurses too deeply.
+All public theorems use only the three permitted axioms.
+
+### M4 `bc_init_numbers` (checked)
+
+`Dc/Mach/Bc/Init.lean` proves `bc_init_numbers_spec` at `0x80004948`: from a
+number heap `L` and `InitCtx` (48-byte stack window above the heap, owned
+constant words), `InitK.ret` receives `InitPost` (heap `two :: one :: zero ::
+L` with digits `2`, `1`, `0`, the three struct pointers in `_two_`, `_one_`,
+`_zero_`, off-heap writes confined to the window and those words), or
+`InitK.oom` at `out_of_memory`. `BcHeap.setDigit` (`NumStore.lean`) supplies
+the digit stores.
+
+### M4 `bc_out_long` (checked)
+
+`Dc/Mach/Bc/OutLong.lean` proves `bc_out_long_spec` at `0x800064ec` for
+`0 ≤ val < 2^63`, `0 ≤ size < 2^31`: the characters sent through the
+`out_char` argument are `Num.outLong val size space`. The callback is a named
+premise, `CharCb f d I`: a call with a byte in `a0` extends the invariant
+`I cs t M` by that byte, keeps `sp`, `s0`–`s11` and every byte at or above
+its `sp`, and uses `d` stack bytes. `OLStable I sp` (the invariant survives
+writes in `bc_out_long`'s 416-byte window) is the caller's premise. The
+supplier of `CharCb` for dc's `out_char` (`0x800020d8`, line wrapping and
+`putchar`) is an M8 obligation, proved with `bc_out_num`.
+
+Segments: prologue (`SavedWords.store`), space callback, `snprintf("%ld")`
+into the 40-byte buffer (`fmt_ld`, `ld_ro`, `udigits_text`), `strlen`
+(`OwnedCStr` from the formatter's bytes), padding loop (`ol_pad`), output
+loop (`ol_out`), epilogue (`ol_epi`).
+
+### M4 `bc_int2num` (checked)
+
+`Dc/Mach/Bc/Int2Num.lean` proves `bc_int2num_spec` at `0x8000690c` for
+`-2^31 < val < 2^31` (`I2NCtx.vlo`/`.vhi`; `INT_MIN` is excluded because
+`negw` overflows) with the old object `x` in the slot (`FreeEntry` at
+`sp - 96`). `I2NK.ret` receives `I2NPost`: the slot holds a fresh object `y`
+heading the heap left by `bc_free_num` (`FreedRest.dec`/`.rel`), with
+`y.rep.num = Num.ofInt val`, normalized, one reference, owning its digit buffer
+(`I2NPost.owns`); off the heap only the
+slot and the 128-byte stack window change. `I2NK.oom` covers `out_of_memory`.
+Segments: prologue (`i2nPro_saved`), first digit (`i2n_head`), digit loop
+(`i2n_loop`), `bc_free_num`/`bc_new_num` calls (`i2n_free`, `i2n_new`), slot
+and sign stores (`i2n_tail`, `BcHeap.setSign`), copy loop (`i2n_copy`), and
+epilogue (`i2n_epi`).
+
+Scope premises: `I2NCtx.slotOut` places the slot off the number heap; every
+`jal bc_int2num` in the binary passes `sp + k` of the caller's frame. The value
+range is a caller obligation; the site at `0x800072b8` passes the
+`sext.w` of a `bc_num2long` result, so its caller must supply `vlo`/`vhi`
+from its own range check.
+
+### M5 `_bc_do_add` (checked)
+
+`Dc/Mach/Bc/DoAdd.lean` proves `bc_do_add_spec` at `0x80004304` for two
+numbers `x1`, `x2` of the heap (possibly the same object) and `scale_min`.
+`AddK.ret` receives `AddPost`: a new object `y` heads the heap with
+`y.rep.num = ⟨false, dval (addDigits …), resScale s1 s2 scale_min⟩`,
+normalized, one reference; off the heap only the 96-byte window below the
+entry `sp` changes. `AddK.oom` covers `out_of_memory` from `bc_new_num`.
+
+Model: after `k` positions the result's digits are `addDs a b smin k =
+sumDs (N + 1) k (addLE xs ys 0) Z` (`Dc/BcModel/Steps.lean`); the carry
+register holds `carryAt xs ys 0 k`. `add_store` writes one position,
+`AddModel.step` gives its digit and carry, `addC_low`/`addR_low1`/`addR_low2`
+discharge the fraction copies (carry zero below `S - min s1 s2`), and
+`BcHeap.zeroFill` the `scale_min` tail.
+
+Segments: prologue and scale branch (`bc_do_add_spec`), length and
+`scale_min` branches (`add_pre2`, `add_pre3`), the `bc_new_num` call
+(`add_call`, over `AddPre`), the zero fill (`add_after_new`, `add_zfill`),
+setup and dispatch (`add_setup`, `add_setup_addr`, `add_dispatch`), the two
+fraction copies (`add_copy1*`, `add_copy2*`), the join and add loop
+(`add_join`, `add_main_*`), the carry loop (`add_carry_*`), the final carry
+(`add_final`), the inlined `_bc_rm_leading_zeros` (`add_rmlz*`) and the
+epilogue (`add_epi`).
+
+Scope premises: `AddArgs.size` bounds the result's digit count below `2^31`
+(the 32-bit `n_len + n_scale` arithmetic); `AddCtx` places the 96-byte
+window above the heap. `bc_add`'s call sites supply both.
+
+Proof-engineering facts: elaboration budgets are per declaration, so each
+loop is a body lemma with `hnext`/`hexit` continuations plus an induction
+lemma. Negative immediates are rewritten before generic word addition
+(`word_sub64`, `add2_pred`, `pred_add_ofNat`, `inc_dec`, `se12_fff`);
+otherwise `bsimp` produces terms like `x + 16 - 16` whose kernel check
+recurses too deeply. In `add_zfill_body` the closing `decide` attempts of
+`bc_run` overflow the kernel, so that step runs `dx_run` and `bsimp` by
+hand. An unknown name inside a `bc_run`/`bsimp` lemma list is silently
+ignored (the list sits under `try`). The axioms of `bc_do_add_spec` are
+`propext`, `Classical.choice`, `Quot.sound`.
+
+### M5 `_bc_do_sub` (checked)
+
+`Dc/Mach/Bc/DoSub.lean` proves `bc_do_sub_spec` at `0x800045e8` for two
+numbers `x1`, `x2` of the heap (possibly the same object) with
+`x2.len ≤ x1.len` (`SubArgs.le`; `bc_sub` orders the operands by magnitude
+before the call) and `scale_min`. `SubK.ret` receives `SubPost`: a new
+object `y` heads the heap with `y.rep.num = ⟨false, dval (subDigits …),
+resScale s1 s2 scale_min⟩`, normalized, one reference; off the heap only
+the 128-byte window below the entry `sp` changes. `SubK.oom` covers
+`out_of_memory` from `bc_new_num`.
+
+Model: after `k` positions the result's digits are `subDs a b smin k =
+sumDs N k (subLE xs ys 0) Z`; the borrow register holds `borrowAt xs ys 0 k`
+(`borrowAt`, `subLE_getD`, `borrowAt_succ`, `digit_sub` in
+`Dc/BcModel/Steps.lean`). `BcHeap.storeSum` writes one position for either
+loop; `SubModel.step` gives its digit and borrow.
+
+Segments: register saves (`bc_do_sub_spec`, `sub_saves`), length, scale
+and `scale_min` selection (`sub_pre1`, `sub_pre3`, `sub_pre3a`, `sub_pre3b`,
+`sub_pre4`), the `bc_new_num` call (`sub_call`, over `SubPre`), the zero
+fill (`sub_after_new`, `sub_zfill*`), setup and dispatch (`sub_setup`,
+`sub_setup_addr`), the copy of `n1`'s extra fraction digits (`sub_fracA*`),
+the subtraction of `n2`'s extra fraction digits from zero (`sub_fracB*`),
+the join and subtract loop (`sub_join`, `sub_main_*`), borrow propagation
+and the copy of `n1`'s high digits (`sub_high_entry`, `sub_borrow_*`,
+`sub_copy_*`), the inlined `_bc_rm_leading_zeros` (`sub_rmlz*`) and the
+epilogue (`sub_epi`).
+
+Proof-engineering facts: digit differences are handled as `Int` words.
+`subw_nat`, `subw_int_nat` and `negw_nat` turn `subw`/`negw` results into
+`BitVec.ofInt`; `toInt_ofInt64`, `ofInt64_eq_zero` and `addiw10_int` turn
+the branch conditions into `Int` facts for `omega`. Keep digit values
+symbolic: substituting literal zeros makes `bc_run` time out. `bc_run`
+can reduce an `rfl`-provable equation hypothesis to `True`; state such a
+fact as two `≤` facts. A run of nine stores exceeds one declaration's
+budget, so the register saves are split after the first two
+(`SavedWords.storeV` takes the stored value up to its entry register). The
+axioms of `bc_do_sub_spec` are `propext`, `Classical.choice`, `Quot.sound`.
+
+### M5 `bc_add` and `bc_sub` (checked)
+
+`Dc/Mach/Bc/BcAdd.lean` proves `bc_add_spec` at `0x80005634` and
+`Dc/Mach/Bc/BcSub.lean` proves `bc_sub_spec` at `0x80004ac4`, against
+`Num.add` and `Num.sub`, for two normalized numbers of the heap (possibly
+the same object, possibly the result slot's number) and a result slot `q`
+holding `xr` of the heap. `BinK.ret` receives `BinPost`: the new number
+heads the heap, `*q` points at it, `xr` lost one reference (`FreedRest.dec`)
+or was released (`.rel`), and off the heap only the 176-byte window below
+the entry `sp` and `q` changed. `BinK.oom` covers `out_of_memory` from any
+of the callees.
+
+The shared layer is `Dc/Mach/Bc/AddSub.lean`: `BinCtx` (frame, slot,
+alignment), `BinArgs` (membership, normal form, the `2^31` size bound
+that `_bc_do_add`/`_bc_do_sub` need), `ResSlot`, `BinAt` (saved words,
+`sp`, `s1 = q`, registers and out-of-heap memory at any point of the body;
+transports `.keeps`, `.call` across a callee's 128-byte window, `.low`
+across stores into the frame's own slots), `FreeEntry.of_slot`,
+`binPost_dec`/`binPost_rel` (the two `bc_free_num` arms into `BinPost`),
+`BcHeap.zeroAgain` (the zero of the equal-magnitude path).
+
+Segments per function: entry and saves, the sign dispatch, the comparison
+call, the three magnitude orders (`*_gt`, `*_lt`, `*_zero` with
+`*_zero_mid`/`*_zero_new`/`*_zero_fill`), the return points that set the
+sign (`*_signed`), the `bc_free_num` tail and the epilogue. `bc_sub` keeps
+`n2` and `scale_min` in its frame across the comparison and the zero's
+scale across `bc_new_num` (`ldv_lw_hitN` reloads it); the `lt` sign is
+`seqz` of `n2`'s sign word, proved by cases on the sign.
+
+Proof-engineering facts: `bc_run` stops after every branch, including
+concretely decided ones; iterate it (`iterate 3 (all_goals (try …))`). A
+leftover frame-access side goal must be closed (`frame_acc` with
+`tohostAddr` unfolded) before the continuation's `exact`. `bc_run`
+simplifies hypotheses, so load facts about memory written in the run are
+stated after it. Splitting the four sign cases out of the entry lemma keeps
+each declaration inside its budget. The axioms of both specs are `propext`,
+`Classical.choice`, `Quot.sound`.
+
+### M6 `_bc_shift_addsub` (checked)
+
+`Dc/Mach/Bc/ShiftAddSub.lean` proves `bc_shift_addsub_spec` at `0x800040bc`.
+With the accumulator `y` heading the heap and `val` (`w`) a heap number,
+`ShiftArgs` supplies the assertion bound (`fit`) and the absent carry or
+borrow past the accumulator (`noCarry`, over `addRipC`/`subRipB`). The function
+returns through `ShRet` with `y`'s digits `shiftDs y w shift sub`, registers off
+`shClob`, and memory changed only on `y`'s digit bytes (`ShSt`).
+
+- Model: `valCount`/`valLE` (the integer digits `val` contributes, skipping a
+  leading zero), `accLE` (the accumulator from the shifted position),
+  `ripOp`/`ripOut` over `Dc.BcModel.addRip`/`subRip`.
+- Loops: `sub_body`/`add_body` (one position, `hnext`/`hexit` continuations),
+  `sub_loop`/`add_loop` (induction over `val`'s digits), `sub_rip`/`add_rip`
+  (the ripple entries) and `sub_rip_loop`/`add_rip_loop`. The ripples store a
+  non-digit byte and overwrite it; `BcHeap.congr` carries the heap across.
+- Entry: `sh_head`, `sh_mid` (zero count returns at once), `sh_dispatch`.
+
+`bc_shift_addsub_spec` uses only the three permitted axioms. Callers
+(`_bc_rec_mul`) supply `ShiftArgs.noCarry` from the Karatsuba bounds.
+
+### M6 prerequisite: number views in the heap (checked)
+
+`new_sub_num` (used by `_bc_rec_mul`) builds a struct whose `n_ptr` is `NULL`
+and whose `n_value` points into another number's digit buffer. The heap
+invariant now admits these views:
+
+- `NumShape` bounds `n_value` (`vLo`, `vHi`) instead of `n_ptr`; `ptrLe` keeps
+  `n_ptr ≤ n_value`. `NumObj.Owns` is `n_ptr ≠ 0`; `NumObj.Blocks.dPay` holds
+  for owners and `dLo`/`dFit` place the digits inside `db` for every object.
+- `objBlocks` lists every struct block and only owners' buffers
+  (`NumObj.blocks`). `BcHeap.views : ViewsOwned L` says each view's buffer
+  belongs to an owner later in the list; `BcHeap.db_mem`,
+  `BcHeap.sb_ne_db`, and `BcHeap.head_noView` follow.
+- Stores into an object go through `BcHeap.update` with a `HeapWriteOK`
+  supplier: `BcHeap.sb_writeOK` for struct bytes and `BcHeap.db_writeOK` for an
+  owner's buffer that no other object reads. `BcHeap.setDigit` takes that
+  no-view premise (`BcHeap.owns_of_noView` recovers ownership from it); result
+  writers obtain it at the head from `head_noView` and `AddSum.owns` /
+  `SubSum.owns`.
+- `BcHeap.unlink` removes an object; `BcHeap.release` (owner, buffer freed)
+  and `BcHeap.releaseView` (allocator unchanged) specialize it.
+- `AddPost`, `SubPost`, and `BinPost` return `owns`; `ResSlot` carries the
+  slot object's `noView` premise and `ResSlot.noView_cons` extends it past the
+  fresh result. Callers of `bc_add`/`bc_sub` must supply `ResSlot.noView` from
+  their dc-state ownership (M9).
+
+All modified theorems keep the three permitted axioms.
+
+### M3 representation and heap closure (checked)
+
+`Dc/Mach/Bc/HeapClosure.lean`, imported by `Dc.lean`, completes:
+
+- `BcHeap.foot_disjoint`: distinct represented numbers have disjoint footprints,
+  using object-block uniqueness and the allocator's pairwise block separation.
+- `BcHeap.foot_not_alloc`: number bytes are disjoint from allocator metadata.
+- `BcHeap.transport`: byte agreement on allocator metadata, live payloads, and
+  the cached-struct head preserves the entire number heap.
+- `NewSrc.live_mono` and `NewNumPost.blocks`: allocation preserves previous
+  live blocks and supplies the returned object's struct/digit blocks.
+- `HeapInv.live_nodup` and `NewNumPost.insert`: a successful `bc_new_num`
+  reconstructs `BcHeap` with the new object prepended, for both a fresh struct
+  and a reused dead struct. Existing numbers survive its actual live-block
+  frame; no additional execution supplier is assumed.
+
+All seven public theorems compile and have axioms contained in
+`{propext, Classical.choice, Quot.sound}`; `NewSrc.live_mono` is axiom-free.
+The number representation deliberately admits unnormalized temporary digit
+arrays; `NumRep.Norm` is a separate producer obligation. Reference counts are
+stored faithfully, but correspondence with all dc-state references remains M9.
+The zero-reference ownership transfer through the actual `bc_free_num`
+execution is checked in M4 (above).
+This completes the M3 representation/heap foundation, not those dependent
+machine/state obligations or the final theorem.
+
+### Resolved dc baseline build blockers
+
+The private build driver follows configured Lean options, including
+`backward.isDefEq.respectTransparency = false`, and resolves Lake's dependency
+environment once per build. It handles dependency source roots and module import
+modifiers when building the transitive `Dc` closure.
+
+`Dc/Mach/Bc/Base.lean` supplies `word_pred` and stages `bsimp` normalization
+before generic word-to-natural addition rewriting. This avoids deeply nested
+modulo terms for decrements without raising elaboration limits. `Scan.lean`
+uses the resulting canonical decrement form and `sxw_ofNat`; all three scans
+and comparison compile. `FmtModel.lean` calls the signed formatting value
+`fmtDval`, avoiding collision with the decimal digit-list `dval` in `Bc/Rep`;
+its formatting consumers use the same renamed definition.
+
+The baseline transitive `Dc` build completed 1,061 modules, followed by an
+`import Dc` audit of 14 affected normalization, scan, comparison, and formatter
+theorems. Every audited theorem uses only the three permitted axioms. The M3
+extension resumed the full 1,062-module `Dc` closure successfully and audited
+all 21 baseline/M3 headlines together through `import Dc`.
+Build objects and audit logs are retained outside the checkout in the private
+build tree. These changes affect proof normalization and a definition name;
+no dc semantics or binary bytes changed.
+
+### M6 `_bc_rec_mul`'s Karatsuba step: machine spans checked
+
+The step at `0x80004db0` is built from these checked spans (axioms of every one
+are `{propext, Classical.choice, Quot.sound}`):
+
+- `kara_entry` (`Dc/Mach/Bc/KaraEntry.lean`): the six spills of `s3` and
+  `s7`–`s11`, completing `KAt`. `kSpillMem` names the memory they leave, with
+  `kSpillMem_saved`/`kSpillMem_saved2` the two slot sets and `kSpillMem_off`
+  the frame.
+- `kara_half` (same file): `n = (max la lb + 1) / 2` from `addiw`, `srliw`,
+  `addw`, `sraiw` (`half_word` over `srliw31_small`, `sraiw1_small`,
+  `exw_ofNat`), `s9` pointed at `_bc_Free_list` with its head read, `u`'s
+  digits in `s10`, and the test of `la` against `n`. `KEntry` is the state at
+  either route.
+- `kzeroref_80005378`, `kzeroref_80004e68` (`KaraZeroRef.lean`): `_zero_`'s
+  struct loaded and its count raised for a half with no digits.
+- `ksplit_80004df8`, `ksplit_80004e30`, `ksplit_8000538c`, `ksplit_800053c0`
+  (generated, `scripts/dc/gen_kara_pop.py` → `KaraPopSites.lean`) and
+  `ksplit_800053f4`, `ksplit_80004e80` (`KaraPopLast.lean`): the six struct
+  sources, each the chain pop or `malloc(40)` with `out_of_memory` on failure.
+  `ViewStruct` (`KaraViews.lean`) is what both routes hand the store site:
+  `.popAt` for the pop, `.fresh` for the fresh block, and
+  `BcHeap.deadHead_eq_zero_iff` is the test that chooses.
+- `kview_80004e08`, `kview_80004e3c`, `kview_800053d0`, `kview_80005400`,
+  `kview_8000539c`, `kview_80004e94` (`KaraSplit.lean`): the six inlined
+  `new_sub_num` store sites, through `ViewStruct.toSrc` and `BcHeap.pushView`.
+- `ktrim_80004eb0`, `ktrim_80004ee0`, `ktrim_80004f10`, `ktrim_80004f40`
+  (generated, `scripts/dc/gen_kara_trim.py` → `KaraTrimSites.lean`): the four
+  leading-zero trims, over `BcHeap.advanceAt'`.
+
+Open: the two length dispatches at `0x80004e64` and `0x800053bc`, the
+composition of the four routes from `0x80004db0` to the trims and on to
+`kara_m1` at `0x80004f70` (the `KM1` state with `hs0` a permutation of the four
+handles), the Karatsuba arithmetic identity feeding `KDiffSpec`, `KM3Spec` and
+`KM1Spec`, and the `rmDepth` induction that closes `RmIH` and `bc_multiply`.
+
+### M6 obstruction: `_bc_rec_mul` can build a zero-length half
+
+`kara_half` (`Dc/Mach/Bc/KaraEntry.lean`) computes the Karatsuba split
+`n = (max la lb + 1) / 2`. The dispatch at `0x80004df4` (`blt s4, s0`) takes
+the splitting route whenever `n ≤ la`, and that route stores
+`n_len = la - n` (`subw` at `0x80004e04`, `sw` at `0x80004e10`). With `la = n`
+the inlined `new_sub_num` therefore writes `n_len = 0`.
+
+`NumShape.lenPos : 1 ≤ o.len` (`Dc/Mach/Bc/Rep.lean`) forbids such an object,
+so `BcHeap.nums` cannot hold for the step's object list on that route, and
+`kview_80004e08` demands `n < la` rather than `n ≤ la`. The same applies to
+`lb` at the second dispatch (`kview_800053d0`, `n < lb`).
+
+Evidence that the route is reachable from the Karatsuba case's own entry
+conditions (`80 ≤ la + lb`, `20 ≤ la`, `20 ≤ lb`): `kara_emptyHalf_reachable`
+and `kara_emptyHalfV_reachable` (`Dc/Mach/Bc/KaraRoute.lean`) exhibit
+`la = 27, lb = 53` and `la = 53, lb = 27`, both checked by `decide`.
+
+Affected declarations: `kview_80004e08`, `kview_80004e3c`, `kview_800053d0`,
+`kview_80005400` (all requiring a positive half), `kara_vhigh`, and every
+consumer of `NumShape.lenPos` (53 projections in 13 files, of which
+`KaraTrimSites.lean` and `KaraShiftSites.lean` are generated).
+
+Resolution: weaken `NumShape.lenPos` so that `len = 0` is representable
+(`len = 0 → scale = 0 ∧ ds = []`) and supply `1 ≤ len` explicitly at the
+consumers that need it, which are the digit loops, the comparison, the scan
+and the trims — all of which already know their operand is nonempty from
+their callers. A zero-length view is inert at the trims: `lbu 0(n_value)`
+reads a byte of the parent's buffer and either branch leaves `n_len = 0`.
+
+#### Amendment status and the empty-operand obligation
+
+Landed: `NumShape.lenPos` is gone, `NumRep.Norm o := o.len ≤ 1 ∨ o.ds.getD 0 0 ≠ 0`,
+and the positivity the machine proofs actually use is now an explicit field or
+premise:
+
+- `AddArgs.l1`/`.l2`, `SubArgs.l1`/`.l2` (`Dc/Mach/Bc/DoAdd.lean`,
+  `DoSub.lean`) — the operands of `_bc_do_add`/`_bc_do_sub`.
+- `cmpMag_of_len_lt` takes `1 ≤ a.len`, `cmpMag_of_len_gt` takes `1 ≤ b.len`;
+  without them the statements are false (`a.len = 0` against a normalised
+  `b.len = 1`, `b.ds = [0]`, both magnitudes `0`).
+- `do_compare_spec`, `bc_compare_spec` take `1 ≤ a.len` and `1 ≤ b.len`.
+- `bc_num2long_spec`, `bc_is_zero_spec`, `bc_is_near_zero_spec`
+  (`Dc/Mach/Bc/Scan.lean`) take `1 ≤ o.len`.
+- `sub_rmlz_loop`/`add_rmlz_loop` derive `1 ≤ o.len - j` from the loop index
+  instead of the shape.
+
+Empty-half routes (closed, all Kara modules through `OutLong` rebuilt):
+
+- `NumShape.emptyScale` and `NumShape.emptyIn` (`o.len = 0 → o.val < heapEnd`):
+  an empty view still points into its owner, which the leading-zero trims
+  (`ktrim_*`, `kara_trim.lean.in`) read before the count. `BcHeap.pushView`
+  takes `off < w.rep.len + w.rep.scale`; `kview_80004e08`/`kview_800053d0` take
+  `1 ≤ n` for it.
+- Results that have digits say so: `AddPost.pos`, `SubPost.pos`, `BinPost.pos`,
+  `KRet.pos`, `KDiff.pos`; `ShiftArgs.lw` is supplied from them.
+- The zero scans (`gen_kara_scan`) prove both branches for an empty operand;
+  at `0x80004fa0` the empty `v1` takes `0x80005530`, a third copy of the
+  subtract pair (`ksubs_80005530`), which joins the m1-zero route at
+  `0x8000550c` (`KaraM1Stage.zk`).
+- Karatsuba operands are non-negative, so `bc_sub` never takes its add route
+  (`KSubArgs.noAdd`); `kara_subCall` takes that as `hadd`.
+
+- An all-zero operand reaches `bc_sub` with an empty and a zero operand
+  (`kara_zeroOperand_emptyHalf`, `KaraRoute.lean`: `la = 27`, `lb = 53`, `u`
+  27 zero digits at scale 26). `_bc_do_compare` answers by integer length
+  (`lt`) while the magnitudes are equal, so `bc_sub` returns a zero with the
+  minus sign and `Num.sub`'s positive zero is not its result. The spec now
+  follows the machine: `NumRep.cmpRep` (`do_compare_rep`) and
+  `NumRep.subM` (`bc_sub_specM`, `BinArgsM` with `ne`: not both empty);
+  `do_compare_spec`/`bc_sub_spec` are the `cmpRep_eq`/`subM_eq` corollaries.
+  The Karatsuba differences are `subM` (`KDiff`, `KSubs`, `KDiffSpec`).
+
+### M6 `_bc_rec_mul` (checked)
+
+`rm_spec : ∀ N, RmIH live S Q N` (`Dc/Mach/Bc/KaraCase.lean`) by strong
+induction on the digit count. `kara_case` proves `RmKara` from `RmIH` at
+`3 (la + lb) / 4 + 1`: `kara_halves` reaches the `m1` stage, `HalfV`/`DiffV`
+give the halves' and differences' values and digit counts (`NumRep.subM_val`,
+`NumRep.len_le_of_lt`, `Dc/Mach/Bc/KaraArith.lean`), and `kfill_val` gives
+the Karatsuba identity by the differences' signs with `kara_bound`.
+Interface changes this required:
+
+- `_zero_`'s reference room is budgeted per child (`4 · max … + 8` in the
+  `m2` stage, `4 (la + lb + 2 - n) + 8` in the `m1` stage): a child returns
+  the count unchanged, and a summed budget exceeds any linear `RmIH` room.
+- `RmCtx.slotGlob`: the result slot is not `_zero_` or `mul_base_digits`, so
+  the step reads the entry memory's globals (`RmAt.glob`).
+- `KM1Spec` is required only for nonzero high halves (with `la < n` the
+  empty `u1` makes `2n + |u1| + |v1| ≤ la + lb + 1` false); `KHalf.lenS`
+  bounds a non-`_zero_` half by its digits.
+- `KDiffSpec` takes the differences' `Norm` and `NumShape` (the length of a
+  difference is fixed by its value only when normalised).
+
+### M6 `bc_multiply` (checked)
+
+`bc_multiply_spec` (`Dc/Mach/Bc/BcMul.lean`): from `0x8000573c`, for
+operands with a digit each (`MulArgs`) and a window `W` with
+`96 + rmStack (la + lb) ≤ W`, the slot holds the number for
+`Num.mul n1 n2 scale` (`BinKW.ret`, `BinPostW` over `W`) or
+`out_of_memory` (`BinKW.oom`). `bmul_jal` calls `rm_spec` on all digits;
+`MulNum.of_prod` relabels `_bc_rec_mul`'s product (`mulObj`: `len1 + len2 + 1`
+integer digits, scale `mulScale`) and shows its value is `Num.mul`; the trim
+reuses the generated `ktrimLoop_8000580c`; a zero product is made positive.
+`BinPostW`/`BinKW` (`AddSub.lean`) generalize `BinPost`/`BinK` to a window
+parameter. M6 is closed.
+
+### M7 `bc_divide` (checked)
+
+`bc_divide_spec` (`Dc/Mach/Bc/DivSpec.lean`): from `0x8000589c`, for operands
+`DivArgs` (`n1` with a positive integer length, `n2` and `_zero_` of the heap,
+none of them the slot's number when that has one reference) and `_zero_` of
+magnitude zero, the slot holds the number for `Num.div n1 n2 scale` and
+`a0 = 0` (`DivKW.ret`), `a0 = -1` for a zero divisor with only the window
+changed (`DivKW.zero`), or `out_of_memory` (`DivKW.oomW`). The axioms are
+`propext`, `Classical.choice` and `Quot.sound`. Routes:
+
+- `n2` is `_zero_` (`0x80005f78`): `BcHeap.eq_of_p` identifies `n2` with `_zero_`.
+- `n2` without digits, or all its digits zero: `dvt_neg`.
+- the general path: `dv_found` → `dv_body` (`DivLink.lean`) through the
+  normalisation, the quotient loop and the tail, with the value linked to
+  `Num.div` (`dv_quot`).
+- `n2 = 1` (`dv_one`, `DivOne.lean`): GNU bc 1.07 builds `n1` truncated to the
+  scale, stores it in the slot, and falls through into the general path,
+  which frees it and stores its own quotient. `DivKW.rebase` restates the
+  continuations with the detour's number as the slot's; `FreedRest.keep`
+  finds the operands again after the free.
+
+`DivCtx.slotZero` (the slot is apart from `_zero_`'s word) is a new context
+premise: the detour stores the slot before the general path reads `_zero_`.
+`NumAt.setDigits`/`BcHeap.setDigits` rewrite a whole digit buffer of the
+head number.
+
+### M7 `bc_divmod`, `bc_modulo` (checked)
+
+`bc_divmod_spec` (`Dc/Mach/Bc/DivModEntry.lean`): from `0x80005fd0`, for
+operands `DmArgs` (`n1` with a positive integer length, `n2` and `_zero_` of
+the heap, every number an owner, sizes under `2^24` digits) and the quotient
+and remainder slots `DmQSlots`, the slots hold `Num.divmod n1 n2 scale`'s
+numbers and `a0 = 0` (`DmKQ.ret`, post `DmPostQ`: the old remainder, then the
+old quotient, dropped by `DropAt`), `a0 = -1` for a zero divisor
+(`DmKQ.zero`), or `out_of_memory`. `bc_divmod_rem_spec` is the `quot = NULL`
+route against `Num.modulo` (`DmKR`, `DmPostR`), and `bc_modulo_spec`
+(`0x800061b4`) reaches it by `DmKR.retarget`. The axioms are `propext`,
+`Classical.choice` and `Quot.sound`. Routes:
+
+- `n2` is `_zero_`, has no digits, or all its digits are zero: `-1`
+  (`dm_entry`, `dm_pro`, `dmz_scan`, `dm_neg`).
+- `rscale` (`dm_rscale`), `temp = _zero_` with one reference more and
+  `bc_divide` (`dm_divCall`; `dm_divRet` drops the reference again and lands
+  `DmAt68`).
+- with a quotient slot (`dm_q68`): the copy of `temp`, `bc_multiply`,
+  `bc_sub`, the generated free of `temp` (`ffree_800060a8`), `bc_free_num`
+  of the old quotient and the store (`dm_qmul` … `dm_qstore`).
+- without (`dm_r68`): `bc_multiply`, `bc_sub`, the generated free
+  (`ffree_80006168`) (`dm_rmul` … `dm_rend`).
+
+The inlined `bc_free_num` sites that read `_bc_Free_list` by `auipc` are
+generated (`scripts/dc/gen_bc_free.py` → `FreeSites.lean`, continuation
+`FreeK`). `div_size_le` and `mul_size_le` bound the intermediate numbers
+under the `2^27` digits `bc_multiply` and `bc_sub` require. M7 is closed.
+
+### M8 model fix: `x ^ 1` keeps a negative zero (checked against the ELF)
+
+`bc_raise` returns a copy of `num1` itself when the exponent is 1, so
+`_.1 3^1^p` prints `-0` (the truncation of `-.1` to scale 0 keeps the sign)
+while `Num.raise` printed `0`. The model now raises through
+`powRaise n u := if u = 1 then n else powExact n u` (`Dc/Num.lean`) in both
+exponent signs; `powRaise_eq`/`mul_powRaise` (`Dc/BcModel/Raise.lean`) return
+to `powExact` for a nonzero magnitude. The difftest corpus has `_.1 3^1^p`,
+`_.1 3^2^p` and `_.1 3^_1^p`.
+
+### M8 `rt_warn`, `rt_error` (checked)
+
+`rt_warn_spec`/`rt_error_spec` (`Dc/Mach/RtMsgSites.lean`, generated by
+`scripts/dc/gen_rt_msg.py` from `scripts/dc/rt_msg.lean.in` over the shared
+`RtAt` state in `Dc/Mach/RtMsg.lean`): for a `.rodata` message without
+conversions (`RtMsg p n`), the prefix, the message and a newline go to
+`stderr` (`FdAt … 2`), the console is unchanged, registers outside
+`fprintfClob` are kept and only `[sp - 416, sp)` changes. Premise
+`stderrAddr + 4 ≤ sp - 416`: `StackFrame` alone does not keep the `stderr`
+object below the frame. The axioms are `propext`, `Classical.choice` and
+`Quot.sound`.
+
+### M8 `bc_raise` (checked)
+
+`bc_raise_spec` (`Dc/Mach/Bc/RaiseEntry.lean`) proves `bc_raise` at
+`0x8000660c` against `(Num.raise x1 x2 k).1` in `DWO`: `RaK.ret` receives the
+result in the slot (`RaPost`: one reference added to the result, then the
+old slot number dropped) or `RaK.oom` receives `out_of_memory`. The files:
+
+- `RaiseBase.lean`: the contract (`RaCtx`, `RaArgs`, `RaSlot`, `RaPost`,
+  `RaK`, `RaOom`), the frame state `RaAt`, `bc_multiply` calls (`ra_mulCall`).
+- `RaiseTail.lean`/`RaiseExit.lean`: the epilogues, `temp`/`power` releases,
+  the slot free (`ra_freeSlot`, shared by the positive tail and the zero
+  exponent), the truncation store, `bc_divide (_one_, temp)` for a negative
+  exponent, and the two `temp = power` exits (`ra_posPow2`, `ra_negPow2`).
+- `RaiseLoop.lean`/`RaiseSquare.lean`: the squaring loops (`ra_p1_loop`,
+  `ra_p2_loop`, invariant `u = T + 2·P·e`) over handles (`Hd`, `KList`),
+  composed as `ra_loops` from `0x8000668c`.
+- `RaiseEntry.lean`: the two result routes (`ra_end2`, `ra_endC`), the zero
+  exponent (`ra_zero`: "exponent too large in raise" for a nonzero integer
+  part, then `_one_` with one more reference), `rscale`, the sign split and
+  `__muldi3` (`ra_body`), `bc_num2long` (`ra_num`), the scale warning
+  (`ra_warn`) and the prologue.
+
+Premises the callers supply: `RaCtx.slotOne` (the slot is not `_one_`'s
+global, which `bc_free_num (result)` would clear before the zero exponent
+reads `_one_`), `RaSlot.oneRef`/`.zeroRef` (the slot's number is not freed when
+it is `_one_` or `_zero_`), `1 ≤ x1.refs`, and the size bound
+`(|e| + 1)(len + scale + 1) + k < 2^24` (`RaArgs.size`). Both stderr messages
+(`raScaleMsg`, `raExpMsg`) leave the console unchanged, so the error flag of
+`Num.raise` does not appear in the machine contract. The axioms are
+`propext`, `Classical.choice` and `Quot.sound`.
+
+### M8 `bc_raisemod` (checked)
+
+`bc_raisemod_spec` (`Dc/Mach/Bc/RaiseModEntry.lean`) proves `bc_raisemod` at
+`0x800061c4` against `Num.raisemod base expo mod k` in `DWO`: `RxK.ret`
+receives the result in the slot (`RxPost`: one reference added to the leaked
+`parity` and one to the result, then the old slot number dropped),
+`RxK.fail` receives `-1` with only the frame changed (a zero modulus, by
+pointer or by digits, or a negative exponent), and `RxK.oom` receives
+`out_of_memory`. The model side is `raisemod_eq` (`Dc/BcModel/RaiseMod.lean`):
+for a nonzero modulus and a non-negative exponent `Num.raisemod` is
+`Num.raisemodLoop` from `expo`'s integer part. The files:
+
+- `RaiseModBase.lean`: the contract (`RxCtx`, `RxArgs`, `RxSlot`, `RxPost`,
+  `RxK`), the frame state `RxAt`, the callees on handles (`rx_mulH`,
+  `rx_modH`, `rx_halveH`, `rx_divH`).
+- `RaiseModHeap.lean`: the handle heap `RList hs L` (an owned number or one
+  more reference to a caller's number per slot).
+- `RaiseModLoop.lean`: one iteration (`rx_body`) and the loop (`rx_loop`)
+  against `Num.raisemodLoop`, values carried by `RxNum` with `RxM.nT`/`.nE`
+  keeping `temp` and `exponent` normalized.
+- `RaiseModExit.lean`: the epilogues (`rx_epi`, `rx_epi0`), the handle
+  releases and `bc_free_num (result)` (`rx_exit`, `rx_fin`).
+- `RaiseModEntry.lean`: the four reference bumps (`RxU`, `rx_bumps`), the
+  three scale warnings and `exponent / 1` (`rx_wbase`, `rx_wexp`, `rx_divx`),
+  the zero exponent (`rx_one`), `rx_start`/`rx_go`, the sign split, the
+  generated zero scan `zscan_80006220` (`rx_scan`) and the prologue
+  (`rx_modz`, `bc_raisemod_spec`).
+
+Premises the callers supply: `RxArgs.size`
+(`8 (len_b + scale_b + len_m + scale_m + k + 1) + len_e + scale_e < 2^24`),
+`RxArgs.refs` (room for four more references to every number of `L`),
+`1 ≤ refs` for `base`, `expo` and `_one_`, `expo` and `mod` normalized,
+`_zero_`/`_one_`/`_two_` at their globals, the stderr stream (`RxArgs.fd`),
+and `RxCtx.far` (`stderr` below the frame). The scale warnings leave the
+console unchanged. The axioms are `propext`, `Classical.choice` and
+`Quot.sound`.
+
+### M8 `bc_sqrt` (checked)
+
+`bc_sqrt_spec` (`Dc/Mach/Bc/SqrtEntry.lean`) proves `bc_sqrt` at `0x80006a1c`
+against `SqOut x k n` in `DWO`. `SqK.fail` receives `0` for a negative `x`,
+with nothing changed outside the frame. `SqK.ret` receives `1` and `SqPost`,
+where the slot holds `y` with `y.rep.num = r`, normalized, with a digit and
+owning its buffer. `SqPost.mid` admits the `_zero_` reference that the
+`0 < x < 1` route leaks (`SqLeak`), drops `x` and adds the reference to `y`.
+`r` is `Num.zero 0` or `Num.one` for the two global returns. Otherwise `r` is
+`Dc.Sqrt x k r`: the Newton loop from `Num.sqrtInit` to `Num.sqrtFinish`.
+`SqK.oom` receives `out_of_memory`. The files:
+
+- `SqrtBase.lean`: the contract (`SqCtx`, `SqArgs`, `SqOut`, `SqLeak`,
+  `SqPost`, `SqK`), the frame state `SqAt`, and the callees on handles
+  (`sq_mulH`, `sq_addH`, `sq_subH`, `sq_divH`).
+- `SqrtScan.lean`: the inlined `bc_is_near_zero` (`sq_scan`).
+- `SqrtLoop.lean`: one iteration (`sq_step`) and the loop (`sq_loop`).
+- `SqrtExit.lean`: the epilogues (`sq_epi`, `sq_ret`), `free_slot_spec`, and
+  the handle frees (`SqFr.step`, `sq_exit`).
+- `SqrtInit.lean`, `SqrtHi.lean`: the first guess below one (`sq_lo`) and
+  above one (`sq_hi`). The model side is `sqrtInit_lo`/`sqrtInit_hi`
+  (`Dc/BcModel/SqrtInit.lean`).
+- `SqrtEntry.lean`: the sign dispatch (`sq_sign`), the compares against
+  `_zero_` and `_one_` (`sq_cmpZero`, `sq_cmpOne`), the global returns
+  (`sq_glob`), and the setup (`sq_setup`, `sq_setRefs`, `sq_setNew`).
+
+Premises the callers supply in `SqArgs`:
+- `x` normalized with a digit and a reference.
+- `x.len + x.scale + k < 2^20`.
+- Room for sixteen more references on every number of `L`, and every number
+  of `L` owning its buffer.
+- `_zero_` and `_one_` at their globals.
+- The multiplication base word (`mulBaseAddr`).
+- The stderr stream.
+- A second reference on `x` when it is `_zero_` or `_one_`.
+
+`SqCtx` places the slot off the heap and apart from both globals, and reserves
+`bc_raise`'s stack below the frame.
+
+`SqrtEntry.lean` sets `maxRecDepth 8000`, following the division files. The
+axioms are `propext`, `Classical.choice` and `Quot.sound`.
+
+### M8 obstruction: no callee frames a caller's raw heap blocks
+
+`bc_out_num` for a base other than 10 pushes the integer digits on a stack of
+`malloc(16)` cells (`[digit, next]`) and calls `bc_divmod` and `bc_divide`
+while the cells are live (`0x800071b4`, `0x800071ec`). It reads the cells
+back after the loop (`0x80007468`). No callee contract says the cells
+survive. `BinPostW`, `QPost`, `DmPostQ` and `DmPostR` give a `BcHeap` at a
+fresh allocator state `H'` and an `out` frame for bytes off the heap
+(`OutHeap`). They say nothing about a live block outside the dead chain and
+the objects' blocks.
+
+The ownership set does not supply the frame. A callee needs `HeapInv S`,
+whose `own` field covers the whole heap, so it cannot run with the cells
+removed from `S`. A split of the run at the callee's return would need one
+fuel bound over all of the callee's posts, and `SWP` gives none.
+
+The same gap blocks M9 and M10. `dc` keeps its stack nodes, strings and
+register arrays in `malloc` blocks across every `bc_*` call.
+
+Fix: `BcHeap S X Mt H F L` takes the caller's raw blocks `X : Raws` (blocks
+`X.bs` and their frozen image `X.img`). The field `raw : RawOK X Mt H F L`
+requires each raw block to be live, outside the dead chain and the objects'
+blocks, and to hold its image. A callee's post keeps the same `X`, so every
+callee frames its caller's raw blocks. The central transports
+(`BcHeap.rebase`, `.transportOwn`, `.malloc`, `.rawWrite`, `.freeRaw`,
+`.update`, `.unlink`, `NewNumPost.insert`) discharge the field once. The
+scratch buffers of `bc_divide` carry their separation from `X.bs`.
+
+Status: landed. Every file from `Heap.lean` through `OutNumEntry.lean`
+compiles over `BcHeap S X`; the axioms of `on_entry`, `bc_divide_spec`,
+`bc_divmod_spec`, `bc_multiply_spec` and `rm_spec` are within
+{propext, Classical.choice, Quot.sound}.
+
+### M8 `bc_out_num` (checked)
+
+`bc_out_num_spec` (`Dc/Mach/Bc/OutNum.lean`) proves `bc_out_num (num,
+o_base, out_char, 0)` at `0x80006f3c` in `DWO`. `OnK.ret` receives the
+characters `cs ++ Num.outChars num o_base` sent through the callback, the
+caller's heap `L` and its raw blocks unchanged, and only the callback's
+bytes `G` and the window changed off the heap. `OnK.oom` receives
+`out_of_memory`. The callback is a `CharFn` (an invariant `I` on the
+characters sent, stable under stores off `G`); `dc`'s `out_char` with its
+line wrapping supplies it in M9. The files:
+
+- `OutNumEntry.lean`: the prologue, the sign, zero (`on_zero`) and the base
+  dispatch (`on_found`).
+- `OutNumDec.lean`: base 10.
+- `OutNumGo.lean`, `OutNumSetup.lean`: the state `OgSt` over handles
+  (`RList`, `HandleCall.lean`) and `int_part`/`frac_part`/`base`/
+  `max_o_digit` (`og_s1`–`og_s4`).
+- `OutNumStack.lean`, `OutNumInt.lean`: the digit stack of `malloc(16)`
+  cells held as raw blocks (`OgStk`, `OgSt.push`/`.pop`) and the push loop
+  (`og_loop`, `og_s5`).
+- `OutNumPop.lean`: the pop loops, hex (`og_hexNext`) and `bc_out_long`
+  (`og_longNext`), and `og_s6`.
+- `OutNumFrac.lean`: the fraction loop (`og_fcalc`, `og_fdig`, `og_ftail`,
+  `og_floop` by induction on `FracFuel`), its entry (`og_dot`, `og_s7`)
+  and the `t_num` free (`og_fexit`, generated `ffree_80007500`). The model
+  side splits `Num.outChars` along the loop (`og_target`, `ogFracOut_step`,
+  `ogFracOut_stop`, `Dc/BcModel/OutBase.lean`).
+- `OutNumExit.lean`: the five generated frees (`ffree_80007320` …
+  `ffree_800073f0`, the last with a frame reload `FreeKL`) and the
+  epilogue (`og_exit`).
+
+Premises the callers supply in `OnArgs`: `num` normalized with a digit,
+`num.len + num.scale < 2^20`, room for eight more references on every
+number of `L`, `_zero_` and `_one_` at their globals, the multiplication
+base word, and `2 ≤ o_base < 2^31`. The axioms are `propext`,
+`Classical.choice` and `Quot.sound`. M8 is closed.
+
+### M9 dc runtime state (in progress)
+
+`DcAt S Mt H F L C G hs st` (`Dc/Mach/State.lean`) relates the machine to
+the model state `st`. The ghost `G : DcG` lists the stack nodes, the
+register levels with their array chains, the string objects and the line
+buffer. `DcAt` holds the bc heap over `G`'s blocks as raw blocks
+(`BcHeap S (G.raws Mt)`), the memory view `DcView` (the chains and the
+globals), and the denotation `DcDen` (values, normalized numbers, and
+exact reference counts over state references, caller handles `hs` and the
+constants `_zero_`/`_one_`/`_two_`). `DcView.withChains`/`.frame` move the
+view across stores off its blocks and globals.
+
+Checked so far:
+
+- `dc_malloc_spec` (`DcAlloc.lean`): a fresh block or `dc_memfail`.
+- `StateOps.lean`: `DcAt.malloc` (a fresh block outside the ghost, `DcFresh`),
+  `.rawWrite`, `.outWrite`, `.pushNode`, `.stkAcc`.
+- `dc_push_spec` (`DcStack.lean`, with `push_tail`/`push_post`).
+- `dc_pop_spec` (`DcPop.lean`): empty path (`pop_empty`, the "stack empty" message via `fprintf_prog_spec`) and node path (`pop_mid`/`pop_tail`/`pop_some` over `DcAt.popNode`/`DcAt.free`).
+- `dc_top_spec` (`DcTop.lean`): `top_empty`/`top_some`; the slot gets the top datum's words, the dc state is unchanged.
+- Reference-count bound (`DcRefs.lean`): `DcAt.blocks_len` (at most 7856803 apart blocks in the heap), `DcAt.count_le`, `DcAt.numRefs_lt`/`.strRefs_lt` (one more reference fits the 32-bit count when `hs.length ≤ 2^30`).
+- `dc_dup_spec`, `dc_dup_num_spec`, `dc_dup_str_spec` (`DcDup.lean`) over `DcAt.bumpNum`/`DcAt.bumpStr` (`DcRefOps.lean`); the returned type word is read back from the 16-byte frame (`ld_lo32_sw`).
+- `dc_free_num_spec` (`DcFree.lean`): a handle in a stack slot through `bc_free_num_spec`; the state after `DcAt.decNum` (one reference fewer) or `DcAt.relNum` (released).
+- `dc_free_str_spec` (`DcFree.lean`): `DcAt.decStr` (over `DcAt.strRefsTo`, shared with `bumpStr`), or `DcAt.dropStr` then both blocks freed (`free_str_rel`).
+- Ghost-side reference moves are `DcDen.dec`/`.rel`/`.addNum` (`DcFree.lean`); `DcAt.freeEntry` builds `bc_free_num`'s entry from a handle in a stack slot.
+- `dc_int2data_spec` (`DcInt.lean`): `dc_init_num_spec` (one more `_zero_` reference held by the slot), then `dc_int2num_spec`, whose post is `DcAt.newNum` (the freed handle replaced by the fresh number's).
+- `dc_show_id_spec` (`DcShowId.lean`): both format routes to any stream (`show_br` decides the `isgraph` test).
+- `dc_register_get_spec` (`DcRegGet.lean`): `regGet st r` into the slot through `reg_get_dup` (`dc_dup`), `reg_get_zero` (`dc_int2data(0)`, may reach `out_of_memory`), or `reg_get_err` (both `stderr` messages, status 2); frame `GetOut`.
+- `dc_register_set_spec` (`DcRegSet.lean`): `regSet st r v`. An empty register gets a fresh level (`reg_set_new`, `DcAt.newLevel`, may reach `out_of_memory`); otherwise the head datum is freed in place (`reg_set_num`/`reg_set_str`) and replaced (`DcAt.setHead`). The in-place free runs from a pending view `Pend G E W Φ` (`DcPend.lean`): the state is held at the memory with the new datum stored, which differs from the machine memory only on the datum window; `dc_free_num_specP`/`dc_free_str_specP` take it, the plain specs are the instances at `Pend.id`.
+- `dc_array_free_spec` (`DcArrFree.lean`): a chain of array nodes off the state (`AfNodes`: fresh nodes over a pointer chain `PChain`, data held as caller handles) freed node by node (`af_body`/`af_num`/`af_str`, induction `af_loop`); post `AfPost` (same nodes, bytes off the heap, other fresh blocks kept). The free specs accept a slot inside a fresh block (`SlotPlace.fresh`) and keep every fresh block.
+- `dc_register_pop_spec` (`DcRegPop.lean`): a level with a value moves the datum to the slot, sets the register word to the next level, frees the level's array (`dc_array_free_spec`) and node; the state step is `DcAt.unconsLev` (`LevPopped`), the pushed counterpart `DcAt.consLev`. An empty register or a level without value prints `"%s: stack register "`, the name and `" is empty\n"` and returns `2` with the state unchanged (`rpop_err`). Handle values held by the caller survive as `HsKeep`.
+- `dc_register_push_spec` (`DcRegPop.lean`): `dc_malloc(32)`, then the caller's datum, an empty array and the old top stored into the node and register `r` set to it (`rpush_tail`, `rpush_stores`, state step `DcAt.consLev`); `dc_malloc` may reach `out_of_memory`.
+- `dc_array_get_spec` (`DcArray.lean`): `arrayGet st r i` into `a0`/`a1` with one more reference. `get_stacked` reads the top level's array head (`DcAt.topArr`: chain, bounds, values against `topArrSt`), the search loop is `ag_walk` over `afind`, a hit ends in `dc_dup` (`ag_found`), a miss or empty array in `dc_int2data(0)` (`ag_zero`, may reach `out_of_memory`).
+
+- `dc_array_set_spec` (`DcArrSet.lean`): `arraySet st r i v`. The search `as_walk` either finds index `i` (the node's datum is replaced: `DcAt.setNode`, then `dc_free_num`/`dc_free_str` of the old datum through the pending view, `as_found`) or stops before the first larger index (a fresh node spliced in after `pre`: `as_ins`, `DcAt.insNodeW`, link word `lend`). With no array the empty path stores a one-node array (`as_empty`), linking it into the existing level (`as_lev_link`) or a fresh level (`as_ss_new`, `DcAt.newArr`). The spec needs no sortedness premise: `arrSet_hit`/`arrSet_ins` follow from the search's own index bounds. `dc_malloc` may reach `dc_memfail` (`hoom`).
+- `dc_stack_rotate_spec` (`DcRotate.lean`): `rotate n`. The machine takes `|n|` in 32 bits (`sraiw`/`xor`/`subw`, `absw`), so `n = -2^31` stays negative and returns at once; the model `rotate` (`Dc/Machine.lean`) was amended to match. The walk `rot_walk` stops `min (|n| - 1) (depth - 1)` nodes down; `n > 0` moves that node to the top (`DcAt.rotUp`), `n < 0` moves the top below it (`DcAt.rotDown`), both through `DcAt.permStk`. Premise: `n` is an `int` (`-2^31 ≤ n < 2^31`, `R 10 = ofInt n`).
+- `dc_binop_spec` (`DcBinop.lean`): `binop st (f st.scale)` for an operation `op` meeting `DcOp live S fa N lk f` (entry `OpIn`, results `OpRet`/`OpFail`, `dc_memfail` through `OomAt`). The checks and their two messages are `binop_entry`; the pops `binop_pops` (state `BoAt`, frame words `BoFrame`); success pushes the result inline (`boPushMem`, `boPush_post`) and frees both operands (`binop_ok`, `binop_frees`); failure pushes both back (`binop_fail`).
+
+- `dc_add_spec`/`dc_sub_spec`/`dc_mul_spec` (`DcArith.lean`): the `+ - *` operations meet `DcOp` with `Num.add a b 0`, `Num.sub a b 0`, `Num.mul a b k`. Each runs `bc_init_num` into the frame's result slot (`dc_init_num_spec`), calls the bc callee with operands from `DcAt.binArgs` and the slot from `DcAt.resSlot`, then stores the result (`DcAt.newNum`). `bc_multiply` needs `_zero_`'s reference room (`DcAt.kzero`, from `hs.length ≤ 2^20` in `OpIn.hsLen`) and the `_bc_rec_mul` cutoff word (`MulBase`, a new `OpIn.mb` field). `dc_mul`'s stack need is `48 + 96 + rmStack (2^30)`.
+
+- `dc_div_spec`/`dc_rem_spec` (`DcDiv.lean`): `Num.div a b k` and `Num.modulo a b k` through `bc_divide`/`bc_modulo` from the 48-byte frame (`OpFrame48`, `op48_init`); a zero divisor prints its message (`div_zero`/`rem_zero`, `fprintf_prog_spec`) and returns `1`, the slot's `_zero_` handle lost (`DcAt.leak`, `OpFail.of_leak`). Results through `OpRet.of_binPost`/`OpRet.of_dmPost`. `dc_rem`'s stack need is `48 + 176 + rmStack (2^30)`.
+- `dc_exp_spec` (`DcRaise.lean`): `(Num.raise a b k).1` through `bc_raise` (operands `DcAt.raArgs`); the slot may receive a new number, the base or `_one_` with one more reference, or keep its old number, carried by `DcDen.raPost`/`DcAt.raNum` and `OpRet.of_raPost`. Always status `0`. Stack need `48 + 512 + rmStack (2^30)`.
+- `dc_binop2_spec` (`DcBinop2.lean`): `binop2 st (f st.scale)` for an operation meeting `DcOp2` (entry `OpIn2` with slots `qq`, `qr`; results `OpRet2`/`OpFail2`). The checks and pops mirror `dc_binop` at other addresses (`binop2_entry`, `binop2_pops`); the two inline pushes are interleaved with frame stores and are carried by agreement with `boPushMem` off the frame (`DcAt.pushAgree`, `binop2_first`/`binop2_mid`/`binop2_second`), then both operands are freed (`binop2_frees`).
+- `dc_divrem_spec` (`DcDivrem.lean`): `Num.divmod a b k` through `bc_divmod` meets `DcOp2` with `lk = 2`. Both slots receive `_zero_` (`dr_init`, frame `DrFrame` with `s2`); results through `DcAt.newNum2` (two `DcDen.dropAt`, two `addNum`) and `OpRet2.of_dmPostQ`; a zero divisor loses both `_zero_` references (`divrem_zero`, `OpFail2.of_leak2`). `ok`: `a.wid + k + b.wid < 2^24`; stack need `48 + 176 + rmStack (2^30)`.
+- `dc_triop_spec` (`DcTriop.lean`): `triop st (f st.scale)` for an operation meeting `DcOp3` (entry `OpIn3`, results `OpRet3`/`OpFail3`); checks `triop_entry` (`triop_tags`, `triop_three`, messages `triop_msg`), pops `triop_pops`/`triop_pop23` over `T3At`, failure pushes `triop_fail`, inline push `triop_push` (via `DcAt.pushAgree`), operand frees `triop_frees`/`triop_frees23`.
+- `dc_modexp_spec` (`DcModexp.lean`): `Num.raisemod a b c k` through `bc_raisemod` meets `DcOp3` with `lk = 1`. Success loses `parity`'s reference: `RxPost.mid` is the named `RxMid` (both `AddRef`s, the drop, `PDist` of the middle heap, `parity`'s `Norm`/length/`Owns`, carried as `RxM.nX`/`.lX` through the loop); ghost moves `DcDen.addRef`, `DcDen.leak`, `DcDen.rxPost`, `DcAt.rxNum`, `OpRet3.of_rxPost`. Failure calls `bc_is_zero (mod)`, prints the remainder message for a zero modulus, and loses the slot's `_zero_` (`mx_fail`, `mx_out`, `OpFail3.of_leak`). `_two_`'s value is the invariant field `DcDen.tv`; operands from `DcAt.rxArgs`. `ok`: `8 * (a.wid + c.wid + k + 1) + b.wid < 2^24`; stack need `48 + 640 + rmStack (2^30)`.
+- `dc_cmpop_spec` (`DcCmpop.lean`): `cmpop st`, the ordering in `a0` as `ordWord` and the state `(cmpop st).2`; messages `cmpop_msg` (return `0`, `cmpop_of_no2`), pops/compare/frees `cmpop_go` over `bc_compare_spec` and `dc_free_num_spec` (`cmpop_push2`). Lost references: none (`G'.lk = G.lk`).
+- Two-node stack check: generated `stkchk_<pc>` (`scripts/dc/gen_stk_check.py` → `DcStkCheckSites.lean`, stage a3 drift gate) over the case split `DcAt.top2` (`DcStkCheck.lean`, with `No2`, `NodePay`); `binop_entry`, `binop2_entry` and `dc_cmpop_spec` consume it. `triop_entry` keeps its own three-node check.
+- `DcDen.live` (every number of the state holds a reference) and `bc_free_num_dc` (`DcFree.lean`, `bc_free_num` at `0x800048c0` on a state handle, the non-pending form of `bc_free_num_dcP`).
+- `dc_sqrt_spec` (`DcSqrt.lean`): `SqOut x k (some r)` gives a new handle to `r` in `result` and `0` with at most one lost reference (`_zero_`'s, `DcDen.sqLeak`); a negative operand gives the message (`sqrtMsg`), the copy freed and `1`. The copy's bump and slot store feed `bc_sqrt_spec` through `DcAt.sqArgs`; the result is `DcAt.sqNum`; continuations `sqrt_k` over the tails `sqrt_ret`/`sqrt_neg`.
+- `dc_clear_stack_spec` (`DcClear.lean`): the stack emptied (`stack := []`), every datum's reference released. The machine frees nodes while `dc_stack` still names the first, so the state is held on the view `stkV w M` over the pending window `StkWord` (`pend_stk`; `Pend.win` now admits the `dc_stack` word beside blocks of `E`, and `SlotPlace.win` carries `heapStart ≤ q`). Per node: `DcAt.popTop` in the view, `cs_disp`, `cs_num`/`cs_str` through `dc_free_num_specP`/`dc_free_str_specP`, `cs_tail` (`dc_array_free (NULL)`, `free`); `cs_loop`, `cs_epi`.
+- `dc_tell_stackdepth_spec` (`DcTell.lean`): `a0` the model's stack length, memory unchanged. The walk `tsd_walk` runs the `PChain` from `h.view.stk.toP`; `DcAt.stk_len` bounds the depth by `DcAt.blocks_len`, so `addiw` counts exactly.
+- `dc_numlen_spec` (`DcTell.lean`): `a0` the model's `numLen` for a number with an integer digit (`DcDen.pos`). The scan `nl_walk` stops at `n - lzCount (n - 1) ds`; `numLen_rep` identifies that with `max 1 (digits 10 mag).length` (`digitsIn_len`, `digits_dval_len`).
+- `dc_tell_scale_spec` (`DcTell.lean`): the call `dc_func`'s `X` makes (`a1 = 0`): `a0` the held number's scale, the handle released by `bc_free_num_dc` from the 32-byte frame.
+- `dc_tell_length_spec` (`DcTell.lean`): the call `dc_func`'s `Z` makes (`a2 = 0`) on a popped datum denoting `v`: `a0` is `Val.zLen v`, the reference released (`tl_num` through `dc_numlen_spec` and `dc_free_num_spec`, `tl_str` through `dc_strlen` and `dc_free_str_spec`; `DcAt.str_len` bounds a string below `2^31` so `sext.w` is exact).
+- `out_char_fn` (`DcOutChar.lean`): dc's `out_char` is a `CharFn` over the bytes `ocG` (`stdout`'s descriptor, `line_max`, `errno`, `out_col`) with invariant `OcInv S t0 cs`: the console is `t0 ++ outStr (ocRun cs).1` and `out_col` is `(ocRun cs).2`. `ocRun` resets the column on a NUL and wraps with a backslash and newline at column 70; `ocRun_wrap` equals it with `Num.wrap 70 0` when no NUL is sent. The first call reads `line_max = -1`, calls `getenv` (NULL in this binary) and stores `70`, clearing `errno`.
+- `dc_out_num_spec` (`DcOutNum.lean`): from `DcAt` holding the handle, the console is extended by `Num.out 70 ob x.num` (`bc_out_num_spec` with `out_char_fn` from `out_col = 0`; `outChars_ne_zero` makes `ocRun` the model's wrap). The state survives `out_char`'s stores by `DcAt.ocRet`: `DcView.frameW` rereads `line_max` and `stdout`'s descriptor from `OcInv` (`DcView.withChainsW`, the words `OcWords`). With `keep` the handle stays; otherwise `bc_free_num_dc` releases it. Out of memory reaches `dc_memfail` as `OomAt … ocG`. Premise: `errno`'s bytes are owned (`herr`), since `out_char`'s first call stores to `errno`.
+- `dc_out_str_spec` (`DcOutStr.lean`): from `DcAt` holding `.str o.hb.pay`, the console is extended by `outStr o.s` (`fwrite_spec`, `outBytes_str` over `StrAt.bytes`). With `keep` the state is unchanged; otherwise the inlined `dc_free_str` either decrements the count (`DcAt.decStr`) or drops the string and frees both blocks (`DcAt.dropStr`, `os_rel`). `os_rel` repeats the shape of `free_str_relP` in a different frame layout (second copy; factor before a third).
+- `dc_print_spec` (`DcPrint.lean`): from `DcAt` holding `g` with `g.Den ⟨L, G.strs⟩ v`, the console is extended by `outStr (Val.out 70 ob v ++ nlBytes nl)`; numbers go through `pr_num` (`dc_out_num_spec`), strings through `pr_str` (`dc_out_str_spec`), then the newline (`pr_nl`, `putchar_spec`) and the no-op `fflush` (`pr_tail`). The number size bound is the value-level premise `hw : ∀ n, v = .num n → n.wid < 2 ^ 20` (supplier: the SizeBound decision). The printed datum is at the head of the handles only when released (`hd`), so stack values print in place.
+- `dc_printall_spec` (`DcPrintAll.lean`): the console extended by `paOut ob st.stack` (each value's `Val.out 70 ob` and a newline, the model's `f`); the walk `pa_loop` re-reads the next link from each call's post state (`DcAt.stkLink`, `SameNodes`). Premise `hw` bounds every stack number's width (SizeBound).
+- `dc_num2int_spec` (`DcNum2Int.lean`): `a0 = BitVec.ofInt 64 (Num.toInt n).1` on every route: a nonzero `bc_num2long` result narrowed by `sext.w` (`sxw_ofInt`), a zero value, and the overflow route with its `stderr` message (`fprintf_prog_spec`, `overflowMsg`); the handle released unless `keep` (`n2i_join`). No premise beyond the state.
+- `dc_makestring_spec` (`DcMakeString.lean`): two `dc_malloc` blocks `b1` (header, 24 bytes) and `b2` (text, `len + 1`), `memcpy` of the source, the `NUL`, `s_len`, `s_refs = 1`; the state gains `msObj b1 b2 s` and the handle `.str b1.pay` (`DcAt.newStr`). Premise `MsSrc`: the source bytes lie in the state's blocks or outside the heap and the 64-byte caller frame (the three call sites: `.rodata` in `main`, `dc_func`'s stack buffer, `evalstr`'s current string).
+- `dc_memfail_spec` (`DcMemfail.lean`): from `0x80001e74` the run reaches `_exit`'s `tohost` store with `exitWord 1` (`mf_call`: `fprintf_prog_spec` of `memfailMsg`, then `exit_spec`). **Open supplier (M11):** its premises `hpn` (the `progname` word) and `FdAt S M stderrAddr 2` lie in `DcGlob`, which every out-of-memory continuation (`StkOut`, `OomAt`) exempts from its frame, so no `hoom` currently delivers them. Supply: carry the `progname` and `stdFiles` words through `StkOut`/`OomAt` (dc never stores to them after `main`), or exclude them from `DcGlob` with their own ownership field in `DcAt`.
+- `dc_readstring_spec` (`DcReadString.lean`): `dc_readstring` at `0x80003ad8` pushes a new string object built from the characters read until end of input; with the run's input exhausted (`getc` returns `-1`) the string is empty (`msObj b1 b2 []`). The first call allocates the 2016-byte `line_buf` (`rs_alloc`, `DcAt.newLbuf`, ghost move `LbufNext`); later calls reuse it (`rs_read`). Out of memory goes to `hoom`. Nonempty input is M11's obligation: the read loop's character case (`0x80003b44`..) is reached only when `getc` returns a byte.
+- `dc_system_spec` (`DcSystem.lean`): from the input `s` at `src` (`SysSrc`: NUL-terminated, in the state's blocks or outside the heap and frame), the state is unchanged and `a0 = src + (|s| - |skipSys s|)`; the stub `system` returns `-1` and reads nothing, so the newline route's `malloc`/`strncpy`/`free` copy is a scratch block (`sys_tail`); `malloc` failure reaches `dc_memfail` (`hoom`). `skipSys_find` relates `strchr`'s `findFrom` to `skipSys`, including a NUL inside `s`.
+- `dc_dump_num_spec` (`DcDumpBase.lean`, `DcDump.lean`, `DcDumpLoop.lean`, `DcDumpOut.lean`): the `P` command's call (`a1 = DC_TOSS`) on a handle denoting `n`: the console is extended by `outStr n.dump`, the handle released, the other handles' state kept. The three locals are state handles (`dn_pro`, `dn_init`); `bc_divide (n, _one_)` gives the integer part (`dn_div`), `bc_int2num (256)` the base (`dn_i2n`). The digit loop `dn_loop` (induction on the quotient, invariant `DumpInv` over `dumpDs`) runs `bc_divmod` (`dn_dm`) with the digit cells as the callee's raw blocks (`DcAt.withCells`, `DnStk.ofRaw`) and pushes each digit into a fresh `dc_malloc` cell (`dn_cell`, `DnStk.push`). The print loop `dn_print` (induction on the cells: `putchar`, `free`, `DnStk.free`) and `dn_exit` (three `bc_free_num` through `dn_free`, the epilogue) finish. Premises: `n.wid < 2^20` (SizeBound), `hs.length + 3 ≤ 2^20`, `MulBase`. `CellsK k` generalizes `RawCells`' `Cells` (the `.ld` case); re-seat `Cells` as `CellsK .ld`.
+
+- `dc_getnum_spec` (`DcGetnumBase.lean`, `DcGetnumLoop.lean`, `DcGetnumExit.lean`, `DcGetnumFrac.lean`, `DcGetnum.lean`, `DcGetnumSpec.lean`): `dc_getnum (input_str, ibase, readahead)` on the text `w = rdW o j0` of a state string from byte `j0` (to its first NUL): the result handle holds `(readNum ibase w).1`, `(readNum ibase w).2 = w.drop jE`, the reader stands after `w[jE]` and `readahead` (when not `NULL`) receives `w[jE]`. The frame `CFr` holds the five slots; the prologue `gn_pro`, the sign `gn_first` (`_` and its spaces through `gn_under`/`gn_sp`), the integer loop `gn_int`, the fraction `gn_fentry`/`gnf_loop`/`gn_fexit`, the sign `gn_neg0`/`gn_neg1`/`gn_sign` and the exit `gn_exit`. A fractional literal loses one reference (its divisor) onto `DcG.lk` (LeakBound). Premises: `HeadOK w[0]?` (a digit `0`–`9`/`A`–`F`, `_` or `.`; the machine's `-`/`+` routes are excluded and M10's dispatch supplies it), `|w| < 2^24` (SizeBound, through `frac_size`), `hs.length + 6 ≤ 2^20`, `G.lk.length < 2^29`, `MulBase`. **Open supplier (M10):** the input of `dc_evalstr` is a state string whose text the model reads up to the first NUL (`rdW`).
+
+Open premise (`SizeBound`): every bc callee bounds its sizes (`DivArgs.size`: `len + scale + k + len + scale < 2^27`; `RaArgs.size`: `(|e| + 1) * (len + scale + 1) + k < 2^24`), while a dc scale reaches `2^31 - 1` and an exponent is unbounded. In the machine the large cases fail allocation and reach `out_of_memory`, but no bc-layer lemma says so. `DcOp`'s `ok k a b` premise carries the bound per operation, with sizes as `Num.wid` (`Dc/Size.lean`, `NumRep.len_le_wid`): `dc_div` `a.wid + k + b.wid < 2^27`, `dc_rem` `< 2^24`, `dc_exp` `(|b| + 1) * (a.wid + 1) + k < 2^24`; `dc_binop_spec` takes `hok` for the top two numbers. M12 must add `SizeBound prog` to `DcAdmissible` (every `/ % ^ ~ | v` runs on operands within these bounds), and M10 threads it to each `binop`.
+
+Open premise (`LeakBound`, decided 2026-10-10): `dc_div` and `dc_rem` (and `bc_divmod`, `bc_raisemod`, `bc_sqrt` through them) lose a reference to `_zero_` or another number on some routes, so its count grows without a matching state reference. `DcG.lk` lists the lost references; `DcDen.numRefs` counts them, and `DcDen.lkLen` bounds the list by `2^29`, which keeps every count below `2^31`. `DcOp`'s `lk` bounds the references one operation may lose (`OpIn.lkLen`, `OpRet.lkLen`). M12 must add `LeakBound prog` to `DcAdmissible`: at every fuel, at most `2^29` leaking commands (`/ % ~ | v`) run, defined like `NestBound` over `Dc.run`; M10 threads the count through the evaluator.
+
+Open premise: `dc_array_get_spec` takes `hsrt` (the top array of `r` is strictly sorted by index), so the machine's early-exit search agrees with `find?` (`afind_find`). The M10 state invariant must supply it: every register array strictly sorted, preserved by `arrSet`.
+
+Open premise: reference counts below `2^31` for `bc_copy_num` must come
+from counting live blocks (heap below `2^27` bytes).

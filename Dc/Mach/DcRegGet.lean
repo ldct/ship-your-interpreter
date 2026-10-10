@@ -98,7 +98,7 @@ theorem reg_get_err {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   refine dc_show_id_spec hlive (sp := sp - 32) (f := stderrAddr) (fd := 2) (id := r) (m := 0x80007dc0)
     (hsf.sub (m := 32) (n := 304) (by decide)) hfd1 (.inl (by simp only [stderrAddr]; omega))
     regUninitMsg.roStr (by rw [msgBytes_length]; decide) _ (by bsimp [stderrAddr]) (by bsimp [])
-    (by omega) (by bsimp []) (by bsimp [q2]) (by bsimp []) fun R2 M2 out hk2 hfr2 => ?_
+    (by omega) (by bsimp []) (by bsimp [q2]) (by bsimp []) fun R2 M2 hk2 hfr2 => ?_
   rw [fdOut_ne (by decide), String.append_empty]
   have q3 : R2 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk2.get 2]; bsimp [q2]
   have hra2 : ldv .ld M2 (sp - 32 + 24) = ra := by

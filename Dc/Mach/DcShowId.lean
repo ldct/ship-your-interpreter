@@ -7,7 +7,7 @@ import Dc.Mach.DcMsg
     else fprintf (f, "%#o%s", id, suffix);
 
 `dc_show_id_spec`: to any stream, with a suffix in `.rodata`; the bytes sent
-are left abstract (dc sends them to `stderr`, whose output is dropped).
+are `showIdBytes id m sfx` (the formatter's output for the route taken).
 -/
 
 namespace Dc.Mach
@@ -57,6 +57,12 @@ theorem showId_len (w m : BitVec 64) (sfx : List (BitVec 8)) :
     show convOut false false .s ⟨m, sfx⟩ = sfx from rfl,
     show convOut false false .c ⟨w, []⟩ = [w.setWidth 8] from rfl]; omega
 
+/-- The bytes `dc_show_id` sends: the `isgraph` route or the octal-only one. -/
+def showIdBytes (id m : Nat) (sfx : List (BitVec 8)) : List (BitVec 8) :=
+  if 33 ≤ id ∧ id ≤ 126 then
+    fmt showIdPs [⟨BitVec.ofNat 64 id, []⟩, ⟨BitVec.ofNat 64 id, []⟩, ⟨BitVec.ofNat 64 m, sfx⟩]
+  else fmt showOctPs [⟨BitVec.ofNat 64 id, []⟩, ⟨BitVec.ofNat 64 m, sfx⟩]
+
 /-- `addiw a4, a1, -33; bltu 93, a4`: `id` is not in `'!'..'~'`. -/
 theorem show_br {id : Nat} (hid : id < 2 ^ 31) :
     93 < (BitVec.signExtend 64 (BitVec.extractLsb 31 0
@@ -82,9 +88,9 @@ theorem dc_show_id_spec {live : Nat → Prop} {S : Nat → Prop}
     (R : Nat → BitVec 64) (h10 : (R 10).toNat = f) (h11 : R 11 = BitVec.ofNat 64 id)
     (hid : id < 2 ^ 31) (h12 : R 12 = BitVec.ofNat 64 m) (hsp : (R 2).toNat = sp)
     (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' out, Keeps fprintfClob R' R →
+    (hk : ∀ R' M', Keeps fprintfClob R' R →
       (∀ a, (a < sp - 304 ∨ sp ≤ a) → imgM M' a = imgM M a) →
-      DWO live S Q (t0 ++ fdOut fd out) (R 1) R' M') :
+      DWO live S Q (t0 ++ fdOut fd (bytesStr (showIdBytes id m sfx))) (R 1) R' M') :
     DWO live S Q t0 0x80001ec0#64 R M := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hb := show_br hid
@@ -94,6 +100,7 @@ theorem dc_show_id_spec {live : Nat → Prop} {S : Nat → Prop}
   dx_run hlive
   · intro hc
     have hn : ¬(33 ≤ id ∧ id ≤ 126) := hb.mp (by simpa [upd, h11] using hc)
+    rw [showIdBytes, if_neg hn] at hk
     dx_run hlive at 0x80001ef4
     refine st_80001ef4 hlive ?_
     refine fprintf_spec hlive (ps := showOctPs)
@@ -103,7 +110,7 @@ theorem dc_show_id_spec {live : Nat → Prop} {S : Nat → Prop}
       showOctPs_ro ⟨by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; exact hsfx, trivial⟩
       (by have := showOct_len (BitVec.ofNat 64 id) (BitVec.ofNat 64 m) sfx; omega) _ (by simp)
       (fun i hi => ?_) (by bsimp [hsp]) (by bsimp [h10]) (by bsimp []) (by bsimp [hal])
-      fun R' M' hk1 _ hfr' => hk R' M' _ (fun z hz => ?_) hfr'
+      fun R' M' hk1 _ hfr' => hk R' M' (fun z hz => ?_) hfr'
     · simp only [List.length_cons, List.length_nil] at hi
       have : i = 0 ∨ i = 1 := by omega
       rcases this with rfl | rfl <;> bsimp [h11, h12] <;>
@@ -115,6 +122,7 @@ theorem dc_show_id_spec {live : Nat → Prop} {S : Nat → Prop}
   · intro hc
     have hn : 33 ≤ id ∧ id ≤ 126 := Classical.byContradiction fun e =>
       hc (by simpa [upd, h11] using hb.mpr e)
+    rw [showIdBytes, if_pos hn] at hk
     dx_run hlive at 0x80001ee0
     refine st_80001ee0 hlive ?_
     refine fprintf_spec hlive (ps := showIdPs)
@@ -126,7 +134,7 @@ theorem dc_show_id_spec {live : Nat → Prop} {S : Nat → Prop}
       showIdPs_ro ⟨by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; exact hsfx, trivial⟩
       (by have := showId_len (BitVec.ofNat 64 id) (BitVec.ofNat 64 m) sfx; omega) _ (by simp)
       (fun i hi => ?_) (by bsimp [hsp]) (by bsimp [h10]) (by bsimp []) (by bsimp [hal])
-      fun R' M' hk1 _ hfr' => hk R' M' _ (fun z hz => ?_) hfr'
+      fun R' M' hk1 _ hfr' => hk R' M' (fun z hz => ?_) hfr'
     · simp only [List.length_cons, List.length_nil] at hi
       have : i = 0 ∨ i = 1 ∨ i = 2 := by omega
       rcases this with rfl | rfl | rfl

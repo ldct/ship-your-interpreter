@@ -155,6 +155,7 @@ import Dc.Mach.DcFuncArmV6
 import Dc.Mach.DcFuncArmV7
 import Dc.Mach.DcFuncArmV8
 import Dc.Mach.DcFuncSpec
+import Dc.Mach.EvalBase
 import Dc.Mach.BootInit
 import Dc.Mach.BootMain
 import Dc.Mach.BootStart

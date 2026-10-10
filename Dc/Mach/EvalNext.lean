@@ -29,7 +29,7 @@ theorem EvAt.next {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
     {f' : Frame} {R2 : Nat → BitVec 64} {j : Nat} (hj : j ≤ o.s.length) (hdrop : o.s.drop j = f'.s)
     (h8 : R2 8 = BitVec.ofNat 64 (o.tb.pay + j)) (h9 : R2 9 = R 9) (h22 : R2 22 = R 22)
     (h24 : R2 24 = BitVec.ofNat 64 f'.td) (htd : f'.td < 2 ^ 31) (hcs : EvConsts R2)
-    (h2 : R2 2 = R 2) :
+    (h2 : R2 2 = R 2) (hkeep : Keeps evClob R2 R) :
     ∃ o', o'.hb = o.hb ∧ o'.tb = o.tb ∧ o'.s = o.s ∧
       EvAt S sp W d k' q M0 R0 R2 M' H' F' L' C' G' hs (ex ++ xs) st' f' o' := by
   have hab := ev.room; have hstk := ev.stk; have hfl := ev.frame.lo
@@ -68,6 +68,7 @@ theorem EvAt.next {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
       cs := hcs
       r2 := h2.trans ev.r2
       saved := ev.saved.transport (lo := 88) (top := 176) (hag := fun a h1 h2 => hup a (by omega) (by omega))
+      keep := hkeep.trans ev.keep
       al := ev.al
       r20 := ev.r20
       frame := ev.frame

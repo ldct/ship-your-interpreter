@@ -139,6 +139,10 @@ abbrev evSaved : List (Nat × Nat) :=
   [(1, 168), (8, 160), (9, 152), (18, 144), (19, 136), (20, 128), (21, 120), (22, 112), (23, 104),
     (24, 96), (25, 88)]
 
+/-- The registers an `evalstr` activation may change before its return
+restores them: `sp`, `s0`–`s9`, and the caller-saved ones. -/
+abbrev evClob : List Nat := 2 :: 8 :: 9 :: 18 :: 19 :: 20 :: 21 :: 22 :: 23 :: 24 :: 25 :: cClob
+
 /-- `evalstr`'s loop constants: the status tables and `10`, `-1`. -/
 structure EvConsts (R : Nat → BitVec 64) : Prop where
   s2 : R 18 = 0x80008134#64
@@ -174,6 +178,7 @@ structure EvAt (S : Nat → Prop) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → Bi
   cs : EvConsts R
   r2 : R 2 = BitVec.ofNat 64 (sp - 176)
   saved : SavedWords M (sp - 176) evSaved R0
+  keep : Keeps evClob R R0
   al : (R0 1).toNat % 4 = 0
   r20 : R0 2 = BitVec.ofNat 64 sp
   frame : StackFrame S sp W

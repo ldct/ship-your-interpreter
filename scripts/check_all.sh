@@ -84,6 +84,11 @@ python3 -B scripts/dc/gen_dcf_disp.py --check \
   || fail "stage a3: Dc/Mach/DcFuncDisp.lean is stale (scripts/dc/gen_dcf_disp.py)"
 python3 -B scripts/dc/gen_dcf_spec.py --check \
   || fail "stage a3: Dc/Mach/DcFuncSpec*.lean are stale (scripts/dc/gen_dcf_spec.py)"
+dc_pieces=$(mktemp)
+lake env lean --run scripts/boot_elf_pieces.lean dc-port/dc-riscv-htif.elf > "$dc_pieces" \
+  && python3 -B scripts/dc/gen_dc_boot_image.py "$dc_pieces" --check \
+  || fail "stage a3: Dc/Mach/BootImageData.lean is stale (scripts/dc/gen_dc_boot_image.py)"
+rm -f "$dc_pieces"
 
 # ------------------------------------------------------------ (b) grep gate
 echo "== stage a4: proof-discipline gate (exponentiating layer mandatory for new files)"

@@ -166,3 +166,7 @@ import Dc.Mach.BootMain
 import Dc.Mach.BootStart
 import Dc.Mach.BootGp
 import Dc.Mach.Halts
+import Dc.Mach.BootImageData
+import Dc.Mach.BootImage
+import Dc.Mach.HaltsP
+import Dc.Mach.HaltsLoaded

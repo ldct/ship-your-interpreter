@@ -1,4 +1,5 @@
 import Dc.Mach.BootEvalCall
+import Dc.Mach.OomMemfail
 import Dc.Refinement
 
 /-!
@@ -8,10 +9,10 @@ import Dc.Refinement
 theorem") for `dcBoot prog`, from
 
 * `hev`: `EvalstrSpec` (`Dc/Mach/EvalBase.lean`, term direction),
-* `hdiv`: `EvalstrDivSpec` (`BootEvalCall.lean`, the stuck direction),
-* `hoom`: `evalstr`'s out-of-memory continuation at the boot's call
-  (`EvOomBoot`), open until the out-of-memory stack pointers are aligned
-  (`OomMemfail.lean`, `fnOomA_memfail`).
+* `hdiv`: `EvalstrDivSpec` (`BootEvalCall.lean`, the stuck direction).
+
+`evalstr`'s out-of-memory continuation at the boot's call is closed here
+(`evOomBoot`, through `oom_memfail`).
 
 The program's admissibility is `DcAdmissible`: it fits `dc_script.text`
 with its `NUL` and has none, nests at most `dcD` deep (the stack bound,
@@ -56,16 +57,30 @@ theorem DcAdmissible.budget {prog : List Nat} (h : DcAdmissible prog) :
 /-- The binary's layout: boot configurations and admissible programs. -/
 def dcLayout : DcLayout := ⟨dcBoot, DcAdmissible⟩
 
-/-- **`evalstr`'s out-of-memory continuation at the boot's call** (open:
-`OomAt`'s stack pointer is not known to be aligned). -/
+/-- **`evalstr`'s out-of-memory continuation at the boot's call**: from a
+state `DcAt` at `evalstr`'s entry, every out-of-memory point runs `dc_memfail`. -/
 def EvOomBoot (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) : Prop :=
   ∀ (M : Mem) (H : Heap) (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs : List GV)
     (st : St), DcAt dcOwn M H F L C G hs st → EvOom dcLive dcOwn Q evSp evW 0x87ffffe0 M
 
+/-- **`EvOomBoot`**, for a postcondition admitting status 1: `oom_memfail`
+from the entry state's `progname` and `stderr` words, with `dcOwn`'s stack
+below the aligned `sp'` (`OomAt.al`). -/
+theorem evOomBoot {ψ : Nat × String → Prop} (hψ1 : ∀ t, ψ (1, t)) :
+    EvOomBoot (fun t rv mv => ExitQ ψ t rv mv) := by
+  intro M H F L C G hs st h t' R' M' sp' ho
+  have hlo := ho.lo; have hhi := ho.hi; have hal := ho.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  simp only [evSp, evW, heapEnd] at hlo hhi
+  refine oom_memfail dcText_live h.glob h.view.prog h.errFile (by decide) (fun a hp hc => ?_) ho
+    ⟨fun a e1 e2 => ⟨by simp only [tohostAddr]; omega, by simp only [stackTop]; omega⟩,
+      by omega, by omega, hal⟩ (by simp only [stderrAddr]; omega) (exitK_one hψ1 t')
+  simp only [PinWords, ocG, InP, inPtrAddr, stdoutFile, lineMaxAddr, errnoAddr, outColAddr,
+    dc_addrs] at hp hc
+  try omega
+
 /-- **`term_sim`.** -/
-theorem dc_term_sim (hev : ∀ Q, EvalstrSpec dcLive dcOwn Q)
-    (hoom : ∀ ψ : Nat × String → Prop, (∀ t, ψ (1, t)) → EvOomBoot (fun t rv mv => ExitQ ψ t rv mv))
-    (prog out : List Nat) (hp : DcAdmissible prog) (hrun : Runs 70 prog out) :
+theorem dc_term_sim (hev : ∀ Q, EvalstrSpec dcLive dcOwn Q) (prog out : List Nat) (hp : DcAdmissible prog) (hrun : Runs 70 prog out) :
     Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1 := by
   obtain ⟨st, r, hl, hout⟩ := hrun
   have hld := dcBoot_loaded prog
@@ -77,7 +92,7 @@ theorem dc_term_sim (hev : ∀ Q, EvalstrSpec dcLive dcOwn Q)
       refine evcall_boot hld (k := dcK) (by decide) hf hr1 be
         fun R2 M2 e1 en hra1 hra hpre => ?_
       have hspec := en.spec (hev _) (t0 := output (dcBoot prog).σ) hl hp.budget
-        (hoom ψ hψ1 _ _ _ _ _ _ _ _ en.dc) fun R'' M'' H'' F'' L'' C'' G'' xs' p' _ e2 e10 post => ?_
+        (evOomBoot hψ1 _ _ _ _ _ _ _ _ en.dc) fun R'' M'' H'' F'' L'' C'' G'' xs' p' _ e2 e10 post => ?_
       · simpa [outStr, St.init] using hspec
       rw [e1]
       have hpost : ∀ a, 0x87ffffd0 ≤ a → a < 0x88000000 → ¬ (0x87ffffe0 ≤ a ∧ a < 0x87fffff0) →
@@ -141,19 +156,16 @@ theorem dc_stuck_sim (hdiv : EvalstrDivSpec dcLive dcOwn) (prog : List Nat) (hp 
   iexact Hc'
 
 /-- **THE END-TO-END THEOREM** (`Dc/PLAN.md`), from `evalstr`'s
-specification in both directions and its out-of-memory continuation at the
-boot's call: for every admissible program, a terminating run is a clean
+specification in both directions: for every admissible program, a terminating run is a clean
 halt of `dcBoot prog` with the same output or a heap-exhaustion exit; every
 clean halt is a terminating run with that output; divergence means no run
 terminates. -/
 theorem endToEnd_of_evalstr (hev : ∀ Q, EvalstrSpec dcLive dcOwn Q)
-    (hdiv : EvalstrDivSpec dcLive dcOwn)
-    (hoom : ∀ ψ : Nat × String → Prop, (∀ t, ψ (1, t)) → EvOomBoot (fun t rv mv => ExitQ ψ t rv mv))
-    (prog : List Nat) (hp : DcAdmissible prog) :
+    (hdiv : EvalstrDivSpec dcLive dcOwn) (prog : List Nat) (hp : DcAdmissible prog) :
     (∀ out, Runs 70 prog out →
        Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
     (∀ s, Halts (dcBoot prog) s 0 → ∃ out, Runs 70 prog out ∧ s = outStr out) ∧
     (Diverges (dcBoot prog) → ¬ ∃ out, Runs 70 prog out) :=
-  refinement (L := dcLayout) ⟨dc_term_sim hev hoom, dc_stuck_sim hdiv⟩ prog hp
+  refinement (L := dcLayout) ⟨dc_term_sim hev, dc_stuck_sim hdiv⟩ prog hp
 
 end Dc

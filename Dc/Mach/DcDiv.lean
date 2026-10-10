@@ -30,8 +30,8 @@ set_option linter.unusedSimpArgs false
 
 local macro_rules | `(tactic| sx_side) => `(tactic| dc_side)
 
-/-- A load of a word the prologue stored. -/
-local macro "ld48" : tactic =>
+/-- A load of a word the 48-byte prologue stored (`dc_div`, `dc_rem`, `dc_exp`). -/
+macro "ld48" : tactic =>
   `(tactic| ((repeat rw [ldv_ld_miss _ _ (by omega)]); rw [ldv_store_hit]))
 
 /-- **A handle given up**: the caller's handle `p` becomes a lost reference. -/

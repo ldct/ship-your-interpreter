@@ -52,7 +52,7 @@ theorem ev_adv {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat → 
     (hp : FnPost S al (sp - 176) (W - 176) Mc G (xs ++ hs) M' H' F' L' C' G' st' ex)
     (hal : al + 4 * k' ≤ 4 * k) (hsb : StrBound (2 ^ 24) st') (hsrt : ArrSorted st')
     {m td' : Nat} {neg' : Bool} (hm : m ≤ rest.length) (htd : td' < 2 ^ 31)
-    {R2 : Nat → BitVec 64} (k2 : Keeps [8, 12, 24] R2 R')
+    {R2 : Nat → BitVec 64} (k2 : Keeps (8 :: 12 :: 24 :: cClob) R2 R')
     (h8 : R2 8 = R' 23 + BitVec.ofNat 64 m) (h24 : R2 24 = BitVec.ofNat 64 td') :
     ∃ o', o'.hb = o.hb ∧ o'.tb = o.tb ∧ o'.s = o.s ∧
       EvAt S sp W d k' q M0 R0 R2 M' H' F' L' C' G' hs (ex ++ xs) st' ⟨rest.drop m, td', neg'⟩ o' := by

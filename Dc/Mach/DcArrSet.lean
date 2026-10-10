@@ -1959,4 +1959,44 @@ theorem as_case_emp {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   · rw [hk2.get 9]; exact e9
   · rw [hk2.get 18]; exact e18
 
+/-- `dc_array_set` at the node with index `i` (`0x80003d20`): the old
+datum released, the new one stored. -/
+theorem as_found {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r i sp : Nat} {v : Val}
+    {b : Blk} {e : RLev} {l : List (Blk × RLev)} {en : Entry} {es : List Entry}
+    {pre post : List (Blk × ANode)} {c : Blk} {y : ANode} {w0 w1 ra s0 s1 s2 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hst : st.regs r = en :: es) (hall : e.arr = pre ++ (c, y) :: post)
+    (hF : List.Forall₂ (ARel ⟨L, G.strs⟩) e.arr en.arr) (hpre : ∀ bx ∈ pre, bx.2.idx < i)
+    (hy : y.idx = i) (hd : DatRegs w0 w1 g) (hv : g.Den ⟨L, G.strs⟩ v)
+    (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h8 : R 8 = BitVec.ofNat 64 c.pay)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hal : ra.toNat % 4 = 0) (hk : AsK live S Q sp M R ra s0 s1 s2 hs (arraySet st r i v)) :
+    DW live S Q 0x80003d20#64 R M := by
+  rw [hall] at hF
+  obtain ⟨m1, m', hm, hm1, hm'⟩ := forall₂_split hF
+  cases hm' with
+  | cons hrel hm2 =>
+  rename_i iv m2
+  have hlt := forall₂_idx_lt hm1 hpre
+  have e : arraySet st r i v = st.setReg r ({ en with arr := m1 ++ (y.idx, v) :: m2 } :: es) := by
+    have hiv : iv = (i, iv.2) := by rw [← hy, hrel.1]
+    simp only [arraySet, hst, hm]
+    rw [hiv, arrSet_hit hlt, hy]
+  rw [e] at hk
+  have hxw : ∃ w, y.v.Den ⟨L, G.strs⟩ w := ⟨iv.2, hrel.2⟩
+  cases hyv : y.v with
+  | num p =>
+    exact as_found_num hlive h hr hl hst hall hm1 hm2 hyv hxw hd hv hsf hab R h2 h8
+      l16 l24 l56 l48 l40 l32 hal fun R' M' H' F' L' C' G' hk1 =>
+        hk R' M' H' F' L' C' G' (hk1.mono (by decide))
+  | str p =>
+    exact as_found_str hlive h hr hl hst hall hm1 hm2 hyv hxw hd hv hsf hab R h2 h8
+      l16 l24 l56 l48 l40 l32 hal fun R' M' H' F' L' C' G' hk1 =>
+        hk R' M' H' F' L' C' G' (hk1.mono (by decide))
+
 end Dc.Mach

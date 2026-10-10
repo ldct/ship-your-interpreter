@@ -170,3 +170,7 @@ import Dc.Mach.BootImageData
 import Dc.Mach.BootImage
 import Dc.Mach.HaltsP
 import Dc.Mach.HaltsLoaded
+import Dc.Mach.StackBound
+import Dc.Mach.MainTail
+import Dc.Mach.BootEvalCall
+import Dc.EndToEnd

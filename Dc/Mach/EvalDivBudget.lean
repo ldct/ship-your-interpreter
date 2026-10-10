@@ -112,6 +112,7 @@ theorem leak_tos_succ (lm : Nat) : ∀ n,
           | some v => rw [sqrtLoopFuel_succ hv]; exact ihr _ _
         | eofError => exact Nat.le_refl _
         | evalTos st' => exact iht _ _ _
+        | int => exact Nat.add_le_add_right (ihr _ _) _
         | _ => exact ihr _ _
     · intro st rest td
       rw [tosLeak, tosLeak]
@@ -353,9 +354,22 @@ theorem DivBud.system (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
 
 theorem DivBud.int (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
     (hr : dcFunc lm st c rest.head? neg = .int) :
-    DivBud lm d (k - leakOne c) (st.push (.num (readNum st.ibase (c :: rest)).1))
-      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ ∧ CallOK st ∧ leakOne c ≤ k := by
-  div_eqs hr; exact runDiv_int h.run hr
+    DivBud lm d (k - leakOne c - numLeak (c :: rest)) (st.push (.num (readNum st.ibase (c :: rest)).1))
+      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ ∧ CallOK st ∧
+      leakOne c + numLeak (c :: rest) ≤ k := by
+  have el : ∀ n, leakCount lm (n + 1) st ⟨c :: rest, td, neg⟩ = leakOne c +
+      (leakCount lm n (st.push (.num (readNum st.ibase (c :: rest)).1))
+        ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ + numLeak (c :: rest)) :=
+    fun n => by simp only [leakCount, leakOne, hr]
+  have hl1 := h.leak 1
+  rw [el] at hl1
+  refine ⟨⟨fun n => ?_, fun n => ?_, fun n => ?_, fun n => ?_, runDiv_int h.run hr⟩,
+    (by have := h.size 1; simp only [AllCalls, hr] at this; exact this.1), by omega⟩
+  · have := h.nest (n + 1); simp only [nestDepth, hr] at this; exact this
+  · have := h.leak (n + 1); rw [el] at this; omega
+  · have := h.size (n + 1); simp only [AllCalls, hr] at this; exact this.2
+  · have := h.tail (n + 1); simp only [tailMax, hr] at this
+    exact Nat.lt_of_le_of_lt (Nat.le_max_right _ _) this
 
 theorem DivBud.str (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
     (hr : dcFunc lm st c rest.head? neg = .str) :

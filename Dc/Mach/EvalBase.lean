@@ -1,5 +1,6 @@
 import Dc.Mach.DcFuncSpec
 import Dc.Mach.EvalLeak
+import Dc.Mach.EvalModel
 import Dc.Adequacy
 
 /-!
@@ -92,20 +93,25 @@ def TosCalls (lm : Nat) (P : St → Nat → Option Nat → Prop) : Nat → St �
 
 end
 
+/-- **The per-call premise** of `dc_func` the evaluation budgets: SizeBound
+(`FnSize`). String sizes and sorted arrays are invariants of the state
+(`EvAt.sb`, `EvAt.srt`), kept by `dcFunc` (`Dc/Mach/EvalModel.lean`). -/
+def CallP (st : St) : Prop := FnSize st
+
 /-- **The model-side budgets of an evaluation** from `st` and frame `f`:
 nesting at most `d`, at most `k` leaking commands, every `dc_func` call
-within SizeBound (`FnSize`), every string held shorter than `2^24`. -/
+meeting `CallP` (SizeBound). -/
 structure EvBudget (lm d k : Nat) (st : St) (f : Frame) : Prop where
   nest : ∀ n, nestDepth lm n st f ≤ d
   leak : ∀ n, leakCount lm n st f ≤ k
-  size : ∀ n, AllCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st f
+  size : ∀ n, AllCalls lm (fun st _ _ => CallP st) n st f
   frameLen : f.s.length < 2 ^ 24
 
 /-- `EvBudget` for the `DC_EVALTOS` code. -/
 structure TosBudget (lm d k : Nat) (st : St) (rest : List Nat) (td : Nat) : Prop where
   nest : ∀ n, tosDepth lm n st rest td ≤ d
   leak : ∀ n, tosLeak lm n st rest td ≤ k
-  size : ∀ n, TosCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st rest td
+  size : ∀ n, TosCalls lm (fun st _ _ => CallP st) n st rest td
   restLen : rest.length < 2 ^ 24
 
 /-- **The budgets at a fuel `n`** where the evaluation completes
@@ -116,7 +122,7 @@ structure EvFuel (lm n d k : Nat) (st : St) (f : Frame) (st' : St) (r : Status) 
   run : run lm n st f = some (st', r)
   nest : nestDepth lm n st f ≤ d
   leak : leakCount lm n st f ≤ k
-  size : AllCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st f
+  size : AllCalls lm (fun st _ _ => CallP st) n st f
 
 /-- `EvFuel` for the `DC_EVALTOS` code. -/
 structure TosFuel (lm n d k : Nat) (st : St) (rest : List Nat) (td : Nat) (st' : St) (r : Status) :
@@ -124,7 +130,7 @@ structure TosFuel (lm n d k : Nat) (st : St) (rest : List Nat) (td : Nat) (st' :
   run : tos lm n st rest td = some (st', r)
   nest : tosDepth lm n st rest td ≤ d
   leak : tosLeak lm n st rest td ≤ k
-  size : TosCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st rest td
+  size : TosCalls lm (fun st _ _ => CallP st) n st rest td
 
 /-- A derivation with its budgets completes at some fuel. -/
 theorem EvBudget.fuel {lm d k : Nat} {st st' : St} {f : Frame} {r : Status}
@@ -167,6 +173,8 @@ structure EvAt (S : Nat → Prop) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → Bi
   dc : DcAt S M H F L C G (xs ++ hs) st
   strIn : o ∈ G.strs
   strLen : o.s.length < 2 ^ 24
+  sb : StrBound (2 ^ 24) st
+  srt : ArrSorted st
   held : hs.head? = some (.str o.hb.pay)
   slot : DatAt M q (.str o.hb.pay)
   slotPlace : DatSlot S sp q
@@ -190,7 +198,7 @@ structure EvAt (S : Nat → Prop) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → Bi
   mb : MulBase S M
   err : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a
   globs : EvGlobs S M
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn (sp - 176) (W - 176) a →
+  out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn (sp - 176) (W - 176) a →
     ¬ (sp - 176 ≤ a ∧ a < sp) → ¬ (q ≤ a ∧ a < q + 16) → imgM M a = imgM M0 a
 
 /-- `evalstr`'s status word. -/
@@ -214,7 +222,7 @@ structure EvPost (S : Nat → Prop) (sp W k q : Nat) (M0 : Mem) (G : DcG) (hs xs
   pin : StrPin G.strs G'.strs hs.tail
   mb : MulBase S M'
   globs : EvGlobs S M'
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp W a → ¬ (q ≤ a ∧ a < q + 16) →
+  out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp W a → ¬ (q ≤ a ∧ a < q + 16) →
     imgM M' a = imgM M0 a
 
 /-- **The caller's continuation** after an activation returning `r` in

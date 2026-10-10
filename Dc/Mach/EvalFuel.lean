@@ -1,5 +1,4 @@
 import Dc.Mach.EvalBase
-import Dc.Mach.EvalModel
 
 /-!
 # The fuel-indexed budgets step by step (M10)
@@ -15,8 +14,8 @@ namespace Dc.Mach
 
 open Dc
 
-/-- The per-call premises of `dc_func` (`FnSize`) and the string bound. -/
-abbrev CallOK (st : St) : Prop := FnSize st ∧ StrBound (2 ^ 24) st
+/-- The per-call premises of `dc_func` (`CallP`). -/
+abbrev CallOK (st : St) : Prop := CallP st
 
 /-- One leaking command. -/
 abbrev leakOne (c : Nat) : Nat := if leakCmd c then 1 else 0

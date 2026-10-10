@@ -93,7 +93,7 @@ theorem ev_enter {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
       ev.err, ev.globs.laOwn,
       by rw [ldv_congr .lw fun j hj => hmc _ (by simp only [widthOfM, heapEnd] at hj hab; omega)]
          exact ev.globs.la,
-      hcall.1, hc, hpk⟩
+      hcall, hc, hpk, ev.srt.top⟩
     ⟨h2.trans ev.r2, h10, h11, h12, by rw [h1, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hra.2]; exact hra.1⟩ ?_ ?_
   · intro t' R' M' sp' o'
     have := o'.lo; have := o'.hi

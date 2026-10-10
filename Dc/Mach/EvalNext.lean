@@ -29,7 +29,8 @@ theorem EvAt.next {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
     {f' : Frame} {R2 : Nat → BitVec 64} {j : Nat} (hj : j ≤ o.s.length) (hdrop : o.s.drop j = f'.s)
     (h8 : R2 8 = BitVec.ofNat 64 (o.tb.pay + j)) (h9 : R2 9 = R 9) (h22 : R2 22 = R 22)
     (h24 : R2 24 = BitVec.ofNat 64 f'.td) (htd : f'.td < 2 ^ 31) (hcs : EvConsts R2)
-    (h2 : R2 2 = R 2) (hkeep : Keeps evClob R2 R) :
+    (h2 : R2 2 = R 2) (hkeep : Keeps evClob R2 R) (hsb : StrBound (2 ^ 24) st')
+    (hsrt : ArrSorted st') :
     ∃ o', o'.hb = o.hb ∧ o'.tb = o.tb ∧ o'.s = o.s ∧
       EvAt S sp W d k' q M0 R0 R2 M' H' F' L' C' G' hs (ex ++ xs) st' f' o' := by
   have hab := ev.room; have hstk := ev.stk; have hfl := ev.frame.lo
@@ -38,7 +39,7 @@ theorem EvAt.next {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
   have hup : ∀ a, sp - 176 ≤ a → ¬ (sp - 176 + 28 ≤ a ∧ a < sp - 176 + 32) → imgM M' a = imgM M a :=
     fun a ha hw => by
       have := above_sp (sp := sp - 176) (a := a) (by simp only [heapEnd] at hab ⊢; omega) ha
-      rw [hp.out a this.1 this.2.1 (not_ocG_of_ge (by simp only [heapEnd] at hab ⊢; omega) ha)
+      rw [hp.out a this.1 (nglob_pin this.2.1) (not_ocG_of_ge (by simp only [heapEnd] at hab ⊢; omega) ha)
         (this.2.2 _), hmc a hw]
   obtain ⟨o', ho', e1, e2, e3⟩ := hp.pin o ev.strIn (by
     have := ev.held; cases e : hs with
@@ -51,6 +52,8 @@ theorem EvAt.next {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
     { dc := by rw [List.append_assoc]; exact hp.dc
       strIn := ho'
       strLen := e3 ▸ ev.strLen
+      sb := hsb
+      srt := hsrt
       held := by rw [e1]; exact ev.held
       slot := by
         have hq := ev.slotPlace
@@ -79,7 +82,7 @@ theorem EvAt.next {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
       budget := by have := ev.budget; simp only [List.length_append]; omega
       mb := ev.mb.transport fun a e1 e2 => by
         have ho := mulBase_off e1 e2
-        rw [hp.out a ho.1 ho.2.1 (fun hg => by
+        rw [hp.out a ho.1 (nglob_pin ho.2.1) (fun hg => by
             simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr, mulBaseAddr] at hg e1 e2; omega)
           (fun hf => by have := ho.2.2; simp only [frameIn, heapStart, heapEnd] at hf this hab; omega)]
         exact hmc a (by simp only [mulBaseAddr, heapEnd] at e1 e2 hab; omega)
@@ -88,7 +91,7 @@ theorem EvAt.next {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat �
         have g := ev.globs
         have hlow : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → a < heapStart →
             imgM M' a = imgM M a := fun a e1 e2 e3 e4 => by
-          rw [hp.out a e1 e2 e3 (fun hf => by simp only [frameIn, heapStart, heapEnd] at hf e4 hab; omega)]
+          rw [hp.out a e1 (nglob_pin e2) e3 (fun hf => by simp only [frameIn, heapStart, heapEnd] at hf e4 hab; omega)]
           exact hmc a (by simp only [heapStart, heapEnd] at e4 hab; omega)
         have hw : ∀ b, 0x8001cd30 ≤ b → b < 0x8001cd34 ∨ (0x8001cd84 ≤ b ∧ b < 0x8001cd88) →
             imgM M' b = imgM M b := fun b h1 h2 => hlow b

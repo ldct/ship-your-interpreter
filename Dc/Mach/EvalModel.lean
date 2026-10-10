@@ -1,4 +1,5 @@
 import Dc.Mach.EvalLeak
+import Dc.Adequacy
 
 /-!
 # Model lemmas for `evalstr` (M10)
@@ -324,5 +325,164 @@ theorem StrBound.scan {N : Nat} {st : St} (h : StrBound N st) {rest : List Nat}
     (hr : rest.length < N) : StrBound N (st.push (.str (scanStr 1 rest).1)) :=
   h.push fun s hs => by
     simp [Val.strs] at hs; subst hs; have := scanStr_len 1 rest; omega
+
+end Dc
+
+/-! ## Sorted register arrays -/
+
+namespace Dc
+
+/-- Every register level's array is strictly sorted by index. -/
+def ArrSorted (st : St) : Prop :=
+  ∀ r, ∀ e ∈ st.regs r, e.arr.Pairwise (fun a b => a.1 < b.1)
+
+/-- The result's state, if any, has sorted arrays. -/
+def ResSorted : Res → Prop
+  | .ok s | .eatOne s | .evalReg s _ | .evalTos s | .quit s | .sqrt s _ => ArrSorted s
+  | _ => True
+
+section
+variable {st : St}
+
+theorem ArrSorted.top (h : ArrSorted st) : ∀ r e es, st.regs r = e :: es →
+    e.arr.Pairwise (fun a b => a.1 < b.1) :=
+  fun r e es he => h r e (by rw [he]; exact List.mem_cons_self)
+
+theorem ArrSorted.regs {st' : St} (h : ArrSorted st) (hr : st'.regs = st.regs) : ArrSorted st' :=
+  fun r e he => h r e (by rw [← hr]; exact he)
+
+theorem ArrSorted.stack (h : ArrSorted st) (s : List Val) : ArrSorted { st with stack := s } :=
+  h.regs rfl
+
+theorem ArrSorted.setReg (h : ArrSorted st) {r : Nat} {l : List Entry}
+    (hl : ∀ e ∈ l, e.arr.Pairwise (fun a b => a.1 < b.1)) : ArrSorted (st.setReg r l) := fun q e he => by
+  simp only [St.setReg] at he
+  split at he
+  · exact hl e he
+  · exact h q e he
+
+/-- `arrSet` keeps an array strictly sorted. -/
+theorem arrSet_sorted {i : Nat} {v : Val} : ∀ (arr : List (Nat × Val)),
+    arr.Pairwise (fun a b => a.1 < b.1) → (arrSet i v arr).Pairwise (fun a b => a.1 < b.1) ∧
+      ∀ x ∈ arrSet i v arr, x.1 = i ∨ x ∈ arr
+  | [], _ => by simp [arrSet]
+  | (j, w) :: rest, h => by
+    have hr := List.pairwise_cons.mp h
+    unfold arrSet
+    split
+    · obtain ⟨ih1, ih2⟩ := arrSet_sorted (i := i) (v := v) rest hr.2
+      refine ⟨List.pairwise_cons.mpr ⟨fun x hx => ?_, ih1⟩, fun x hx => ?_⟩
+      · rcases ih2 x hx with e | e
+        · rw [e]; assumption
+        · exact hr.1 x e
+      · simp only [List.mem_cons] at hx
+        rcases hx with rfl | hx
+        · exact .inr List.mem_cons_self
+        · rcases ih2 x hx with e | e
+          · exact .inl e
+          · exact .inr (List.mem_cons_of_mem _ e)
+    · split
+      · rename_i hji
+        have : j = i := by simpa using hji
+        subst this
+        refine ⟨List.pairwise_cons.mpr ⟨fun x hx => hr.1 x hx, hr.2⟩, fun x hx => ?_⟩
+        simp only [List.mem_cons] at hx
+        rcases hx with rfl | hx
+        · exact .inl rfl
+        · exact .inr (List.mem_cons_of_mem _ hx)
+      · rename_i h1 h2
+        have hji : i < j := by simp at h1 h2; omega
+        refine ⟨List.pairwise_cons.mpr ⟨fun x hx => ?_, h⟩, fun x hx => ?_⟩
+        · simp only [List.mem_cons] at hx
+          rcases hx with rfl | hx
+          · exact hji
+          · exact Nat.lt_trans hji (hr.1 x hx)
+        · simp only [List.mem_cons] at hx
+          rcases hx with rfl | hx
+          · exact .inl rfl
+          · exact .inr (List.mem_cons.mpr hx)
+
+theorem binop_regs (st : St) (f : Num → Num → Option Num) : (binop st f).regs = st.regs := by
+  unfold binop; split <;> (try split) <;> rfl
+
+theorem binop2_regs (st : St) (f : Num → Num → Option (Num × Num)) :
+    (binop2 st f).regs = st.regs := by
+  unfold binop2; split <;> (try split) <;> rfl
+
+theorem triop_regs (st : St) (f : Num → Num → Num → Option Num) : (triop st f).regs = st.regs := by
+  unfold triop; split <;> (try split) <;> rfl
+
+theorem cmpop_regs (st : St) : (cmpop st).2.regs = st.regs := by
+  unfold cmpop; split <;> rfl
+
+theorem ArrSorted.arraySet (h : ArrSorted st) (r i : Nat) (v : Val) : ArrSorted (arraySet st r i v) := by
+  unfold Dc.arraySet
+  split
+  · exact h.setReg fun e he => by simp at he; subst he; simp
+  · rename_i e es he
+    exact h.setReg fun e' he' => by
+      simp only [List.mem_cons] at he'
+      rcases he' with rfl | he'
+      · exact (arrSet_sorted _ (h.top r e es he)).1
+      · exact h r e' (by rw [he]; exact List.mem_cons_of_mem _ he')
+
+theorem ArrSorted.regSet (h : ArrSorted st) (r : Nat) (v : Val) : ArrSorted (regSet st r v) := by
+  unfold Dc.regSet
+  split
+  · exact h.setReg fun e he => by simp at he; subst he; simp
+  · rename_i e es he
+    exact h.setReg fun e' he' => by
+      simp only [List.mem_cons] at he'
+      rcases he' with rfl | he'
+      · exact h.top r e es he
+      · exact h r e' (by rw [he]; exact List.mem_cons_of_mem _ he')
+
+theorem ArrSorted.regPop (h : ArrSorted st) {r : Nat} {e : Entry} {es : List Entry}
+    (he : st.regs r = e :: es) : ArrSorted (st.setReg r es) :=
+  h.setReg fun e' he' => h r e' (by rw [he]; exact List.mem_cons_of_mem _ he')
+
+theorem ArrSorted.pushLev (h : ArrSorted st) (v : Val) (r : Nat) :
+    ArrSorted (st.setReg r (⟨some v, []⟩ :: st.regs r)) :=
+  h.setReg fun e he => by
+    simp only [List.mem_cons] at he
+    rcases he with rfl | he
+    · simp
+    · exact h r e he
+
+end
+
+set_option hygiene false in
+/-- One case of `dcFunc_arrSorted`. -/
+macro "as_close" : tactic => `(tactic| first
+  | trivial | exact h | exact h.regs rfl | exact h.arraySet _ _ _ | exact h.regSet _ _
+  | exact h.regPop ‹_› | exact (h.stack _).arraySet _ _ _ | exact (h.stack _).regSet _ _
+  | exact (h.stack _).pushLev _ _ | exact h.regs (binop_regs _ _) | exact h.regs (binop2_regs _ _)
+  | exact h.regs (triop_regs _ _) | exact h.regs (cmpop_regs _))
+
+theorem dcFunc_arrSorted {lm : Nat} {st : St} {c : Nat} {peek : Option Nat} {neg : Bool}
+    (h : ArrSorted st) : ResSorted (dcFunc lm st c peek neg) := by
+  unfold dcFunc; dsimp only
+  rcases hs : st.stack with _ | ⟨v, rest⟩
+  rotate_left
+  rcases v with n | s
+  all_goals simp only [hs]
+  all_goals split
+  all_goals (repeat' split) <;> simp only [ResSorted]
+  all_goals as_close
+
+theorem ArrSorted.init : ArrSorted St.init := fun r e he => by simp [St.init] at he
+
+end Dc
+
+namespace Dc
+
+/-- `bc_sqrt`'s root is the one the interpreter's fuel finds. -/
+theorem Sqrt.fuel_eq {x : Num} {k : Nat} {y y' : Num} (h : Sqrt x k y) {n : Nat}
+    (hn : Num.sqrtLoopFuel x (max k x.scale) n (Num.sqrtInit x).1 (Num.sqrtInit x).2 = some y') :
+    y = y' := by
+  obtain ⟨m, hm⟩ := SqrtLoop.complete h
+  have e1 := sqrtLoopFuel_mono hm (Nat.le_max_left m n)
+  have e2 := sqrtLoopFuel_mono hn (Nat.le_max_right m n)
+  rw [e1] at e2; exact Option.some.inj e2
 
 end Dc

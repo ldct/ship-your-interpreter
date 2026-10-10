@@ -25,9 +25,17 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 set_option linter.unusedSimpArgs false
 
+/-- A reference count rewritten keeps the handles' values. -/
+theorem HsKeep.withRefs {L1 L2 : List NumObj} {x : NumObj} {ss : List StrObj} (n : Nat) (hs : List GV) :
+    HsKeep ⟨L1 ++ x :: L2, ss⟩ ⟨L1 ++ x.withRefs n :: L2, ss⟩ hs := by
+  classical
+  exact fun _ _ _ hv => GV.Den.relist (O := ⟨L1 ++ x :: L2, ss⟩) (O' := ⟨L1 ++ x.withRefs n :: L2, ss⟩)
+    ⟨fun y hy => ⟨_, BcConsts.subst_mem (x := x) (x' := x.withRefs n) hy,
+      ite_rep (x := x) (x' := x.withRefs n) rfl rfl y _⟩, fun o ho => ⟨o, ho, rfl, rfl⟩⟩ hv
+
 /-- **`bc_init_num(num)`** at `0x800049bc` on the dc state, for a stack slot
 `q` above the heap: one more reference to `_zero_`, the slot's handle
-`.num z.p` joins `hs`; clobbers `a4`, `a5`. -/
+`.num z.p` joins `hs`, whose values are kept; clobbers `a4`, `a5`. -/
 theorem dc_init_num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
@@ -35,7 +43,7 @@ theorem dc_init_num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
     (hqh : heapEnd ≤ q)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' L' C', Keeps [14, 15] R' R → DcAt S M' H F L' C' G (.num C.z.rep.p :: hs) st →
-      ldv .ld M' q = BitVec.ofNat 64 C.z.rep.p →
+      HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs → ldv .ld M' q = BitVec.ofNat 64 C.z.rep.p →
       (∀ a, OutHeap a → ¬ slotBytes q a → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x800049bc#64 R M := by
   have hzL := h.den.mz
@@ -62,11 +70,17 @@ theorem dc_init_num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
   refine hk _ _ _ _ (by keeps_tac Keeps.refl _ _)
     (h1.outWrite (P := slotBytes q) (MemOnly.store _ _ _ _) fun a ha =>
       ⟨outHeap_of_ge (by simp only [heapEnd]; omega), fun hg => by
-        have := hg.lt; simp only [heapStart] at this; omega⟩) (ldv_store_hit _ _ _) ?_
+        have := hg.lt; simp only [heapStart] at this; omega⟩) (HsKeep.withRefs _ hs) (ldv_store_hit _ _ _) ?_
   intro a ho hs
   rw [imgM_store_miss _ _ (by omega)]
   refine imgM_store_miss _ _ (Classical.byContradiction fun hc => ho.1 ?_)
   simp only [heapStart, heapEnd]; omega
+
+/-- A number added keeps the handles' values. -/
+theorem HsKeep.cons {L : List NumObj} {ss : List StrObj} {y : NumObj} (hs : List GV) :
+    HsKeep ⟨L, ss⟩ ⟨y :: L, ss⟩ hs :=
+  fun _ _ _ hv => GV.Den.relist (O := ⟨L, ss⟩) (O' := ⟨y :: L, ss⟩)
+    ⟨fun z hz => ⟨z, List.mem_cons_of_mem _ hz, rfl, rfl⟩, fun o ho => ⟨o, ho, rfl, rfl⟩⟩ hv
 
 /-- **A fresh number for a freed handle**: a callee freed the handle `.num
 x.p`'s number (`FreedRest`) and added `y` with one reference; the state
@@ -77,7 +91,8 @@ theorem DcAt.newNum {S : Nat → Prop} {M M' : Mem} {H H' : Heap} {F F' : List B
     (h : DcAt S M H F (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st) (hr : FreedRest L1 L2 x L')
     (hb : BcHeap S (G.raws M) M' H' F' (y :: L')) (h1 : y.rep.refs = 1) (hno : y.rep.Norm)
     (hpos : 1 ≤ y.rep.len) (how : y.Owns) (hgl : ∀ a, DcGlob a → imgM M' a = imgM M a) :
-    ∃ C', DcAt S M' H' F' (y :: L') C' G (.num y.rep.p :: hs) st := by
+    ∃ C', DcAt S M' H' F' (y :: L') C' G (.num y.rep.p :: hs) st ∧
+      HsKeep ⟨L1 ++ x :: L2, G.strs⟩ ⟨y :: L', G.strs⟩ hs := by
   have hag : ∀ a, InBlocks G.blocks a → imgM M' a = imgM M a := fun a ⟨c, hc, ha⟩ =>
     hb.raw.img c hc a ha
   have hb0 : BcHeap S (G.raws M) M' H' F' ([] ++ y :: L') := hb
@@ -86,11 +101,13 @@ theorem DcAt.newNum {S : Nat → Prop} {M M' : Mem} {H H' : Heap} {F F' : List B
     hb.subRaw (X' := G.raws M') (fun c hc => hc) fun c hc a ha => (hag a ⟨c, hc, ha⟩).symm
   cases hr with
   | dec _ =>
-    exact ⟨_, hb', h.nodup, (h.view.frame hag hgl).subst (x := x) (x' := x.decRef) rfl rfl,
-      (h.den.dec h.heap.p_ne_all).addNum hne h1 hno hpos how, h.glob, h.col⟩
+    exact ⟨_, ⟨hb', h.nodup, (h.view.frame hag hgl).subst (x := x) (x' := x.decRef) rfl rfl,
+      (h.den.dec h.heap.p_ne_all).addNum hne h1 hno hpos how, h.glob, h.col⟩,
+      (HsKeep.decRef hs).trans (HsKeep.cons hs)⟩
   | rel h1' =>
-    exact ⟨C, hb', h.nodup, h.view.frame hag hgl,
-      (h.den.rel h.heap.p_ne_all h1').addNum hne h1 hno hpos how, h.glob, h.col⟩
+    exact ⟨C, ⟨hb', h.nodup, h.view.frame hag hgl,
+      (h.den.rel h.heap.p_ne_all h1').addNum hne h1 hno hpos how, h.glob, h.col⟩,
+      (HsKeep.rel h.den h1' _).trans (HsKeep.cons hs)⟩
 
 /-- **`bc_int2num(num, val)`** at `0x8000690c` on the dc state, the handle
 `.num p` held in the stack slot `q` above the heap: the slot's handle is
@@ -122,7 +139,7 @@ theorem dc_int2num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Na
     (by simp only [heapEnd]; omega) (by omega)
   refine bc_int2num_spec hlive ⟨hsf, hab, hq, hsl', hqf, h2, hal, hvlo, hvhi⟩ e h10 h11
     ⟨fun R' Mt' H' F' L' y hk1 hp => ?_, fun R' Mt' h2' hm => hoom R' Mt' h2' hm⟩
-  obtain ⟨C', hd⟩ := h.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
+  obtain ⟨C', hd, -⟩ := h.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
     hp.out a ha.outHeap (fun hs => by have := ha.lt; simp only [heapStart] at this; omega)
       (fun hf => by have := ha.lt; simp only [heapStart, frameIn] at this hf; omega)
   refine hk R' Mt' H' F' L' C' y hk1 hd hp.num ?_ hp.out
@@ -160,7 +177,7 @@ theorem dc_int2data_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
   have hq : PtrSlot S (sp - 64 + 24) :=
     ⟨fun i hi => hsf.own _ (by omega) (by omega), by omega, by omega, by omega⟩
   refine dc_init_num_spec hlive h1 hhs hq (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [])
-    fun R1 M2 L2 C2 hk1 hd2 hw2 hfr2 => ?_
+    fun R1 M2 L2 C2 hk1 hd2 _ hw2 hfr2 => ?_
   have q1 : R1 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk1.get 2 (by decide)]; bsimp []
   have hv8 : ldv .ld M2 (sp - 64 + 8) = BitVec.ofInt 64 v := by
     rw [ldv_congr .ld fun j hj => hfr2 _ (outHeap_of_ge (by simp only [heapEnd, widthOfM] at hj ⊢; omega))

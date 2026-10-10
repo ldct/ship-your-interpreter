@@ -36,14 +36,34 @@ local macro_rules | `(tactic| sx_side) => `(tactic| dc_side)
 /-- The registers a C function may change: the caller-saved ones. -/
 abbrev opClob : List Nat := [1, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 28, 29, 30, 31]
 
+/-- bc's `mul_base_digits`, which dc never changes: `80`, owned. -/
+structure MulBase (S : Nat → Prop) (M : Mem) : Prop where
+  own : ∀ a, mulBaseAddr ≤ a → a < mulBaseAddr + 4 → S a
+  word : ldv .lw M mulBaseAddr = BitVec.ofNat 64 80
+
+theorem MulBase.transport {S : Nat → Prop} {M M' : Mem} (h : MulBase S M)
+    (hag : ∀ a, mulBaseAddr ≤ a → a < mulBaseAddr + 4 → imgM M' a = imgM M a) : MulBase S M' where
+  own := h.own
+  word := by
+    rw [ldv_congr .lw fun j hj => hag _ (by omega) (by simp only [widthOfM] at hj; omega)]
+    exact h.word
+
+/-- `mul_base_digits` is off the heap, not one of dc's globals, below every stack frame. -/
+theorem mulBase_off {a : Nat} (h1 : mulBaseAddr ≤ a) (h2 : a < mulBaseAddr + 4) :
+    OutHeap a ∧ ¬ DcGlob a ∧ a < heapStart := by
+  refine ⟨?_, fun hg => ?_, ?_⟩
+  · simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, mulBaseAddr] at h1 h2 ⊢; omega
+  · simp only [DcGlob, dc_addrs, mulBaseAddr] at hg h1 h2; omega
+  · simp only [heapStart, mulBaseAddr] at h1 h2 ⊢; omega
+
 /-- `dc_memfail` reached from below `sp` within the window `W`: memory changed
-only in the heap, dc's globals and the window. -/
-structure OomAt (S : Nat → Prop) (sp W : Nat) (M0 : Mem) (sp' : Nat) (R' : Nat → BitVec 64)
-    (M' : Mem) : Prop where
+only in the heap, dc's globals, the window and the bytes `P`. -/
+structure OomAt (S : Nat → Prop) (sp W : Nat) (M0 : Mem) (P : Nat → Prop) (sp' : Nat)
+    (R' : Nat → BitVec 64) (M' : Mem) : Prop where
   lo : sp - W ≤ sp'
   hi : sp' ≤ sp
   r2 : R' 2 = BitVec.ofNat 64 sp'
-  out : StkOut sp W M' M0
+  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp W a → ¬ P a → imgM M' a = imgM M0 a
 
 /-- An operation's entry: the operand handles `pa`, `pb` (denoting `na`, `nb`)
 held by the caller, the scale in `a2`, the result slot `q` above the frame. -/
@@ -53,7 +73,7 @@ structure OpIn (S : Nat → Prop) (M : Mem) (H : Heap) (F : List Blk) (L : List 
   h : DcAt S M H F L C G (.num pa :: .num pb :: hs) st
   da : (GV.num pa).Den ⟨L, G.strs⟩ (.num na)
   db : (GV.num pb).Den ⟨L, G.strs⟩ (.num nb)
-  hsLen : hs.length + 3 ≤ 2 ^ 30
+  hsLen : hs.length + 3 ≤ 2 ^ 20
   lkLen : G.lk.length + lk ≤ 2 ^ 29
   frame : StackFrame S sp N
   above : heapEnd + N ≤ sp
@@ -65,6 +85,7 @@ structure OpIn (S : Nat → Prop) (M : Mem) (H : Heap) (F : List Blk) (L : List 
   r13 : R 13 = BitVec.ofNat 64 q
   r2 : R 2 = BitVec.ofNat 64 sp
   al : (R 1).toNat % 4 = 0
+  mb : MulBase S M
 
 /-- An operation's success: `0`, the fresh handle `y` for `r` in the slot. -/
 structure OpRet (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
@@ -104,7 +125,7 @@ def DcOp (live S : Nat → Prop) (fa N lk : Nat) (f : Nat → Num → Num → Op
       OpRet S M M' H' F' L' C' G G' hs st pa pb na nb f R' sp q N lk y r → DWO live S Q t (R 1) R' M') →
     (∀ R' M' H' F' L' C' G', Keeps opClob R' R →
       OpFail S M M' H' F' L' C' G G' hs st pa pb na nb f R' sp q N lk → DWO live S Q t (R 1) R' M') →
-    (∀ R' M' sp', OomAt S sp N M sp' R' M' → DWO live S Q t 0x80001e74#64 R' M') →
+    (∀ R' M' sp', OomAt S sp N M (slotBytes q) sp' R' M' → DWO live S Q t 0x80001e74#64 R' M') →
     DWO live S Q t (BitVec.ofNat 64 fa) R M
 
 /-! ## The model -/
@@ -785,7 +806,7 @@ theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {fa N lk : Nat} {f : Nat → Num → Num → Option Num}
     (hop : DcOp live S fa N lk f) (hfa : fa % 4 = 0) (hfa2 : fa < 2 ^ 64)
     {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
-    {st : St} (h : DcAt S M H F L C G hs st) (hsLen : hs.length + 3 ≤ 2 ^ 30)
+    {st : St} (h : DcAt S M H F L C G hs st) (hsLen : hs.length + 3 ≤ 2 ^ 20) (hmb : MulBase S M)
     (hlk : G.lk.length + lk ≤ 2 ^ 29) {sp W : Nat} (hsf : StackFrame S sp W) (hab : heapEnd + W ≤ sp)
     (hW : 448 ≤ W) (hN : 112 + N ≤ W)
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 fa) (h11 : R 11 = BitVec.ofNat 64 st.scale)
@@ -793,7 +814,8 @@ theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     (hk : ∀ R' M' H' F' L' C' G', Keeps (1 :: 2 :: opClob) R' R → R' 2 = R 2 →
       G'.lk.length ≤ G.lk.length + lk → DcAt S M' H' F' L' C' G' hs (binop st (f st.scale)) →
       StkOut sp W M' M → DWO live S Q t (R 1) R' M')
-    (hoom : ∀ R' M' sp', OomAt S sp W M sp' R' M' → DWO live S Q t 0x80001e74#64 R' M') :
+    (hoom : ∀ R' M' sp', OomAt S sp W M (fun _ => False) sp' R' M' →
+      DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x800031c8#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
   have hab' := hab
@@ -842,11 +864,14 @@ theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
   refine hop Q t M2 H2 F L C G2 hs st2 pa pb na nb R1 (sp - 112) (sp - 112 + 72)
     ⟨h2', hda, hdb, hsLen, by rw [hlk2]; exact hlk, hsf.within hN (by decide),
       by simp only [heapEnd]; omega, hsf.slot (by omega) (by omega) (by omega), by omega,
-      e10, e11, e12, e13, e2, by rw [e1]; decide⟩
+      e10, e11, e12, e13, e2, by rw [e1]; decide, hmb.transport fun a e1 e2 => by
+        have ⟨o1, o2, o3⟩ := mulBase_off e1 e2
+        exact hout2 a o1 o2 fun hf => by simp only [frameIn, heapStart] at hf o3; omega⟩
     (fun R' M' H' F' L' C' G' y r hk' hr => ?_) (fun R' M' H' F' L' C' G' hk' hf => ?_)
     fun R' M' sp' ho => hoom R' M' sp' ⟨by have := ho.lo; omega, by have := ho.hi; omega, ho.r2,
-      fun a o1 o2 o3 => by
-        rw [ho.out a o1 o2 (fun h' => o3 (by simp only [frameIn] at h' ⊢; omega))]
+      fun a o1 o2 o3 _ => by
+        rw [ho.out a o1 o2 (fun h' => o3 (by simp only [frameIn] at h' ⊢; omega))
+          (fun h' => o3 (by simp only [slotBytes, frameIn] at h' ⊢; omega))]
         exact hout2 a o1 o2 o3⟩
   · obtain ⟨hfr', hsa', hsb'⟩ := after M' hr.out
     rw [e1]
@@ -854,7 +879,7 @@ theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
       (by rw [hk'.get 2 (by decide), e2]) hr.a0
       (fun R'' M'' H'' F'' L'' C'' G'' hk'' e1'' e2'' hlk'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 112 - 16) ⟨by omega, by omega, e2'',
-        outW M' M'' hr.out hout''⟩
+        fun a o1 o2 o3 _ => outW M' M'' hr.out hout'' a o1 o2 o3⟩
     rw [binop_push_some (st := st2) (g := f ((st2.push (.num na)).push (.num nb)).scale) hr.val] at hk
     refine hk R'' M'' H'' F'' L'' C'' G'' ((hk''.trans ((hk'.mono (by decide)).trans kk)))
       (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hr.lkLen) hd'' (outW M' M'' hr.out hout'')
@@ -864,8 +889,8 @@ theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
       (by rw [hk'.get 2 (by decide), e2]) hf.a0
       (fun R'' M'' H'' G'' hk'' hlk'' e1'' e2'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 112 - 64) ⟨by omega, by omega, e2'',
-        outW M' M'' hf.out fun a o1 o2 o3 => hout'' a o1 o2 fun h' => o3 (by
-          simp only [frameIn] at h' ⊢; omega)⟩
+        fun a o1 o2 o3 _ => outW M' M'' hf.out (fun a o1 o2 o3 => hout'' a o1 o2 fun h' => o3 (by
+          simp only [frameIn] at h' ⊢; omega)) a o1 o2 o3⟩
     rw [binop_push_none (st := st2) (g := f ((st2.push (.num na)).push (.num nb)).scale) hf.val] at hk
     refine hk R'' M'' H'' F' L' C' G'' ((hk''.mono (by decide)).trans ((hk'.mono (by decide)).trans kk))
       (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hf.lkLen) hd''

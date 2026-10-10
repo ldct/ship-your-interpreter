@@ -178,3 +178,4 @@ import Dc.Mach.EvalDivModel
 import Dc.Mach.EvalDivLob
 import Dc.Mach.EvalEntryB
 import Dc.Mach.EvalStrB
+import Dc.Mach.EvalIntB

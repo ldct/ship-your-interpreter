@@ -1,4 +1,5 @@
 import Dc.Mach.DcRotate
+import Dc.Mach.DcBinop
 
 /-!
 # `dc_tell_stackdepth` (M9)
@@ -280,5 +281,94 @@ theorem dc_numlen_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat
     · bsimp [hvl]
     · bsimp [Nat.add_comm]
     · exact hk R' ((hk'.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) (by rw [e10, e])
+
+/-! ## `dc_tell_scale` -/
+
+theorem word_sub32 {x : Nat} (h : 32 ≤ x) :
+    BitVec.ofNat 64 x + 18446744073709551584#64 = BitVec.ofNat 64 (x - 32) := by
+  change BitVec.ofNat 64 x + -(32#64) = _
+  rw [BitVec.add_neg_eq_sub]
+  exact BitVec.ofNat_sub_ofNat_of_le x 32 (by decide) h
+
+/-- The registers `dc_tell_scale` changes. -/
+abbrev tellScaleClob : List Nat := [1, 2, 10, 13, 14, 15]
+
+/-- **`dc_tell_scale (num, 0)`** at `0x80002a04`, as `dc_func`'s `X` calls
+it: `a0` the scale of the held number `x`, the handle released by
+`bc_free_num`. -/
+theorem dc_tell_scale_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {x : NumObj}
+    (h : DcAt S M H F L C G (.num x.rep.p :: hs) st) (hx : x ∈ L)
+    {sp : Nat} (hsf : StackFrame S sp 64) (hab : heapEnd + 64 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : R 10 = BitVec.ofNat 64 x.rep.p)
+    (h11 : R 11 = 0#64) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C', Keeps tellScaleClob R' R → R' 2 = R 2 →
+      R' 10 = BitVec.ofNat 64 x.rep.scale → DcAt S M' H' F' L' C' G hs st → StkOut sp 64 M' M →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x80002a04#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hab' := hab
+  simp only [heapEnd] at hab'
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
+  have hn := h.heap.nums x hx
+  num_facts hn
+  have hsc := hn.scale
+  bc_run hlive hS [h2, h10, h11, word_sub32 (show 32 ≤ sp by omega)] at 0x800048c0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have g8 : ldv .lw (writeLog (writeLog M [(sp - 32 + 24, 8, R 1)])
+      [(sp - 32 + 8, 8, BitVec.ofNat 64 x.rep.p)]) (x.rep.p + 8) = BitVec.ofNat 64 x.rep.scale := by
+    rw [ldv_store_miss .lw _ _ (by simp only [widthOfM]; omega), ldv_store_miss .lw _ _ (by simp only [widthOfM]; omega)]; exact hsc
+  rw [g8]
+  bc_run hlive hS [] at 0x800048c0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM2 : MemOnly (frameIn sp 32) (writeLog (writeLog (writeLog M [(sp - 32 + 24, 8, R 1)])
+      [(sp - 32 + 8, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 32, 8, BitVec.ofNat 64 x.rep.scale)]) M :=
+    fun a ha => by
+      simp only [frameIn] at ha
+      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
+  have m8 : ldv .ld (writeLog (writeLog (writeLog M [(sp - 32 + 24, 8, R 1)])
+      [(sp - 32 + 8, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 32, 8, BitVec.ofNat 64 x.rep.scale)])
+      (sp - 32 + 8) = BitVec.ofNat 64 x.rep.p := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  have m0 : ldv .ld (writeLog (writeLog (writeLog M [(sp - 32 + 24, 8, R 1)])
+      [(sp - 32 + 8, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 32, 8, BitVec.ofNat 64 x.rep.scale)])
+      (sp - 32) = BitVec.ofNat 64 x.rep.scale := ldv_store_hit _ _ _
+  have m24 : ldv .ld (writeLog (writeLog (writeLog M [(sp - 32 + 24, 8, R 1)])
+      [(sp - 32 + 8, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 32, 8, BitVec.ofNat 64 x.rep.scale)])
+      (sp - 32 + 24) = R 1 := by
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  generalize writeLog (writeLog (writeLog M [(sp - 32 + 24, 8, R 1)])
+      [(sp - 32 + 8, 8, BitVec.ofNat 64 x.rep.p)]) [(sp - 32, 8, BitVec.ofNat 64 x.rep.scale)] = M2
+    at hM2 m8 m0 m24 ⊢
+  have hab2 : heapEnd ≤ sp - 64 := by simp only [heapEnd]; omega
+  have h2' := h.outWrite hM2 fun a ha =>
+    ⟨(above_sp (sp := sp - 32) (by simp only [heapEnd]; omega) (by simp only [frameIn] at ha; omega)).1,
+      (above_sp (sp := sp - 32) (by simp only [heapEnd]; omega) (by simp only [frameIn] at ha; omega)).2.1⟩
+  refine bc_free_num_dc hlive h2' (hsf.slot (by omega) (by omega) (by omega))
+    (by simp only [heapEnd]; omega) m8 (hsf.within (m := 32) (n := 32) (by omega) (by decide))
+    (by simp only [heapEnd]; omega) (.inr (by omega)) _ (by bsimp [h2]) (by bsimp [h2]) (by bsimp [])
+    fun R6 M6 H6 F6 L6 C6 hk6 hd6 hz6 hout6 => ?_
+  have hab3 : heapEnd ≤ sp - 32 := by simp only [heapEnd]; omega
+  have k0 : ∀ o, o < 32 → (o + 8 ≤ 8 ∨ 16 ≤ o) → ∀ j, j < 8 → imgM M6 (sp - 32 + o + j) = imgM M2 (sp - 32 + o + j) :=
+    fun o ho h8 j hj => hout6 _ (above_sp hab3 (by omega)).1 (above_sp hab3 (by omega)).2.1
+      ((above_sp hab3 (by omega)).2.2 _) (fun hs' => by simp only [slotBytes] at hs'; omega)
+  have g0 : ldv .ld M6 (sp - 32) = BitVec.ofNat 64 x.rep.scale :=
+    (ldv_congr .ld fun j hj => by simpa using k0 0 (by omega) (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans m0
+  have g24 : ldv .ld M6 (sp - 32 + 24) = R 1 :=
+    (ldv_congr .ld fun j hj => k0 24 (by omega) (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans m24
+  have q6 : R6 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk6.get 2 (by decide)]; bsimp [h2]
+  have hS6 : HeapOwn S := fun a e1 e2 => hd6.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS6 [q6, g0, g24]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hal | skip
+  refine hk _ M6 H6 F6 L6 C6 ?_ ?_ ?_ hd6 fun a ho hg hf => ?_
+  · exact by keeps_tac ((hk6.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+  · bsimp [h2]; try (congr 1; omega)
+  · bsimp []
+  · rw [hout6 a ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))
+      (fun hs' => hf (by simp only [slotBytes, frameIn] at hs' ⊢; omega))]
+    exact hM2 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
 
 end Dc.Mach

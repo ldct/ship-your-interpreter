@@ -267,4 +267,80 @@ theorem seg_head (hfn : ∀ Q, FnSpecH dcLive dcOwn Q) {t : String} {rv : Nat �
     · exact ev_call_mid dcText_live (hfn _) h.ev h.h12 hr hcall (evOom_div h.ev)
         (hret 0x80001528 (by simp [hr]))
 
+/-- **From `dc_func`'s return**: the status cases (`evs_*_k`, `EvIntCore`,
+`EvStrCore`) to the loop head or the `DC_EVALTOS` code. -/
+theorem ret_dwo (hint : ∀ Q, EvIntCore dcLive dcOwn Q) (hstr : ∀ Q, EvStrCore dcLive dcOwn Q)
+    {t0 : String} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat → BitVec 64} {M : Mem} {H : Heap}
+    {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs xs : List GV} {st : St} {c : Nat}
+    {rest : List Nat} {td : Nat} {neg : Bool} {o : StrObj} {Rc R' : Nat → BitVec 64} {Mc M' : Mem}
+    {H' : Heap} {F' : List Blk} {L' : List NumObj} {C' : BcConsts} {G' : DcG} {st' : St}
+    {ex : List GV} {code : Nat}
+    (e : EvCall dcOwn sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' st' ex)
+    (fo : FnOut st (dcFunc 70 st c rest.head? neg) code st') (h10 : R' 10 = BitVec.ofNat 64 code)
+    (bud : DivBud 70 d k st ⟨c :: rest, td, neg⟩) :
+    DWO dcLive dcOwn (DivQ [.head, .tos]) (t0 ++ Dc.outStr st'.out)
+      (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M' := by
+  have hh : DivPos.head ∈ [DivPos.head, .tos] := by simp
+  have ht : DivPos.tos ∈ [DivPos.head, .tos] := by simp
+  generalize hres : dcFunc 70 st c rest.head? neg = res at fo
+  cases fo with
+  | ok s =>
+    obtain ⟨b, -, hlc⟩ := bud.ok hres
+    obtain ⟨hsb, hsrt⟩ := res_ok_facts e.ev.sb e.ev.srt hres
+    exact evs_zero_k dcText_live e h10 hlc hsb hsrt (headK hh b) (endK b)
+  | eatOne s =>
+    obtain ⟨b, -, hlc⟩ := bud.eatOne hres
+    exact evs_eat_k dcText_live e hres h10 hlc (headK hh b) (endK b)
+  | evalReg s reg =>
+    have hlc : leakOne c ≤ k := by
+      cases hg : regGet st' reg with
+      | none => exact (bud.evalRegNone hres hg).2.2
+      | some v => exact (bud.evalReg hres hg).2.2
+    exact evs_reg_k dcText_live e hres h10 hlc (evOom_div e.ev)
+      (fun v hg => tosK ht (bud.evalReg hres hg).1) (fun hg => headK hh (bud.evalRegNone hres hg).1)
+      (fun hg => endK (bud.evalRegNone hres hg).1)
+  | evalTos s =>
+    obtain ⟨b, -, hlc⟩ := bud.evalTos hres
+    exact evs_tos_k dcText_live e hres h10 hlc (tosK ht b)
+  | quit s =>
+    obtain ⟨hlt, b, -, hlc⟩ := bud.quitStay hres
+    exact evs_quit_k dcText_live e hres h10 hlc (fun hle => absurd hle (Nat.not_le.mpr hlt))
+      (fun _ => headK hh b) (fun _ => endK b)
+  | int =>
+    obtain ⟨b, -, hlc⟩ := bud.int hres
+    exact hint _ t0 sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' ex e hres h10 hlc (evOom_div e.ev) (headK hh b) (endK b)
+  | str =>
+    obtain ⟨b, -, hlc⟩ := bud.str hres
+    exact hstr _ t0 sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' ex e hres h10 hlc (evOom_div e.ev) (headK hh b) (endK b)
+  | system =>
+    obtain ⟨b, -, hlc⟩ := bud.system hres
+    exact evs_system_k dcText_live e h10 hlc (evOom_div e.ev) (headK hh b) (endK b)
+  | comment =>
+    obtain ⟨b, -, hlc⟩ := bud.comment hres
+    exact evs_comment_k dcText_live e h10 hlc (headK hh b) (endK b)
+  | negcmp =>
+    obtain ⟨b, -, hlc⟩ := bud.negcmp hres
+    exact evs_neg_k dcText_live e h10 hlc (headK hh b) (endK b)
+  | eofError => exact (runDiv_eof bud.run hres).elim
+  | sqrt hsq =>
+    obtain ⟨b, -, hlc⟩ := bud.sqrt hres hsq
+    exact evs_sqrt_k dcText_live e hres h10 hlc (headK hh b) (endK b)
+
+/-- **From `dc_func`'s return** to the loop head or the `DC_EVALTOS` code. -/
+theorem seg_ret (hint : ∀ Q, EvIntCore dcLive dcOwn Q) (hstr : ∀ Q, EvStrCore dcLive dcOwn Q)
+    {t : String} {rv : Nat → BitVec 64} {mv : Nat → BitVec 8} (hat : DivAt .ret t rv mv) :
+    ∃ Qp : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop,
+      LRO (vsaModel dcLive) roR dcText dcRegs dcOwn Qp t rv mv ∧ ¬ Qp t rv mv ∧
+      ∀ t' rv' mv', Qp t' rv' mv' →
+        (∃ p', DivAt p' t' rv' mv') ∨ ∃ e, ExitW (fun v => v.1 ≠ 0) t' rv' e := by
+  obtain ⟨t0, sp, W, d, k, q, M0, R0, R, M, H, F, L, C, G, hs, xs, st, c, rest, td, neg, o, Rc, R',
+    Mc, M', H', F', L', C', G', st', ex, code, h⟩ := hat
+  refine div_seg (ps := [.head, .tos]) ?_ h.mat
+    (by by_cases hr : rest = [] <;> simp [posPC, hr]) (by by_cases hr : rest = [] <;> simp [hr])
+  rw [h.con]
+  exact ret_dwo hint hstr h.e h.fo h.h10 h.bud
+
 end Dc.Mach

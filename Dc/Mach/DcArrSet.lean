@@ -1659,4 +1659,72 @@ theorem as_ins_post {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       (by rw [e14, lastPtr_concat]) q10 l56 l48 l40 l32 hal
       fun R' M' hk2 => hk R' M' (hk2.trans (hk1.mono (by decide)))
 
+/-- `dc_array_set`'s insert path (`0x80003cd0`, `sp` lowered by 64, `s0`
+naming the first node of `post`, `a4` the last node of `pre`): a fresh node
+between them, or `dc_memfail`. -/
+theorem as_ins {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {en : Entry} {es : List Entry} {pre post : List (Blk × ANode)}
+    {i sp : Nat} {m1 m2 : List (Nat × Val)} {v : Val}
+    {w0 w1 ra s0 s1 s2 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hst : st.regs r = en :: es) (harr : e.arr = pre ++ post)
+    (hm1 : List.Forall₂ (ARel ⟨L, G.strs⟩) pre m1)
+    (hm2 : List.Forall₂ (ARel ⟨L, G.strs⟩) post m2)
+    (hi : i < 2 ^ 31) (hd : DatRegs w0 w1 g)
+    (hv : g.Den ⟨L, G.strs⟩ v) (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h8 : R 8 = headPtr post)
+    (h9 : R 9 = BitVec.ofNat 64 i) (h14 : R 14 = lastPtr pre)
+    (h18 : R 18 = BitVec.ofNat 64 r)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R' M' H' c, Keeps arrClob R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
+      DcAt S M' H' F L C (G.setReg r ((b, { e with arr := pre ++ (c, ⟨i, g⟩) :: post }) :: l))
+        hs (st.setReg r ({ en with arr := m1 ++ (i, v) :: m2 } :: es)) →
+      StkOut sp 112 M' M → DW live S Q ra R' M')
+    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    DW live S Q 0x80003cd0#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  simp only [heapEnd] at hab
+  bc_run hlive hS [h2, h14] at 0x80001ea0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have hM2 : MemOnly (frameIn sp 112) (writeLog M [(sp - 64 + 8, 8, lastPtr pre)]) M :=
+    fun x hx => by simp only [frameIn] at hx; rw [imgM_store_miss _ _ (by omega)]
+  have h2' := h.outWrite hM2 fun a ha => asFrame_out (by simp only [heapEnd]; omega) ha
+  refine dc_malloc_spec hlive h2'.heap.heap (n := 32) (by decide)
+    (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
+    (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
+    (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm _ hfr => hoom R1 Mm fun x ho hg hf => ?_
+  rotate_left
+  · rw [hfr x (OutHeap.not_alloc h2'.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)]
+    exact hM2 x hf
+  obtain ⟨h3, hfc⟩ := h2'.malloc hp (by decide) (by simp only [heapEnd]; omega)
+  have hfm : ∀ k, k + 8 ≤ 64 → ldv .ld Mm (sp - 64 + k) =
+      ldv .ld (writeLog M [(sp - 64 + 8, 8, lastPtr pre)]) (sp - 64 + k) := fun k hk =>
+    ldv_congr .ld fun j hj => hp.frame _
+      (OutHeap.not_alloc h2'.heap.heap (outHeap_of_ge (by simp only [heapEnd, widthOfM] at hj ⊢; omega)))
+      (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+  have hfl : ∀ k, k + 8 ≤ 64 → (k + 8 ≤ 8 ∨ 16 ≤ k) → ldv .ld Mm (sp - 64 + k) = ldv .ld M (sp - 64 + k) :=
+    fun k hk hk' => by rw [hfm k hk, ldv_ld_miss _ _ (by omega)]
+  have l8 : ldv .ld Mm (sp - 64 + 8) = lastPtr pre := by rw [hfm 8 (by omega), ldv_store_hit]
+  show DW live S Q 0x80003cdc#64 R1 Mm
+  refine as_ins_post hlive h3 hr hl hst harr hm1 hm2 hfc hp.size hi hd hv hsf
+    (by simp only [heapEnd]; omega) R1
+    (by rw [hk1.get 2]; bsimp [h2]) (by rw [hk1.get 8]; bsimp [h8]) (by rw [hk1.get 9]; bsimp [h9]) e10
+    (by rw [hk1.get 18]; bsimp [h18]) l8
+    ((hfl 16 (by omega) (by omega)).trans l16) ((hfl 24 (by omega) (by omega)).trans l24)
+    ((hfl 56 (by omega) (by omega)).trans l56) ((hfl 48 (by omega) (by omega)).trans l48)
+    ((hfl 40 (by omega) (by omega)).trans l40) ((hfl 32 (by omega) (by omega)).trans l32) hal
+    fun R' M' hk2 e1 e2 e8 e9 e18 hdc hfr => hk R' M' H' c ?_ e1 e2 e8 e9 e18 hdc fun x ho hg hf => ?_
+  · exact hk2.trans (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
+  rw [hfr x ho hg hf, hp.frame x (OutHeap.not_alloc h2'.heap.heap ho)
+    (by simp only [frameIn] at hf ⊢; omega)]
+  exact hM2 x hf
+
 end Dc.Mach

@@ -115,7 +115,6 @@ structure EvFuel (lm n d k : Nat) (st : St) (f : Frame) (st' : St) (r : Status) 
   nest : nestDepth lm n st f ≤ d
   leak : leakCount lm n st f ≤ k
   size : AllCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st f
-  len : f.s.length < 2 ^ 24
 
 /-- `EvFuel` for the `DC_EVALTOS` code. -/
 structure TosFuel (lm n d k : Nat) (st : St) (rest : List Nat) (td : Nat) (st' : St) (r : Status) :
@@ -124,13 +123,12 @@ structure TosFuel (lm n d k : Nat) (st : St) (rest : List Nat) (td : Nat) (st' :
   nest : tosDepth lm n st rest td ≤ d
   leak : tosLeak lm n st rest td ≤ k
   size : TosCalls lm (fun st _ _ => FnSize st ∧ StrBound (2 ^ 24) st) n st rest td
-  len : rest.length < 2 ^ 24
 
 /-- A derivation with its budgets completes at some fuel. -/
 theorem EvBudget.fuel {lm d k : Nat} {st st' : St} {f : Frame} {r : Status}
     (hl : Loop lm st f st' r) (hb : EvBudget lm d k st f) : ∃ n, EvFuel lm n d k st f st' r := by
   obtain ⟨n, hn⟩ := hl.complete
-  exact ⟨n, hn, hb.nest n, hb.leak n, hb.size n, hb.frameLen⟩
+  exact ⟨n, hn, hb.nest n, hb.leak n, hb.size n⟩
 
 /-! ## The machine side -/
 
@@ -162,6 +160,7 @@ structure EvAt (S : Nat → Prop) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → Bi
     (G : DcG) (hs xs : List GV) (st : St) (f : Frame) (o : StrObj) : Prop where
   dc : DcAt S M H F L C G (xs ++ hs) st
   strIn : o ∈ G.strs
+  strLen : o.s.length < 2 ^ 24
   held : hs.head? = some (.str o.hb.pay)
   slot : DatAt M q (.str o.hb.pay)
   slotPlace : DatSlot S sp q

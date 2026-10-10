@@ -52,6 +52,23 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {C' : BcConsts} {G' : DcG} {st' st'' : St} {ex : List GV} {r : Status} {n : Nat}
   {Ge : DcG} {hse xse : List GV} {ke : Nat}
 
+/-- **Status `0` after the last character** (`DC_OKAY`, or the square
+root pushed): the exit with the state `st'`. -/
+theorem evs_zero_last (hlive : ∀ p ∈ dcText, live p.1)
+    (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c [] td neg o Rc R' Mc M' H' F' L' C'
+      G' st' ex)
+    (h10 : R' 10 = BitVec.ofNat 64 0)
+    (hfu' : EvFuel 70 n d (k - leakOne c) st' ⟨[], td, false⟩ st'' r) (hlc : leakOne c ≤ k)
+    (hsb : StrBound (2 ^ 24) st') (hsrt : ArrSorted st')
+    (htl : hs.tail = hse.tail)
+    (hgrow : G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke)
+    (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r) :
+    DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80001728#64 R' M' := by
+  obtain ⟨rfl, rfl⟩ := hfu'.nil
+  refine evl_0 hlive h10 e.cs fun R2 k2 => ?_
+  obtain ⟨o', -, -, -, ev'⟩ := e.same (e.hal hlc) hsb hsrt (R2 := R2) (k2.mono (by decide))
+  exact ev_exit hlive ev' htl (e.grow hlc hgrow) (e.pin hpin) hk
+
 /-- **`DC_OKAY` after the last character**: the exit. -/
 theorem evs_ok_last (hlive : ∀ p ∈ dcText, live p.1)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c [] td neg o Rc R' Mc M' H' F' L' C'
@@ -63,11 +80,8 @@ theorem evs_ok_last (hlive : ∀ p ∈ dcText, live p.1)
     (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r) :
     DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80001728#64 R' M' := by
   obtain ⟨hfu', -, hlc⟩ := hfu.ok hres
-  obtain ⟨rfl, rfl⟩ := hfu'.nil
   obtain ⟨hsb, hsrt⟩ := res_ok_facts e.ev.sb e.ev.srt hres
-  refine evl_0 hlive h10 e.cs fun R2 k2 => ?_
-  obtain ⟨o', -, -, -, ev'⟩ := e.same (e.hal hlc) hsb hsrt (R2 := R2) (k2.mono (by decide))
-  exact ev_exit hlive ev' htl (e.grow hlc hgrow) (e.pin hpin) hk
+  exact evs_zero_last hlive e h10 hfu' hlc hsb hsrt htl hgrow hpin hk
 
 /-- **`DC_NEGCMP`**: `next_negcmp = 1`, on to `rest`. -/
 theorem evs_neg (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)

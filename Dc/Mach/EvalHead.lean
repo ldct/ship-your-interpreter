@@ -98,14 +98,15 @@ theorem ev_enter {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   · intro t' R' M' sp' o'
     have := o'.lo; have := o'.hi
     exact hoom t' R' M' sp' ⟨by omega, by omega, o'.r2, fun a e1 e2 e3 e4 => by
-      have hq : ¬ (q ≤ a ∧ a < q + 16) := fun h => e4 (.inr h)
+      have hq : ¬ (q ≤ a ∧ a < q + 16) := fun h => e4 (.inr (.inl h))
+      have hip : ¬ InP a := fun h => e4 (.inr (.inr h))
       have hoc : ¬ ocG a := fun h => e4 (.inl h)
       rw [o'.out a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)) hoc]
       by_cases hw : sp - 176 + 28 ≤ a ∧ a < sp - 176 + 32
       · exact absurd (by simp only [frameIn]; omega) e3
       · rw [hmc a hw]
         exact ev.out a e1 e2 hoc (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))
-          (fun hf => e3 (by simp only [frameIn]; omega)) hq⟩
+          (fun hf => e3 (by simp only [frameIn]; omega)) hq hip, o'.al⟩
   · intro R' M' H' F' L' C' G' code st' ex k e2' e10 hf hp
     rw [h1]
     exact hret R' M' H' F' L' C' G' code st' ex k e2' e10 hf hp

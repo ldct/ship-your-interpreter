@@ -82,6 +82,71 @@ end
 def LeakBound (lm : Nat) (prog : List Nat) (k : Nat) : Prop :=
   ∀ n, leakCount lm n St.init ⟨prog, 1, false⟩ ≤ k
 
+mutual
+
+/-- The largest tail depth (`tail_depth`, a 32-bit counter in `evalstr`)
+reached by `run lm n st f`. -/
+def tailMax (lm : Nat) : Nat → St → Frame → Nat
+  | 0, _, f => f.td
+  | _ + 1, _, ⟨[], td, _⟩ => td
+  | fuel + 1, st, ⟨c :: rest, td, neg⟩ =>
+    max td <|
+    match dcFunc lm st c rest.head? neg with
+    | .ok st' => tailMax lm fuel st' ⟨rest, td, false⟩
+    | .eatOne st' => tailMax lm fuel st' ⟨rest.tail, td, false⟩
+    | .evalReg st' reg =>
+      match regGet st' reg with
+      | some v => tosTail lm fuel (st'.push v) rest.tail td
+      | none => tailMax lm fuel st' ⟨rest.tail, td, false⟩
+    | .evalTos st' => tosTail lm fuel st' rest td
+    | .quit st' =>
+      if td ≤ st'.unwind then 0 else tailMax lm fuel st' ⟨rest, td - st'.unwind, false⟩
+    | .int =>
+      tailMax lm fuel (st.push (.num (readNum st.ibase (c :: rest)).1))
+        ⟨(readNum st.ibase (c :: rest)).2, td, false⟩
+    | .str => tailMax lm fuel (st.push (.str (scanStr 1 rest).1)) ⟨(scanStr 1 rest).2, td, false⟩
+    | .comment => tailMax lm fuel st ⟨skipEol rest, td, false⟩
+    | .negcmp => tailMax lm fuel st ⟨rest, td, true⟩
+    | .eofError => 0
+    | .sqrt st' x =>
+      match Num.sqrtLoopFuel x (max st'.scale x.scale) fuel (Num.sqrtInit x).1 (Num.sqrtInit x).2 with
+      | some y => tailMax lm fuel (st'.push (.num y)) ⟨rest, td, false⟩
+      | none => 0
+    | .system => tailMax lm fuel st ⟨skipSys rest, td, false⟩
+
+/-- The largest tail depth reached by `tos lm n st rest td`. -/
+def tosTail (lm : Nat) : Nat → St → List Nat → Nat → Nat
+  | 0, _, _, td => td
+  | fuel + 1, st, rest, td =>
+    max td <|
+    match st.stack with
+    | [] => tailMax lm fuel st ⟨skipWs rest, td, false⟩
+    | .num _ :: _ => tailMax lm fuel st ⟨skipWs rest, td, false⟩
+    | .str x :: more =>
+      if skipWs rest = [] then tailMax lm fuel { st with stack := more } ⟨x, td + 1, false⟩
+      else
+        let inner := tailMax lm fuel { st with stack := more } ⟨x, 1, false⟩
+        match run lm fuel { st with stack := more } ⟨x, 1, false⟩ with
+        | some (st', .ok) => max inner (tailMax lm fuel st' ⟨skipWs rest, td, false⟩)
+        | _ => inner
+
+end
+
+/-- The tail depth of every activation stays below `2 ^ 31` in any prefix
+of `dc -e prog` (`evalstr`'s `tail_depth` is a signed 32-bit counter). -/
+def TailBound (lm : Nat) (prog : List Nat) : Prop :=
+  ∀ n, tailMax lm n St.init ⟨prog, 1, false⟩ < 2 ^ 31
+
+theorem tailMax_ge {lm : Nat} : ∀ (n : Nat) (st : St) (f : Frame), f.td ≤ tailMax lm n st f
+  | 0, _, _ => by simp [tailMax]
+  | _ + 1, _, ⟨[], _, _⟩ => by simp [tailMax]
+  | _ + 1, _, ⟨_ :: _, _, _⟩ => by unfold tailMax; exact Nat.le_max_left _ _
+
+theorem tosTail_ge {lm : Nat} : ∀ (n : Nat) (st : St) (rest : List Nat) (td : Nat),
+    td ≤ tosTail lm n st rest td
+  | 0, _, _, _ => by simp [tosTail]
+  | _ + 1, _, _, _ => by unfold tosTail; exact Nat.le_max_left _ _
+
 /-- The strings of a value. -/
 def Val.strs : Val → List (List Nat)
   | .num _ => []

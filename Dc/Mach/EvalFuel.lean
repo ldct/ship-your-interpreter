@@ -28,9 +28,10 @@ variable {lm n d k : Nat} {st st'' : St} {c : Nat} {rest : List Nat} {td : Nat} 
 set_option hygiene false in
 /-- Unfold one step of the four fuel-indexed functions under `hr`. -/
 macro "fuel_step" : tactic => `(tactic| (
-    have hrun := h.run; have hn := h.nest; have hl := h.leak; have hsz := h.size
+    have hrun := h.run; have hn := h.nest; have hl := h.leak; have hsz := h.size; have ht := h.tail
     unfold Dc.run at hrun; unfold nestDepth at hn; unfold leakCount at hl; unfold AllCalls at hsz
-    simp only [hr] at hrun hn hl hsz
+    unfold tailMax at ht; replace ht := Nat.lt_of_le_of_lt (Nat.le_max_right _ _) ht
+    simp only [hr] at hrun hn hl hsz ht
     simp only [leakOne]
     cases hlc : leakCmd c <;> simp only [hlc, Bool.false_eq_true, if_false, if_true, Nat.zero_add, Nat.sub_zero] at hl ⊢))
 
@@ -38,48 +39,48 @@ theorem EvFuel.ok (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .ok st') :
     EvFuel lm n d (k - leakOne c) st' ⟨rest, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.eatOne (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .eatOne st') :
     EvFuel lm n d (k - leakOne c) st' ⟨rest.tail, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.evalRegNone (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     {reg : Nat} (hr : dcFunc lm st c rest.head? neg = .evalReg st' reg) (hg : regGet st' reg = none) :
     EvFuel lm n d (k - leakOne c) st' ⟨rest.tail, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals simp only [hg] at hrun hn hl hsz
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals simp only [hg] at hrun hn hl hsz ht
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.evalReg (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     {reg : Nat} {v : Val} (hr : dcFunc lm st c rest.head? neg = .evalReg st' reg)
     (hg : regGet st' reg = some v) :
     TosFuel lm n d (k - leakOne c) (st'.push v) rest.tail td st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals simp only [hg] at hrun hn hl hsz
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals simp only [hg] at hrun hn hl hsz ht
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.evalTos (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .evalTos st') :
     TosFuel lm n d (k - leakOne c) st' rest td st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.quitStay (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .quit st') (hlt : st'.unwind < td) :
     EvFuel lm n d (k - leakOne c) st' ⟨rest, td - st'.unwind, false⟩ st'' r ∧ CallOK st ∧
       leakOne c ≤ k := by
   fuel_step
-  all_goals simp only [show ¬ td ≤ st'.unwind by omega, if_false] at hrun hn hl hsz
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals simp only [show ¬ td ≤ st'.unwind by omega, if_false] at hrun hn hl hsz ht
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.quitOut (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .quit st') (hle : td ≤ st'.unwind) :
     st'' = { st' with unwind := st'.unwind - td } ∧ r = .quit ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals simp only [hle, if_true, Option.some.injEq, Prod.mk.injEq] at hrun hn hl hsz
+  all_goals simp only [hle, if_true, Option.some.injEq, Prod.mk.injEq] at hrun hn hl hsz ht
   all_goals exact ⟨hrun.1.symm, hrun.2.symm, hsz.1, by omega⟩
 
 theorem EvFuel.int (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
@@ -87,32 +88,32 @@ theorem EvFuel.int (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r
     EvFuel lm n d (k - leakOne c) (st.push (.num (readNum st.ibase (c :: rest)).1))
       ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.str (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .str) :
     EvFuel lm n d (k - leakOne c) (st.push (.str (scanStr 1 rest).1)) ⟨(scanStr 1 rest).2, td, false⟩
       st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.comment (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .comment) :
     EvFuel lm n d (k - leakOne c) st ⟨skipEol rest, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.system (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .system) :
     EvFuel lm n d (k - leakOne c) st ⟨skipSys rest, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.negcmp (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .negcmp) :
     EvFuel lm n d (k - leakOne c) st ⟨rest, td, true⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.eofError (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .eofError) :
@@ -131,8 +132,8 @@ theorem EvFuel.sqrt (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' 
     cases hy : Num.sqrtLoopFuel x (max st'.scale x.scale) n (Num.sqrtInit x).1 (Num.sqrtInit x).2 with
     | none => simp only [hy] at hrun; cases hrun
     | some y =>
-      simp only [hy] at hrun hn hl hsz
-      exact ⟨y, rfl, ⟨hrun, hn, by omega, hsz.2⟩, hsz.1, by omega⟩
+      simp only [hy] at hrun hn hl hsz ht
+      exact ⟨y, rfl, ⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.nil (h : EvFuel lm n d k st ⟨[], td, neg⟩ st'' r) : st'' = st ∧ r = .ok := by
   have hrun := h.run
@@ -158,27 +159,28 @@ theorem TosFuel.pos {rest : List Nat} (h : TosFuel lm n d k st rest td st'' r) :
 set_option hygiene false in
 /-- Unfold one step of the `tos` functions. -/
 macro "tos_step" : tactic => `(tactic| (
-    have hrun := h.run; have hn := h.nest; have hl := h.leak; have hsz := h.size
+    have hrun := h.run; have hn := h.nest; have hl := h.leak; have hsz := h.size; have ht := h.tail
     unfold Dc.tos at hrun; unfold tosDepth at hn; unfold tosLeak at hl; unfold TosCalls at hsz
-    simp only [hs] at hrun hn hl hsz))
+    unfold tosTail at ht; replace ht := Nat.lt_of_le_of_lt (Nat.le_max_right _ _) ht
+    simp only [hs] at hrun hn hl hsz ht))
 
 theorem TosFuel.empty (h : TosFuel lm (n + 1) d k st rest td st'' r) (hs : st.stack = []) :
     EvFuel lm n d k st ⟨skipWs rest, td, false⟩ st'' r := by
   tos_step
-  exact ⟨hrun, hn, hl, hsz⟩
+  exact ⟨hrun, hn, hl, hsz, ht⟩
 
 theorem TosFuel.num (h : TosFuel lm (n + 1) d k st rest td st'' r) {x : Num} {more : List Val}
     (hs : st.stack = .num x :: more) :
     EvFuel lm n d k st ⟨skipWs rest, td, false⟩ st'' r := by
   tos_step
-  exact ⟨hrun, hn, hl, hsz⟩
+  exact ⟨hrun, hn, hl, hsz, ht⟩
 
-theorem TosFuel.tail (h : TosFuel lm (n + 1) d k st rest td st'' r) {x : List Nat} {more : List Val}
+theorem TosFuel.tailCall (h : TosFuel lm (n + 1) d k st rest td st'' r) {x : List Nat} {more : List Val}
     (hs : st.stack = .str x :: more) (he : skipWs rest = []) :
     EvFuel lm n d k { st with stack := more } ⟨x, td + 1, false⟩ st'' r := by
   tos_step
-  simp only [he, if_true] at hrun hn hl hsz
-  exact ⟨hrun, hn, hl, hsz⟩
+  simp only [he, if_true] at hrun hn hl hsz ht
+  exact ⟨hrun, hn, hl, hsz, ht⟩
 
 /-- A string not in tail position: the nested evaluation completes at fuel
 `n` within one level less of nesting, and the continuation (on `.ok`) or
@@ -190,24 +192,25 @@ theorem TosFuel.call (h : TosFuel lm (n + 1) (d + 1) k st rest td st'' r) {x : L
        (r' = .quit ∧ 0 < st'.unwind ∧ st'' = { st' with unwind := st'.unwind - 1 } ∧ r = .quit) ∨
        (r' = .quit ∧ st'.unwind = 0 ∧ st'' = st' ∧ r = .ok)) := by
   tos_step
-  simp only [he, if_false] at hrun hn hl hsz
+  simp only [he, if_false] at hrun hn hl hsz ht
   cases hrr : Dc.run lm n { st with stack := more } ⟨x, 1, false⟩ with
   | none => simp only [hrr] at hrun; cases hrun
   | some p =>
     obtain ⟨st', r'⟩ := p
     cases r' with
     | ok =>
-      simp only [hrr] at hrun hn hl hsz
-      exact ⟨st', .ok, _, ⟨hrr, by omega, Nat.le_refl _, hsz.1⟩, by omega,
-        .inl ⟨rfl, hrun, by omega, by omega, hsz.2⟩⟩
+      simp only [hrr] at hrun hn hl hsz ht
+      exact ⟨st', .ok, _, ⟨hrr, by omega, Nat.le_refl _, hsz.1,
+        Nat.lt_of_le_of_lt (Nat.le_max_left _ _) ht⟩, by omega,
+        .inl ⟨rfl, hrun, by omega, by omega, hsz.2, Nat.lt_of_le_of_lt (Nat.le_max_right _ _) ht⟩⟩
     | quit =>
-      simp only [hrr] at hrun hn hl hsz
+      simp only [hrr] at hrun hn hl hsz ht
       by_cases hu : 0 < st'.unwind
       · simp only [hu, if_true, Option.some.injEq, Prod.mk.injEq] at hrun
-        exact ⟨st', .quit, _, ⟨hrr, by omega, Nat.le_refl _, hsz.1⟩, by omega,
+        exact ⟨st', .quit, _, ⟨hrr, by omega, Nat.le_refl _, hsz.1, ht⟩, by omega,
           .inr (.inl ⟨rfl, hu, hrun.1.symm, hrun.2.symm⟩)⟩
       · simp only [hu, if_false, Option.some.injEq, Prod.mk.injEq] at hrun
-        exact ⟨st', .quit, _, ⟨hrr, by omega, Nat.le_refl _, hsz.1⟩, by omega,
+        exact ⟨st', .quit, _, ⟨hrr, by omega, Nat.le_refl _, hsz.1, ht⟩, by omega,
           .inr (.inr ⟨rfl, by omega, hrun.1.symm, hrun.2.symm⟩)⟩
 
 end

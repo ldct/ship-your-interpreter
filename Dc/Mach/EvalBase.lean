@@ -100,11 +100,12 @@ def CallP (st : St) : Prop := FnSize st
 
 /-- **The model-side budgets of an evaluation** from `st` and frame `f`:
 nesting at most `d`, at most `k` leaking commands, every `dc_func` call
-meeting `CallP` (SizeBound). -/
+meeting `CallP` (SizeBound), tail depths below `2 ^ 31` (`TailBound`). -/
 structure EvBudget (lm d k : Nat) (st : St) (f : Frame) : Prop where
   nest : ∀ n, nestDepth lm n st f ≤ d
   leak : ∀ n, leakCount lm n st f ≤ k
   size : ∀ n, AllCalls lm (fun st _ _ => CallP st) n st f
+  tail : ∀ n, tailMax lm n st f < 2 ^ 31
   frameLen : f.s.length < 2 ^ 24
 
 /-- `EvBudget` for the `DC_EVALTOS` code. -/
@@ -112,6 +113,7 @@ structure TosBudget (lm d k : Nat) (st : St) (rest : List Nat) (td : Nat) : Prop
   nest : ∀ n, tosDepth lm n st rest td ≤ d
   leak : ∀ n, tosLeak lm n st rest td ≤ k
   size : ∀ n, TosCalls lm (fun st _ _ => CallP st) n st rest td
+  tail : ∀ n, tosTail lm n st rest td < 2 ^ 31
   restLen : rest.length < 2 ^ 24
 
 /-- **The budgets at a fuel `n`** where the evaluation completes
@@ -123,6 +125,7 @@ structure EvFuel (lm n d k : Nat) (st : St) (f : Frame) (st' : St) (r : Status) 
   nest : nestDepth lm n st f ≤ d
   leak : leakCount lm n st f ≤ k
   size : AllCalls lm (fun st _ _ => CallP st) n st f
+  tail : tailMax lm n st f < 2 ^ 31
 
 /-- `EvFuel` for the `DC_EVALTOS` code. -/
 structure TosFuel (lm n d k : Nat) (st : St) (rest : List Nat) (td : Nat) (st' : St) (r : Status) :
@@ -131,12 +134,13 @@ structure TosFuel (lm n d k : Nat) (st : St) (rest : List Nat) (td : Nat) (st' :
   nest : tosDepth lm n st rest td ≤ d
   leak : tosLeak lm n st rest td ≤ k
   size : TosCalls lm (fun st _ _ => CallP st) n st rest td
+  tail : tosTail lm n st rest td < 2 ^ 31
 
 /-- A derivation with its budgets completes at some fuel. -/
 theorem EvBudget.fuel {lm d k : Nat} {st st' : St} {f : Frame} {r : Status}
     (hl : Loop lm st f st' r) (hb : EvBudget lm d k st f) : ∃ n, EvFuel lm n d k st f st' r := by
   obtain ⟨n, hn⟩ := hl.complete
-  exact ⟨n, hn, hb.nest n, hb.leak n, hb.size n⟩
+  exact ⟨n, hn, hb.nest n, hb.leak n, hb.size n, hb.tail n⟩
 
 /-! ## The machine side -/
 
@@ -157,12 +161,14 @@ structure EvConsts (R : Nat → BitVec 64) : Prop where
   s5 : R 21 = 0xFFFFFFFFFFFFFFFF#64
 
 /-- `interrupt_seen` (`0x8001cd84`, outside `DcGlob`): owned and `0`;
-`stdin_lookahead` (`0x8001cd30`): owned and `EOF`. -/
+`stdin_lookahead` (`0x8001cd30`): owned and `EOF`; `input_str_string`
+(`InP`, which `DC_INT` writes): owned. -/
 structure EvGlobs (S : Nat → Prop) (M : Mem) : Prop where
   intrOwn : ∀ a, 0x8001cd84 ≤ a → a < 0x8001cd88 → S a
   intr : ldv .lw M 0x8001cd84 = 0#64
   laOwn : ∀ a, 0x8001cd30 ≤ a → a < 0x8001cd34 → S a
   la : ldv .lw M 0x8001cd30 = 0xFFFFFFFFFFFFFFFF#64
+  inOwn : ∀ a, InP a → S a
 
 /-- **An `evalstr` activation at its loop head** (`0x800014f8`): its frame
 `W` bytes below `sp` (entry registers `R0`, memory `M0`), the string datum
@@ -199,7 +205,7 @@ structure EvAt (S : Nat → Prop) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → Bi
   err : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a
   globs : EvGlobs S M
   out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn (sp - 176) (W - 176) a →
-    ¬ (sp - 176 ≤ a ∧ a < sp) → ¬ (q ≤ a ∧ a < q + 16) → imgM M a = imgM M0 a
+    ¬ (sp - 176 ≤ a ∧ a < sp) → ¬ (q ≤ a ∧ a < q + 16) → ¬ InP a → imgM M a = imgM M0 a
 
 /-- `evalstr`'s status word. -/
 def statusWord : Status → BitVec 64
@@ -210,7 +216,7 @@ def statusWord : Status → BitVec 64
 the lost strings `xs'` and the caller's handles with the string `*string`
 now `p'`; at most four more lost references or strings per leaking command
 of the budget `k`; the caller's other strings pinned; the bytes outside the
-heap, the globals, `out_char`'s words, the activation's stack and `*string`
+heap, the globals, `out_char`'s words, `input_str_string`, the activation's stack and `*string`
 as at the activation's entry; the globals `EvGlobs` and `MulBase` kept. -/
 structure EvPost (S : Nat → Prop) (sp W k q : Nat) (M0 : Mem) (G : DcG) (hs xs : List GV)
     (M' : Mem) (H' : Heap) (F' : List Blk) (L' : List NumObj) (C' : BcConsts) (G' : DcG)
@@ -223,7 +229,7 @@ structure EvPost (S : Nat → Prop) (sp W k q : Nat) (M0 : Mem) (G : DcG) (hs xs
   mb : MulBase S M'
   globs : EvGlobs S M'
   out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp W a → ¬ (q ≤ a ∧ a < q + 16) →
-    imgM M' a = imgM M0 a
+    ¬ InP a → imgM M' a = imgM M0 a
 
 /-- **The caller's continuation** after an activation returning `r` in
 state `st'`. -/
@@ -239,7 +245,7 @@ memory `M0`): `dc_memfail` from any `sp'` in the frame, the bytes off the
 heap, the globals, the frame, `out_char`'s words and `*string` as at entry. -/
 def EvOom (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (sp W q : Nat) (M0 : Mem) : Prop :=
-  ∀ t' R' M' sp', OomAt S sp W M0 (fun a => ocG a ∨ (q ≤ a ∧ a < q + 16)) sp' R' M' →
+  ∀ t' R' M' sp', OomAt S sp W M0 (fun a => ocG a ∨ (q ≤ a ∧ a < q + 16) ∨ InP a) sp' R' M' →
     DWO live S Q t' 0x80001e74#64 R' M'
 
 /-- **`dc_func`'s contract** as a hypothesis (`dc_func_spec`, once every arm
@@ -299,7 +305,9 @@ def EvalstrSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → 
   ∀ (t0 : String) (sp W d k q : Nat) (M : Mem) (R : Nat → BitVec 64) (H : Heap)
     (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st st' : St)
     (o : StrObj) (r : Status),
-    Loop 70 st ⟨o.s, 1, false⟩ st' r → EvBudget 70 d k st ⟨o.s, 1, false⟩ →
+    Loop 70 st ⟨o.s, 1, false⟩ st' r →
+    EvBudget 70 d k st ⟨o.s, 1, false⟩ →
+    StrBound (2 ^ 24) st → ArrSorted st →
     DcAt S M H F L C G (xs ++ hs) st → o ∈ G.strs → hs.head? = some (.str o.hb.pay) →
     DatAt M q (.str o.hb.pay) → DatSlot S sp q →
     R 2 = BitVec.ofNat 64 sp → R 10 = BitVec.ofNat 64 q → (R 1).toNat % 4 = 0 →

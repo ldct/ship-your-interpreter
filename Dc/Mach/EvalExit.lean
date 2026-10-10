@@ -85,8 +85,8 @@ theorem ev_exit {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
         pin := htl ▸ hpin
         mb := ev.mb
         globs := ev.globs
-        out := fun a e1 e2 e3 e4 e5 => ev.out a e1 e2 e3
+        out := fun a e1 e2 e3 e4 e5 e6 => ev.out a e1 e2 e3
           (fun hf => e4 (by simp only [frameIn] at hf ⊢; omega))
-          (fun hf => e4 (by simp only [frameIn]; omega)) e5 }
+          (fun hf => e4 (by simp only [frameIn]; omega)) e5 e6 }
 
 end Dc.Mach

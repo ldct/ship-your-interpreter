@@ -123,6 +123,28 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {C' : BcConsts} {G' : DcG} {st' st'' : St} {ex : List GV} {r : Status} {n : Nat}
   {Ge : DcG} {hse xse : List GV} {ke : Nat}
 
+/-- **Status `0` after a character with a lookahead** (`DC_OKAY`, or the
+square root pushed after `dc_func`): on to `rest` from the state `st'`. -/
+theorem evs_zero_mid (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
+    (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
+      G' st' ex)
+    (h10 : R' 10 = BitVec.ofNat 64 0)
+    (hfu' : EvFuel 70 n d (k - leakOne c) st' ⟨rest, td, false⟩ st'' r) (hlc : leakOne c ≤ k)
+    (hsb : StrBound (2 ^ 24) st') (hsrt : ArrSorted st') (hoom : EvOom live S Q sp W q M0)
+    (htl : hs.tail = hse.tail)
+    (hgrow : G.lk.length + xs.length + 4 * k ≤ Ge.lk.length + xse.length + 4 * ke)
+    (hpin : StrPin Ge.strs G.strs hs.tail) (hk : EvK live S Q t0 sp W ke q M0 R0 Ge hse xse st'' r) :
+    DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80001528#64 R' M' := by
+  refine rt_ok_mid hlive h10 e.cs fun R2 k2 h8 h12 => ?_
+  obtain ⟨o', -, -, -, ev'⟩ := ev_adv e.ev e.kc e.c23 e.mem e.k1 e.e2 e.post (e.hal hlc) hsb hsrt
+    (m := 0) (td' := td) (neg' := false) (by omega) e.ev.tdLt (R2 := R2)
+    (k2.mono (by decide)) (by rw [h8]; simp)
+    (by rw [k2.get 24 (by decide), e.k1.get 24 (by decide), e.kc.get 24 (by decide)]; exact e.ev.s8)
+  simp only [List.drop_zero] at ev'
+  exact ev_cont hlive (bltu_800017d0 hlive) ev' hfu' htl (e.grow hlc hgrow) (e.pin hpin) hk
+    fun hne => IH t0 sp W d _ q M0 R0 R2 M' H' F' L' C' G' hs _ st' st'' _ o' r Ge hse xse ke
+      hfu' hne ev' h12 hoom htl (e.grow hlc hgrow) (e.pin hpin) hk
+
 /-- **`DC_OKAY` after a character with a lookahead**: on to `rest`. -/
 theorem evs_ok_mid (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
     (e : EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C'
@@ -135,15 +157,7 @@ theorem evs_ok_mid (hlive : ∀ p ∈ dcText, live p.1) (IH : LoopIH live S Q n)
     DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80001528#64 R' M' := by
   obtain ⟨hfu', -, hlc⟩ := hfu.ok hres
   obtain ⟨hsb, hsrt⟩ := res_ok_facts e.ev.sb e.ev.srt hres
-  refine rt_ok_mid hlive h10 e.cs fun R2 k2 h8 h12 => ?_
-  obtain ⟨o', -, -, -, ev'⟩ := ev_adv e.ev e.kc e.c23 e.mem e.k1 e.e2 e.post (e.hal hlc) hsb hsrt
-    (m := 0) (td' := td) (neg' := false) (by omega) e.ev.tdLt (R2 := R2)
-    (k2.mono (by decide)) (by rw [h8]; simp)
-    (by rw [k2.get 24 (by decide), e.k1.get 24 (by decide), e.kc.get 24 (by decide)]; exact e.ev.s8)
-  simp only [List.drop_zero] at ev'
-  exact ev_cont hlive (bltu_800017d0 hlive) ev' hfu' htl (e.grow hlc hgrow) (e.pin hpin) hk
-    fun hne => IH t0 sp W d _ q M0 R0 R2 M' H' F' L' C' G' hs _ st' st'' _ o' r Ge hse xse ke
-      hfu' hne ev' h12 hoom htl (e.grow hlc hgrow) (e.pin hpin) hk
+  exact evs_zero_mid hlive IH e h10 hfu' hlc hsb hsrt hoom htl hgrow hpin hk
 
 end
 

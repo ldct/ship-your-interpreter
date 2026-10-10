@@ -88,9 +88,9 @@ theorem ev_ret {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
         pin := htl ▸ hpin
         mb := ev.mb
         globs := ev.globs
-        out := fun a e1 e2 e3 e4 e5 => ev.out a e1 e2 e3
+        out := fun a e1 e2 e3 e4 e5 e6 => ev.out a e1 e2 e3
           (fun hf => e4 (by simp only [frameIn] at hf ⊢; omega))
-          (fun hf => e4 (by simp only [frameIn]; omega)) e5 }
+          (fun hf => e4 (by simp only [frameIn]; omega)) e5 e6 }
 
 /-- The invariant after a store to `unwind_depth` alone. -/
 theorem EvAt.setUnwind {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : Nat → BitVec 64}
@@ -119,8 +119,9 @@ theorem EvAt.setUnwind {S : Nat → Prop} {sp W d k q : Nat} {M0 : Mem} {R0 R : 
       globs := by
         have g := ev.globs
         exact ⟨g.intrOwn, by rw [ldv_congr .lw fun j hj => hm1 _ (by simp only [unwindAddr, widthOfM] at hj ⊢; omega)]; exact g.intr,
-          g.laOwn, by rw [ldv_congr .lw fun j hj => hm1 _ (by simp only [unwindAddr, widthOfM] at hj ⊢; omega)]; exact g.la⟩
-      out := fun a e1 e2 e3 e4 e5 e6 => (hglob a e2).trans (ev.out a e1 e2 e3 e4 e5 e6) }
+          g.laOwn, by rw [ldv_congr .lw fun j hj => hm1 _ (by simp only [unwindAddr, widthOfM] at hj ⊢; omega)]; exact g.la,
+          g.inOwn⟩
+      out := fun a e1 e2 e3 e4 e5 e6 e7 => (hglob a e2).trans (ev.out a e1 e2 e3 e4 e5 e6 e7) }
 
 /-- **`DC_QUIT` leaving the activation** (`0x800016b8`, `unwind_depth ≥
 tail_depth`): `unwind_depth -= tail_depth`, `DC_QUIT` returned. -/

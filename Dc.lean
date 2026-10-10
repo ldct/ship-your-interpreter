@@ -174,3 +174,5 @@ import Dc.Mach.StackBound
 import Dc.Mach.MainTail
 import Dc.Mach.BootEvalCall
 import Dc.EndToEnd
+import Dc.Mach.EvalDivModel
+import Dc.Mach.EvalDivLob

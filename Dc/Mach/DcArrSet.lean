@@ -1613,4 +1613,50 @@ theorem as_ins_mid {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat →
   simp only [nodeW]
   repeat rw [imgM_store_miss _ _ (by omega)]
 
+/-- `dc_array_set`'s insert path after `dc_malloc` (`0x80003cdc`, `a0` the
+fresh node `c`, `s0` naming the first node of `post`, the frame word at
+`8` naming the last node of `pre`). -/
+theorem as_ins_post {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {en : Entry} {es : List Entry} {pre post : List (Blk × ANode)}
+    {c : Blk} {i sp : Nat} {m1 m2 : List (Nat × Val)} {v : Val}
+    {w0 w1 ra s0 s1 s2 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hst : st.regs r = en :: es) (harr : e.arr = pre ++ post)
+    (hm1 : List.Forall₂ (ARel ⟨L, G.strs⟩) pre m1)
+    (hm2 : List.Forall₂ (ARel ⟨L, G.strs⟩) post m2)
+    (hf : DcFresh H F L G c) (hcsz : 32 ≤ c.sz) (hi : i < 2 ^ 31) (hd : DatRegs w0 w1 g)
+    (hv : g.Den ⟨L, G.strs⟩ v) (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h8 : R 8 = headPtr post)
+    (h9 : R 9 = BitVec.ofNat 64 i) (h10 : R 10 = BitVec.ofNat 64 c.pay)
+    (h18 : R 18 = BitVec.ofNat 64 r)
+    (l8 : ldv .ld M (sp - 64 + 8) = lastPtr pre)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps arrClob R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
+      DcAt S M' H F L C (G.setReg r ((b, { e with arr := pre ++ (c, ⟨i, g⟩) :: post }) :: l))
+        hs (st.setReg r ({ en with arr := m1 ++ (i, v) :: m2 } :: es)) →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
+      DW live S Q ra R' M') :
+    DW live S Q 0x80003cdc#64 R M := by
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  obtain ⟨hc1, hc2, hc3⟩ := blk_bounds h.heap.heap hf.live
+  refine as_nstore hlive hS hsf hab ⟨by omega, by omega, by omega⟩ R h2 h10 h9 h8 l16 l24 l8
+    fun R1 hk1 e14 => ?_
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk1.get 2]; exact h2
+  have q10 : R1 10 = BitVec.ofNat 64 c.pay := by rw [hk1.get 10]; exact h10
+  have q18 : R1 18 = BitVec.ofNat 64 r := by rw [hk1.get 18]; exact h18
+  rcases List.eq_nil_or_concat pre with rfl | ⟨pre', bx, rfl⟩
+  · cases hm1
+    exact as_ins_head hlive h hr hl hst harr hm2 hf hcsz hi hd hv hsf hab R1 q2 (by rw [e14]; rfl)
+      q18 q10 l56 l48 l40 l32 hal fun R' M' hk2 => hk R' M' (hk2.trans (hk1.mono (by decide)))
+  · simp only [List.concat_eq_append] at harr hm1 hk l8 e14
+    exact as_ins_mid hlive h hr hl hst harr hm1 hm2 hf hcsz hi hd hv hsf hab R1 q2
+      (by rw [e14, lastPtr_concat]) q10 l56 l48 l40 l32 hal
+      fun R' M' hk2 => hk R' M' (hk2.trans (hk1.mono (by decide)))
+
 end Dc.Mach

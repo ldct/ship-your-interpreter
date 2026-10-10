@@ -364,7 +364,7 @@ theorem dcf_37 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_37 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_rem hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.rem (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
+    fun R' hc h e11 e12 e13 => fa_rem hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (hp.size.rem (.inl rfl)) (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
 
 theorem dcf_38 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -484,6 +484,6 @@ theorem dcf_47 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_47 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_div hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.div (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
+    fun R' hc h e11 e12 e13 => fa_div hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (hp.size.div rfl) (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
 
 end Dc.Mach

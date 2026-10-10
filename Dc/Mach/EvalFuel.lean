@@ -15,7 +15,7 @@ namespace Dc.Mach
 open Dc
 
 /-- The per-call premises of `dc_func` (`CallP`). -/
-abbrev CallOK (st : St) : Prop := CallP st
+abbrev CallOK (st : St) (c : Nat) : Prop := CallP st c
 
 /-- One leaking command. -/
 abbrev leakOne (c : Nat) : Nat := if leakCmd c then 1 else 0
@@ -37,19 +37,19 @@ macro "fuel_step" : tactic => `(tactic| (
 
 theorem EvFuel.ok (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .ok st') :
-    EvFuel lm n d (k - leakOne c) st' ⟨rest, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    EvFuel lm n d (k - leakOne c) st' ⟨rest, td, false⟩ st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.eatOne (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .eatOne st') :
-    EvFuel lm n d (k - leakOne c) st' ⟨rest.tail, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    EvFuel lm n d (k - leakOne c) st' ⟨rest.tail, td, false⟩ st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.evalRegNone (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     {reg : Nat} (hr : dcFunc lm st c rest.head? neg = .evalReg st' reg) (hg : regGet st' reg = none) :
-    EvFuel lm n d (k - leakOne c) st' ⟨rest.tail, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    EvFuel lm n d (k - leakOne c) st' ⟨rest.tail, td, false⟩ st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals simp only [hg] at hrun hn hl hsz ht
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
@@ -57,20 +57,20 @@ theorem EvFuel.evalRegNone (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg�
 theorem EvFuel.evalReg (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     {reg : Nat} {v : Val} (hr : dcFunc lm st c rest.head? neg = .evalReg st' reg)
     (hg : regGet st' reg = some v) :
-    TosFuel lm n d (k - leakOne c) (st'.push v) rest.tail td st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    TosFuel lm n d (k - leakOne c) (st'.push v) rest.tail td st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals simp only [hg] at hrun hn hl hsz ht
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.evalTos (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .evalTos st') :
-    TosFuel lm n d (k - leakOne c) st' rest td st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    TosFuel lm n d (k - leakOne c) st' rest td st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.quitStay (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .quit st') (hlt : st'.unwind < td) :
-    EvFuel lm n d (k - leakOne c) st' ⟨rest, td - st'.unwind, false⟩ st'' r ∧ CallOK st ∧
+    EvFuel lm n d (k - leakOne c) st' ⟨rest, td - st'.unwind, false⟩ st'' r ∧ CallOK st c ∧
       leakOne c ≤ k := by
   fuel_step
   all_goals simp only [show ¬ td ≤ st'.unwind by omega, if_false] at hrun hn hl hsz ht
@@ -78,7 +78,7 @@ theorem EvFuel.quitStay (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ s
 
 theorem EvFuel.quitOut (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St}
     (hr : dcFunc lm st c rest.head? neg = .quit st') (hle : td ≤ st'.unwind) :
-    st'' = { st' with unwind := st'.unwind - td } ∧ r = .quit ∧ CallOK st ∧ leakOne c ≤ k := by
+    st'' = { st' with unwind := st'.unwind - td } ∧ r = .quit ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals simp only [hle, if_true, Option.some.injEq, Prod.mk.injEq] at hrun hn hl hsz ht
   all_goals exact ⟨hrun.1.symm, hrun.2.symm, hsz.1, by omega⟩
@@ -86,7 +86,7 @@ theorem EvFuel.quitOut (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st
 theorem EvFuel.int (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .int) :
     EvFuel lm n d (k - leakOne c - numLeak (c :: rest)) (st.push (.num (readNum st.ibase (c :: rest)).1))
-      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ st'' r ∧ CallOK st ∧
+      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ st'' r ∧ CallOK st c ∧
       leakOne c + numLeak (c :: rest) ≤ k := by
   fuel_step
   all_goals refine ⟨⟨hrun, hn, ?_, hsz.2, ht⟩, hsz.1, ?_⟩
@@ -102,31 +102,31 @@ theorem EvFuel.int (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r
 theorem EvFuel.str (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .str) :
     EvFuel lm n d (k - leakOne c) (st.push (.str (scanStr 1 rest).1)) ⟨(scanStr 1 rest).2, td, false⟩
-      st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+      st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.comment (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .comment) :
-    EvFuel lm n d (k - leakOne c) st ⟨skipEol rest, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    EvFuel lm n d (k - leakOne c) st ⟨skipEol rest, td, false⟩ st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.system (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .system) :
-    EvFuel lm n d (k - leakOne c) st ⟨skipSys rest, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    EvFuel lm n d (k - leakOne c) st ⟨skipSys rest, td, false⟩ st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.negcmp (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .negcmp) :
-    EvFuel lm n d (k - leakOne c) st ⟨rest, td, true⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    EvFuel lm n d (k - leakOne c) st ⟨rest, td, true⟩ st'' r ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
 
 theorem EvFuel.eofError (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .eofError) :
-    st'' = st ∧ r = .ok ∧ CallOK st ∧ leakOne c ≤ k := by
+    st'' = st ∧ r = .ok ∧ CallOK st c ∧ leakOne c ≤ k := by
   fuel_step
   all_goals simp only [Option.some.injEq, Prod.mk.injEq] at hrun
   all_goals exact ⟨hrun.1.symm, hrun.2.symm, hsz.1, by omega⟩
@@ -134,7 +134,7 @@ theorem EvFuel.eofError (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ s
 theorem EvFuel.sqrt (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) {st' : St} {x : Num}
     (hr : dcFunc lm st c rest.head? neg = .sqrt st' x) :
     ∃ y, Num.sqrtLoopFuel x (max st'.scale x.scale) n (Num.sqrtInit x).1 (Num.sqrtInit x).2 = some y ∧
-      EvFuel lm n d (k - leakOne c) (st'.push (.num y)) ⟨rest, td, false⟩ st'' r ∧ CallOK st ∧
+      EvFuel lm n d (k - leakOne c) (st'.push (.num y)) ⟨rest, td, false⟩ st'' r ∧ CallOK st c ∧
       leakOne c ≤ k := by
   fuel_step
   all_goals

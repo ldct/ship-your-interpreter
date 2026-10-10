@@ -219,7 +219,7 @@ specifications (`evalstr_spec`, `evalstrDiv_of_term`). Those rest on
 | `len`, `nz`, `byte` | the program fits the 8 KiB buffer with its `NUL` and holds no `NUL` |
 | `nest : NestBound 70 prog dcD` | macro nesting at most `dcD` = 47,589 at every fuel (the 8 MiB stack) |
 | `leak : LeakBound 70 prog dcK` | at most `dcK` = 250,000 runs, at every fuel, of the commands that may lose a bc reference (`leakAllow`/`numLeak`, `Dc/Mach/EvalLeak.lean`) |
-| `size` | every `dc_func` call meets `FnSize` (operand widths of the bc callees) |
+| `size` | every `dc_func` call meets `FnSize st c`: the operand-size bound of the bc callee of that command (`/ % ~ ^ | v` and the printing commands) |
 | `tail : TailBound 70 prog` | `evalstr`'s 32-bit tail depth stays below `2^31` |
 
 The bounds are quantified over every fuel, so they also bound
@@ -238,7 +238,7 @@ includes any non-terminating loop that divides.
 | `Dc/Semantics.lean` | **the big-step semantics** `Loop`/`Tos` of `evalstr` (macros, tail calls, `q`/`Q` unwinding, `bc_sqrt`'s Newton iteration) and `Runs lm prog out` for `dc -e prog` with standard output `out` at line length `lm`, in the bare-metal environment: `!` finds no command processor and `?` reads an empty standard input |
 | `Dc/Refinement.lean` | the target statement: `refinement` derives the correspondence between `Runs 70` and the machine's `Halts`/`Diverges` from the obligations `DcSim` |
 | `Dc/Interp.lean`, `Dc/Adequacy.lean` | a fuel-bounded interpreter with `run_iff` (it computes exactly the derivable evaluations) and `Runs.det` (a program has at most one output) |
-| `Dc/Capstones.lean` | `Dc.endToEnd` at 21 of the validation programs of `scripts/dc/gen_validation.py`: the binary halts with the semantics' output (or exhausts the heap), and every clean halt prints exactly that output; `DcAdmissible` and the output by kernel `decide` (`admCheck`, `DcAdmissible.of_check`) |
+| `Dc/Capstones.lean` | `Dc.endToEnd` at 24 of the 25 validation programs of `scripts/dc/gen_validation.py`: the binary halts with the semantics' output (or exhausts the heap), and every clean halt prints exactly that output; `DcAdmissible` and the output by kernel `decide` (`admCheck`, `DcAdmissible.of_check`) |
 | `Dc/Mach/` | the proof: machine layer, the C library, bc (`Bc/`), dc's state and helpers, `dc_func`, `evalstr`, boot and exit |
 | `Dc/EndToEnd.lean` | **`Dc.endToEnd`** |
 | `dc-port/` | the bare-metal HTIF port: `htif_main.c` runs `dc -e` on a program in an 8 KiB buffer; `libc/` is a minimal C library (standard output to the HTIF console, standard error discarded, empty standard input, a first-fit allocator); `dc-riscv-htif.elf` is built with the compiler of the WHILE binary |

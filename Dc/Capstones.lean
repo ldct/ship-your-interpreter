@@ -59,13 +59,10 @@ end Dc
 
 The programs of `scripts/dc/gen_validation.py`, each with the output the
 semantics gives it (`runOut`, checked by the kernel), which is the output
-the RISC-V binary printed in the ELF difftest. Three of the 25 are not
-admissible and have no capstone. `params` uses scales near `2^32`. In
-`factorial` and `gcd`, a call has two large numbers on top of the stack,
-and `FnSize.exp` asks every call, whatever its command, for `bc_raise`'s
-size bound on them. `tail` (`[1+ d 1000>a]sa 0 lax p`, a thousand tail
-calls) is admissible, but its evaluation nests too deeply for the kernel's
-`decide` without a raised recursion limit.
+the RISC-V binary printed in the ELF difftest. All 25 are admissible
+(`admCheck`). `tail` (`[1+ d 1000>a]sa 0 lax p`, a thousand tail calls) has
+no capstone: its evaluation nests too deeply for the kernel's `decide`
+without a raised recursion limit.
 -/
 
 namespace Dc.Capstones
@@ -270,6 +267,24 @@ theorem ibase_halts :
       ∀ s, Halts (dcBoot prog) s 0 → s = outStr out :=
   capstone (N := 1000000) (by decide +kernel) (by decide +kernel)
 
+/-- `2k Kp 0k Kp Ip Op 1o Op 4294967297k Kp 2147483649k Kp` prints
+```
+2
+0
+10
+10
+10
+0
+0
+```
+-/
+theorem params_halts :
+    let prog : List Nat := [50, 107, 32, 75, 112, 32, 48, 107, 32, 75, 112, 32, 73, 112, 32, 79, 112, 32, 49, 111, 32, 79, 112, 32, 52, 50, 57, 52, 57, 54, 55, 50, 57, 55, 107, 32, 75, 112, 32, 50, 49, 52, 55, 52, 56, 51, 54, 52, 57, 107, 32, 75, 112]
+    let out : List Nat := [50, 10, 48, 10, 49, 48, 10, 49, 48, 10, 49, 48, 10, 48, 10, 48, 10]
+    (Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
+      ∀ s, Halts (dcBoot prog) s 0 → s = outStr out :=
+  capstone (N := 1000000) (by decide +kernel) (by decide +kernel)
+
 /-- `[2p]sa 1 2<a 2 1<a 1 2>a 2 1>a 1 1!=a 1 2!=a 1 2!<a 2 1!<a` prints
 ```
 2
@@ -363,6 +378,19 @@ theorem loop_halts :
       ∀ s, Halts (dcBoot prog) s 0 → s = outStr out :=
   capstone (N := 1000000) (by decide +kernel) (by decide +kernel)
 
+/-- `[d 1- d 1<f *]sf 10 lfx p 30 lfx p` prints
+```
+3628800
+265252859812191058636308480000000
+```
+-/
+theorem factorial_halts :
+    let prog : List Nat := [91, 100, 32, 49, 45, 32, 100, 32, 49, 60, 102, 32, 42, 93, 115, 102, 32, 49, 48, 32, 108, 102, 120, 32, 112, 32, 51, 48, 32, 108, 102, 120, 32, 112]
+    let out : List Nat := [51, 54, 50, 56, 56, 48, 48, 10, 50, 54, 53, 50, 53, 50, 56, 53, 57, 56, 49, 50, 49, 57, 49, 48, 53, 56, 54, 51, 54, 51, 48, 56, 52, 56, 48, 48, 48, 48, 48, 48, 48, 10]
+    (Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
+      ∀ s, Halts (dcBoot prog) s 0 → s = outStr out :=
+  capstone (N := 1000000) (by decide +kernel) (by decide +kernel)
+
 /-- `0sa 1sb [la lb d sa + d sb p lc 1+ d sc 15>f]sf 0sc lfx` prints
 ```
 1
@@ -385,6 +413,19 @@ theorem loop_halts :
 theorem fibonacci_halts :
     let prog : List Nat := [48, 115, 97, 32, 49, 115, 98, 32, 91, 108, 97, 32, 108, 98, 32, 100, 32, 115, 97, 32, 43, 32, 100, 32, 115, 98, 32, 112, 32, 108, 99, 32, 49, 43, 32, 100, 32, 115, 99, 32, 49, 53, 62, 102, 93, 115, 102, 32, 48, 115, 99, 32, 108, 102, 120]
     let out : List Nat := [49, 10, 50, 10, 51, 10, 53, 10, 56, 10, 49, 51, 10, 50, 49, 10, 51, 52, 10, 53, 53, 10, 56, 57, 10, 49, 52, 52, 10, 50, 51, 51, 10, 51, 55, 55, 10, 54, 49, 48, 10, 57, 56, 55, 10]
+    (Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
+      ∀ s, Halts (dcBoot prog) s 0 → s = outStr out :=
+  capstone (N := 1000000) (by decide +kernel) (by decide +kernel)
+
+/-- `[d Sa % La r d 0<g]sg 1071 462 lgx r p 12345678 87654321 lgx r p` prints
+```
+21
+9
+```
+-/
+theorem gcd_halts :
+    let prog : List Nat := [91, 100, 32, 83, 97, 32, 37, 32, 76, 97, 32, 114, 32, 100, 32, 48, 60, 103, 93, 115, 103, 32, 49, 48, 55, 49, 32, 52, 54, 50, 32, 108, 103, 120, 32, 114, 32, 112, 32, 49, 50, 51, 52, 53, 54, 55, 56, 32, 56, 55, 54, 53, 52, 51, 50, 49, 32, 108, 103, 120, 32, 114, 32, 112]
+    let out : List Nat := [50, 49, 10, 57, 10]
     (Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
       ∀ s, Halts (dcBoot prog) s 0 → s = outStr out :=
   capstone (N := 1000000) (by decide +kernel) (by decide +kernel)
@@ -426,5 +467,4 @@ theorem wrap_halts :
     (Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
       ∀ s, Halts (dcBoot prog) s 0 → s = outStr out :=
   capstone (N := 1000000) (by decide +kernel) (by decide +kernel)
-
 end Dc.Capstones

@@ -26,21 +26,21 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 set_option linter.unusedSimpArgs false
 
-/-- **SizeBound for one command**: the operand sizes the bc callees bound
-(the printing commands' widths, `/ % ~ ^ |`, `v`). The square root of the
-top number always exists (`sqOut_total`). -/
-structure FnSize (st : St) : Prop where
-  all : ∀ v ∈ st.stack, ∀ n, v = .num n → n.wid < 2 ^ 20
-  div : ∀ b a rest, st.stack = .num b :: .num a :: rest → a.wid + st.scale + b.wid < 2 ^ 27
-  rem : ∀ b a rest, st.stack = .num b :: .num a :: rest → a.wid + st.scale + b.wid < 2 ^ 24
-  exp : ∀ b a rest, st.stack = .num b :: .num a :: rest →
+/-- **SizeBound for one command `c`**: the operand sizes the bc callee of
+that command bounds (the printing commands' widths, `/ % ~ ^ |`, `v`), each
+asked only of its own command. The square root of the top number always
+exists (`sqOut_total`). -/
+structure FnSize (st : St) (c : Nat) : Prop where
+  all : c = 102 → ∀ v ∈ st.stack, ∀ n, v = .num n → n.wid < 2 ^ 20
+  top : c = 110 ∨ c = 112 ∨ c = 80 → ∀ n rest, st.stack = .num n :: rest → n.wid < 2 ^ 20
+  div : c = 47 → ∀ b a rest, st.stack = .num b :: .num a :: rest → a.wid + st.scale + b.wid < 2 ^ 27
+  rem : c = 37 ∨ c = 126 → ∀ b a rest, st.stack = .num b :: .num a :: rest →
+    a.wid + st.scale + b.wid < 2 ^ 24
+  exp : c = 94 → ∀ b a rest, st.stack = .num b :: .num a :: rest →
     (b.toLong.natAbs + 1) * (a.wid + 1) + st.scale < 2 ^ 24
-  modexp : ∀ c b a rest, st.stack = .num c :: .num b :: .num a :: rest →
+  modexp : c = 124 → ∀ c b a rest, st.stack = .num c :: .num b :: .num a :: rest →
     8 * (a.wid + c.wid + st.scale + 1) + b.wid < 2 ^ 24
-  sqrt : ∀ n rest, st.stack = .num n :: rest → n.wid + st.scale < 2 ^ 20
-
-theorem FnSize.top {st : St} (h : FnSize st) : ∀ n rest, st.stack = .num n :: rest → n.wid < 2 ^ 20 :=
-  fun n rest e => h.all (.num n) (by rw [e]; exact List.mem_cons_self) n rfl
+  sqrt : c = 118 → ∀ n rest, st.stack = .num n :: rest → n.wid + st.scale < 2 ^ 20
 
 /-- **`dc_func`'s premises** at its entry (memory `M`, frame `W` bytes below `sp`). -/
 structure FnPre (S : Nat → Prop) (sp W : Nat) (M : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
@@ -57,7 +57,7 @@ structure FnPre (S : Nat → Prop) (sp W : Nat) (M : Mem) (H : Heap) (F : List B
   err : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a
   laOwn : ∀ a, 0x8001cd30 ≤ a → a < 0x8001cd34 → S a
   la : ldv .lw M 0x8001cd30 = 0xFFFFFFFFFFFFFFFF#64
-  size : FnSize st
+  size : FnSize st c
   c256 : c < 256
   pk : ∀ r, peek = some r → r < 256
   /-- Every register's top array strictly sorted by index (open premise of

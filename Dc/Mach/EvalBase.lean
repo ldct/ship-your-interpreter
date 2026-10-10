@@ -96,7 +96,7 @@ end
 /-- **The per-call premise** of `dc_func` the evaluation budgets: SizeBound
 (`FnSize`). String sizes and sorted arrays are invariants of the state
 (`EvAt.sb`, `EvAt.srt`), kept by `dcFunc` (`Dc/Mach/EvalModel.lean`). -/
-def CallP (st : St) : Prop := FnSize st
+def CallP (st : St) (c : Nat) : Prop := FnSize st c
 
 /-- **The model-side budgets of an evaluation** from `st` and frame `f`:
 nesting at most `d`, at most `k` leaking commands, every `dc_func` call
@@ -104,7 +104,7 @@ meeting `CallP` (SizeBound), tail depths below `2 ^ 31` (`TailBound`). -/
 structure EvBudget (lm d k : Nat) (st : St) (f : Frame) : Prop where
   nest : ∀ n, nestDepth lm n st f ≤ d
   leak : ∀ n, leakCount lm n st f ≤ k
-  size : ∀ n, AllCalls lm (fun st _ _ => CallP st) n st f
+  size : ∀ n, AllCalls lm (fun st c' _ => CallP st c') n st f
   tail : ∀ n, tailMax lm n st f < 2 ^ 31
   frameLen : f.s.length < 2 ^ 24
 
@@ -112,7 +112,7 @@ structure EvBudget (lm d k : Nat) (st : St) (f : Frame) : Prop where
 structure TosBudget (lm d k : Nat) (st : St) (rest : List Nat) (td : Nat) : Prop where
   nest : ∀ n, tosDepth lm n st rest td ≤ d
   leak : ∀ n, tosLeak lm n st rest td ≤ k
-  size : ∀ n, TosCalls lm (fun st _ _ => CallP st) n st rest td
+  size : ∀ n, TosCalls lm (fun st c' _ => CallP st c') n st rest td
   tail : ∀ n, tosTail lm n st rest td < 2 ^ 31
   restLen : rest.length < 2 ^ 24
 
@@ -124,7 +124,7 @@ structure EvFuel (lm n d k : Nat) (st : St) (f : Frame) (st' : St) (r : Status) 
   run : run lm n st f = some (st', r)
   nest : nestDepth lm n st f ≤ d
   leak : leakCount lm n st f ≤ k
-  size : AllCalls lm (fun st _ _ => CallP st) n st f
+  size : AllCalls lm (fun st c' _ => CallP st c') n st f
   tail : tailMax lm n st f < 2 ^ 31
 
 /-- `EvFuel` for the `DC_EVALTOS` code. -/
@@ -133,7 +133,7 @@ structure TosFuel (lm n d k : Nat) (st : St) (rest : List Nat) (td : Nat) (st' :
   run : tos lm n st rest td = some (st', r)
   nest : tosDepth lm n st rest td ≤ d
   leak : tosLeak lm n st rest td ≤ k
-  size : TosCalls lm (fun st _ _ => CallP st) n st rest td
+  size : TosCalls lm (fun st c' _ => CallP st c') n st rest td
   tail : tosTail lm n st rest td < 2 ^ 31
 
 /-- A derivation with its budgets completes at some fuel. -/

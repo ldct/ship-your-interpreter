@@ -18,7 +18,7 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
 theorem EvFuel.callOK {lm n d k : Nat} {st st'' : St} {c : Nat} {rest : List Nat} {td : Nat}
     {neg : Bool} {r : Status} (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r) :
-    CallOK st := by
+    CallOK st c := by
   have hsz := h.size; unfold AllCalls at hsz; exact hsz.1
 
 /-- `dc_func`'s contract from `dc_func_spec`. -/

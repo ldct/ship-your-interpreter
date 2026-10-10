@@ -46,7 +46,7 @@ structure DcAdmissible (prog : List Nat) : Prop where
   byte : ∀ c ∈ prog, c < 256
   nest : NestBound 70 prog dcD
   leak : LeakBound 70 prog dcK
-  size : ∀ n, AllCalls 70 (fun st _ _ => CallP st) n St.init ⟨prog, 1, false⟩
+  size : ∀ n, AllCalls 70 (fun st c' _ => CallP st c') n St.init ⟨prog, 1, false⟩
   tail : TailBound 70 prog
 
 theorem DcAdmissible.dcProg {prog : List Nat} (h : DcAdmissible prog) : DcProg prog :=

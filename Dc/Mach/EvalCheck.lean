@@ -13,41 +13,45 @@ namespace Dc.Mach
 open Dc
 
 /-- `FnSize` as a `Bool`. -/
-def fnSizeB (st : St) : Bool :=
-  st.stack.all (fun v => match v with | .num n => decide (n.wid < 2 ^ 20) | _ => true) &&
+def fnSizeB (st : St) (c : Nat) : Bool :=
+  (c != 102 || st.stack.all (fun v => match v with | .num n => decide (n.wid < 2 ^ 20) | _ => true)) &&
+  (match st.stack with
+    | .num n :: _ => (!(c == 110 || c == 112 || c == 80) || decide (n.wid < 2 ^ 20)) &&
+      (c != 118 || decide (n.wid + st.scale < 2 ^ 20))
+    | _ => true) &&
   (match st.stack with
     | .num b :: .num a :: _ =>
-      decide (a.wid + st.scale + b.wid < 2 ^ 24) &&
-      decide ((b.toLong.natAbs + 1) * (a.wid + 1) + st.scale < 2 ^ 24)
+      (c != 47 || decide (a.wid + st.scale + b.wid < 2 ^ 27)) &&
+      (!(c == 37 || c == 126) || decide (a.wid + st.scale + b.wid < 2 ^ 24)) &&
+      (c != 94 || decide ((b.toLong.natAbs + 1) * (a.wid + 1) + st.scale < 2 ^ 24))
     | _ => true) &&
   (match st.stack with
-    | .num c :: .num b :: .num a :: _ => decide (8 * (a.wid + c.wid + st.scale + 1) + b.wid < 2 ^ 24)
-    | _ => true) &&
-  (match st.stack with
-    | .num n :: _ => decide (n.wid + st.scale < 2 ^ 20)
+    | .num c' :: .num b :: .num a :: _ =>
+      c != 124 || decide (8 * (a.wid + c'.wid + st.scale + 1) + b.wid < 2 ^ 24)
     | _ => true)
 
-theorem fnSizeB_sound {st : St} (h : fnSizeB st = true) : FnSize st := by
+theorem fnSizeB_sound {st : St} {c : Nat} (h : fnSizeB st c = true) : FnSize st c := by
   unfold fnSizeB at h
-  simp only [Bool.and_eq_true, List.all_eq_true] at h
-  obtain ⟨⟨⟨hall, h2⟩, h3⟩, h1⟩ := h
-  refine ⟨fun v hv n e => ?_, fun b a rest e => ?_, fun b a rest e => ?_, fun b a rest e => ?_,
-    fun c b a rest e => ?_, fun n rest e => ?_⟩
-  · have := hall v hv; subst e; simpa using this
-  · rw [e] at h2; simp only [Bool.and_eq_true, decide_eq_true_eq] at h2; omega
-  · rw [e] at h2; simp only [Bool.and_eq_true, decide_eq_true_eq] at h2; exact h2.1
-  · rw [e] at h2; simp only [Bool.and_eq_true, decide_eq_true_eq] at h2; exact h2.2
-  · rw [e] at h3; simpa using h3
-  · rw [e] at h1; simpa using h1
+  simp only [Bool.and_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq, List.all_eq_true] at h
+  obtain ⟨⟨⟨hall, h1⟩, h2⟩, h3⟩ := h
+  refine ⟨fun hc v hv n e => ?_, fun hc n rest e => ?_, fun hc b a rest e => ?_, fun hc b a rest e => ?_,
+    fun hc b a rest e => ?_, fun hc c' b a rest e => ?_, fun hc n rest e => ?_⟩
+  · rcases hall with h0 | h0
+    · exact absurd hc h0
+    · have := h0 v hv; subst e; simpa using this
+  all_goals first
+    | (rw [e] at h1; simp at h1; omega)
+    | (rw [e] at h2; simp at h2; omega)
+    | (rw [e] at h3; simp at h3; omega)
 
 mutual
 
 /-- `AllCalls` for a `Bool` predicate, computed. -/
-def allCallsB (lm : Nat) (P : St → Bool) : Nat → St → Frame → Bool
+def allCallsB (lm : Nat) (P : St → Nat → Bool) : Nat → St → Frame → Bool
   | 0, _, _ => true
   | _ + 1, _, ⟨[], _, _⟩ => true
   | fuel + 1, st, ⟨c :: rest, td, neg⟩ =>
-    P st &&
+    P st c &&
     match dcFunc lm st c rest.head? neg with
     | .ok st' => allCallsB lm P fuel st' ⟨rest, td, false⟩
     | .eatOne st' => allCallsB lm P fuel st' ⟨rest.tail, td, false⟩
@@ -72,7 +76,7 @@ def allCallsB (lm : Nat) (P : St → Bool) : Nat → St → Frame → Bool
     | .system => allCallsB lm P fuel st ⟨skipSys rest, td, false⟩
 
 /-- `TosCalls` for a `Bool` predicate, computed. -/
-def tosCallsB (lm : Nat) (P : St → Bool) : Nat → St → List Nat → Nat → Bool
+def tosCallsB (lm : Nat) (P : St → Nat → Bool) : Nat → St → List Nat → Nat → Bool
   | 0, _, _, _ => true
   | fuel + 1, st, rest, td =>
     match st.stack with
@@ -88,11 +92,12 @@ def tosCallsB (lm : Nat) (P : St → Bool) : Nat → St → List Nat → Nat →
 
 end
 
-theorem allCallsB_sound (lm : Nat) (P : St → Bool) (Q : St → Prop) (hP : ∀ st, P st = true → Q st) :
+theorem allCallsB_sound (lm : Nat) (P : St → Nat → Bool) (Q : St → Nat → Prop)
+    (hP : ∀ st c, P st c = true → Q st c) :
     ∀ n,
-    (∀ st f, allCallsB lm P n st f = true → AllCalls lm (fun st _ _ => Q st) n st f) ∧
+    (∀ st f, allCallsB lm P n st f = true → AllCalls lm (fun st c _ => Q st c) n st f) ∧
     (∀ st rest td, tosCallsB lm P n st rest td = true →
-      TosCalls lm (fun st _ _ => Q st) n st rest td) := by
+      TosCalls lm (fun st c _ => Q st c) n st rest td) := by
   intro n
   induction n with
   | zero => exact ⟨fun _ _ _ => by simp [AllCalls], fun _ _ _ _ => by simp [TosCalls]⟩
@@ -105,7 +110,7 @@ theorem allCallsB_sound (lm : Nat) (P : St → Bool) (Q : St → Prop) (hP : ∀
       | cons c rest =>
         simp only [allCallsB, Bool.and_eq_true] at h
         simp only [AllCalls]
-        refine ⟨hP _ h.1, ?_⟩
+        refine ⟨hP _ _ h.1, ?_⟩
         have h2 := h.2
         generalize dcFunc lm st c rest.head? neg = d at h2 ⊢
         cases d <;> simp only at h2 ⊢
@@ -138,7 +143,7 @@ theorem allCallsB_sound (lm : Nat) (P : St → Bool) (Q : St → Prop) (hP : ∀
 theorem size_of_run {lm N : Nat} {prog : List Nat} {x : St × Status}
     (h : run lm N St.init ⟨prog, 1, false⟩ = some x)
     (hb : allCallsB lm fnSizeB N St.init ⟨prog, 1, false⟩ = true) :
-    ∀ n, AllCalls lm (fun st _ _ => CallP st) n St.init ⟨prog, 1, false⟩ :=
-  allCalls_of_run h ((allCallsB_sound lm fnSizeB CallP (fun _ e => fnSizeB_sound e) N).1 _ _ hb)
+    ∀ n, AllCalls lm (fun st c' _ => CallP st c') n St.init ⟨prog, 1, false⟩ :=
+  allCalls_of_run h ((allCallsB_sound lm fnSizeB CallP (fun _ _ e => fnSizeB_sound e) N).1 _ _ hb)
 
 end Dc.Mach

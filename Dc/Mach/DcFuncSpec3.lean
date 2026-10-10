@@ -70,7 +70,7 @@ theorem dcf_94 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_94 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_exp hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.exp (by have := hp.hsLen; omega) hp.lkLen hk
+    fun R' hc h e11 e12 e13 => fa_exp hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (hp.size.exp rfl) (by have := hp.hsLen; omega) hp.lkLen hk
 
 theorem dcf_95 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -166,7 +166,7 @@ theorem dcf_102 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_102 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_f hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) hp.size.all hp.err hk
+    fun R' hc h e11 e12 e13 => fa_f hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) (hp.size.all rfl) hp.err hk
 
 theorem dcf_103 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -226,7 +226,7 @@ theorem dcf_110 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_110 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_n hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) hp.size.top hp.err hk
+    fun R' hc h e11 e12 e13 => fa_n hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) (hp.size.top (.inl rfl)) hp.err hk
 
 theorem dcf_112 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -238,7 +238,7 @@ theorem dcf_112 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_112 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_p hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) hp.size.top hp.err hk
+    fun R' hc h e11 e12 e13 => fa_p hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) (hp.size.top (.inr (.inl rfl))) hp.err hk
 
 theorem dcf_113 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -298,7 +298,7 @@ theorem dcf_118 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_118 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_v hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) hp.lkLen (by decide) hp.size.sqrt hk
+    fun R' hc h e11 e12 e13 => fa_v hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (by have := hp.hsLen; omega) hp.lkLen (by decide) (hp.size.sqrt rfl) hk
 
 theorem dcf_119 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -370,7 +370,7 @@ theorem dcf_124 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_124 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_modexp hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.modexp (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
+    fun R' hc h e11 e12 e13 => fa_modexp hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (hp.size.modexp rfl) (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
 
 theorem dcf_125 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {sp W : Nat} {M : Mem} {H : Heap}
@@ -394,6 +394,6 @@ theorem dcf_126 {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000b9c#64 R M :=
   fn_arm hp hr (dcf_disp_126 hlive hp.heapOwn (hp.frame.mono (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega))
     (by have := hp.room; have := hp.stk; omega) R hr.r2 hr.r10)
-    fun R' hc h e11 e12 e13 => fa_divrem hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb hp.size.rem (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
+    fun R' hc h e11 e12 e13 => fa_divrem hlive h hc (by have := hp.stk; have := hp.stkPr; have := hp.stkDn; omega) ho hp.mb (hp.size.rem (.inr rfl)) (by have := hp.hsLen; omega) hp.lkLen (by decide) hk
 
 end Dc.Mach

@@ -69,7 +69,7 @@ theorem ev_enter {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     {M0 : Mem} {R0 R : Nat → BitVec 64} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs xs : List GV} {st : St} {c : Nat} {rest : List Nat} {td : Nat}
     {neg : Bool} {o : StrObj} (ev : EvAt S sp W d k q M0 R0 R M H F L C G hs xs st ⟨c :: rest, td, neg⟩ o)
-    (hcall : CallOK st) (hoom : EvOom live S Q sp W q M0) {Rc : Nat → BitVec 64} {Mc : Mem}
+    (hcall : CallOK st c) (hoom : EvOom live S Q sp W q M0) {Rc : Nat → BitVec 64} {Mc : Mem}
     {ret : Nat} (hmem : EvCallMem sp M Mc (peekWord rest.head?))
     (h2 : Rc 2 = R 2) (h10 : Rc 10 = BitVec.ofNat 64 c) (h11 : Rc 11 = chW rest.head?)
     (h12 : Rc 12 = boolWord neg) (h1 : Rc 1 = BitVec.ofNat 64 ret) (hra : ret % 4 = 0 ∧ ret < 2 ^ 64)
@@ -120,7 +120,7 @@ theorem ev_call_mid {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     {M0 : Mem} {R0 R : Nat → BitVec 64} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs xs : List GV} {st : St} {c : Nat} {rest : List Nat} {td : Nat}
     {neg : Bool} {o : StrObj} (ev : EvAt S sp W d k q M0 R0 R M H F L C G hs xs st ⟨c :: rest, td, neg⟩ o)
-    (h12 : R 12 = boolWord neg) (hne : rest ≠ []) (hcall : CallOK st) (hoom : EvOom live S Q sp W q M0)
+    (h12 : R 12 = boolWord neg) (hne : rest ≠ []) (hcall : CallOK st c) (hoom : EvOom live S Q sp W q M0)
     (hret : ∀ Rc Mc, Keeps [1, 10, 11, 15, 23] Rc R → Rc 23 = R 8 + 1#64 →
       EvCallMem sp M Mc (peekWord rest.head?) →
       EvRet live S Q t0 sp W G (xs ++ hs) st c (dcFunc 70 st c rest.head? neg) Rc Mc 0x80001528) :
@@ -197,7 +197,7 @@ theorem ev_call_last {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     {M0 : Mem} {R0 R : Nat → BitVec 64} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs xs : List GV} {st : St} {c : Nat} {td : Nat}
     {neg : Bool} {o : StrObj} (ev : EvAt S sp W d k q M0 R0 R M H F L C G hs xs st ⟨[c], td, neg⟩ o)
-    (h12 : R 12 = boolWord neg) (hcall : CallOK st) (hoom : EvOom live S Q sp W q M0)
+    (h12 : R 12 = boolWord neg) (hcall : CallOK st c) (hoom : EvOom live S Q sp W q M0)
     (hret : ∀ Rc Mc, Keeps [1, 10, 11, 15, 23] Rc R → Rc 23 = R 8 + 1#64 →
       EvCallMem sp M Mc (peekWord none) →
       EvRet live S Q t0 sp W G (xs ++ hs) st c (dcFunc 70 st c none neg) Rc Mc 0x80001728) :

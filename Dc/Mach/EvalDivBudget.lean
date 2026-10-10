@@ -287,7 +287,7 @@ theorem allCalls_anti {lm n m : Nat} {P : St → Nat → Option Nat → Prop} {s
 structure DivBud (lm d k : Nat) (st : St) (f : Frame) : Prop where
   nest : ∀ n, nestDepth lm n st f ≤ d
   leak : ∀ n, leakCount lm n st f ≤ k
-  size : ∀ n, AllCalls lm (fun st _ _ => CallP st) n st f
+  size : ∀ n, AllCalls lm (fun st c' _ => CallP st c') n st f
   tail : ∀ n, tailMax lm n st f < 2 ^ 31
   run : RunDiv lm st f
 
@@ -295,7 +295,7 @@ structure DivBud (lm d k : Nat) (st : St) (f : Frame) : Prop where
 structure TosDivBud (lm d k : Nat) (st : St) (rest : List Nat) (td : Nat) : Prop where
   nest : ∀ n, tosDepth lm n st rest td ≤ d
   leak : ∀ n, tosLeak lm n st rest td ≤ k
-  size : ∀ n, TosCalls lm (fun st _ _ => CallP st) n st rest td
+  size : ∀ n, TosCalls lm (fun st c' _ => CallP st c') n st rest td
   tail : ∀ n, tosTail lm n st rest td < 2 ^ 31
   run : TosDiv lm st rest td
 
@@ -308,11 +308,11 @@ functions' equations at that command. -/
 theorem DivBud.step {s' : St} {f' : Frame} (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
     (en : ∀ n, nestDepth lm (n + 1) st ⟨c :: rest, td, neg⟩ = nestDepth lm n s' f')
     (el : ∀ n, leakCount lm (n + 1) st ⟨c :: rest, td, neg⟩ = leakOne c + leakCount lm n s' f')
-    (es : ∀ n, AllCalls lm (fun st _ _ => CallP st) (n + 1) st ⟨c :: rest, td, neg⟩ ↔
-      CallP st ∧ AllCalls lm (fun st _ _ => CallP st) n s' f')
+    (es : ∀ n, AllCalls lm (fun st c' _ => CallP st c') (n + 1) st ⟨c :: rest, td, neg⟩ ↔
+      CallP st c ∧ AllCalls lm (fun st c' _ => CallP st c') n s' f')
     (et : ∀ n, tailMax lm (n + 1) st ⟨c :: rest, td, neg⟩ = max td (tailMax lm n s' f'))
     (hr : RunDiv lm s' f') :
-    DivBud lm d (k - leakOne c) s' f' ∧ CallOK st ∧ leakOne c ≤ k := by
+    DivBud lm d (k - leakOne c) s' f' ∧ CallOK st c ∧ leakOne c ≤ k := by
   have hl0 := h.leak 1
   rw [el] at hl0
   refine ⟨⟨fun n => (en n).symm ▸ h.nest (n + 1), fun n => ?_, fun n => ((es n).1 (h.size (n + 1))).2,
@@ -329,33 +329,33 @@ macro "div_eqs" hr:term : tactic => `(tactic| (
 
 theorem DivBud.ok (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St}
     (hr : dcFunc lm st c rest.head? neg = .ok s) :
-    DivBud lm d (k - leakOne c) s ⟨rest, td, false⟩ ∧ CallOK st ∧ leakOne c ≤ k := by
+    DivBud lm d (k - leakOne c) s ⟨rest, td, false⟩ ∧ CallOK st c ∧ leakOne c ≤ k := by
   div_eqs hr; exact runDiv_ok h.run hr
 
 theorem DivBud.eatOne (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St}
     (hr : dcFunc lm st c rest.head? neg = .eatOne s) :
-    DivBud lm d (k - leakOne c) s ⟨rest.tail, td, false⟩ ∧ CallOK st ∧ leakOne c ≤ k := by
+    DivBud lm d (k - leakOne c) s ⟨rest.tail, td, false⟩ ∧ CallOK st c ∧ leakOne c ≤ k := by
   div_eqs hr; exact runDiv_eat h.run hr
 
 theorem DivBud.comment (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
     (hr : dcFunc lm st c rest.head? neg = .comment) :
-    DivBud lm d (k - leakOne c) st ⟨skipEol rest, td, false⟩ ∧ CallOK st ∧ leakOne c ≤ k := by
+    DivBud lm d (k - leakOne c) st ⟨skipEol rest, td, false⟩ ∧ CallOK st c ∧ leakOne c ≤ k := by
   div_eqs hr; exact runDiv_comment h.run hr
 
 theorem DivBud.negcmp (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
     (hr : dcFunc lm st c rest.head? neg = .negcmp) :
-    DivBud lm d (k - leakOne c) st ⟨rest, td, true⟩ ∧ CallOK st ∧ leakOne c ≤ k := by
+    DivBud lm d (k - leakOne c) st ⟨rest, td, true⟩ ∧ CallOK st c ∧ leakOne c ≤ k := by
   div_eqs hr; exact runDiv_negcmp h.run hr
 
 theorem DivBud.system (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
     (hr : dcFunc lm st c rest.head? neg = .system) :
-    DivBud lm d (k - leakOne c) st ⟨skipSys rest, td, false⟩ ∧ CallOK st ∧ leakOne c ≤ k := by
+    DivBud lm d (k - leakOne c) st ⟨skipSys rest, td, false⟩ ∧ CallOK st c ∧ leakOne c ≤ k := by
   div_eqs hr; exact runDiv_system h.run hr
 
 theorem DivBud.int (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
     (hr : dcFunc lm st c rest.head? neg = .int) :
     DivBud lm d (k - leakOne c - numLeak (c :: rest)) (st.push (.num (readNum st.ibase (c :: rest)).1))
-      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ ∧ CallOK st ∧
+      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ ∧ CallOK st c ∧
       leakOne c + numLeak (c :: rest) ≤ k := by
   have el : ∀ n, leakCount lm (n + 1) st ⟨c :: rest, td, neg⟩ = leakOne c +
       (leakCount lm n (st.push (.num (readNum st.ibase (c :: rest)).1))
@@ -374,12 +374,12 @@ theorem DivBud.int (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
 theorem DivBud.str (h : DivBud lm d k st ⟨c :: rest, td, neg⟩)
     (hr : dcFunc lm st c rest.head? neg = .str) :
     DivBud lm d (k - leakOne c) (st.push (.str (scanStr 1 rest).1)) ⟨(scanStr 1 rest).2, td, false⟩ ∧
-      CallOK st ∧ leakOne c ≤ k := by
+      CallOK st c ∧ leakOne c ≤ k := by
   div_eqs hr; exact runDiv_str h.run hr
 
 theorem DivBud.evalRegNone (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St} {reg : Nat}
     (hr : dcFunc lm st c rest.head? neg = .evalReg s reg) (hg : regGet s reg = none) :
-    DivBud lm d (k - leakOne c) s ⟨rest.tail, td, false⟩ ∧ CallOK st ∧ leakOne c ≤ k := by
+    DivBud lm d (k - leakOne c) s ⟨rest.tail, td, false⟩ ∧ CallOK st c ∧ leakOne c ≤ k := by
   refine DivBud.step h (fun n => by simp only [nestDepth, hr, hg])
     (fun n => by simp only [leakCount, leakOne, hr, hg]) (fun n => by simp only [AllCalls, hr, hg])
     (fun n => by simp only [tailMax, hr, hg]) (runDiv_reg_none h.run hr hg)
@@ -387,7 +387,7 @@ theorem DivBud.evalRegNone (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : 
 /-- `DC_QUIT` staying in the activation (`unwind < td`). -/
 theorem DivBud.quitStay (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St}
     (hr : dcFunc lm st c rest.head? neg = .quit s) :
-    s.unwind < td ∧ DivBud lm d (k - leakOne c) s ⟨rest, td - s.unwind, false⟩ ∧ CallOK st ∧
+    s.unwind < td ∧ DivBud lm d (k - leakOne c) s ⟨rest, td - s.unwind, false⟩ ∧ CallOK st c ∧
       leakOne c ≤ k := by
   obtain ⟨hle, hd⟩ := runDiv_quit h.run hr
   refine ⟨by omega, DivBud.step h (fun n => by simp only [nestDepth, hr, hle, ↓reduceIte])
@@ -399,7 +399,7 @@ theorem DivBud.quitStay (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St}
 theorem DivBud.sqrt (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St} {x y : Num}
     (hr : dcFunc lm st c rest.head? neg = .sqrt s x)
     (hy : SqrtLoop x (max s.scale x.scale) (Num.sqrtInit x).1 (Num.sqrtInit x).2 y) :
-    DivBud lm d (k - leakOne c) (s.push (.num y)) ⟨rest, td, false⟩ ∧ CallOK st ∧ leakOne c ≤ k := by
+    DivBud lm d (k - leakOne c) (s.push (.num y)) ⟨rest, td, false⟩ ∧ CallOK st c ∧ leakOne c ≤ k := by
   have hd := runDiv_sqrt h.run hr hy
   obtain ⟨m, hm⟩ := hy.complete
   have hc := h.size 1
@@ -432,7 +432,7 @@ theorem DivBud.sqrt (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St} {x 
 /-- `DC_EVALTOS`: on to `tos`. -/
 theorem DivBud.evalTos (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St}
     (hr : dcFunc lm st c rest.head? neg = .evalTos s) :
-    TosDivBud lm d (k - leakOne c) s rest td ∧ CallOK st ∧ leakOne c ≤ k := by
+    TosDivBud lm d (k - leakOne c) s rest td ∧ CallOK st c ∧ leakOne c ≤ k := by
   have hl1 := h.leak 1
   simp only [leakCount, hr, tosLeak, Nat.add_zero] at hl1
   refine ⟨⟨fun n => ?_, fun n => ?_, fun n => ?_, fun n => ?_, tosDiv_tos h.run hr⟩,
@@ -446,7 +446,7 @@ theorem DivBud.evalTos (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St}
 /-- `DC_EVALREG` with a value: on to `tos`. -/
 theorem DivBud.evalReg (h : DivBud lm d k st ⟨c :: rest, td, neg⟩) {s : St} {reg : Nat} {v : Val}
     (hr : dcFunc lm st c rest.head? neg = .evalReg s reg) (hg : regGet s reg = some v) :
-    TosDivBud lm d (k - leakOne c) (s.push v) rest.tail td ∧ CallOK st ∧ leakOne c ≤ k := by
+    TosDivBud lm d (k - leakOne c) (s.push v) rest.tail td ∧ CallOK st c ∧ leakOne c ≤ k := by
   have hl1 := h.leak 1
   simp only [leakCount, hr, hg, tosLeak, Nat.add_zero] at hl1
   refine ⟨⟨fun n => ?_, fun n => ?_, fun n => ?_, fun n => ?_, tosDiv_reg h.run hr hg⟩,
@@ -468,8 +468,8 @@ theorem TosDivBud.plain (h : TosDivBud lm d k st rest td) (hs : ∀ x more, st.s
     DivBud lm d k st ⟨skipWs rest, td, false⟩ := by
   have key : ∀ n, tosDepth lm (n + 1) st rest td = nestDepth lm n st ⟨skipWs rest, td, false⟩ ∧
       tosLeak lm (n + 1) st rest td = leakCount lm n st ⟨skipWs rest, td, false⟩ ∧
-      (TosCalls lm (fun st _ _ => CallP st) (n + 1) st rest td ↔
-        AllCalls lm (fun st _ _ => CallP st) n st ⟨skipWs rest, td, false⟩) ∧
+      (TosCalls lm (fun st c' _ => CallP st c') (n + 1) st rest td ↔
+        AllCalls lm (fun st c' _ => CallP st c') n st ⟨skipWs rest, td, false⟩) ∧
       tosTail lm (n + 1) st rest td = max td (tailMax lm n st ⟨skipWs rest, td, false⟩) := by
     intro n
     simp only [tosDepth, tosLeak, TosCalls, tosTail]
@@ -512,7 +512,7 @@ theorem TosDivBud.nested {x : List Nat} {more : List Val} (h : TosDivBud lm d k 
     have := h.leak (n + 1)
     simp only [tosLeak, hs, hw, ↓reduceIte] at this
     split at this <;> omega
-  have hcin : ∀ n, AllCalls lm (fun st _ _ => CallP st) n { st with stack := more } ⟨x, 1, false⟩ :=
+  have hcin : ∀ n, AllCalls lm (fun st c' _ => CallP st c') n { st with stack := more } ⟨x, 1, false⟩ :=
     fun n => by
       have := h.size (n + 1); simp only [TosCalls, hs, hw, ↓reduceIte] at this; exact this.1
   have htin : ∀ n, tailMax lm n { st with stack := more } ⟨x, 1, false⟩ < 2 ^ 31 := fun n => by

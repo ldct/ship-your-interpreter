@@ -249,7 +249,7 @@ theorem seg_head (hfn : ∀ Q, FnSpecH dcLive dcOwn Q) {t : String} {rv : Nat �
   cases s with
   | nil => exact (RunDiv.not_nil h.bud.run).elim
   | cons c rest =>
-    have hcall : CallOK st := by have := h.bud.size 1; simp only [AllCalls] at this; exact this.1
+    have hcall : CallOK st c := by have := h.bud.size 1; simp only [AllCalls] at this; exact this.1
     have hret : ∀ (pc : Nat), pc = (if rest = [] then 0x80001728 else 0x80001528) →
         ∀ Rc Mc, Keeps [1, 10, 11, 15, 23] Rc R → Rc 23 = R 8 + 1#64 →
         EvCallMem sp M Mc (peekWord rest.head?) →

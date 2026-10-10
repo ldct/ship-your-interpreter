@@ -33,13 +33,16 @@ THEOREMS=(
   Dc.Capstones.ascii_halts
   Dc.Capstones.obase_halts
   Dc.Capstones.ibase_halts
+  Dc.Capstones.params_halts
   Dc.Capstones.compare_halts
   Dc.Capstones.registers_halts
   Dc.Capstones.quit_halts
   Dc.Capstones.q2_halts
   Dc.Capstones.unimplemented_halts
   Dc.Capstones.loop_halts
+  Dc.Capstones.factorial_halts
   Dc.Capstones.fibonacci_halts
+  Dc.Capstones.gcd_halts
   Dc.Capstones.sqrt2_halts
   Dc.Capstones.bigmul_halts
   Dc.Capstones.wrap_halts

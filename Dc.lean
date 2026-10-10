@@ -179,3 +179,4 @@ import Dc.Mach.EvalDivLob
 import Dc.Mach.EvalEntryB
 import Dc.Mach.EvalStrB
 import Dc.Mach.EvalIntB
+import Dc.Capstones

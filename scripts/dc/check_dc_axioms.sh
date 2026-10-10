@@ -18,6 +18,31 @@ THEOREMS=(
   Dc.refinement                                   # the generic composition (Dc/Refinement.lean)
   Dc.dc_term_sim
   Dc.dc_stuck_sim
+  Dc.DcAdmissible.of_check                        # admissibility decided for a terminating program (Dc/Capstones.lean)
+  Dc.capstone
+  Dc.Mach.stable_succ                             # the budgets stabilize once run returns (EvalStable)
+  Dc.Mach.size_of_run                             # the per-call premise computed (EvalCheck)
+  Dc.Capstones.hello_halts
+  Dc.Capstones.arith_halts
+  Dc.Capstones.scale_halts
+  Dc.Capstones.power_halts
+  Dc.Capstones.sqrt_halts
+  Dc.Capstones.printing_halts
+  Dc.Capstones.length_halts
+  Dc.Capstones.stack_halts
+  Dc.Capstones.ascii_halts
+  Dc.Capstones.obase_halts
+  Dc.Capstones.ibase_halts
+  Dc.Capstones.compare_halts
+  Dc.Capstones.registers_halts
+  Dc.Capstones.quit_halts
+  Dc.Capstones.q2_halts
+  Dc.Capstones.unimplemented_halts
+  Dc.Capstones.loop_halts
+  Dc.Capstones.fibonacci_halts
+  Dc.Capstones.sqrt2_halts
+  Dc.Capstones.bigmul_halts
+  Dc.Capstones.wrap_halts
   Dc.sqrt_total                                   # bc_sqrt's Newton loop terminates (Dc/SqrtTotal.lean)
   Dc.Mach.sqOut_total
   Dc.evOomBoot                                    # evalstr's out-of-memory at the boot call

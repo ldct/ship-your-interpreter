@@ -167,7 +167,7 @@ theorem pr_num {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     (fun R' M' H' F' L' C' hk' e2 hD hfr => ?_)
     fun t' R' M' sp' ho => hoom t' R' M' sp' ⟨by have := ho.lo; omega, by have := ho.hi; omega, ho.r2, fun a e1 e2 e3 e4 =>
       (ho.out a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)) e4).trans
-        (hM1 a fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))⟩
+        (hM1 a fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)), by sp_al⟩
   have kf : ∀ o, 8 ≤ o → o < 48 → imgM M' (sp - 48 + o) = imgM M1 (sp - 48 + o) := fun o h8 h48 =>
     hfr _ (above_sp hab2 (by omega)).1 (fun hpg => (above_sp hab2 (by omega)).2.1 hpg.1)
       (by simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr]; simp only [heapEnd] at hab2; omega)

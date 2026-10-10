@@ -85,7 +85,7 @@ theorem fsemi_get (hlive : ∀ p ∈ dcText, live p.1) {r : Nat} (hr : r < 256) 
   refine dc_array_get_spec hlive h' hhs hr (i := t.toNat) (by omega) hsrt (hc'.cf (Wc := 336) hW)
     (hc'.cab hW) _ (by bsimp []) (by bsimp []) (by bsimp [e2']) (by bsimp [])
     (fun R2 M2 H2 F2 L2 C2 G2 g k2 hd h2 hden hout hpin2 hlk => ?_)
-    fun R2 M2 sp' e1 e2 e3 hout => ?_
+    fun R2 M2 sp' e1 e2 e3 eal hout => ?_
   · have hc2 := (hc'.mod (by keeps_tac Keeps.refl _ _)).callS (Wc := 336) hW
       (by keeps_tac ((k2.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
       (by bsimp []; rw [k2.get 2 (by decide)]; bsimp []) hout
@@ -102,7 +102,7 @@ theorem fsemi_get (hlive : ∀ p ∈ dcText, live p.1) {r : Nat} (hr : r < 256) 
       (R2 11))) hden (hc3.cf (Wc := 64) (by omega)) (hc3.cab (by omega)) _
       ⟨by bsimp []; exact hd10, by bsimp []; exact hd11⟩ (by bsimp [hc2.r2]) (by bsimp [])
       (fun R3 M3 H3 c k3 h3 hout3 => ?_)
-      fun R3 M3 e3' hout3 => hc3.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3'
+      fun R3 M3 e3' hout3 => hc3.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3' (by sp_al)
         fun a a1 a2 _ a4 => hout3 a a1 a2 a4
     bsimp []
     bc_run hlive hlive [] at 0x80000c14
@@ -114,7 +114,7 @@ theorem fsemi_get (hlive : ∀ p ∈ dcText, live p.1) {r : Nat} (hr : r < 256) 
       have htx : tohostAddr = 0x8001ad00 := rfl
       bc_run hlive hlive [] at 0x80001e74
       exact k
-    exact hj _ R2 M2 ((hc'.mod (by keeps_tac Keeps.refl _ _)).oom ho (Wc := 336) hW e1 e2 e3
+    exact hj _ R2 M2 ((hc'.mod (by keeps_tac Keeps.refl _ _)).oom ho (Wc := 336) hW e1 e2 e3 eal
       fun a a1 a2 _ a4 => hout a a1 a2 a4)
 
 /-- `;` on a numeric index (`0x80000dd8`): `dc_num2int`, then the message
@@ -261,7 +261,7 @@ theorem fcol_set (hlive : ∀ p ∈ dcText, live p.1) {r : Nat} (hr : r < 256) {
       (hc'.cab (by omega)) _ (by bsimp []) (by bsimp [ofInt_eq_ofNat_toNat (show 0 ≤ t by omega)])
       ⟨by bsimp []; exact hd.tag, by bsimp []⟩ (by bsimp [e2']) (by bsimp [])
       (fun R2 M2 H2 F2 L2 C2 G2 k2 h2 hout hpin2 hlk => ?_)
-      fun R2 M2 sp' e1 e2 e3 hout => hc'.oom ho (Wc := 112) (by omega) e1 e2 e3
+      fun R2 M2 sp' e1 e2 e3 eal hout => hc'.oom ho (Wc := 112) (by omega) e1 e2 e3 eal
         fun a a1 a2 _ a4 => hout a a1 a2 a4
     bsimp []
     bc_run hlive hlive [] at 0x80000c14

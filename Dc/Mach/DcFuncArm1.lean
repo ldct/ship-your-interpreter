@@ -53,12 +53,12 @@ theorem fn_i2d_pushE {al : Nat} {live S : Nat → Prop}
       rw [e1]
       exact hj2 _ R3 M3 (fa_ok (st' := st.push (.num (Num.ofInt v))) hlive h3 hc3 hk (.ok _) hex
         (by simp; exact hxl) (StrPin.refl _ _))
-    · exact hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3 fun a e1 e2 _ e4 => hout3 a e1 e2 e4
+    · exact hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3 (by sp_al) fun a e1 e2 _ e4 => hout3 a e1 e2 e4
   · have hj : JAt live S Q 0x80002bcc 0x80001e74 := fun t R M k => by
       have htx : tohostAddr = 0x8001ad00 := rfl
       bc_run hlive hlive [] at 0x80001e74
       exact k
-    exact hj _ R1 M1 (hc.oom ho (Wc := 192) (by omega) (by omega) (by omega) e2
+    exact hj _ R1 M1 (hc.oom ho (Wc := 192) (by omega) (by omega) (by omega) e2 (by sp_al)
       fun a e1 e2 _ e4 => hout1 a e1 e2 e4)
 
 /-- **`dc_push (dc_int2data (v))`** from the call of `dc_int2data` (return

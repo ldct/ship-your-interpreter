@@ -103,7 +103,7 @@ theorem fv_push {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st st1 : St} {r
     bc_run hlive hlive [] at 0x80000c10
     exact fa_ok (st' := st1.push (.num r)) hlive (ex := []) h5 hc5 hk hf (by simp) (by simpa using hlk)
       (StrPin.of_eq hstr _)
-  · exact hc4.oom ho (Wc := 64) (by omega) (by omega) (by omega) e5 fun a e1 e2 _ e4 => hout5 a e1 e2 e4
+  · exact hc4.oom ho (Wc := 64) (by omega) (by omega) (by omega) e5 (by sp_al) fun a e1 e2 _ e4 => hout5 a e1 e2 e4
 
 /-- `v` after `dc_sqrt` succeeded (`0x800012ec`): the popped reference freed
 (`dc_free_num`), then `fv_push`. -/

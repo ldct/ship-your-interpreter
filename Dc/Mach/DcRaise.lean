@@ -285,7 +285,7 @@ theorem dc_exp_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
           (by decide)).trans (by keeps_tac Keeps.refl _ _)))))))))
       (hr _ (by bsimp []))
   · bc_run hlive hS2 [] at 0x80001e74
-    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2', fun a ho hg hf hs => ?_⟩
+    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2', fun a ho hg hf hs => ?_, by sp_al⟩
     rw [hout a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)]
     exact hout2 a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
 

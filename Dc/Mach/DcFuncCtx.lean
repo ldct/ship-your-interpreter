@@ -158,11 +158,12 @@ theorem FnAt.oom {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     {sp W Wc sp' : Nat} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {t' : String}
     (hc : FnAt S sp W M0 R0 R M) (ho : FnOom live S Q sp W M0) (hW : 192 + Wc ≤ W)
     (hlo : sp - 192 - Wc ≤ sp') (hhi : sp' ≤ sp - 192) (e2 : R' 2 = BitVec.ofNat 64 sp')
+    (hal : sp' % 16 = 0)
     (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn (sp - 192) Wc a →
       imgM M' a = imgM M a) : DWO live S Q t' 0x80001e74#64 R' M' :=
   ho t' R' M' sp' ⟨by omega, by omega, e2, fun a e1 e2' e3 e4 =>
     (hout a e1 e2' e4 fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)).trans
-      (hc.out a e1 e2' e4 e3)⟩
+      (hc.out a e1 e2' e4 e3), hal⟩
 
 /-- **A `jal tgt` at `p`**, as a symbolic step (each site by `bc_run`). -/
 def JalAt (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)

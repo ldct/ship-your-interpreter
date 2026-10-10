@@ -1212,7 +1212,7 @@ theorem ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
     (StackFrame.sub (m := 32) (n := 16) hsf (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
     (fun R1 M1 H' b hk1 hp e10 => ?_) fun R1 M1 e2 hfr =>
-      hoom R1 M1 (sp - 32 - 16) (by omega) (by omega) e2 fun x hx hf => ?_
+      hoom R1 M1 (sp - 32 - 16) (by omega) (by omega) e2 (by sp_al) fun x hx hf => ?_
   rotate_left
   · rw [hfr x hx (by simp only [frameIn] at hf ⊢; omega)]
     exact hM2 x hf
@@ -1699,7 +1699,7 @@ theorem as_ins {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
     (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
     (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm e2 hfr =>
-      hoom R1 Mm (sp - 64 - 16) (by omega) (by omega) e2 fun x ho hg hf => ?_
+      hoom R1 Mm (sp - 64 - 16) (by omega) (by omega) e2 (by sp_al) fun x ho hg hf => ?_
   rotate_left
   · rw [hfr x (OutHeap.not_alloc h2'.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)]
     exact hM2 x hf
@@ -1758,7 +1758,7 @@ theorem as_empty {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
     (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
     (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm e2 hfr =>
-      hoom R1 Mm (sp - 64 - 16) (by omega) (by omega) e2 fun x ho hg hf => ?_
+      hoom R1 Mm (sp - 64 - 16) (by omega) (by omega) e2 (by sp_al) fun x ho hg hf => ?_
   rotate_left
   · exact hfr x (OutHeap.not_alloc h.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)
   obtain ⟨h3, hfc⟩ := h.malloc hp (by decide) (by simp only [heapEnd]; omega)
@@ -1836,7 +1836,7 @@ theorem as_ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
   have hi1 := h1.heap.heap
   refine ss_new hlive hi1 h.glob hr hw (StackFrame.shrink hsf (by decide))
     (by simp only [heapEnd]; omega) R h10 h2 hal
-    (fun R' Ms M1 H' b hk1 e1 e2 hMs hp => ?_) fun R' M' sp' e1 e2 e3 hfr => hoom R' M' sp' (by omega) e2 e3 fun a ho hg hf => ?_
+    (fun R' Ms M1 H' b hk1 e1 e2 hMs hp => ?_) fun R' M' sp' e1 e2 e3 eal hfr => hoom R' M' sp' (by omega) e2 e3 eal fun a ho hg hf => ?_
   · rw [h11]
     refine hk R' _ H' b hk1 e1 e2 (h.newArr hr hl hf hcsz hi hd hv (by simp only [heapEnd]; omega) hMs hp)
       fun a ho hg hf => ?_
@@ -1901,7 +1901,7 @@ theorem as_case_none {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   refine as_empty hlive h hsf hab R h2 h9 h18 l16 l24 l56 l40 l32
     (fun R1 Mm H' c h3 hfc hcsz hfr hk1 e1 e2 e9 e18 e10 e11 => ?_) hoom
   refine as_ss_new hlive h3 hr hl hfc hcsz hi hd hv hsf hab R1 e10 e11 e2 (by rw [e1]; exact hal)
-    (fun R' M' H2 b hk2 e1' e2' h4 hfr2 => ?_) fun R' M' sp' e1 e2 e3 hfr2 => hoom R' M' sp' (by omega) e2 e3 fun a ho hg hf => ?_
+    (fun R' M' H2 b hk2 e1' e2' h4 hfr2 => ?_) fun R' M' sp' e1 e2 e3 eal hfr2 => hoom R' M' sp' (by omega) e2 e3 eal fun a ho hg hf => ?_
   · rw [e1]
     have e : arraySet st r i v = st.setReg r [⟨none, [(i, v)]⟩] := by
       simp only [arraySet, hst]
@@ -2080,7 +2080,7 @@ theorem as_case_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       ((hfr 40 (by omega) (by omega) (by omega)).trans l40)
       ((hfr 32 (by omega) (by omega) (by omega)).trans l32) hal
       (fun R' M' H' c hk4 e1 e2 e8' e9 e18 h4 hso => hk R' M' H' F L C _ ?_ e1 e2 e8' e9
-        e18 h4 (hout M' hso) (StrPin.refl _ _) rfl) fun R' M' sp' e1 e2 e3 hso => hoom R' M' sp' e1 e2 e3 (hout M' hso)
+        e18 h4 (hout M' hso) (StrPin.refl _ _) rfl) fun R' M' sp' e1 e2 e3 eal hso => hoom R' M' sp' e1 e2 e3 eal (hout M' hso)
     exact hk4.trans (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
 
 theorem ofNat_sub64 {sp : Nat} (h1 : 64 ≤ sp) :
@@ -2140,7 +2140,7 @@ theorem dc_array_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
         · exact e9
         · exact e18) h' (fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)) hpin hlk
   have hoom' : StkOom (DW live S Q) 0x80001e74#64 sp 112 (StkOut sp 112 · M1) :=
-    fun R' M' sp' e1 e2 e3 hso => hoom R' M' sp' e1 e2 e3 fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)
+    fun R' M' sp' e1 e2 e3 eal hso => hoom R' M' sp' e1 e2 e3 eal fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)
   clear hM1
   refine get_stacked hlive h1 hr _ (by bsimp [h10]) (by bsimp []) fun R1 hk1 e10 => ?_
   rw [show upd (upd (upd (upd R 2 (BitVec.ofNat 64 (sp - 64))) 9 (R 11)) 18 (R 10)) 1

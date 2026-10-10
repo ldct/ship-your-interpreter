@@ -311,7 +311,7 @@ theorem sqrt_k {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
   · intro R'' Mt'' sp' e1 e2 r2 _ hout
     bc_run hlive hS [] at 0x80001e74
     have hN' : sqN = 48 + (160 + 512 + rmStack (2 ^ 30)) := rfl
-    refine hoom R'' Mt'' sp' ⟨by rw [hN']; omega, by omega, r2, fun a ho hg hf _ => ?_⟩
+    refine hoom R'' Mt'' sp' ⟨by rw [hN']; omega, by omega, r2, fun a ho hg hf _ => ?_, by sp_al⟩
     rw [show sqN = 48 + (160 + 512 + rmStack (2 ^ 30)) from rfl] at hf
     simp only [frameIn] at hf
     exact (hout a ho (fun h' => hf (by simp only [slotBytes] at h'; omega))

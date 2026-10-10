@@ -67,7 +67,7 @@ theorem fn_opOom {Wc sp' : Nat} {R' : Nat → BitVec 64} {M' : Mem} {t' : String
     (hc : FnAt S sp W M0 R0 R M) (ho : FnOom live S Q sp W M0) (hW : 192 + Wc ≤ W)
     (o : OomAt S (sp - 192) Wc M (fun _ => False) sp' R' M') :
     DWO live S Q t' 0x80001e74#64 R' M' :=
-  hc.oom ho hW o.lo o.hi o.r2 fun a e1 e2 _ e4 => o.out a e1 e2 e4 id
+  hc.oom ho hW o.lo o.hi o.r2 o.al fun a e1 e2 _ e4 => o.out a e1 e2 e4 id
 
 /-- **`dc_binop (op, dc_scale)`** from its call (return address `p + 4`). -/
 theorem fn_binop {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {fa N lk p : Nat}

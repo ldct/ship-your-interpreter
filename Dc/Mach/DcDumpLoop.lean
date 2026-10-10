@@ -138,7 +138,7 @@ theorem dn_cell {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
       hm.dv, hm.dd, hm.db, (w2 24 (by omega)).trans hm.w24, (w2 32 (by omega)).trans hm.w32,
       (w2 40 (by omega)).trans hm.w40, by rw [hk3.get 8 (by decide)]; bsimp [r28], sk2⟩ h30
   · refine hoom R1 M1 (sp - 80 - 16) ⟨by simp only [dnN, dnW]; omega, by omega, hr2,
-      fun a ho hg hf _ => ?_⟩
+      fun a ho hg hf _ => ?_, by sp_al⟩
     rw [hout a (OutHeap.not_alloc hi ho) fun h => hf (by simp only [frameIn, dnN, dnW] at h ⊢; omega)]
     exact hm.fr.out a ho hg hf
 

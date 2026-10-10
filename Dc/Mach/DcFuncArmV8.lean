@@ -72,7 +72,7 @@ theorem fa_mk {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {b : Na
       fun c hc => by simp at hc; omega, by simp⟩
     (hc2.cf (Wc := 64) (by omega)) (hc2.cab (by omega)) _ (by bsimp [e22]) (by bsimp [])
     (by bsimp []; rfl) (by bsimp []) (fun R3 M3 H3 b1 b2 k3 e32 etag e11 h3 hout3 => ?_)
-    (fun R3 M3 e3 hout3 => hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3
+    (fun R3 M3 e3 hout3 => hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3 (by sp_al)
       fun a e1 e2 _ e4 => hout3 a e1 e2 e4)
   have hc3 := hc2.callS (R' := R3) (Wc := 64) (by omega)
     (by keeps_tac ((k3.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
@@ -91,7 +91,7 @@ theorem fa_mk {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {b : Na
     exact fa_ok (st' := st1.push (.str [b])) hlive (ex := []) h4 hc4 hk (.ok _) (by simp)
       (by show G2.lk.length ≤ _; rw [hlk]; exact Nat.le_add_right _ _)
       (hpin.trans (StrPin.cons _ _ _))
-  · exact hc3.oom ho (Wc := 64) (by omega) (by omega) (by omega) e4
+  · exact hc3.oom ho (Wc := 64) (by omega) (by omega) (by omega) e4 (by sp_al)
       fun a e1 e2 _ e4 => hout4 a e1 e2 e4
 
 /-- `a` on a popped number (`0x800013a4`): its low byte. -/

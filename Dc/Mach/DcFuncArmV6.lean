@@ -25,7 +25,7 @@ theorem FnAt.oomOc {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     {sp W Wc sp' : Nat} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {t' : String}
     (hc : FnAt S sp W M0 R0 R M) (ho : FnOom live S Q sp W M0) (hW : 192 + Wc ≤ W)
     (o : OomAt S (sp - 192) Wc M ocG sp' R' M') : DWO live S Q t' 0x80001e74#64 R' M' :=
-  hc.oom ho hW o.lo o.hi o.r2 fun a e1 e2 e3 e4 => o.out a e1 e2 e4 e3
+  hc.oom ho hW o.lo o.hi o.r2 o.al fun a e1 e2 e3 e4 => o.out a e1 e2 e4 e3
 
 section
 

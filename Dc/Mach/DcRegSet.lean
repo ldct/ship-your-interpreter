@@ -818,7 +818,7 @@ theorem reg_set_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (StackFrame.sub (m := 48) (n := 16) (hsf.shrink (m := 64) (by omega)) (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
     (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm e2 hfr =>
-      hoom R1 Mm (sp - 48 - 16) (by omega) (by omega) e2 fun x ho hg hf => ?_
+      hoom R1 Mm (sp - 48 - 16) (by omega) (by omega) e2 (by sp_al) fun x ho hg hf => ?_
   rotate_left
   · rw [hfr x (OutHeap.not_alloc h2'.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)]
     exact hM2 x hf
@@ -1037,7 +1037,7 @@ theorem dc_register_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) �
       (by bsimp [regWord_addr hr]) (by rw [ldv_ld_miss _ _ (by omega), ldv_store_hit])
       (ldv_store_hit _ _ _)
       (by rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]) hal (fun R' M' H' F' L' C' G' hk1 e1 e2 h' hfr hpin hlk => ?_)
-      fun R' M' sp' e1 e2 e3 hfr => hoom R' M' sp' e1 e2 e3 (hout M' hfr)
+      fun R' M' sp' e1 e2 e3 eal hfr => hoom R' M' sp' e1 e2 e3 eal (hout M' hfr)
     exact hk R' M' H' F' L' C' G' (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) h'
       (hout M' hfr) hpin hlk
   | @cons _ b e l' h0 hn hl' =>

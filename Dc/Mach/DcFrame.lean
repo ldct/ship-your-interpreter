@@ -109,12 +109,12 @@ theorem CfCtx.abv {S : Nat → Prop} {fs sp : Nat} (cx : CfCtx S fs sp) : heapEn
 theorem CFr.oom {S : Nat → Prop} {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M M' : Mem}
     {R0 R R' : Nat → BitVec 64} {sp sp' o W : Nat} (hfr : CFr P fs sv M0 M R0 R sp)
     (cx : CfCtx S fs sp) (hW : W ≤ cfW) (ho : o + 8 ≤ fs) (h1 : sp - fs - W ≤ sp') (h2 : sp' ≤ sp - fs)
-    (r2 : R' 2 = BitVec.ofNat 64 sp')
+    (r2 : R' 2 = BitVec.ofNat 64 sp') (hal : sp' % 16 = 0)
     (hout : ∀ a, OutHeap a → ¬ slotBytes (sp - fs + o) a → ¬ frameIn (sp - fs) W a →
       imgM M' a = imgM M a) :
     OomAt S sp (fs + cfW) M0 P sp' R' M' := by
   have := cx.ab
-  refine ⟨by omega, by omega, r2, fun a ho' hg hf hp => ?_⟩
+  refine ⟨by omega, by omega, r2, fun a ho' hg hf hp => ?_, hal⟩
   rw [hout a ho' (fun h => hf (by simp only [slotBytes, frameIn] at h ⊢; omega))
     (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
   exact hfr.out a ho' hg hf hp
@@ -238,7 +238,7 @@ theorem cf_i2n {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     exact hk R' M' H' F' L' C' y k (hfr.next cx.abv (by omega) hsv ho hO k) hd hnum hw' hO hkp
   · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
     bc_run hlive hS [] at 0x80001e74
-    exact hoom R' M' _ (hfr.oom cx (W := 128) (sp' := sp - fs - 128) (by unfold cfW rmStack; omega) ho (by omega) (by omega) r2
+    exact hoom R' M' _ (hfr.oom cx (W := 128) (sp' := sp - fs - 128) (by unfold cfW rmStack; omega) ho (by omega) (by omega) r2 (by have := cx.sf.al; have := cx.al; omega)
       fun a ho' hs' hf => hout a ho' hs' hf)
 
 /-- **A callee's result into the slot at `o`**: the state holds the new
@@ -312,7 +312,7 @@ theorem cf_mul {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       fun C' hfr' hd hw' hO hkp => hk R' Mt H' F' L' C' y (hk'.mono (by decide)) hfr' hd hp.num hw' hO hkp
   · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
     bc_run hlive hS [] at 0x80001e74
-    exact hoom R' Mt sp' (hfr.oom cx (W := 96 + rmStack (2 ^ 30)) (by unfold cfW; omega) ho o1 o2 r2
+    exact hoom R' Mt sp' (hfr.oom cx (W := 96 + rmStack (2 ^ 30)) (by unfold cfW; omega) ho o1 o2 r2 hal16
       fun a ho' hs' hf => hout a ho' hf)
 
 /-- **`bc_add (a, b, &slot, smin)`** with the slot at `o` holding a handle of
@@ -357,7 +357,7 @@ theorem cf_add {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       fun C' hfr' hd hw' hO hkp => hk R' Mt H' F' L' C' y (hk'.mono (by decide)) hfr' hd hp.num hw' hO hkp
   · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
     bc_run hlive hS [] at 0x80001e74
-    exact hoom R' Mt sp' (hfr.oom cx (W := 176) (by unfold cfW; omega) ho o1 o2 r2
+    exact hoom R' Mt sp' (hfr.oom cx (W := 176) (by unfold cfW; omega) ho o1 o2 r2 hal16
       fun a ho' hs' hf => hout a ho' hf)
 
 /-- **`bc_sub (a, b, &slot, smin)`** with the slot at `o` holding a handle of
@@ -402,7 +402,7 @@ theorem cf_sub {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       fun C' hfr' hd hw' hO hkp => hk R' Mt H' F' L' C' y (hk'.mono (by decide)) hfr' hd hp.num hw' hO hkp
   · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
     bc_run hlive hS [] at 0x80001e74
-    exact hoom R' Mt sp' (hfr.oom cx (W := 176) (by unfold cfW; omega) ho o1 o2 r2
+    exact hoom R' Mt sp' (hfr.oom cx (W := 176) (by unfold cfW; omega) ho o1 o2 r2 hal16
       fun a ho' hs' hf => hout a ho' hf)
 
 end Dc.Mach

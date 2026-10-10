@@ -383,7 +383,7 @@ theorem cf_i2nO {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
       bc_run hlive hS [] at 0x80001e74
       exact hoom R' M' _ (hfr.oom cx (W := 128) (sp' := sp - fs - 128) (by unfold cfW rmStack; omega) ho
-        (by omega) (by omega) r2 fun a ho' hs' hf => hout a ho' hs' hf)
+        (by omega) (by omega) r2 (by have := cx.sf.al; have := cx.al; omega) fun a ho' hs' hf => hout a ho' hs' hf)
 
 /-- **`bc_divide (a, b, &slot, k)`** with the slot at `o` holding a handle of
 the state (possibly `a`'s own): its handle replaced by the quotient's, or
@@ -447,7 +447,7 @@ theorem cf_div {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       fun C' hfr' hd hw' hO hkp => hk R' Mt H' F' L' C' y (hk'.mono (by decide)) hfr' hd hp.num hw' hO hkp
   · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
     bc_run hlive hS [] at 0x80001e74
-    exact hoom R' Mt sp' (hfr.oom cx (W := 304) (by unfold cfW; omega) ho o1 o2 r2
+    exact hoom R' Mt sp' (hfr.oom cx (W := 304) (by unfold cfW; omega) ho o1 o2 r2 hal16
       fun a ho' hs' hf => hout a ho' hs' hf)
 
 end Dc.Mach

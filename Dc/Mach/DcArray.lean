@@ -336,7 +336,7 @@ theorem ag_zero {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
   refine dc_int2data_spec hlive h hhs (v := 0) (sp := sp) (StackFrame.shrink hsf (m := 192) (by omega))
     (by simp only [heapEnd]; omega) _ ?_ ?_ ?_ (by decide) (by decide)
     (fun R' M' H' F' L' C' g hk1 hd' hden h' hfr => ?_)
-    (fun R' M' e2 hfr => hoom R' M' (sp - 192) (by omega) (by omega) e2
+    (fun R' M' e2 hfr => hoom R' M' (sp - 192) (by omega) (by omega) e2 (by sp_al)
       fun a ho hg hf => hfr a ho hg fun h' => hf (by simp only [frameIn] at h' ⊢; omega))
   · bsimp []; rfl
   · bsimp [h2]; congr 1; omega
@@ -412,7 +412,7 @@ theorem dc_array_get_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
           (hk2.mono (by decide))).mono (by decide)) (by keeps_tac Keeps.refl _ _) e1 (by rw [e2', h2]))
           hd h' ?_ (hout M' hfr) (StrPin.refl _ _) rfl
         rw [arrayGet_eq, hnone]; exact hden)
-      fun R' M' sp' e1 e2 e3 hfr => hoom R' M' sp' e1 e2 e3 (hout M' hfr)
+      fun R' M' sp' e1 e2 e3 eal hfr => hoom R' M' sp' e1 e2 e3 eal (hout M' hfr)
   generalize hM2 : writeLog (writeLog M [(sp - 48 + 8, 8, BitVec.ofNat 64 i)]) [(sp - 48 + 40, 8, R 1)] = M2
     at h1 hch hbd hf2 l8 l40 e10 hz hout ⊢
   rcases hl : topArr (G.regs r) with _ | ⟨⟨b, x⟩, l⟩

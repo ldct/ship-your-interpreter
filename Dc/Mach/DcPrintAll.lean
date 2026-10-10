@@ -97,7 +97,7 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
       (fun e => absurd e (by decide)) hv hhs (hw v hvm) hmb hob2 hob herr hsf hab _ ?q2 ?q10 ?q11 ?q12
       ?q13 ?q14 ?qal (fun R' M' H' F' L' C' G' hk' e2 hsn' hD hfr' hpin' => ?_)
       fun t' R' M' sp' ho => hoom t' R' M' sp' ⟨ho.lo, ho.hi, ho.r2, fun a e1 e2 e3 e4 =>
-        (ho.out a e1 e2 e3 e4).trans (hfr a e1 e2 e4 e3)⟩
+        (ho.out a e1 e2 e3 e4).trans (hfr a e1 e2 e4 e3), by sp_al⟩
     case q2 => bsimp [h2]
     case q10 => bsimp []; exact d0
     case q11 => bsimp []
@@ -288,7 +288,7 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
       (hsf.within (m := 32) (n := prN) (by omega) (by decide)) (by omega)
       (fun t' R' M' sp' ho => hoom t' R' M' sp' ⟨by have := ho.lo; omega, by have := ho.hi; omega, ho.r2,
         fun a e1 e2 e3 e4 => (ho.out a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)) e4).trans
-          (hM1 a fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))⟩)
+          (hM1 a fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)), by sp_al⟩)
       rest [] (b := b) (g := g) _ h1 (by rw [hstk]; rfl) ⟨rfl, rfl, rfl, rfl⟩ (StrPin.refl _ _) hmb1 (fun _ _ _ _ _ => rfl)
       ?r2 ?r8 ?r9 fun R' M' H' F' L' C' G' hk' e2 hsn hD hpin hfr => ?_
     case r2 => bsimp []

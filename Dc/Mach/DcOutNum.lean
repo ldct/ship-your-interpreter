@@ -244,7 +244,7 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     have hWN : onW = 176 + 512 + rmStack (2 ^ 30) + 48 := rfl
     have hNN : onN = 32 + onW := rfl
     exact hoom t' R' M' sp' ⟨by omega, by omega, hr2, fun a ho _ hf hg =>
-      hfr' a ho hg fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)⟩
+      hfr' a ho hg fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), by sp_al⟩
 
 /-- **`dc_out_num (value, obase, discard)`** at `0x80002a4c` on the number
 `x` (with `DC_TOSS`, the head of the caller's handles `hs`): the console extended by `Num.out 70 ob` of
@@ -309,7 +309,7 @@ theorem dc_out_num_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
     (fun R' M' H' F' L' C' hk' e2 e8 hd hfr => hk R' M' H' F' L' C' ?_ (by rw [e2, h2]) hd
       fun a ho hg hc hf => (hfr a ho hg hc hf).trans (hfr1 a hc hf))
     fun t' R' M' sp' ho => hoom t' R' M' sp' ⟨ho.lo, ho.hi, ho.r2, fun a e1 e2 e3 e4 =>
-      (ho.out a e1 e2 e3 e4).trans (hfr1 a e4 e3)⟩
+      (ho.out a e1 e2 e3 e4).trans (hfr1 a e4 e3), by sp_al⟩
   · exact ldv_lw_hitN _ rfl (by simp) (by simp)
   · rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
   · rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),

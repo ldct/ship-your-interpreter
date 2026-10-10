@@ -722,7 +722,7 @@ theorem dc_register_push_spec {live S : Nat → Prop}
     (StackFrame.sub (m := 32) (n := 16) hsf (by decide))
     (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
     (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm e2 hfr =>
-      hoom R1 Mm (sp - 32 - 16) (by omega) (by omega) e2 fun x ho hg hf => ?_
+      hoom R1 Mm (sp - 32 - 16) (by omega) (by omega) e2 (by sp_al) fun x ho hg hf => ?_
   rotate_left
   · rw [hfr x (OutHeap.not_alloc h2'.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)]
     exact hM2 x fun h' => hf h'

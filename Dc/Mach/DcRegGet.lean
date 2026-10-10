@@ -119,7 +119,8 @@ theorem reg_get_err {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
 below `sp`: any `sp'` in that window, the bytes `O` keeps. -/
 def StkOom (P : BitVec 64 → (Nat → BitVec 64) → Mem → Prop) (pc : BitVec 64) (sp W : Nat)
     (O : Mem → Prop) : Prop :=
-  ∀ R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → O M' → P pc R' M'
+  ∀ R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 → O M' →
+    P pc R' M'
 
 /-- The bytes `dc_register_get` changes outside its frame and the slot: none. -/
 def GetOut (sp q : Nat) (M' M : Mem) : Prop :=
@@ -242,7 +243,7 @@ theorem reg_get_zero {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     (by simp only [heapEnd]; omega) _ (by bsimp []; rfl) (by bsimp [h2]) (by bsimp []) (by decide)
     (by decide) (fun R1 M2 H' F' L' C' g hk1 hd' hden h' hfr => ?_) (fun R1 M2 e2 hfr => ?_)
   rotate_left
-  · refine hoom R1 M2 (sp - 32 - 192) (by omega) (by omega) e2 fun x ho hg hf _ => ?_
+  · refine hoom R1 M2 (sp - 32 - 192) (by omega) (by omega) e2 (by sp_al) fun x ho hg hf _ => ?_
     rw [hfr x ho hg (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))]
     exact hM1 x hf
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk1.get 2 (by decide)]; bsimp [h2]
@@ -346,7 +347,7 @@ theorem dc_register_get_spec {live S : Nat → Prop}
     all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hrown | (simp only [LdOK, regAddr, dcRegAddr]; omega) | skip
     refine reg_get_zero hlive h1 hhs hsf (by simp only [heapEnd]; omega) hq _ (by bsimp [h2])
       (by bsimp [h11]) (ldv_store_hit _ _ _) hal (fun R' M' H' F' L' C' g hk1 e1 e2 e10 h' hden hdat hfr => ?_)
-      (fun R' M' sp' e1 e2 e3 hfr => hoom R' M' sp' e1 e2 e3 (hout M' hfr))
+      (fun R' M' sp' e1 e2 e3 eal hfr => hoom R' M' sp' e1 e2 e3 eal (hout M' hfr))
     exact hk R' M' H' F' L' C' G g _ hget
       (hk1.restore2 (by keeps_tac Keeps.refl _ _) e1 (by rw [e2, h2])) e10 ⟨rfl, rfl, rfl, rfl⟩ h' hden hdat
       (hout M' hfr) (StrPin.refl _ _)

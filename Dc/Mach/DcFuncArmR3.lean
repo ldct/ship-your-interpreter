@@ -131,7 +131,7 @@ theorem fs_set (hlive : ∀ p ∈ dcText, live p.1) {r : Nat} (hr : r < 256) {R'
   refine dc_register_set_spec hlive h' hv hr (hc'.cf (Wc := 80) (by omega)) (hc'.cab (by omega)) _
     (by bsimp []) ⟨by bsimp []; exact hd.tag, by bsimp []⟩ (by bsimp [e2']) (by bsimp [])
     (fun R2 M2 H2 F2 L2 C2 G2 k2 h2 hout hpin hlk => ?_)
-    fun R2 M2 sp' e1 e2 e3 hout => hc'.oom ho (Wc := 80) (by omega) e1 e2 e3
+    fun R2 M2 sp' e1 e2 e3 eal hout => hc'.oom ho (Wc := 80) (by omega) e1 e2 e3 eal
       fun a a1 a2 _ a4 => hout a a1 a2 a4
   bsimp []
   bc_run hlive hlive [] at 0x80000c14
@@ -202,7 +202,7 @@ theorem fS_push (hlive : ∀ p ∈ dcText, live p.1) {r : Nat} (hr : r < 256) {R
   refine dc_register_push_spec hlive h' hr ⟨hd.tag, hd.ptr⟩ hv (hc'.cf (Wc := 48) (by omega))
     (hc'.cab (by omega)) _ (by bsimp []) (by bsimp []) (by bsimp []; exact hd.ptr.symm) (by bsimp [e2'])
     (by bsimp []) (fun R2 M2 H2 c k2 h2 hout => ?_)
-    fun R2 M2 sp' e1 e2 e3 hout => hc'.oom ho (Wc := 48) (by omega) e1 e2 e3
+    fun R2 M2 sp' e1 e2 e3 eal hout => hc'.oom ho (Wc := 48) (by omega) e1 e2 e3 eal
       fun a a1 a2 _ a4 => hout a a1 a2 a4
   bsimp []
   bc_run hlive hlive [] at 0x80000c14
@@ -287,7 +287,7 @@ theorem fL_push (hlive : ∀ p ∈ dcText, live p.1) {R' : Nat → BitVec 64}
   refine dc_push_spec hlive h' hv (hc'.cf (Wc := 64) (by omega)) (hc'.cab (by omega)) _
     ⟨by bsimp []; exact hd.tag, by bsimp []⟩ (by bsimp [e2']) (by bsimp [])
     (fun R2 M2 H2 c k2 h2 hout => ?_)
-    fun R2 M2 e2 hout => hc'.oom ho (Wc := 64) (by omega) (by omega) (by omega) e2
+    fun R2 M2 e2 hout => hc'.oom ho (Wc := 64) (by omega) (by omega) (by omega) e2 (by sp_al)
       fun a a1 a2 _ a4 => hout a a1 a2 a4
   bsimp []
   bc_run hlive hlive [] at 0x80000c14
@@ -338,14 +338,14 @@ theorem fa_L (hlive : ∀ p ∈ dcText, live p.1)
 theorem fn_getOom (hlive : ∀ p ∈ dcText, live p.1) {sp' : Nat} {R' : Nat → BitVec 64} {M M' : Mem}
     {t' : String} (hc : FnAt S sp W M0 R0 R M) (ho : FnOom live S Q sp W M0) (hW : 192 + 336 ≤ W)
     (e1 : sp - 192 - 336 ≤ sp') (e2 : sp' ≤ sp - 192) (e3 : R' 2 = BitVec.ofNat 64 sp')
-    (hout : GetOut (sp - 192) (fnSlot sp) M' M) : DWO live S Q t' 0x80002bcc#64 R' M' := by
+    (eal : sp' % 16 = 0) (hout : GetOut (sp - 192) (fnSlot sp) M' M) : DWO live S Q t' 0x80002bcc#64 R' M' := by
   have htx : tohostAddr = 0x8001ad00 := rfl
   bc_run hlive hlive [] at 0x80001e74
   have hb := hc.big
   have hl := hc.frame.lo
   exact ho t' R' M' sp' ⟨by omega, by omega, e3, fun a a1 a2 a3 a4 =>
     (hout a a1 a2 (fun hf => a3 (by simp only [frameIn] at hf ⊢; omega))
-      (by simp only [frameIn, fnSlot] at a3 ⊢; omega)).trans (hc.out a a1 a2 a4 a3)⟩
+      (by simp only [frameIn, fnSlot] at a3 ⊢; omega)).trans (hc.out a a1 a2 a4 a3), eal⟩
 
 theorem dcFunc_l_some {r : Nat} {v : Val} (hg : regGet st r = some v) :
     dcFunc 70 st 108 (some r) neg = .eatOne (st.push v) := by
@@ -380,8 +380,8 @@ theorem fa_l (hlive : ∀ p ∈ dcText, live p.1)
       (by bsimp []; rfl) (by bsimp []) (by bsimp [e2]) (by bsimp [])
       (fun R' M' H' F' L' C' G' g v hg k2 e10 hsn h' hden hd hout hpin => ?_)
       (fun hg R' M' k2 e10 h' hout => ?_)
-      fun R' M' sp' e1 e2 e3 hout => fn_getOom hlive (hc.mod (by keeps_tac Keeps.refl _ _)) ho hW
-        e1 e2 e3 hout
+      fun R' M' sp' e1 e2 e3 eal hout => fn_getOom hlive (hc.mod (by keeps_tac Keeps.refl _ _)) ho hW
+        e1 e2 e3 eal hout
     · have hc' := (hc.mod (by keeps_tac Keeps.refl _ _)).popped hW k2 hout
       bsimp []
       rw [dcFunc_l_some hg] at hk

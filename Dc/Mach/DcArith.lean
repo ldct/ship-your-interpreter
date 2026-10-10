@@ -153,7 +153,7 @@ theorem dc_add_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     rw [hp.out a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
     exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
   · bc_run hlive hS2 [] at 0x80001e74
-    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_⟩
+    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_, by sp_al⟩
     rw [hout a ho fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
     exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
 
@@ -254,7 +254,7 @@ theorem dc_sub_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     rw [hp.out a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
     exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
   · bc_run hlive hS2 [] at 0x80001e74
-    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_⟩
+    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_, by sp_al⟩
     rw [hout a ho fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
     exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
 
@@ -523,7 +523,7 @@ theorem dc_mul_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
       ((hk3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans
         (by keeps_tac Keeps.refl _ _)))) hret
   · bc_run hlive hS2 [] at 0x80001e74
-    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_⟩
+    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_, by sp_al⟩
     rw [hout a ho fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)]
     exact hout2 a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
 

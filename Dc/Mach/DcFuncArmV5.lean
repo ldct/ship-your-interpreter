@@ -98,7 +98,7 @@ theorem fa_d {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem}
       bc_run hlive hlive [] at 0x80000c10
       exact fa_ok (st' := st.push v) hlive (ex := []) h3 hc3 hk (.ok _) (by simp)
         (by simp only []; rw [hsn.lk]; exact Nat.le_add_right _ _) hpin2
-    · exact hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3
+    · exact hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3 (by sp_al)
         fun a e1 e2 _ e4 => hout3 a e1 e2 e4
 
 end

@@ -1021,14 +1021,14 @@ theorem dc_triop_spec {live S : Nat → Prop}
       fun a o1 o2 o3 _ => by
         rw [ho.out a o1 o2 (fun h' => o3 (by simp only [frameIn] at h' ⊢; omega))
           (fun h' => o3 (by simp only [slotBytes, frameIn] at h' ⊢; omega))]
-        exact hout2 a o1 o2 o3⟩
+        exact hout2 a o1 o2 o3, by sp_al⟩
   · obtain ⟨hfr', hsa', hsb', hsc'⟩ := after M' hr.out
     rw [e1]
     refine triop_ok hlive hr.h hr.den hsf176 hab176 hfr' hsa' hsb' hsc' hr.word hral R'
       (by rw [hk'.get 2 (by decide), e2]) hr.a0
       (fun R'' M'' H'' F'' L'' C'' G'' hk'' e1'' e2'' hlk'' hs'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 128 - 16) ⟨by omega, by omega, e2'',
-        fun a o1 o2 o3 _ => outW M' M'' hr.out hout'' a o1 o2 o3⟩
+        fun a o1 o2 o3 _ => outW M' M'' hr.out hout'' a o1 o2 o3, by sp_al⟩
     rw [triop_push_some (st := st2)
       (g := f (((st2.push (.num na)).push (.num nb)).push (.num nc)).scale) hr.val] at hk
     refine hk R'' M'' H'' F'' L'' C'' G'' ((hk''.trans ((hk'.mono (by decide)).trans kk)))
@@ -1041,7 +1041,7 @@ theorem dc_triop_spec {live S : Nat → Prop}
       (fun R'' M'' H'' G'' hk'' hlk'' hs'' e1'' e2'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 128 - 64) ⟨by omega, by omega, e2'',
         fun a o1 o2 o3 _ => outW M' M'' hf.out (fun a o1 o2 o3 => hout'' a o1 o2 fun h' => o3 (by
-          simp only [frameIn] at h' ⊢; omega)) a o1 o2 o3⟩
+          simp only [frameIn] at h' ⊢; omega)) a o1 o2 o3, by sp_al⟩
     rw [triop_push_none (st := st2)
       (g := f (((st2.push (.num na)).push (.num nb)).push (.num nc)).scale) hf.val] at hk
     refine hk R'' M'' H'' F' L' C' G'' ((hk''.mono (by decide)).trans ((hk'.mono (by decide)).trans kk))

@@ -74,7 +74,7 @@ theorem fq_push {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : N
     all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
     exact (hc5.mod (by keeps_tac Keeps.refl _ _)).close (st' := st.push (.str [])) hlive hk (.evalTos _) (ex := []) h5 (by simp)
       (by simp [hlk]) hpin (by bsimp [])
-  · exact hcv.oom ho (Wc := 64) (by omega) (by omega) (by omega) e5 fun a e1 e2 _ e4 => hout5 a e1 e2 e4
+  · exact hcv.oom ho (Wc := 64) (by omega) (by omega) (by omega) e5 (by sp_al) fun a e1 e2 _ e4 => hout5 a e1 e2 e4
 
 /-- `?` after `dc_readstring` (`0x80000d0c`): the datum spilled to the frame,
 `ferror (stdin)` (`0`), then `fq_push`. -/
@@ -125,7 +125,7 @@ theorem fq_rs {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem
       hm a (by simp only [frameIn] at e5; omega)
   refine dc_readstring_spec hlive h0 (hc.cf (Wc := 128) (by omega)) (hc.cab (by omega)) _
     (by bsimp [eq2]) (by rw [eq1]; decide) (fun R2 M2 H2 G2 b1 b2 k2 e22 e10 e11 hnext h2 hout2 => ?_)
-    (fun R2 M2 e2' hout2 => hcq.oom ho (Wc := 128) (by omega) (by omega) (by omega) e2'
+    (fun R2 M2 e2' hout2 => hcq.oom ho (Wc := 128) (by omega) (by omega) (by omega) e2' (by sp_al)
       fun a e1 e2 _ e4 => hout2 a e1 e2 e4)
   have e2b : R2 2 = BitVec.ofNat 64 (sp - 192) := by rw [k2.get 2 (by decide)]; exact eq2
   have hcv : FnAt S sp W M0 R0 (VsaIris.Sym.upd R2 8 (R 8)) M2 :=

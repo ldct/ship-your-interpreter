@@ -326,7 +326,7 @@ theorem dn_div {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
         simp only [frameIn, slotBytes] at h; omega]
       exact m40
   · bc_run hlive hS [] at 0x80001e74
-    refine hoom R3 Mt sp' ⟨by simp only [dnN]; omega, by omega, hr2', fun a ho hg hf _ => ?_⟩
+    refine hoom R3 Mt sp' ⟨by simp only [dnN]; omega, by omega, hr2', fun a ho hg hf _ => ?_, by sp_al⟩
     rw [hout a ho (fun hs => hf (by simp only [slotBytes, frameIn, dnN] at hs ⊢; omega))
       (fun hs => hf (by simp only [frameIn, dnN] at hs ⊢; omega))]
     exact hfr.out a ho hg hf
@@ -419,7 +419,7 @@ theorem dn_i2n {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       fun h => (h rfl).elim, Nat.le_refl _⟩
   · bc_run hlive hS [] at 0x80001e74
     refine hoom _ M1 (sp - 80 - 128) ⟨by simp only [dnN, dnW]; omega, by omega, hr2,
-      fun a ho hg hf _ => ?_⟩
+      fun a ho hg hf _ => ?_, by sp_al⟩
     rw [hout1 a ho (fun h => hf (by simp only [slotBytes, frameIn, dnN] at h ⊢; omega))
       (fun h => hf (by simp only [frameIn, dnN, dnW] at h ⊢; omega))]
     exact hfr.out a ho hg hf
@@ -536,7 +536,7 @@ theorem dn_dm {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (N
       fun j hj h => by rcases h with h | h | h <;> simp only [slotBytes, frameIn] at h <;> omega]
     exact hl.w32
   · bc_run hlive hS [] at 0x80001e74
-    refine hoom R4 Mt sp' ⟨by simp only [dnN]; omega, by omega, hr2', fun a ho hg hf _ => ?_⟩
+    refine hoom R4 Mt sp' ⟨by simp only [dnN]; omega, by omega, hr2', fun a ho hg hf _ => ?_, by sp_al⟩
     rw [hout a ho (fun h => hf (by simp only [frameIn, dnN] at h ⊢; omega))]
     exact hl.fr.out a ho hg hf
 

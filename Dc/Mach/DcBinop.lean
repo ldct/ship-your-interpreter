@@ -64,6 +64,7 @@ structure OomAt (S : Nat → Prop) (sp W : Nat) (M0 : Mem) (P : Nat → Prop) (s
   hi : sp' ≤ sp
   r2 : R' 2 = BitVec.ofNat 64 sp'
   out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp W a → ¬ P a → imgM M' a = imgM M0 a
+  al : sp' % 16 = 0
 
 /-- An operation's entry: the operand handles `pa`, `pb` (denoting `na`, `nb`)
 held by the caller, the scale in `a2`, the result slot `q` above the frame. -/
@@ -756,14 +757,14 @@ theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
       fun a o1 o2 o3 _ => by
         rw [ho.out a o1 o2 (fun h' => o3 (by simp only [frameIn] at h' ⊢; omega))
           (fun h' => o3 (by simp only [slotBytes, frameIn] at h' ⊢; omega))]
-        exact hout2 a o1 o2 o3⟩
+        exact hout2 a o1 o2 o3, by sp_al⟩
   · obtain ⟨hfr', hsa', hsb'⟩ := after M' hr.out
     rw [e1]
     refine binop_ok hlive hr.h hr.den hsf176 hab176 hfr' hsa' hsb' hr.word hral R'
       (by rw [hk'.get 2 (by decide), e2]) hr.a0
       (fun R'' M'' H'' F'' L'' C'' G'' hk'' e1'' e2'' hlk'' hs'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 112 - 16) ⟨by omega, by omega, e2'',
-        fun a o1 o2 o3 _ => outW M' M'' hr.out hout'' a o1 o2 o3⟩
+        fun a o1 o2 o3 _ => outW M' M'' hr.out hout'' a o1 o2 o3, by sp_al⟩
     rw [binop_push_some (st := st2) (g := f ((st2.push (.num na)).push (.num nb)).scale) hr.val] at hk
     refine hk R'' M'' H'' F'' L'' C'' G'' ((hk''.trans ((hk'.mono (by decide)).trans kk)))
       (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hr.lkLen)
@@ -775,7 +776,7 @@ theorem dc_binop_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
       (fun R'' M'' H'' G'' hk'' hlk'' hs'' e1'' e2'' hd'' hout'' => ?_)
       fun R'' M'' e2'' hout'' => hoom R'' M'' (sp - 112 - 64) ⟨by omega, by omega, e2'',
         fun a o1 o2 o3 _ => outW M' M'' hf.out (fun a o1 o2 o3 => hout'' a o1 o2 fun h' => o3 (by
-          simp only [frameIn] at h' ⊢; omega)) a o1 o2 o3⟩
+          simp only [frameIn] at h' ⊢; omega)) a o1 o2 o3, by sp_al⟩
     rw [binop_push_none (st := st2) (g := f ((st2.push (.num na)).push (.num nb)).scale) hf.val] at hk
     refine hk R'' M'' H'' F' L' C' G'' ((hk''.mono (by decide)).trans ((hk'.mono (by decide)).trans kk))
       (by rw [e2'', h2]) (by rw [hlk'', ← hlk2]; exact hf.lkLen)

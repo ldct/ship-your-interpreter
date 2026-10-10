@@ -452,7 +452,7 @@ theorem dc_divrem_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p
     have l1 : sp - (48 + (176 + rmStack (2 ^ 30))) ≤ sp' := by
       rw [← Nat.sub_sub]; exact o1
     have l2 : sp' ≤ sp := Nat.le_trans o2 (Nat.sub_le sp 48)
-    refine hoom R4 Mt sp' ⟨l1, l2, hr2', fun a ho hg hf hs => ?_⟩
+    refine hoom R4 Mt sp' ⟨l1, l2, hr2', fun a ho hg hf hs => ?_, by sp_al⟩
     have n1 : ¬ frameIn (sp - 48) (176 + rmStack (2 ^ 30)) a := by
       intro h'; simp only [frameIn] at hf h'; omega
     have n2 : ¬ frameIn sp 48 a := by

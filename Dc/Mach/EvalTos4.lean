@@ -166,12 +166,12 @@ return continuation covering `Pn`; for each outcome, the state's model facts
 and the activation's continuations (`DC_OKAY` on, `DC_QUIT` up or out). -/
 def TosNestK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
     (t0 : String) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → BitVec 64) (F : List Blk)
-    (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st3 : St) (rest : List Nat)
-    (td : Nat) : Prop :=
+    (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st3 : St) (x : List Nat)
+    (rest : List Nat) (td : Nat) : Prop :=
   ∃ d1 k1 : Nat, ∃ Pn : St → Status → Prop, d = d1 + 1 ∧ k1 ≤ k ∧
     (∀ (R1 : Nat → BitVec 64) (M1 : Mem) (H1 : Heap) (G1 : DcG) (p' : Nat) (o1 : StrObj),
       EvEntry S (sp - 176) (W - 176) d1 k1 (sp - 176 + 32) M1 R1 H1 F L C G1
-        (.str p' :: (xs ++ hs)) [] st3 o1 →
+        (.str p' :: (xs ++ hs)) [] st3 o1 → o1.s = x →
       EvOom live S Q (sp - 176) (W - 176) (sp - 176 + 32) M1 →
       (∀ st1 r1, Pn st1 r1 → EvK live S Q t0 (sp - 176) (W - 176) k1 (sp - 176 + 32) M1 R1 G1
         (.str p' :: (xs ++ hs)) [] st1 r1) →
@@ -195,7 +195,7 @@ theorem tos_call (hlive : ∀ p ∈ dcText, live p.1)
     (hk3 : Keeps (1 :: 8 :: 23 :: cClob) R3 R) (h8 : R3 8 = BitVec.ofNat 64 (o.tb.pay + j))
     (h3 : DcAt S M3 H3 F L C G3 (g :: (xs ++ hs)) st3) (hd3 : DatAt M3 (sp - 176 + 32) g)
     (hpo : PopOut (sp - 176) (sp - 176 + 32) M3 M) {x : List Nat} (hv : v = .str x)
-    (hnest : TosNestK live S Q t0 sp W d k q M0 R0 F L C G hs xs st3 rest td) :
+    (hnest : TosNestK live S Q t0 sp W d k q M0 R0 F L C G hs xs st3 x rest td) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800017a8#64 R3 M3 := by
   have hstk := ev.stk; have hab := ev.room
   have hfr := ev.frame
@@ -232,7 +232,7 @@ theorem tos_call (hlive : ∀ p ∈ dcText, live p.1)
   have e25' : R4 25 = BitVec.ofNat 64 (sp - 176 + 32) := by rw [k4.get 25 (by decide)]; exact e25
   bc_run hlive hlive [e25'] at 0x80001448
   rw [hst3]
-  refine hrun _ M3 H3 G3 p' o1 ?_ (ev.nestOom hoom hpo) fun st1 r1 hP => ?_
+  refine hrun _ M3 H3 G3 p' o1 ?_ hx1 (ev.nestOom hoom hpo) fun st1 r1 hP => ?_
   · exact ev.nestEntry hd hk1 h3 hst hlk hd3 hpo ho1 hp1 hx1
       (by bsimp []; rw [k4.get 2 (by decide)]; exact e2) (by bsimp []) (by bsimp [])
   · obtain ⟨hsb1, hsrt1, hok, hq1, hq0⟩ := hcont st1 r1 hP

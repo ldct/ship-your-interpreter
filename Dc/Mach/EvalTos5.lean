@@ -63,7 +63,7 @@ theorem tos_mid (hlive : ∀ p ∈ dcText, live p.1)
       EvHeadK live S Q t0 sp W d k k q M0 R0 G hs xs st ⟨skipWs rest, td, false⟩ ∧
       EvEndK live S Q t0 sp W d k q M0 R0 G hs xs st ⟨skipWs rest, td, false⟩)
     (hnest : ∀ x more, st.stack = .str x :: more → skipWs rest ≠ [] →
-      TosNestK live S Q t0 sp W d k q M0 R0 F L C G hs xs { st with stack := more } rest td) :
+      TosNestK live S Q t0 sp W d k q M0 R0 F L C G hs xs { st with stack := more } x rest td) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800017d8#64 R2 M := by
   have hstk := ev.stk; have hab := ev.room
   have hfr := ev.frame
@@ -158,7 +158,7 @@ theorem ev_tos_k (hlive : ∀ p ∈ dcText, live p.1)
       EvEndK live S Q t0 sp W d k q M0 R0 G (.str p' :: hs.tail) xs { st with stack := more }
         ⟨x, td + 1, false⟩)
     (hnest : ∀ x more, st.stack = .str x :: more → skipWs rest ≠ [] →
-      TosNestK live S Q t0 sp W d k q M0 R0 F L C G hs xs { st with stack := more } rest td) :
+      TosNestK live S Q t0 sp W d k q M0 R0 F L C G hs xs { st with stack := more } x rest td) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001748#64 R M := by
   obtain ⟨i, hi, hdrop, h8⟩ := ev.pos
   simp only at hdrop

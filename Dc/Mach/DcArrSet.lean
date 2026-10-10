@@ -1140,4 +1140,114 @@ theorem as_ss0 {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
   · rw [e10]; bsimp []
   · rw [e11]; bsimp []
 
+/-- `dc_set_stacked_array (r, a1)` at `0x8000391c` with a level at `p`: the
+array head word set. -/
+theorem ss_lev {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) (hG : ∀ a, DcGlob a → S a) {M : Mem}
+    {r p : Nat} (hr : r < 256) (hw : ldv .ld M (regAddr r) = BitVec.ofNat 64 p)
+    (hp : heapStart ≤ p ∧ p + 32 ≤ heapEnd ∧ p % 8 = 0)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 r) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R', Keeps [10, 15] R' R → DW live S Q (R 1) R' (writeLog M [(p + 16, 8, R 11)])) :
+    DW live S Q 0x8000391c#64 R M := by
+  obtain ⟨hp1, hp2, hp3⟩ := hp
+  simp only [heapEnd, heapStart] at hp1 hp2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hra8 : (BitVec.ofNat 64 (regAddr r)).toNat = regAddr r := by
+    simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
+  have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+  have hpw : (BitVec.ofNat 64 p).toNat = p := by simp only [BitVec.toNat_ofNat]; omega
+  have hnz : BitVec.ofNat 64 p ≠ 0#64 := ofNat_ne_small (by omega) (by decide) (by omega)
+  have hpS : ∀ b ∈ accAddrs (p + 16) 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hS b (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  bc_run hlive hS [h10, regWord_addr hr, hra8, hw, hpw]
+  all_goals first | exact hrown | exact hpS | (simp only [LdOK, StOK, regAddr, dcRegAddr, htx]; omega) | skip
+  all_goals try (intro hc; exact (hnz hc).elim)
+  all_goals try intro _
+  bc_run hlive hS [hpw]
+  all_goals first | exact hpS | (simp only [StOK, htx]; omega) | exact hal | skip
+  refine hk _ ?_
+  · keeps_tac Keeps.refl _ _
+
+/-- The new level's stores in `dc_set_stacked_array`. -/
+abbrev levW (M : Mem) (b : Blk) (r : Nat) (w : BitVec 64) : Mem :=
+  writeLog (writeLog (writeLog (writeLog M [(b.pay, 4, 0#64)]) [(b.pay + 24, 8, 0#64)])
+    [(regAddr r, 8, BitVec.ofNat 64 b.pay)]) [(b.pay + 16, 8, w)]
+
+/-- `dc_set_stacked_array (r, a1)` at `0x8000391c` on a register with no
+level: a fresh level holding the array head `a1`, or `dc_memfail`. -/
+theorem ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} (hi : HeapInv S M H)
+    (hG : ∀ a, DcGlob a → S a) {sp r : Nat} (hr : r < 256) (hw : ldv .ld M (regAddr r) = 0#64)
+    (hsf : StackFrame S sp 48) (hab : heapEnd + 48 ≤ sp)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 r) (h2 : R 2 = BitVec.ofNat 64 sp)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' Ms M1 H' b, Keeps (1 :: 2 :: 11 :: mallocClob) R' R → R' 2 = BitVec.ofNat 64 sp →
+      MemOnly (frameIn sp 48) Ms M → DcMallocPost S Ms M1 H H' 32 (sp - 32) b →
+      DW live S Q (R 1) R' (levW M1 b r (R 11)))
+    (hoom : ∀ R' M', (∀ a, ¬ AllocByte H a → ¬ frameIn sp 48 a → imgM M' a = imgM M a) →
+      DW live S Q 0x80001e74#64 R' M') :
+    DW live S Q 0x8000391c#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+  simp only [heapEnd] at hab
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hra8 : (BitVec.ofNat 64 (regAddr r)).toNat = regAddr r := by
+    simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
+  have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
+    have := of_mem_accAddrs hb
+    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+  bc_run hlive hS [h10, h2, regWord_addr hr, hra8, hw]
+  all_goals first | exact hrown | (simp only [LdOK, StOK, regAddr, dcRegAddr, htx]; omega) | skip
+  all_goals try (intro hc; exact (hc rfl).elim)
+  all_goals try intro _
+  bc_run hlive hS [h2, hra8] at 0x80001ea0
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  generalize hMs : writeLog (writeLog (writeLog M [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, R 11)])
+    [(sp - 32, 8, BitVec.ofNat 64 (regAddr r))] = Ms
+  have hM2 : MemOnly (frameIn sp 48) Ms M := fun x hx => by
+    rw [← hMs]; simp only [frameIn] at hx; repeat rw [imgM_store_miss _ _ (by omega)]
+  have hi2 : HeapInv S Ms H := hi.transport fun a ha => hM2 a fun hf => by
+    rcases AllocByte.glob_or_heap hi ha with h1 | h1 <;>
+      simp only [frameIn, freeListAddr, heapStart, heapEnd] at hf h1 <;> omega
+  refine dc_malloc_spec hlive hi2 (n := 32) (by decide)
+    (StackFrame.sub (m := 32) (n := 16) hsf (by decide))
+    (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
+    (fun R1 M1 H' b hk1 hp e10 => ?_) fun R1 M1 _ hfr => hoom R1 M1 fun x hx hf => ?_
+  rotate_left
+  · rw [hfr x hx (by simp only [frameIn] at hf ⊢; omega)]
+    exact hM2 x hf
+  have hbb := blk_bounds hp.inv (by rw [hp.live]; exact List.mem_cons_self)
+  have hsz := hp.size
+  simp only [heapStart, heapEnd] at hbb
+  obtain ⟨hb1, hb2, hb3⟩ := hbb
+  have hfm : ∀ k, k + 8 ≤ 32 → ldv .ld M1 (sp - 32 + k) = ldv .ld Ms (sp - 32 + k) :=
+    fun k hk => ldv_congr .ld fun j hj => hp.frame _
+      (OutHeap.not_alloc hi2 (outHeap_of_ge (by simp only [heapEnd, widthOfM] at hj ⊢; omega)))
+      (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+  have l0 : ldv .ld M1 (sp - 32) = BitVec.ofNat 64 (regAddr r) := by
+    have := hfm 0 (by omega); simp only [Nat.add_zero] at this
+    rw [this, ← hMs]; exact ldv_store_hit _ _ _
+  have l8 : ldv .ld M1 (sp - 32 + 8) = R 11 := by
+    rw [hfm 8 (by omega), ← hMs, ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  have l24 : ldv .ld M1 (sp - 32 + 24) = R 1 := by
+    rw [hfm 24 (by omega), ← hMs, ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+      ldv_store_hit]
+  have hbw : (BitVec.ofNat 64 b.pay).toNat = b.pay := by simp only [BitVec.toNat_ofNat]; omega
+  have hbS : ∀ k, k + 8 ≤ 32 → ∀ x ∈ accAddrs (b.pay + k) 8, S x := fun k hk x hx => by
+    have := of_mem_accAddrs hx
+    exact hS x (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  have hbS4 : ∀ x ∈ accAddrs b.pay 4, S x := fun x hx => by
+    have := of_mem_accAddrs hx
+    exact hS x (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk1.get 2]; bsimp [h2]
+  show DW live S Q 0x80003958#64 R1 M1
+  bc_run hlive hS [q2, e10, l0, l8, l24, hbw, hra8]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hrown | exact hbS4 | exact hbS 16 (by omega) | exact hbS 24 (by omega) | (simp only [StOK, LdOK, regAddr, dcRegAddr, htx]; omega) | exact hal | skip
+  refine hk _ Ms M1 H' b ?_ ?_ hM2 hp
+  · keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))
+  · bsimp [q2]; congr 1; omega
+
 end Dc.Mach

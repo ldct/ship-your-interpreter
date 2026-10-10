@@ -4480,7 +4480,7 @@ split and adequacy (`VsaIris/Vsa/BootSplit.lean`; `dc_halts`, `dc_halts_wp`,
 `scripts/dc/DcBootReplay.lean`; the loaded configuration's facts are
 `HaltsLoaded.lean`. Replay sample (2026-10-10): 20 corpus programs (the
 `difftest.py` cases across arithmetic, output bases, registers, arrays,
-macros, comments, `!`, unbalanced brackets, a 1236-digit product, an
+macros, comments, `!`, unbalanced brackets, a 40-by-30-digit product, an
 8191-byte and an 8002-byte program), 0 failing, 929 s CPU (about 46 s per
 program, dominated by the interpreted ELF parse and `setupElf`).
 

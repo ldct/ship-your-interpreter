@@ -130,6 +130,7 @@ import Dc.Mach.DcDumpBase
 import Dc.Mach.DcDump
 import Dc.Mach.DcDumpLoop
 import Dc.Mach.DcDumpOut
+import Dc.Mach.DcFrame
 import Dc.Mach.DcNum2Int
 import Dc.Mach.DcMakeString
 import Dc.Mach.DcMemfail

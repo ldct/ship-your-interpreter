@@ -118,3 +118,4 @@ import Dc.Mach.DcPend
 import Dc.Mach.DcRegGet
 import Dc.Mach.DcRegSet
 import Dc.Mach.DcArrFree
+import Dc.Mach.DcRegPop

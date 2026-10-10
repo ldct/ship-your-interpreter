@@ -317,53 +317,72 @@ theorem DcAt.setHead {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L :
 /-- The empty level. -/
 abbrev RLev.empty : RLev := ⟨none, []⟩
 
-theorem DcG.newLevel_perm {G : DcG} {r : Nat} (hr : r < 256) (hl : G.regs r = []) (c : Blk) :
-    (G.setReg r [(c, RLev.empty)]).blocks.Perm (c :: G.blocks) := by
-  obtain ⟨P, Q, -, hf, hf'⟩ := flatMap_range_upd (f := fun r' => (G.regs r').flatMap RLev.blocks)
-    (g := fun r' => ((G.setReg r [(c, RLev.empty)]).regs r').flatMap RLev.blocks) hr
-    fun r' hne => by simp [DcG.setReg, hne]
-  have e1 : (G.setReg r [(c, RLev.empty)]).blocks = G.stk.map (·.1) ++ (List.range 256).flatMap
-      (fun r' => ((G.setReg r [(c, RLev.empty)]).regs r').flatMap RLev.blocks) ++
+/-- Counts over the register chains with register `r`'s levels replaced. -/
+theorem DcG.setReg_flat_count {β : Type} [BEq β] [LawfulBEq β] (G : DcG) {r : Nat} (hr : r < 256)
+    (l' : List (Blk × RLev)) (f : Blk × RLev → List β) (y : β) :
+    ((List.range 256).flatMap (fun r' => ((G.setReg r l').regs r').flatMap f)).count y +
+        ((G.regs r).flatMap f).count y =
+      ((List.range 256).flatMap (fun r' => (G.regs r').flatMap f)).count y + (l'.flatMap f).count y := by
+  obtain ⟨P, Q, -, hf, hf'⟩ := flatMap_range_upd (f := fun r' => (G.regs r').flatMap f)
+    (g := fun r' => ((G.setReg r l').regs r').flatMap f) hr fun r' hne => by simp [DcG.setReg, hne]
+  rw [hf, hf']
+  simp only [DcG.setReg, ite_true, List.count_append]
+  omega
+
+theorem DcG.setReg_blocks_count (G : DcG) {r : Nat} (hr : r < 256) (l' : List (Blk × RLev)) (y : Blk) :
+    (G.setReg r l').blocks.count y + ((G.regs r).flatMap RLev.blocks).count y =
+      G.blocks.count y + (l'.flatMap RLev.blocks).count y := by
+  have e1 : (G.setReg r l').blocks = G.stk.map (·.1) ++ (List.range 256).flatMap
+      (fun r' => ((G.setReg r l').regs r').flatMap RLev.blocks) ++
       G.strs.flatMap (fun o => [o.hb, o.tb]) ++ G.lbuf.toList := rfl
   have e2 : G.blocks = G.stk.map (·.1) ++ (List.range 256).flatMap
       (fun r' => (G.regs r').flatMap RLev.blocks) ++
       G.strs.flatMap (fun o => [o.hb, o.tb]) ++ G.lbuf.toList := rfl
-  rw [List.perm_iff_count]
-  intro y
-  rw [e1, e2, hf, hf']
-  simp only [DcG.setReg, ite_true, hl, List.flatMap_cons, List.flatMap_nil, RLev.blocks,
-    List.count_append, List.count_cons, List.map_nil, List.count_nil, List.append_nil]
+  have := G.setReg_flat_count hr l' RLev.blocks y
+  rw [e1, e2]
+  simp only [List.count_append] at this ⊢
   omega
 
-theorem DcG.newLevel_vals {G : DcG} {r : Nat} (hl : G.regs r = []) (c : Blk) :
-    (G.setReg r [(c, RLev.empty)]).vals = G.vals := by
-  have hf : (fun r' => ((G.setReg r [(c, RLev.empty)]).regs r').flatMap RLev.vals) =
-      fun r' => (G.regs r').flatMap RLev.vals := by
-    funext r'
-    simp only [DcG.setReg]
-    split
-    · subst_vars; rw [hl]; simp [RLev.vals]
-    · rfl
-  show G.stk.map (·.2) ++ (List.range 256).flatMap
-      (fun r' => ((G.setReg r [(c, RLev.empty)]).regs r').flatMap RLev.vals) = G.vals
-  rw [hf]; rfl
+theorem DcG.setReg_vals_count (G : DcG) {r : Nat} (hr : r < 256) (l' : List (Blk × RLev)) (y : GV) :
+    (G.setReg r l').vals.count y + ((G.regs r).flatMap RLev.vals).count y =
+      G.vals.count y + (l'.flatMap RLev.vals).count y := by
+  have e1 : (G.setReg r l').vals = G.stk.map (·.2) ++ (List.range 256).flatMap
+      (fun r' => ((G.setReg r l').regs r').flatMap RLev.vals) := rfl
+  have e2 : G.vals = G.stk.map (·.2) ++ (List.range 256).flatMap
+      (fun r' => (G.regs r').flatMap RLev.vals) := rfl
+  have := G.setReg_flat_count hr l' RLev.vals y
+  rw [e1, e2]
+  simp only [List.count_append] at this ⊢
+  omega
 
 /-- The bytes of register `r`'s word. -/
 abbrev RegWord (r a : Nat) : Prop := regAddr r ≤ a ∧ a < regAddr r + 8
 
-/-- **A new empty level**: register `r` (empty) now holds the fresh node `c`
-with type `0` and no array. -/
-theorem DcAt.newLevel {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {r : Nat} {c : Blk}
-    (h : DcAt S M H F L C G hs st) (hr : r < 256) (hl : G.regs r = []) (hf : DcFresh H F L G c)
+/-- **A level pushed** on register `r`: the fresh node `c` holds the datum
+`ov` (a handle leaving `hs`) and no array, its link the old head. -/
+theorem DcAt.consLev {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {r : Nat} {c : Blk} {ov : Option GV}
+    {ovv : Option Val}
+    (h : DcAt S M H F L C G (ov.toList ++ hs) st) (hr : r < 256) (hf : DcFresh H F L G c)
     (hm : MemOnly (fun a => c.In a ∨ RegWord r a) M' M)
-    (hw : ldv .ld M' (regAddr r) = BitVec.ofNat 64 c.pay) (h0 : ldv .lw M' c.pay = 0#64)
-    (h16 : ldv .ld M' (c.pay + 16) = 0#64) (h24 : ldv .ld M' (c.pay + 24) = 0#64)
-    (hsz : 32 ≤ c.sz) :
-    DcAt S M' H F L C (G.setReg r [(c, RLev.empty)]) hs (st.setReg r [⟨none, []⟩]) := by
+    (hw : ldv .ld M' (regAddr r) = BitVec.ofNat 64 c.pay) (hn : RLevAt M' c ⟨ov, []⟩)
+    (h24 : ldv .ld M' (c.pay + 24) = ldv .ld M (regAddr r))
+    (hv : Option.Rel (GV.Den ⟨L, G.strs⟩) ov ovv) :
+    DcAt S M' H F L C (G.setReg r ((c, ⟨ov, []⟩) :: G.regs r)) hs
+      (st.setReg r (⟨ovv, []⟩ :: st.regs r)) := by
   have hi := h.heap.heap
-  have hperm := DcG.newLevel_perm hr hl c
-  have hcin := live_in_heap hi hf.live (show c.In c.pay by simp only [Blk.In, Blk.pay, Blk.fin]; omega)
+  have hperm : (G.setReg r ((c, ⟨ov, []⟩) :: G.regs r)).blocks.Perm (c :: G.blocks) := by
+    rw [List.perm_iff_count]
+    intro y
+    have := G.setReg_blocks_count hr ((c, ⟨ov, []⟩) :: G.regs r) y
+    simp only [List.flatMap_cons, RLev.blocks, List.map_nil, List.count_append, List.count_cons,
+      List.count_nil] at this ⊢
+    omega
+  have hcount : ∀ y, ((G.setReg r ((c, ⟨ov, []⟩) :: G.regs r)).vals ++ hs).count y =
+      (G.vals ++ (ov.toList ++ hs)).count y := fun y => by
+    have := G.setReg_vals_count hr ((c, ⟨ov, []⟩) :: G.regs r) y
+    simp only [List.flatMap_cons, RLev.vals, List.map_nil, List.append_nil, List.count_append] at this ⊢
+    omega
   have hrw : ∀ a, RegWord r a → OutHeap a ∧ DcGlob a := fun a ha => by
     simp only [RegWord, regAddr, dc_addrs] at ha
     exact ⟨DcGlob.outHeap (by simp only [DcGlob, dc_addrs]; omega),
@@ -387,10 +406,29 @@ theorem DcAt.newLevel {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} 
         have := live_in_heap hi hf.live hca; simp only [bcFreeAddr, heapStart] at *; omega)
         fun hrg => by simp only [RegWord, regAddr, bcFreeAddr, dc_addrs] at hrg; omega
   have hd := h.den
-  have hst : st.regs r = [] := by
-    have := hd.regs r hr; rw [hl] at this
-    revert this; generalize st.regs r = m; intro this; cases this; rfl
-  have hv := h.den
+  have hcin := live_in_heap hi hf.live (show c.In (c.pay + 24) by
+    have := hn.sz; simp only [Blk.In, Blk.pay, Blk.fin]; omega)
+  -- the old chain, anchored at the new node's link word
+  have hold : LChain M' 24 (RLevAt M') (c.pay + 24) (G.regs r) := by
+    have hlev : ∀ be ∈ G.regs r, ∀ c' ∈ RLev.blocks be, ∀ x, c'.In x → c' ≠ c ∧ c' ∈ G.blocks :=
+      fun be hbe c' hc' _ _ => ⟨fun e => hf.notG (e ▸ G.lev_mem hr hbe hc'), G.lev_mem hr hbe hc'⟩
+    have hM2 : MemOnly (fun a => c.In a) (writeLog M [(c.pay + 24, 8, ldv .ld M (regAddr r))]) M :=
+      fun a ha => MemOnly.store M _ 8 _ a fun hh => ha (by
+        have := hn.sz; simp only [Blk.In, Blk.pay, Blk.fin] at hh ⊢; omega)
+    have c1 := regChain_frame (Mt' := writeLog M [(c.pay + 24, 8, ldv .ld M (regAddr r))])
+      (h.view.regs r hr) (ldv_congr .ld fun j hj => hM2 _ fun hca => by
+        have := live_in_heap hi hf.live hca
+        simp only [regAddr, dc_addrs, heapStart, widthOfM] at hj this; omega)
+      fun be hbe c' hc' x hx => hM2 x fun hca =>
+        live_apart hi (h.heap.raw.live c' (hlev be hbe c' hc' x hx).2) hf.live
+          (hlev be hbe c' hc' x hx).1 hx hca
+    have c2 := c1.reword (a' := c.pay + 24) (by
+      rw [ldv_store_hit, ldv_ld_miss _ _ (by simp only [regAddr, dc_addrs, heapStart] at hcin ⊢; omega)])
+    refine regChain_frame c2 (by
+      rw [h24, ldv_store_hit]) fun be hbe c' hc' x hx => ?_
+    rw [hGoff c' (hlev be hbe c' hc' x hx).2 x hx]
+    exact (hM2 x fun hca => live_apart hi (h.heap.raw.live c' (hlev be hbe c' hc' x hx).2) hf.live
+      (hlev be hbe c' hc' x hx).1 hx hca).symm
   refine
     { heap := (hb1.addRaw hf.live hf.notNum).subRaw (fun b hb => hperm.mem_iff.mp hb) fun _ _ _ _ => rfl
       nodup := hperm.nodup_iff.mpr (List.nodup_cons.mpr ⟨hf.notG, h.nodup⟩)
@@ -406,28 +444,49 @@ theorem DcAt.newLevel {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} 
       den := ?_
       glob := h.glob
       col := h.col }
-  · have e1 : (G.setReg r [(c, RLev.empty)]).regs r' = if r' = r then [(c, RLev.empty)] else G.regs r' :=
-      rfl
+  · have e1 : (G.setReg r ((c, ⟨ov, []⟩) :: G.regs r)).regs r' =
+        if r' = r then (c, ⟨ov, []⟩) :: G.regs r else G.regs r' := rfl
     rw [e1]
     split
     · subst_vars
-      exact .cons hw ⟨h0, .nil h16, hsz⟩ (.nil h24)
+      exact .cons hw hn hold
     · exact regChain_frame (h.view.regs r' hr') (ldv_congr .ld fun j hj => hglob _ (by
         simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega) (by
         simp only [widthOfM, RegWord, regAddr, dc_addrs] at hj ⊢; omega))
         fun be hmm c' hc' x hx => hGoff c' (G.lev_mem hr' hmm hc') x hx
-  · have hvals := DcG.newLevel_vals hl c
-    refine { hd with
+  · refine { hd with
       regs := fun r' hr' => ?_
       regsHi := fun r' hr' => ?_
-      numRefs := fun x hx => by rw [hvals]; exact hd.numRefs x hx
-      strRefs := fun o ho => by rw [hvals]; exact hd.strRefs o ho }
+      hsDen := fun g hg => hd.hsDen g (List.mem_append_right _ hg)
+      numRefs := fun x hx => by rw [hcount]; exact hd.numRefs x hx
+      strRefs := fun o ho => by rw [hcount]; exact hd.strRefs o ho }
     · simp only [DcG.setReg, St.setReg]
       split
-      · exact .cons ⟨.none, .nil⟩ .nil
+      · subst_vars; exact .cons ⟨hv, .nil⟩ (hd.regs r' hr')
       · exact hd.regs r' hr'
     · have hne : r' ≠ r := by omega
       simp only [DcG.setReg, St.setReg, hne, ite_false]; exact hd.regsHi r' hr'
+
+/-- **A new empty level**: register `r` (empty) now holds the fresh node `c`
+with type `0` and no array. -/
+theorem DcAt.newLevel {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {r : Nat} {c : Blk}
+    (h : DcAt S M H F L C G hs st) (hr : r < 256) (hl : G.regs r = []) (hf : DcFresh H F L G c)
+    (hm : MemOnly (fun a => c.In a ∨ RegWord r a) M' M)
+    (hw : ldv .ld M' (regAddr r) = BitVec.ofNat 64 c.pay) (h0 : ldv .lw M' c.pay = 0#64)
+    (h16 : ldv .ld M' (c.pay + 16) = 0#64) (h24 : ldv .ld M' (c.pay + 24) = 0#64)
+    (hsz : 32 ≤ c.sz) :
+    DcAt S M' H F L C (G.setReg r [(c, RLev.empty)]) hs (st.setReg r [⟨none, []⟩]) := by
+  have hv0 := h.view.regs r hr
+  rw [hl] at hv0
+  have hz : ldv .ld M (regAddr r) = 0#64 := by cases hv0; assumption
+  have hst : st.regs r = [] := by
+    have := h.den.regs r hr; rw [hl] at this
+    revert this; generalize st.regs r = m; intro this; cases this; rfl
+  have e := DcAt.consLev (ov := none) (ovv := none) (M' := M') h hr hf hm hw ⟨h0, .nil h16, hsz⟩
+    (h24.trans hz.symm) .none
+  rw [hl, hst] at e
+  exact e
 
 /-! ## The machine -/
 

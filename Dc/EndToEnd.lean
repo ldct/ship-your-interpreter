@@ -34,8 +34,8 @@ open Dc.Mach Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.Malloc
 open Vsa.Machine
 
 /-- **The leak budget** of an admissible program: `EvAt.budget` with one
-handle (`4 * k + 9 ≤ 2^20`). -/
-abbrev dcK : Nat := 262141
+handle and the nesting slack (`4 * k + dcD + 9 ≤ 2^20`). -/
+abbrev dcK : Nat := 250000
 
 /-- **The programs the binary is proved for.** -/
 structure DcAdmissible (prog : List Nat) : Prop where
@@ -145,8 +145,11 @@ theorem dc_stuck_sim (hdiv : EvalstrDivSpec dcLive dcOwn) (prog : List Nat) (hp 
   · iexact Hc
   iintro %t' %rv' %mv' %hq Hr' HS' Hc'
   obtain ⟨rfl, R2, M2, en, hm⟩ := hq
-  iapply hdiv (output (dcBoot prog).σ) evSp evW dcD dcK 0x87ffffe0 M2 R2 H F L C _ _ _ St.init
+  have hd := hdiv (output (dcBoot prog).σ) evSp evW dcD dcK 0x87ffffe0 M2 R2 H F L C _ _ _ St.init
     (msObj b1 b2 prog) hno' hp.budget en rv' mv' hm
+  rw [show output (dcBoot prog).σ ++ Dc.outStr St.init.out = output (dcBoot prog).σ by
+    simp [Dc.outStr, St.init]] at hd
+  iapply hd
   isplitl []
   · iexact Hro
   isplitl [Hr']

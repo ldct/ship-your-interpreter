@@ -48,7 +48,7 @@ structure EvEntryP (S : Nat → Prop) (sp W d k q : Nat) (M : Mem) (R : Nat → 
   stk : 176 * (d + 1) + 1216 + rmStack (2 ^ 30) ≤ W
   stkPr : 176 * (d + 1) + 192 + 336 + prN ≤ W
   stkDn : 176 * (d + 1) + 192 + 336 + dnN ≤ W
-  budget : G.lk.length + xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20
+  budget : G.lk.length + xs.length + hs.length + 4 * k + d + 8 ≤ 2 ^ 20
   mb : MulBase S M
   err : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a
   globs : EvGlobs S M
@@ -62,12 +62,13 @@ theorem EvEntryP.spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     (ho : EvOom live S Q sp W q M) (hk : EvK live S Q t0 sp W k q M R G hs xs st' r) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001448#64 R M :=
   hev t0 sp W d k q M R H F L C G hs xs st st' o r hl hb e.sb e.srt e.dc e.strIn e.held e.slot e.slotPlace e.r2
-    e.r10 e.al e.frame e.room e.stk e.stkPr e.stkDn e.budget e.mb e.err e.globs ho hk
+    e.r10 e.al e.frame e.room e.stk e.stkPr e.stkDn (by have := e.budget; omega) e.mb e.err e.globs ho hk
 
 /-- **`evalstr` in the stuck direction**: with no terminating evaluation of
 its string, the run from `evalstr`'s entry (premises `EvEntryP`, budgets
 `EvBudget`) satisfies the partial WP with a nonzero exit code: it diverges,
-or it halts through an error exit (`dc_memfail`'s status 1). -/
+or it halts through an error exit (`dc_memfail`'s status 1). The console
+is `t0` followed by the state's output, as in `EvalstrSpec`. -/
 def EvalstrDivSpec (live S : Nat → Prop) : Prop :=
   ∀ [_G : MachGS .hasLC MachGF] (t0 : String) (sp W d k q : Nat) (M : Mem) (R : Nat → BitVec 64)
     (H : Heap) (F : List Blk) (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st : St)
@@ -75,7 +76,7 @@ def EvalstrDivSpec (live S : Nat → Prop) : Prop :=
     (¬ ∃ st' r, Loop 70 st ⟨o.s, 1, false⟩ st' r) → EvBudget 70 d k st ⟨o.s, 1, false⟩ →
     EvEntryP S sp W d k q M R H F L C G hs xs st o →
     ∀ rv mv, Matches dcRegs S 0x80001448#64 R M rv mv →
-    roOwn (GF := MachGF) roR dcText ∗ RunRes S t0 rv mv ⊢
+    roOwn (GF := MachGF) roR dcText ∗ RunRes S (t0 ++ Dc.outStr st.out) rv mv ⊢
       (wpW (GF := MachGF) (vsaModel live)).W (fun v => iprop(⌜v.1 ≠ 0⌝))
 
 /-- The boot memory's words the evaluation reads outside the state: the
@@ -124,7 +125,7 @@ theorem boot_words {prog : List Nat} {c : Config} (hld : DcLoaded prog c) {M1 M 
 `evalstr`'s entry: `dc_evalstr`'s frame (`ra` saved at `0x87ffffd8`), the
 premises `EvEntryP` at `evSp`/`evW`, nesting `dcD`, leak budget `k`. -/
 theorem evcall_boot {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t : String}
-    {prog : List Nat} {c : Config} (hld : DcLoaded prog c) {k : Nat} (hk4 : 4 * k + 9 ≤ 2 ^ 20)
+    {prog : List Nat} {c : Config} (hld : DcLoaded prog c) {k : Nat} (hk4 : 4 * k + dcD + 9 ≤ 2 ^ 20)
     {M1 : Mem} {R1 R' : Nat → BitVec 64} {M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {b1 b2 : Blk}
     (hf : Filled M1 c.σ.mem freeListAddr bssLen (fun _ => 0#8)) (hr1 : R1 1 = 0x8000003c#64)

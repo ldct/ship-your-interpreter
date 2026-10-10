@@ -120,3 +120,4 @@ import Dc.Mach.DcRegSet
 import Dc.Mach.DcArrFree
 import Dc.Mach.DcRegPop
 import Dc.Mach.DcArray
+import Dc.Mach.DcArrSet

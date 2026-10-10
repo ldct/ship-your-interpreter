@@ -118,15 +118,15 @@ theorem CallerCtx.ra {S : Nat → Prop} {sp W : Nat} (cx : CallerCtx S sp W) {F 
 heap, the bytes outside the caller's window agree with the caller's entry. -/
 theorem CallerCtx.oom {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {Mt0 M : Mem} {sp W F : Nat} {P : Nat → Prop}
-    (h : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+    (h : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
       (∀ a, OutHeap a → ¬ P a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
       DW live S Q 0x80002bcc#64 R' Mt')
     (hF : F ≤ W)
     (houtM : ∀ a, OutHeap a → ¬ P a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :
-    ∀ R' Mt' sp', sp - F - (W - F) ≤ sp' → sp' ≤ sp - F → R' 2 = BitVec.ofNat 64 sp' →
+    ∀ R' Mt' sp', sp - F - (W - F) ≤ sp' → sp' ≤ sp - F → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
       (∀ a, OutHeap a → ¬ P a → ¬ frameIn (sp - F) (W - F) a → imgM Mt' a = imgM M a) →
       DW live S Q 0x80002bcc#64 R' Mt' :=
-  fun R' Mt' sp' h1 h2 hr2 hout => h R' Mt' sp' (by omega) (by omega) hr2 fun a ha hp hf => by
+  fun R' Mt' sp' h1 h2 hr2 hal16 hout => h R' Mt' sp' (by omega) (by omega) hr2 hal16 fun a ha hp hf => by
     rw [hout a ha hp (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
     exact houtM a ha hp hf
 

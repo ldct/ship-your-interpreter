@@ -215,23 +215,23 @@ theorem SqCtx.oomF {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat →
     {R0 : Nat → BitVec 64} {Mt0 M : Mem} {sp W q : Nat} (cx : SqCtx S R0 sp W q)
     (h : RaOom live S Q Mt0 sp W q)
     (houtM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :
-    ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+    ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
       (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM M a) →
-      DW live S Q 0x80002bcc#64 R' Mt' := fun R' Mt' sp' h1 h2 hr2 hout =>
-  h R' Mt' sp' h1 h2 hr2 fun a ha hs hf => (hout a ha hf).trans (houtM a ha hs hf)
+      DW live S Q 0x80002bcc#64 R' Mt' := fun R' Mt' sp' h1 h2 hr2 hal16 hout =>
+  h R' Mt' sp' h1 h2 hr2 hal16 fun a ha hs hf => (hout a ha hf).trans (houtM a ha hs hf)
 
 /-- `out_of_memory` from a callee of `bc_sqrt`'s frame. -/
 theorem SqCtx.oom {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {R0 : Nat → BitVec 64} {Mt0 M : Mem} {sp W q : Nat} (cx : SqCtx S R0 sp W q)
     (h : RaOom live S Q Mt0 sp W q)
     (houtM : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :
-    ∀ R' Mt' sp', sp - 160 - (W - 160) ≤ sp' → sp' ≤ sp - 160 → R' 2 = BitVec.ofNat 64 sp' →
+    ∀ R' Mt' sp', sp - 160 - (W - 160) ≤ sp' → sp' ≤ sp - 160 → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
       (∀ a, OutHeap a → ¬ frameIn (sp - 160) (W - 160) a → imgM Mt' a = imgM M a) →
       DW live S Q 0x80002bcc#64 R' Mt' := by
   sq_facts cx
   have hap := cx.slot.apart
-  intro R' Mt' sp' h1 h2 hr2 hout
-  refine h R' Mt' sp' (by omega) (by omega) hr2 fun a ha hs hf => ?_
+  intro R' Mt' sp' h1 h2 hr2 hal16 hout
+  refine h R' Mt' sp' (by omega) (by omega) hr2 hal16 fun a ha hs hf => ?_
   rw [hout a ha (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
   exact houtM a ha hs hf
 
@@ -299,8 +299,8 @@ theorem sq_binK {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
         imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     BinK live S X Q R M L1 L2 x (sp - 160 + o) (sp - 160) n := by
   sq_facts cx
-  refine ⟨fun R' M' H' F' L' y hk hp' => ?_, fun R' M' sp' h1 h2 hr2 hout =>
-    cx.oom hoom houtM R' M' sp' (by omega) (by omega) hr2 fun a ha hf =>
+  refine ⟨fun R' M' H' F' L' y hk hp' => ?_, fun R' M' sp' h1 h2 hr2 hal16 hout =>
+    cx.oom hoom houtM R' M' sp' (by omega) (by omega) hr2 hal16 fun a ha hf =>
       hout a ha fun h' => hf (by simp only [frameIn] at h' ⊢; omega)⟩
   obtain ⟨hb', hres, hown'⟩ := RList.binPost hown hfr hp'
   exact hret R' M' H' F' y hk hb' hown' hres fun a h1 h2 h3 =>
@@ -433,8 +433,8 @@ theorem sq_divH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   refine bc_divide_spec hlive (n := Num.div u.rep.num G.base.rep.num k)
     (cx.cc.div (F := 160) (by omega) (by omega) (cx.fslot (o := 24) (by omega) rfl)
       (.inr (by simp only [zeroAddr]; omega)) h2 hal)
-    ⟨fun m hm R' M' H' F' L' y hk h10' hp' => ?_, fun hn => ?_, fun R' M' sp' h1 h2' hr2 hout =>
-      cx.oomF hoom houtM R' M' sp' (by omega) (by omega) hr2 fun a ha hf => by
+    ⟨fun m hm R' M' H' F' L' y hk h10' hp' => ?_, fun hn => ?_, fun R' M' sp' h1 h2' hr2 hal16 hout =>
+      cx.oomF hoom houtM R' M' sp' (by omega) (by omega) hr2 hal16 fun a ha hf => by
         rw [hout a ha (fun h' => hf (by simp only [slotBytes, frameIn] at h' ⊢; omega))
           (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
         exact hst a ha⟩

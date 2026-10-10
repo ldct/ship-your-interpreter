@@ -251,7 +251,7 @@ theorem dn_div {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       fun a ha => hG a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp []⟩
     ⟨fun m' hm' R3 Mt H3 F3 L3 y hk3 h30 hp => ?_, fun hnone => (Option.some_ne_none m hnone).elim,
-      fun R3 Mt sp' o1 o2 hr2' hout => ?_⟩
+      fun R3 Mt sp' o1 o2 hr2' hal16 hout => ?_⟩
     ⟨by rw [hxn, h.den.ov, hm], hxL, h.den.mo, h.den.mz, fun e => absurd e (by omega), by omega, h.view.zw,
       h.den.pos x hxL⟩
     (by rw [h.den.zv]; rfl) h.heap (h.resSlot m24) (by bsimp []) (by bsimp []) (by bsimp [])
@@ -502,7 +502,7 @@ theorem dn_dm {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (N
       fun e => h.refs2 hxd (by subst e; simp only [List.count_cons_self]; omega), hl.w24, hl.w40⟩
     (h.withCells hl.stk)
     ⟨fun m hm R4 Mt H4 F4 Lf yq yr hk4 h40 hp => ?_, fun hz => absurd (hdm.symm.trans hz) (by simp),
-      fun R4 Mt sp' o1 o2 hr2' hout => ?_⟩
+      fun R4 Mt sp' o1 o2 hr2' hal16 hout => ?_⟩
     (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
   · rw [hdm] at hm
     obtain rfl := Option.some.inj hm

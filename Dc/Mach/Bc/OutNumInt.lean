@@ -279,7 +279,7 @@ theorem og_body {live S : Nat → Prop} {X0 : Raws}
   | null e1 e2 e3 =>
     iterate 2 all_goals (try bc_run hlive hS1 [e1, q2] at 0x80002bcc)
     all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-    exact fx.hK.oom t _ _ (sp - 176) (by omega) (by omega) (by bsimp [q2]) fun a ho hg hf => by
+    exact fx.hK.oom t _ _ (sp - 176) (by omega) (by omega) (by bsimp [q2]) (by sp_al) fun a ho hg hf => by
       rw [hM2 a ho]
       exact og1.on.out a ho hg hf
   | block b e1 e2 e3 e4 e5 =>

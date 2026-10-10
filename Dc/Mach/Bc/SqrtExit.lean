@@ -336,7 +336,7 @@ theorem sq_exit {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (cx.cc.div (F := 160) (by omega) (by omega) (hsl.lift (by omega)) cx.slotZero (by bsimp [h2'])
       (by bsimp []; try decide))
     ⟨fun m hm R' M' H' F' L'' y' hk2 h10' hp' => ?_, fun hn => ?_,
-      fun R' M' sp' h1 h3 hr2 hout => hoom R' M' sp' (by omega) (by omega) hr2 fun a ha hs hf => by
+      fun R' M' sp' h1 h3 hr2 hal16 hout => hoom R' M' sp' (by omega) (by omega) hr2 hal16 fun a ha hs hf => by
         rw [hout a ha hs (fun h' => hf (by simp only [frameIn] at h' ⊢; omega)),
           ho1 a ha hs (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
         exact ra.out a ha hf⟩

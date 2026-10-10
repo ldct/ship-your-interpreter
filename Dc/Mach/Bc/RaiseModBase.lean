@@ -250,7 +250,7 @@ theorem rx_mulCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
         freeListAddr, bcFreeAddr]; omega,
       .inr (by omega), cx.mulBase, cx.consts, h2, hal⟩
     ha (by omega) hb hr h10 h11 h12 h13
-    ⟨hret, fun R' M' sp' h1 h2 hr2 hout => hoom R' M' sp' (by omega) (by omega) hr2
+    ⟨hret, fun R' M' sp' h1 h2 hr2 hal16 hout => hoom R' M' sp' (by omega) (by omega) hr2 hal16
       fun a ha hf => by
         rw [hout a ha (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
         exact houtM a ha hf⟩
@@ -323,7 +323,7 @@ theorem DmOom.inner {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     {Mt0 M : Mem} {sp W : Nat} (h : DmOom live S Q Mt0 sp W) (hW : 112 ≤ W) (hsp : 112 ≤ sp)
     (houtM : ∀ a, OutHeap a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a) :
     DmOom live S Q M (sp - 112) (W - 112) :=
-  fun R' M' sp' h1 h2 hr2 hout => h R' M' sp' (by omega) (by omega) hr2 fun a ha hf => by
+  fun R' M' sp' h1 h2 hr2 hal16 hout => h R' M' sp' (by omega) (by omega) hr2 hal16 fun a ha hf => by
     rw [hout a ha (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
     exact houtM a ha hf
 
@@ -476,7 +476,7 @@ theorem rx_divH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
         freeListAddr, bcFreeAddr]; omega,
       .inr (by omega), .inr (by simp only [zeroAddr]; omega), cx.consts, h2, hal⟩
     ⟨fun m hm R' M' H' F' L' y hk h10' hp' => ?_, fun hn => ?_,
-      fun R' M' sp' h1 h2 hr2 hout => hoom R' M' sp' (by omega) (by omega) hr2
+      fun R' M' sp' h1 h2 hr2 hal16 hout => hoom R' M' sp' (by omega) (by omega) hr2 hal16
         fun a ha hs hf => by
           have : ¬ slotBytes (sp - 112 + o) a := fun h => hf (by simp only [slotBytes, frameIn] at h ⊢; omega)
           rw [hout a ha this (fun h => hf (by simp only [frameIn] at h ⊢; omega))]

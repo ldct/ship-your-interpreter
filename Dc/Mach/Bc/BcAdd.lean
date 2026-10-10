@@ -273,7 +273,7 @@ theorem badd_add {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       hp.heap hr0 ha.m1 (by rw [hk1.get 8]; bsimp [h8]) h10' (by rw [hk1.get 18]; bsimp [h18])
       hp.num (by rw [NumRep.num_eq, NumRep.num_eq, num_add_same hs1.dsLen hs2.dsLen hs]; rfl)
       hp.norm hp.pos hp.refs hp.owns
-  · exact hk.oom R1 Mt1 (sp - 48 - 96) (by omega) (by omega) hr2 fun a ha hf =>
+  · exact hk.oom R1 Mt1 (sp - 48 - 96) (by omega) (by omega) hr2 (by sp_al) fun a ha hf =>
       (hout a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (st.out a ha hf)
 
 /-- `n2`'s magnitude below `n1`'s: `n2` is not longer. -/
@@ -330,7 +330,7 @@ theorem badd_gt {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
           (by simp only [frameIn, widthOfM] at hj ⊢; omega)]; exact hs2)
       hp.num (by rw [NumRep.num_eq, NumRep.num_eq,
         num_add_gt hs1.dsLen hs2'.dsLen hs1.dig hs2'.dig hs hc]; rfl) hp.norm hp.pos hp.refs hp.owns
-  · exact hk.oom R1 Mt1 (sp - 48 - 128) (by omega) (by omega) hr2 fun a ha hf =>
+  · exact hk.oom R1 Mt1 (sp - 48 - 128) (by omega) (by omega) hr2 (by sp_al) fun a ha hf =>
       (hout a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (st.out a ha hf)
 
 /-- `|n1| < |n2|` with different signs, from `0x80005680`: `_bc_do_sub(n2, n1)`. -/
@@ -373,7 +373,7 @@ theorem badd_lt {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
           (by simp only [frameIn, widthOfM] at hj ⊢; omega)]; exact hs2)
       hp.num (by rw [resScale_comm, NumRep.num_eq, NumRep.num_eq,
         num_add_lt hs1.dsLen hs2'.dsLen hs1.dig hs2'.dig hs hc]; rfl) hp.norm hp.pos hp.refs hp.owns
-  · exact hk.oom R1 Mt1 (sp - 48 - 128) (by omega) (by omega) hr2 fun a ha hf =>
+  · exact hk.oom R1 Mt1 (sp - 48 - 128) (by omega) (by omega) hr2 (by sp_al) fun a ha hf =>
       (hout a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (st.out a ha hf)
 
 /-! ## Equal magnitudes, different signs: a zero -/
@@ -466,7 +466,7 @@ theorem badd_zero_new {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       (by rw [ldv_congr .ld fun j hj => hm _ (by
             simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
           (by simp only [frameIn, widthOfM] at hj ⊢; omega)]; exact hs2)
-  · exact hk.oom R' Mt' (sp - 48 - 32) (by omega) (by omega) hr2' fun a ha hf =>
+  · exact hk.oom R' Mt' (sp - 48 - 32) (by omega) (by omega) hr2' (by sp_al) fun a ha hf =>
       (hout' a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (st.out a ha hf)
 
 /-- The larger of `max scale2 scale_min` and `n1`'s scale into `s2`, from

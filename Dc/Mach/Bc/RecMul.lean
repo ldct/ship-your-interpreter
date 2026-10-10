@@ -82,7 +82,7 @@ structure RmK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (N
     Prop where
   ret : ∀ R' M' H F y, Keeps binClob R' R0 → RmPost S X M0 M' H F L u v ulen vlen q sp W y →
     DW live S Q (R0 1) R' M'
-  oom : ∀ R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+  oom : ∀ R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
     (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp W a → imgM M' a = imgM M0 a) →
     DW live S Q 0x80002bcc#64 R' M'
 
@@ -678,7 +678,7 @@ theorem rm_base {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, widthOfM] at hj ⊢; omega)
       (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
     exact h0
-  · refine hk.oom R' Mt' (sp - 192 - 32) (by omega) (by omega) hr2 fun a ha hs hf => ?_
+  · refine hk.oom R' Mt' (sp - 192 - 32) (by omega) (by omega) hr2 (by sp_al) fun a ha hs hf => ?_
     rw [hout a ha fun h => hf (by simp only [frameIn] at *; omega)]
     exact st.out a ha hs hf
 

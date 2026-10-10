@@ -104,7 +104,7 @@ theorem OnK.hcOom {live S : Nat → Prop} {X : Raws}
     {L : List NumObj} {sp W : Nat} {target : List Nat}
     (hK : OnK live S X Q I G R0 M0 L sp W target) (t : String) :
     HcOom live S (DQ live S Q t) M0 sp W G :=
-  fun R' M' sp' h1 h2 h3 h4 => hK.oom t R' M' sp' h1 h2 h3 h4
+  fun R' M' sp' h1 h2 h3 hal16 h4 => hK.oom t R' M' sp' h1 h2 h3 hal16 h4
 
 /-- **After a callee replaced the handle `h`** with a new number `y` in its
 word at `o`, the callee changing besides the heap only its window below the

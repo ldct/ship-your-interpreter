@@ -533,7 +533,7 @@ theorem dc_modexp_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p
         .inr (by omega)⟩⟩
     (hd2.rxArgs hx1 hx2 hx3 hlen hr1 hr2 hsz hmb2) ⟨hd2.den.mz, by omega, hw2⟩ hd2.heap
     ⟨fun r hr R4 Mt H4 F4 Lf y hk4 h40 hp => ?_, fun hnone R4 Mt hk4 h40 hfr => ?_,
-      fun R4 Mt sp' o1 o2 hr2' hout => ?_⟩
+      fun R4 Mt sp' o1 o2 hr2' hal16 hout => ?_⟩
     (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp [e3p]) (by bsimp []) (by bsimp [])
   · -- the result
     have q4 : R4 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk4.get 2 (by decide)]; bsimp [q2]

@@ -216,7 +216,7 @@ theorem kara_halves {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     have oomOf : ∀ (R' : Nat → BitVec 64) (M' : Mem), Keeps kuvClob R' Re →
         MemOnly KTouch M' (kSpillMem M R0 (sp - 192)) → DW live S Q 0x80002bcc#64 R' M' :=
       fun R' M' kk t => hk.oom R' M' (sp - 192) (by omega) (by omega)
-        ((kk.get 2).trans ke.st.rm.r2) fun a ha hs hf =>
+        ((kk.get 2).trans ke.st.rm.r2) (by sp_al) fun a ha hs hf =>
           (t a fun hk' => by simp only [KTouch, OutHeap, bcFreeBytes] at hk' ha; omega).trans
             (ke.st.rm.out a ha hs hf)
     have fin : ∀ (R' : Nat → BitVec 64) (M' : Mem) (H' : Heap) (F' : List Blk)

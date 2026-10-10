@@ -431,7 +431,7 @@ theorem dc_divrem_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p
       .inl hap, by omega, hd3.den.mz, hd3.den.mz, by omega, by omega, fun _ => hr2, hwq, hwr⟩
     hd3.heap
     ⟨fun m hm R4 Mt H4 F4 Lf yq yr hk4 h40 hp => ?_, fun hnone R4 Mt hk4 h40 hfr => ?_,
-      fun R4 Mt sp' o1 o2 hr2' hout => ?_⟩
+      fun R4 Mt sp' o1 o2 hr2' hal16 hout => ?_⟩
     (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp []) (by bsimp [])
   · -- the quotient and the remainder
     have q4 : R4 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk4.get 2 (by decide)]; bsimp [q3]

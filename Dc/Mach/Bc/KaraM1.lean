@@ -54,7 +54,7 @@ theorem kara_subCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       ⟨fun i hi => ks.own _ (mem_accAddrs (by omega)), by omega, by omega, by omega⟩,
       fun a ha => ks.out a ha.1 ha.2, .inr (by omega), st.r2, hal⟩
     ha hadd hb hr h10 h11 h12 h13
-    ⟨hret, fun R' M' sp' h1 h2 hr2 hout => hk.oom R' M' sp' (by omega) (by omega) hr2
+    ⟨hret, fun R' M' sp' h1 h2 hr2 hal16 hout => hk.oom R' M' sp' (by omega) (by omega) hr2 hal16
       fun a ha hs hf => by
         rw [hout a ha (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
         exact st.out a ha hs hf⟩

@@ -397,4 +397,20 @@ theorem jalr_tgt (r : BitVec 64) (halign : r.toNat % 4 = 0) : Sail.BitVec.update
   rw [hmv, Nat.and_comm]
   exact nat_and_clear_bit0 r.toNat r.isLt (by omega)
 
+open Lean Elab Tactic Meta in
+/-- `sp % 16 = 0`-style goals: add the alignment `.al` of every stack frame
+hypothesis (`StackFrame`, or a structure with a `frame : StackFrame` field),
+then `omega`. -/
+elab "sp_al" : tactic => withMainContext do
+  let env ← getEnv
+  for d in ← getLCtx do
+    if d.isImplementationDetail || d.userName.hasMacroScopes then continue
+    let some c := (← instantiateMVars d.type).getAppFn.constName? | continue
+    if c == ``StackFrame then
+      evalTactic (← `(tactic| have := $(mkIdent (d.userName ++ `al)):ident))
+    else if isStructure env c && (getStructureFields env c).contains `frame then
+      try evalTactic (← `(tactic| have := $(mkIdent (d.userName ++ `frame ++ `al)):ident))
+      catch _ => pure ()
+  evalTactic (← `(tactic| omega))
+
 end Dc.Mach

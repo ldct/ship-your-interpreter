@@ -273,7 +273,7 @@ theorem dm_divCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       .inr (by omega), .inr (by simp only [zeroAddr]; omega), cx.consts, by bsimp [h2],
       by bsimp []; try decide⟩
     ⟨fun m hm R' Mt' H' F' L' y kk _ hp => ?_, fun hn => absurd hn ?_,
-      fun R' Mt' sp' hs1 hs2 hr2 hout => hk.oom R' Mt' sp' (by omega) (by omega) hr2
+      fun R' Mt' sp' hs1 hs2 hr2 hal16 hout => hk.oom R' Mt' sp' (by omega) (by omega) hr2 hal16
         fun a ha' hf => by
           rw [hout a ha' (by simp only [slotBytes, frameIn] at hf ⊢; omega)
             (by simp only [frameIn] at hf ⊢; omega), imgM_store_miss _ _ (by

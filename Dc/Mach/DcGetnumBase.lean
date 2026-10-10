@@ -434,7 +434,7 @@ theorem cf_div {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       fun a ha => h.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       hfr.r2, hal⟩
     ⟨fun m' hm' R' Mt H' F' L' y hk' _ hp => ?_, fun hnone => absurd (hm.symm.trans hnone) (by simp),
-      fun R' Mt sp' o1 o2 r2 hout => ?_⟩
+      fun R' Mt sp' o1 o2 r2 hal16 hout => ?_⟩
     ⟨rfl, hx1, hx2, h.den.mz, fun h1 _ hf => hf.keep hx1 fun hr => absurd hr (fun e => hap h1 e),
       fun h1 _ hf => hf.keep hx2 fun hr => absurd hr (fun e => hap h1 e),
       fun h1 _ hf => hf.keep h.den.mz fun hr => absurd hr (fun e => hap h1 e),

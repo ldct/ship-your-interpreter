@@ -92,7 +92,7 @@ structure BinKW (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → 
     (n : Num) : Prop where
   ret : ∀ R' Mt' H F L y, Keeps binClob R' R0 → BinPostW S X Mt0 Mt' H F L1 L2 x q sp W n L y →
     DW live S Q (R0 1) R' Mt'
-  oom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+  oom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
     (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
     DW live S Q 0x80002bcc#64 R' Mt'
 

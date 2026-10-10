@@ -772,7 +772,7 @@ theorem bmul_jal {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
         freeListAddr, bcFreeAddr]; omega,
       .inr (by omega), .inl (by simp only [zeroAddr]; omega),
       cx.mulBase, cx.consts, by bsimp [h2], by bsimp []⟩
-    ⟨fun R' M' H' F' y kk hp => ?_, fun R' M' sp' e1 e2 hr2 hout => ?_⟩
+    ⟨fun R' M' H' F' y kk hp => ?_, fun R' M' sp' e1 e2 hr2 hal16 hout => ?_⟩
     ⟨hAB ▸ hx1, hAB ▸ hx2, ha.p1, ha.p2, Nat.le_refl _, Nat.le_refl _, by omega, ha.mulBase⟩
     hb (by bsimp [h10]) (by bsimp [h11]) (by bsimp [h12]) (by bsimp [h13]) (by bsimp [h14])
   · bsimp []
@@ -807,7 +807,7 @@ theorem bmul_jal {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       hp.slot
       (by rw [kk.get 9]; bsimp [h9]) (by rw [kk.get 20]; bsimp [h20])
       (by rw [kk.get 21]; bsimp [h21]) (by rw [kk.get 22]; bsimp [h22])
-  · refine hk.oom R' M' sp' (by omega) (by omega) hr2 fun a h0 hf => ?_
+  · refine hk.oom R' M' sp' (by omega) (by omega) hr2 hal16 fun a h0 hf => ?_
     rw [hout a h0 (fun h => hf (by simp only [slotBytes, frameIn] at h ⊢; omega))
       (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
     exact st.out a h0 hf

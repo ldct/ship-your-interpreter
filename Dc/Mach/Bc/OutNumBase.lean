@@ -144,7 +144,7 @@ structure OnK (live S : Nat → Prop) (X : Raws) (Q : String → (Nat → BitVec
   ret : ∀ R' M' t' H' F', Keeps cClob R' R0 → I target t' M' → BcHeap S X M' H' F' L →
     (∀ a, OutHeap a → ¬ G a → ¬ frameIn sp W a → imgM M' a = imgM M0 a) →
     DWO live S Q t' (R0 1) R' M'
-  oom : ∀ t' R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+  oom : ∀ t' R' M' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
     (∀ a, OutHeap a → ¬ G a → ¬ frameIn sp W a → imgM M' a = imgM M0 a) →
     DWO live S Q t' 0x80002bcc#64 R' M'
 

@@ -307,7 +307,7 @@ theorem cf_mul {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       have := rmDepth_mono (show x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) ≤ 2 ^ 30 by omega)
       unfold rmStack; omega)
     h.heap (h.resSlot hw) h10 h11 h12 h13
-    ⟨fun R' Mt H' F' L' y hk' hp => ?_, fun R' Mt sp' o1 o2 r2 hout => ?_⟩
+    ⟨fun R' Mt H' F' L' y hk' hp => ?_, fun R' Mt sp' o1 o2 r2 hal16 hout => ?_⟩
   · exact cf_ret cx hfr h hp (by omega) hsv ho (hk'.mono (by decide))
       fun C' hfr' hd hw' hO hkp => hk R' Mt H' F' L' C' y (hk'.mono (by decide)) hfr' hd hp.num hw' hO hkp
   · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
@@ -352,7 +352,7 @@ theorem cf_add {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       hfr.r2, hal⟩
     (h.binArgs hx1 hx2 hsm) (fun _ => ⟨h.den.pos x1 hx1, h.den.pos x2 hx2⟩)
     h.heap (h.resSlot hw) h10 h11 h12 h13
-    ⟨fun R' Mt H' F' L' y hk' hp => ?_, fun R' Mt sp' o1 o2 r2 hout => ?_⟩
+    ⟨fun R' Mt H' F' L' y hk' hp => ?_, fun R' Mt sp' o1 o2 r2 hal16 hout => ?_⟩
   · exact cf_ret cx hfr h hp (by omega) hsv ho (hk'.mono (by decide))
       fun C' hfr' hd hw' hO hkp => hk R' Mt H' F' L' C' y (hk'.mono (by decide)) hfr' hd hp.num hw' hO hkp
   · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2
@@ -397,7 +397,7 @@ theorem cf_sub {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       hfr.r2, hal⟩
     (h.binArgs hx1 hx2 hsm) (fun _ => ⟨h.den.pos x1 hx1, h.den.pos x2 hx2⟩)
     h.heap (h.resSlot hw) h10 h11 h12 h13
-    ⟨fun R' Mt H' F' L' y hk' hp => ?_, fun R' Mt sp' o1 o2 r2 hout => ?_⟩
+    ⟨fun R' Mt H' F' L' y hk' hp => ?_, fun R' Mt sp' o1 o2 r2 hal16 hout => ?_⟩
   · exact cf_ret cx hfr h hp (by omega) hsv ho (hk'.mono (by decide))
       fun C' hfr' hd hw' hO hkp => hk R' Mt H' F' L' C' y (hk'.mono (by decide)) hfr' hd hp.num hw' hO hkp
   · have hS : HeapOwn S := fun a e1 e2 => h.heap.heap.own a e1 e2

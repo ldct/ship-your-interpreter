@@ -64,7 +64,7 @@ theorem DivKF.rebase {live S : Nat → Prop} {X : Raws} {Q : (Nat → BitVec 64)
       slot := hp.slot
       out := fun a ho hs hf => (hp.out a ho hs hf).trans (hM a ho hs hf) }
   zero h := absurd h hnn
-  oomW R' Mt' sp' h1 h2 h3 h4 := hk.oomW R' Mt' sp' h1 h2 h3 fun a ho hs hf =>
+  oomW R' Mt' sp' h1 h2 h3 hal16 h4 := hk.oomW R' Mt' sp' h1 h2 h3 hal16 fun a ho hs hf =>
     (h4 a ho hs hf).trans (hM a ho hs hf)
 
 section
@@ -634,7 +634,7 @@ theorem dv_one {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       (by rw [hk1.get 2]; bsimp [h2]) (by rw [hk1.get 8]; bsimp [h8]) (by rw [hk1.get 9]; bsimp [h9])
       hr1 (by rw [hk1.get 21]; bsimp [h21]) (by rw [hk1.get 22]; bsimp [h22])
       ((hk1.mono (by decide)).trans (by keeps_tac hkp))
-  · exact hk.oom R' M' (sp - 208 - 32) (by omega) (by omega) hr2' fun a ha hf =>
+  · exact hk.oom R' M' (sp - 208 - 32) (by omega) (by omega) hr2' (by sp_al) fun a ha hf =>
       (hout' a ha (by simp only [frameIn] at hf ⊢; omega)).trans (core.out a ha hf)
 
 end

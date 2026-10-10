@@ -55,7 +55,7 @@ theorem sq_i2nH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   · have hyp : y.rep.p = y.sb.pay := (hp'.heap.blocks y List.mem_cons_self).sPay
     exact hret R' M' H' F' y hk (RList.replace hown hp'.owns hp'.heap (hfr L' hp'.rest))
       (hown.set hp'.owns) hp'.num hp'.norm hp'.refs (by rw [hp'.slot, hyp]) hp'.out
-  · refine hoom R' M' (sp - 160 - 128) (by omega) (by omega) hr2 fun a ha hs hf => ?_
+  · refine hoom R' M' (sp - 160 - 128) (by omega) (by omega) hr2 (by sp_al) fun a ha hs hf => ?_
     rw [hout a ha (fun h' => hf (by simp only [slotBytes, frameIn] at h' ⊢; omega))
       (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
     exact houtM a ha hs hf
@@ -435,7 +435,7 @@ theorem sq_hiRaise {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       zeroRef := fun e => absurd (show gg.rep.p = z.rep.p by rw [e]; rfl)
         (RList.own_ne_caller hb.pdist (by simp) ha.mz)
       zr := fun h0 => absurd h0 (by rw [hgn]; decide) }
-    hb (by omega) ⟨fun R' M' H' F' Lf y hk hp => ?_, fun R' M' sp' e1 e2 hr2 hout => ?_⟩
+    hb (by omega) ⟨fun R' M' H' F' Lf y hk hp => ?_, fun R' M' sp' e1 e2 hr2 hal16 hout => ?_⟩
     h10 h11 h12 h13
   · have hpos : ∀ c ∈ RList ([.own p5, .ref z] ++ .own gg :: [.own m]) L, 1 ≤ c.rep.refs :=
       RList.pos (fun y hy => by
@@ -462,7 +462,7 @@ theorem sq_hiRaise {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       · exact st.fr.ok _ (by simp)
     · rw [hp.num, hgn, hmn]
       exact Dc.BcModel.raise_ten _ (by unfold Num.longMax; omega)
-  · refine g.oom R' M' sp' (by omega) (by omega) hr2 fun a ha' hs hf => ?_
+  · refine g.oom R' M' sp' (by omega) (by omega) hr2 hal16 fun a ha' hs hf => ?_
     rw [hout a ha' (fun h' => hf (by simp only [slotBytes, frameIn] at h' ⊢; omega))
       (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
     exact st.fr.sa.out a ha' hf

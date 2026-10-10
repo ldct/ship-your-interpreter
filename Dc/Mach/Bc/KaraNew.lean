@@ -293,7 +293,7 @@ theorem kara_newCall {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       (NewNumPost.insert hb hp1) hok hz hp1.owns (by rw [hrep]; rfl) (by rw [hrep]; rfl)
       (by rw [hrep]; rfl) (by rw [hrep]; rfl) (by rw [hrep]; rfl)
       (by rw [hrep]; simp only [zeroRep, dvalBE_replicate_zero]) hr1 hm1z hfit1 hfit3 hfit2 hw1 hw2 hw3 hv
-  · refine hk.oom R' Mt' (sp - 192 - 32) (by omega) (by omega) hr2 fun a ha hs hf => ?_
+  · refine hk.oom R' Mt' (sp - 192 - 32) (by omega) (by omega) hr2 (by sp_al) fun a ha hs hf => ?_
     rw [hout a ha fun h => hf (by simp only [frameIn] at *; omega)]
     exact pk.st.rm.out a ha hs hf
 

@@ -523,7 +523,7 @@ theorem sq_setRefs {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       exact ldv_store_hit _ _ _
     · rw [hw _ (by omega) (by omega)]
       exact ldv_store_hit _ _ _
-  · refine g.oom R' Mt' (sp - 160 - 32) (by omega) (by omega) hr2 fun a ha' hs hf => ?_
+  · refine g.oom R' Mt' (sp - 160 - 32) (by omega) (by omega) hr2 (by sp_al) fun a ha' hs hf => ?_
     rw [hout a ha' (fun h => hf (by simp only [frameIn] at h ⊢; omega)),
       hMc a ha' (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
     exact sa.out a ha' hf

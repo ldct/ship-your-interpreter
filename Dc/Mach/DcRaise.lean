@@ -263,7 +263,7 @@ theorem dc_exp_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     ⟨hxm, by omega, hw2, fun _ => hr2, fun _ => hr2, fun _ _ => by
       rw [hxz']; exact ⟨hd2.den.zv, hd2.den.norm _ hd2.den.mz, hd2.den.pos _ hd2.den.mz⟩⟩
     hd2.heap hr1
-    ⟨fun R3 Mt H3 F3 Lf y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2' hout => ?_⟩
+    ⟨fun R3 Mt H3 F3 Lf y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2' hal16 hout => ?_⟩
     (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp [])
   · -- the result
     have frT := fr2.transport (by omega) fun a e1 e2 =>

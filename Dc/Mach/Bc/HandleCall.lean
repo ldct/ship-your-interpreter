@@ -24,7 +24,7 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 and the bytes `P` changed since `Mt0`. -/
 def HcOom (live S : Nat → Prop) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) (Mt0 : Mem)
     (sp W : Nat) (P : Nat → Prop) : Prop :=
-  ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+  ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
     (∀ a, OutHeap a → ¬ P a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
     DW live S Q 0x80002bcc#64 R' Mt'
 
@@ -34,10 +34,10 @@ theorem HcOom.lift {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat →
     {Mt0 M : Mem} {sp W Fz : Nat} {P : Nat → Prop} (h : HcOom live S Q Mt0 sp W P)
     (hF : Fz ≤ W) (houtM : ∀ a, OutHeap a → ¬ P a → ¬ frameIn sp W a → imgM M a = imgM Mt0 a)
     {E : Nat → Prop} (hE : ∀ a, E a → frameIn sp W a) :
-    ∀ R' Mt' sp', sp - Fz - (W - Fz) ≤ sp' → sp' ≤ sp - Fz → R' 2 = BitVec.ofNat 64 sp' →
+    ∀ R' Mt' sp', sp - Fz - (W - Fz) ≤ sp' → sp' ≤ sp - Fz → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
       (∀ a, OutHeap a → ¬ E a → ¬ frameIn (sp - Fz) (W - Fz) a → imgM Mt' a = imgM M a) →
       DW live S Q 0x80002bcc#64 R' Mt' :=
-  fun R' Mt' sp' h1 h2 hr2 hout => h R' Mt' sp' (by omega) (by omega) hr2 fun a ha hp hf => by
+  fun R' Mt' sp' h1 h2 hr2 hal16 hout => h R' Mt' sp' (by omega) (by omega) hr2 hal16 fun a ha hp hf => by
     rw [hout a ha (fun he => hf (hE a he)) (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
     exact houtM a ha hp hf
 
@@ -115,7 +115,7 @@ theorem hc_mulH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   refine bc_multiply_spec hlive (fr.cc.mul (F := Fz) (by omega) fr.f16 fr.dslot h2 hal)
     ha (by omega) hb ⟨hr1, by rw [hw, hp], hnv⟩ h10 h11 h12 h13
     ⟨fun R' M' H' F' L' y hk hp' => hc_binRet hown hfr hp' (by omega) (hret R' M' H' F' y hk),
-      fun R' M' sp' h1 h2' hr2 hout => hl R' M' sp' h1 h2' hr2 fun a ha _ hf => hout a ha hf⟩
+      fun R' M' sp' h1 h2' hr2 hal16 hout => hl R' M' sp' h1 h2' hr2 hal16 fun a ha _ hf => hout a ha hf⟩
 
 /-- **`bc_sub (u1, u2, &h, k)`** on the handle `h`: the difference replaces
 it. -/
@@ -145,7 +145,7 @@ theorem hc_subH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   refine bc_sub_spec hlive (fr.cc.bin (F := Fz) (by omega) fr.f16 fr.dslot h2 hal) ha hadd hb
     ⟨hr1, by rw [hw, hp], hnv⟩ h10 h11 h12 h13
     ⟨fun R' M' H' F' L' y hk hp' => hc_binRet hown hfr hp' (by omega) (hret R' M' H' F' y hk),
-      fun R' M' sp' h1 h2' hr2 hout => hl R' M' sp' (by omega) (by omega) hr2
+      fun R' M' sp' h1 h2' hr2 hal16 hout => hl R' M' sp' (by omega) (by omega) hr2 hal16
         fun a ha _ hf => hout a ha fun h' => hf (by simp only [frameIn] at h' ⊢; omega)⟩
 
 /-- **`bc_divide (u1, u2, &h, k)`** on the handle `h` by a nonzero `u2`: the
@@ -187,7 +187,7 @@ theorem hc_divH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   refine bc_divide_specF hlive (q := sp - Fz + o) (W := W - Fz) (n := Num.div u1.rep.num u2.rep.num k)
     (fr.cc.div (F := Fz) (by omega) fr.f16 fr.dslot (.inr (by simp only [zeroAddr]; omega)) h2 hal)
     ⟨fun m hm R' M' H' F' L' y hk h10' hp' => ?_, fun hn => ?_,
-      fun R' M' sp' h1 h2' hr2 hout => hl R' M' sp' h1 h2' hr2 hout⟩
+      fun R' M' sp' h1 h2' hr2 hal16 hout => hl R' M' sp' h1 h2' hr2 hal16 hout⟩
     ⟨rfl, hm1, hm2, hmz, fun h1 _ hf => hf.keep hm1 fun e => (hap h1 e).1,
       fun h1 _ hf => hf.keep hm2 fun e => (hap h1 e).2.1,
       fun h1 _ hf => hf.keep hmz fun e => (hap h1 e).2.2, hsz, hz, hl1⟩ hzm hb
@@ -230,7 +230,7 @@ theorem hc_modH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   have hl := hoom.lift (Fz := Fz) (by omega) houtM (E := fun _ => False) (fun _ h => h.elim)
   refine bc_divmod_rem_spec hlive (fr.cc.dm (F := Fz) (by omega) fr.f16 h2 hal) ha fr.dslot hxm hr1
     (by rw [hw, hp]) hb ⟨fun r hr R' M' H' F' Lf yr hk h10' hp' => ?_, fun hn => ?_,
-      fun R' M' sp' h1 h2' hr2 hout => hl R' M' sp' h1 h2' hr2 fun a ha _ hf => hout a ha hf⟩
+      fun R' M' sp' h1 h2' hr2 hal16 hout => hl R' M' sp' h1 h2' hr2 hal16 fun a ha _ hf => hout a ha hf⟩
     h10 h11 h12 h13 h14
   · rw [e] at hpd
     have hf := DropAt.unique hpd (by rw [← e]; exact hp'.mid)
@@ -272,7 +272,7 @@ theorem hc_i2nH {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     exact hret R' M' H' F' y hk (RList.replace hown hp'.owns hp'.heap (hfr L' hp'.rest))
       (hown.set hp'.owns) ⟨⟨hp'.num, hp'.norm, hp'.pos, hp'.refs, hp'.owns⟩, by rw [hp'.slot, hyp]⟩
       fun a h1 h2 h3 => hp'.out a h1 h2 fun h' => h3 (by simp only [frameIn] at h' ⊢; omega)
-  · exact hl R' M' (sp - Fz - 128) (by omega) (by omega) hr2 fun a ha hs hf =>
+  · exact hl R' M' (sp - Fz - 128) (by omega) (by omega) hr2 (by sp_al) fun a ha hs hf =>
       hout a ha hs fun h' => hf (by simp only [frameIn] at h' ⊢; omega)
 
 end Dc.Mach

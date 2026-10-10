@@ -246,7 +246,7 @@ theorem dvs_alloc_call {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (h1 : R 1 = 0x80005bb8#64) (h2 : R 2 = BitVec.ofNat 64 (sp - 208))
     (h10 : R 10 = BitVec.ofNat 64 ql) (h11 : R 11 = BitVec.ofNat 64 k)
     (h27 : R 27 = BitVec.ofNat 64 (D.L + 1))
-    (hoom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+    (hoom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
       (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
       DW live S Q 0x80002bcc#64 R' Mt')
     (hnext : ∀ R' M' H' F' y b, DvBase S X Mt0 M' R0 sp W { D with b3 := b, Bm := b.pay } H' F' Lh y →
@@ -304,7 +304,7 @@ theorem dvs_alloc_call {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     | null e1 e2 e3 =>
       iterate 2 all_goals (try bc_run hlive hS [e1, q3] at 0x80002bcc)
       all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-      exact hoom _ _ (sp - 208) (by omega) (by omega) (by bsimp [q3]) fun a ha hf => by
+      exact hoom _ _ (sp - 208) (by omega) (by omega) (by bsimp [q3]) (by sp_al) fun a ha hf => by
         simp only [frameIn] at hf
         simp (disch := omega) only [imgM_store_miss]
         exact (hMall a ha (by simp only [frameIn]; omega)).trans (bf.out a ha (by simp only [frameIn]; omega))
@@ -322,7 +322,7 @@ theorem dvs_alloc_call {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       keeps_tac ((hk3.mono (by decide) : Keeps allocClob R3 _).trans (by
         keeps_tac ((hk2.mono (by decide) : Keeps allocClob R2 _).trans
           (by keeps_tac K1 : Keeps allocClob _ R)) : Keeps allocClob _ R))
-  · exact hoom R' M' (sp - 208 - 32) (by omega) (by omega) hr2' fun a ha hf =>
+  · exact hoom R' M' (sp - 208 - 32) (by omega) (by omega) hr2' (by sp_al) fun a ha hf =>
       (hout' a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (bf.out a ha hf)
 
 /-- `DvBufs` through stores to the frame words `sp - 208 … + 104`. -/
@@ -344,7 +344,7 @@ theorem dvs_alloc {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (h2 : R 2 = BitVec.ofNat 64 (sp - 208)) (h12 : R 12 = BitVec.ofNat 64 (k + 1))
     (h21 : R 21 = BitVec.ofNat 64 k) (h23 : R 23 = BitVec.ofNat 64 D.L)
     (h26 : R 26 = BitVec.ofNat 64 len1) (h27 : R 27 = BitVec.ofNat 64 (D.L + 1))
-    (hoom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' →
+    (hoom : ∀ R' Mt' sp', sp - W ≤ sp' → sp' ≤ sp → R' 2 = BitVec.ofNat 64 sp' → sp' % 16 = 0 →
       (∀ a, OutHeap a → ¬ frameIn sp W a → imgM Mt' a = imgM Mt0 a) →
       DW live S Q 0x80002bcc#64 R' Mt')
     (hnext : ∀ R' M' H' F' y b, DvBase S X Mt0 M' R0 sp W { D with b3 := b, Bm := b.pay } H' F' Lh y →
@@ -472,7 +472,7 @@ theorem dvz_zero {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     | null e1 e2 e3 =>
       iterate 2 all_goals (try bc_run hlive hS [e1, q3] at 0x80002bcc)
       all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-      exact hoom _ _ (sp - 208) (by omega) (by omega) (by bsimp [q3]) fun a ha hf => by
+      exact hoom _ _ (sp - 208) (by omega) (by omega) (by bsimp [q3]) (by sp_al) fun a ha hf => by
         simp only [frameIn] at hf
         simp (disch := omega) only [imgM_store_miss]
         rw [hMall a ha (by simp only [frameIn]; omega)]
@@ -508,7 +508,7 @@ theorem dvz_zero {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
         keeps_tac ((hk3.mono (by decide) : Keeps divAll R3 _).trans (by
           keeps_tac ((hk2.mono (by decide) : Keeps divAll R2 _).trans
             (by keeps_tac K1 : Keeps divAll _ R0)) : Keeps divAll _ R0))
-  · exact hoom R' M' (sp - 208 - 32) (by omega) (by omega) hr2' fun a ha hf => by
+  · exact hoom R' M' (sp - 208 - 32) (by omega) (by omega) hr2' (by sp_al) fun a ha hf => by
       rw [hout' a ha fun h => hf (by simp only [frameIn] at *; omega)]
       simp only [frameIn] at hf
       simp (disch := omega) only [imgM_store_miss]

@@ -389,7 +389,7 @@ theorem bsub_add {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       hp.num (by rw [NumRep.subM_of_len _ (fun h => hs h.1), NumRep.num_eq, NumRep.num_eq,
         num_sub_diff hs1.dsLen hs2.dsLen hs]; rfl)
       hp.norm hp.pos hp.refs hp.owns
-  · exact hk.oom R1 Mt1 (sp - 48 - 96) (by omega) (by omega) hr2 fun a ha hf =>
+  · exact hk.oom R1 Mt1 (sp - 48 - 96) (by omega) (by omega) hr2 (by sp_al) fun a ha hf =>
       (hout a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (st.out a ha hf)
 
 /-- `|n1| > |n2|` with equal signs, from `0x80004b68`: `_bc_do_sub(n1, n2)`. -/
@@ -428,7 +428,7 @@ theorem bsub_gt {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
         ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)) hm)
       hp.heap hr0 ha.m1 (by rw [hk1.get 8]; bsimp [h8]) h10' (by rw [hk1.get 18]; bsimp [h18])
       hp.num hval hp.norm hp.pos hp.refs hp.owns
-  · exact hk.oom R1 Mt1 (sp - 48 - 128) (by omega) (by omega) hr2 fun a ha hf =>
+  · exact hk.oom R1 Mt1 (sp - 48 - 128) (by omega) (by omega) hr2 (by sp_al) fun a ha hf =>
       (hout a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (st.out a ha hf)
 
 /-- `|n1| < |n2|` with equal signs, from `0x80004b10`: `_bc_do_sub(n2, n1)`. -/
@@ -471,7 +471,7 @@ theorem bsub_lt {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
           (by simp only [frameIn, widthOfM] at hj ⊢; omega)]; exact hx2f)
       h10' (by rw [hk1.get 18]; bsimp [h18])
       hp.num hval hp.norm hp.pos hp.refs hp.owns
-  · exact hk.oom R1 Mt1 (sp - 48 - 128) (by omega) (by omega) hr2 fun a ha hf =>
+  · exact hk.oom R1 Mt1 (sp - 48 - 128) (by omega) (by omega) hr2 (by sp_al) fun a ha hf =>
       (hout a ha fun h => hf (by simp only [frameIn] at *; omega)).trans (st.out a ha hf)
 
 /-! ## Equal magnitudes, equal signs: a zero -/
@@ -566,7 +566,7 @@ theorem bsub_zero_new {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       (by rw [ldv_congr .lw fun j hj => hm _ (by
             simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
           (by simp only [frameIn, widthOfM] at hj ⊢; omega)]; exact hsw)
-  · exact hk.oom R' Mt' (sp - 48 - 32) (by omega) (by omega) hr2' fun a ha hf =>
+  · exact hk.oom R' Mt' (sp - 48 - 32) (by omega) (by omega) hr2' (by sp_al) fun a ha hf =>
       (hout' a ha fun h => hf (by simp only [frameIn] at *; omega)).trans
         ((hpro a fun h => hf (by simp only [frameIn] at *; omega)).trans (st.out a ha hf))
 

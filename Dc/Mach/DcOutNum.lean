@@ -170,7 +170,7 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
       h1.den.live, h1.den.owns, h1.den.mz, h1.kzero (by omega),
       h1.den.mo, h1.view.ow, h1.den.ov, h1.den.norm _ h1.den.mo, h1.den.pos _ h1.den.mo, hmb.word,
       hob2, hob⟩
-    ⟨fun R' M' t' H' F' hk' hI' hb' hfr' => ?_, fun t' R' M' sp' hlo hhi hr2 hfr' => ?_⟩
+    ⟨fun R' M' t' H' F' hk' hI' hb' hfr' => ?_, fun t' R' M' sp' hlo hhi hr2 hal16 hfr' => ?_⟩
     h1.heap hI e10 e11
   · -- back from `bc_out_num`
     have hW : ∀ a, frameIn (sp - 32) onW a → ¬ DcGlob a := fun a ha =>

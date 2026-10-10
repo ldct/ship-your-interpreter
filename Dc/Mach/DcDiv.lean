@@ -363,7 +363,7 @@ theorem dc_div_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
       fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp []⟩
     ⟨fun m hm R3 Mt H3 F3 L3 y hk3 h30 hp => ?_, fun hnone R3 Mt hk3 h30 hfr => ?_,
-      fun R3 Mt sp' o1 o2 hr2' hout => ?_⟩
+      fun R3 Mt sp' o1 o2 hr2' hal16 hout => ?_⟩
     ⟨rfl, hx1, hx2, hd2.den.mz, fun e => absurd e (by omega), hsz, hd2.view.zw,
       hd2.den.pos x1 hx1⟩
     (by rw [hd2.den.zv]; rfl) hd2.heap (hd2.resSlot hw2) (by bsimp [e1p]) (by bsimp [e2p])
@@ -510,7 +510,7 @@ theorem dc_rem_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
       .inr (by omega)⟩
     hxm (by omega) hw2 hd2.heap
     ⟨fun m hm R3 Mt H3 F3 Lf y hk3 h30 hp => ?_, fun hnone R3 Mt hk3 h30 hfr => ?_,
-      fun R3 Mt sp' o1 o2 hr2' hout => ?_⟩
+      fun R3 Mt sp' o1 o2 hr2' hal16 hout => ?_⟩
     (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp [])
   · -- the remainder
     obtain ⟨C3, hr⟩ := OpRet.of_dmPost (f := fun k a b => Num.modulo a b k) (na := na) (nb := nb)

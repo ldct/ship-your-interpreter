@@ -125,7 +125,7 @@ theorem dc_add_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
       by bsimp [q2], by bsimp []⟩
     (hd2.binArgs hx1 hx2 (by decide)) (fun _ => ⟨hd2.den.pos x1 hx1, hd2.den.pos x2 hx2⟩)
     hd2.heap (hd2.resSlot hw2) (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp [])
-    ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hout => ?_⟩
+    ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hal16 hout => ?_⟩
   · obtain ⟨C3, hd3, hkeep3⟩ := hd2.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
       hp.out a ha.outHeap (fun hs => by have := ha.lt; simp only [heapStart, slotBytes] at this hs; omega)
         (fun hf => by have := ha.lt; simp only [heapStart, frameIn] at this hf; omega)
@@ -226,7 +226,7 @@ theorem dc_sub_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
       by bsimp [q2], by bsimp []⟩
     (hd2.binArgs hx1 hx2 (by decide)) (fun _ => ⟨hd2.den.pos x1 hx1, hd2.den.pos x2 hx2⟩)
     hd2.heap (hd2.resSlot hw2) (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp [])
-    ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hout => ?_⟩
+    ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hal16 hout => ?_⟩
   · obtain ⟨C3, hd3, hkeep3⟩ := hd2.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
       hp.out a ha.outHeap (fun hs => by have := ha.lt; simp only [heapStart, slotBytes] at this hs; omega)
         (fun hf => by have := ha.lt; simp only [heapStart, frameIn] at this hf; omega)
@@ -516,7 +516,7 @@ theorem dc_mul_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
       have := rmDepth_mono (show x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) ≤ 2 ^ 30 by omega)
       unfold rmStack; omega)
     hd2.heap (hd2.resSlot hw2) (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp [])
-    ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hout => ?_⟩
+    ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hal16 hout => ?_⟩
   · refine mul_ret hlive hd2 hp (by rw [e1n, e2n]) hsf (by simp only [heapEnd]; omega) hqs
       (fun a ho hs hf => hout2 a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega))
       R h2 hin.al fr2 R3 (by rw [hk3.get 2 (by decide)]; bsimp [q2])

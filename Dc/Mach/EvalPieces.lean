@@ -182,4 +182,29 @@ def EvStrCore (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (N
       ⟨(scanStr 1 rest).2, td, false⟩ →
     DWO live S Q (t0 ++ Dc.outStr st.out) (if rest = [] then 0x80001728#64 else 0x80001528#64) R' M'
 
+/-- **`evalstr`'s entry** (`0x80001448`), continuation-generic: the loop
+head with the invariant over the first frame `⟨o.s, 1, false⟩`, or for an
+empty text the return `DC_OKAY` with the state unchanged. -/
+def EvEntryCore (live S : Nat → Prop)
+    (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) : Prop :=
+  ∀ (t0 : String) (sp W d k q : Nat) (M : Mem) (R : Nat → BitVec 64) (H : Heap) (F : List Blk)
+    (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st : St) (o : StrObj),
+    EvEntry S sp W d k q M R H F L C G hs xs st o →
+    (o.s ≠ [] → EvHeadK live S Q t0 sp W d k k q M R G hs xs st ⟨o.s, 1, false⟩) →
+    (o.s = [] → EvK live S Q t0 sp W k q M R G hs xs st .ok) →
+    DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001448#64 R M
+
+/-- `EvEntrySpec` at fuel `n` from the generic entry and the loop at `n`. -/
+theorem ev_entry_of_core {live S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hc : EvEntryCore live S Q) {n : Nat}
+    (IH : LoopIH live S Q n) : EvEntrySpec live S Q n := by
+  intro t0 sp W d k q M R H F L C G hs xs st st' o r hfu en hoom hk
+  refine hc t0 sp W d k q M R H F L C G hs xs st o en
+    (fun _ => EvHeadK.ofIH IH hfu hoom rfl (Nat.le_refl _) (StrPin.refl _ _) hk) fun he => ?_
+  have e : (⟨o.s, 1, false⟩ : Frame) = ⟨[], 1, false⟩ := by rw [he]
+  rw [e] at hfu
+  obtain ⟨rfl, rfl⟩ := hfu.nil
+  exact hk
+
 end Dc.Mach

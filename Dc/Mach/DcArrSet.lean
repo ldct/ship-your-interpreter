@@ -1348,4 +1348,120 @@ theorem DcAt.insNodeW {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L 
     rw [ldv_ld_miss _ _ (hqi 24 (by omega)), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
       ldv_store_hit, hnx]
 
+/-- The fresh node's stores make an array node with link `nx`. -/
+theorem nodeW_node {M : Mem} {c : Blk} {i : Nat} {nx w0 w1 : BitVec 64} {g : GV}
+    (hi : i < 2 ^ 31) (hd : DatRegs w0 w1 g) (hcsz : 32 ≤ c.sz) :
+    ANodeAt (nodeW M c.pay i nx w0 w1) c ⟨i, g⟩ ∧
+      ldv .ld (nodeW M c.pay i nx w0 w1) (c.pay + 24) = nx := by
+  refine ⟨⟨?_, hi, ⟨?_, ?_⟩, hcsz⟩, ?_⟩
+  · simp only [nodeW]
+    rw [ldv_lw_miss _ _ (by omega), ldv_lw_miss _ _ (by omega), ldv_lw_miss _ _ (by omega)]
+    exact ldv_lw_hitN _ rfl (toNat_ofNat_mod32 (by omega)) hi
+  · simp only [nodeW]
+    rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
+    exact hd.tag
+  · simp only [nodeW]
+    rw [show c.pay + 8 + 8 = c.pay + 16 by omega, ldv_store_hit]
+    exact hd.ptr
+  · simp only [nodeW]
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
+
+/-- **A first array on a register with no level**: the fresh node `c`
+(stored by `nodeW`), the stack frame written, a second `dc_malloc` for the
+level `b`, and the level's stores naming `c` as the array head. -/
+theorem DcAt.newArr {S : Nat → Prop} {M Ms M1 : Mem} {H H' : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat}
+    {c b : Blk} {i sp : Nat} {v : Val} {w0 w1 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = [])
+    (hf : DcFresh H F L G c) (hcsz : 32 ≤ c.sz) (hi : i < 2 ^ 31) (hd : DatRegs w0 w1 g)
+    (hv : g.Den ⟨L, G.strs⟩ v) (hab : heapEnd + 48 ≤ sp)
+    (hMs : MemOnly (frameIn sp 48) Ms (nodeW M c.pay i 0#64 w0 w1))
+    (hp : DcMallocPost S Ms M1 H H' 32 (sp - 32) b) :
+    DcAt S (levW M1 b r (BitVec.ofNat 64 c.pay)) H' F L C
+      (G.setReg r [(b, ⟨none, [(c, ⟨i, g⟩)]⟩)]) hs (st.setReg r [⟨none, [(i, v)]⟩]) := by
+  have hi0 := h.heap.heap
+  have e1c : c.fin = c.pay + c.sz := rfl
+  have hst : st.regs r = [] := by
+    have := h.den.regs r hr; rw [hl] at this
+    revert this; generalize st.regs r = m; intro this; cases this; rfl
+  have h1 := h.rawWrite hf (M' := nodeW M c.pay i 0#64 w0 w1) fun y hy => by
+    simp only [Blk.In, e1c] at hy
+    simp only [nodeW]
+    repeat rw [imgM_store_miss _ _ (by omega)]
+  have h2 := h1.outWrite hMs fun a ha => by
+    simp only [frameIn] at ha
+    exact ⟨outHeap_of_ge (by simp only [heapEnd] at *; omega), fun hg => by
+      have := hg.lt; simp only [heapStart, heapEnd] at *; omega⟩
+  obtain ⟨h3, hfb⟩ := h2.malloc hp (by decide) (by simp only [heapEnd] at *; omega)
+  have hfc := hf.afterMalloc hp
+  have hbsz := hp.size
+  have hbb := blk_bounds hp.inv hfb.live
+  obtain ⟨hb1, hb2, hb3⟩ := hbb
+  have hcb := blk_bounds hi0 hf.live
+  obtain ⟨hc1, hc2, hc3⟩ := hcb
+  have hcne : c ≠ b := fun e1 => live_not_alloc hi0 hf.live (a := c.pay)
+    ⟨Nat.le_refl _, by rw [e1c]; omega⟩ (hp.alloc _ (by rw [e1]; simp only [Blk.pay]; omega)
+      (by rw [e1]; simp only [Blk.fin, Blk.pay] at hbsz ⊢; omega))
+  have hcbd : ∀ y, c.In y → ¬ b.In y := fun y h1 h2 =>
+    live_apart hp.inv hfc.live hfb.live hcne h1 h2
+  have e1b : b.fin = b.pay + b.sz := rfl
+  -- the level with an empty array
+  have hm0 : MemOnly (fun a => b.In a ∨ RegWord r a) (levW M1 b r 0#64) M1 := fun y hy => by
+    simp only [Blk.In, RegWord, e1b, not_or] at hy
+    simp only [levW]
+    repeat rw [imgM_store_miss _ _ (by omega)]
+  have hrb : regAddr r + 8 ≤ b.pay := by simp only [regAddr, dcRegAddr, heapStart] at *; omega
+  have h4 := h3.newLevel hr hl hfb hm0 (by
+      simp only [levW]; rw [ldv_ld_miss _ _ (by omega), ldv_store_hit])
+    (by simp only [levW]
+        rw [ldv_lw_miss _ _ (by omega), ldv_lw_miss _ _ (by omega), ldv_lw_miss _ _ (by omega)]
+        exact ldv_lw_hitN _ rfl (by decide) (by decide))
+    (by simp only [levW]; rw [ldv_store_hit])
+    (by simp only [levW]; rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit])
+    hbsz
+  -- `c` is fresh to the new state
+  have hfc2 : DcFresh H' F L (G.setReg r [(b, RLev.empty)]) c := by
+    refine ⟨hfc.live, fun hc => ?_, hfc.notNum⟩
+    have hcnt := G.setReg_blocks_count hr [(b, RLev.empty)] c
+    rw [hl] at hcnt
+    have h0 : G.blocks.count c = 0 := List.count_eq_zero.mpr hf.notG
+    have h1 : 0 < (G.setReg r [(b, RLev.empty)]).blocks.count c := List.count_pos_iff.mpr hc
+    simp only [List.flatMap_cons, List.flatMap_nil, RLev.blocks, List.map_nil, List.append_nil,
+      List.count_cons, List.count_nil] at hcnt
+    have : (b == c) = false := by simp [Ne.symm hcne]
+    rw [this] at hcnt
+    simp at hcnt; omega
+  -- the node
+  obtain ⟨hn, hn24⟩ := nodeW_node (M := M) (nx := 0#64) hi hd hcsz
+  have hcM : ∀ y, c.In y → imgM (levW M1 b r (BitVec.ofNat 64 c.pay)) y =
+      imgM (nodeW M c.pay i 0#64 w0 w1) y := fun y hy => by
+    have hyb := hcbd y hy
+    have hna : ¬ AllocByte H y := live_not_alloc hi0 hf.live hy
+    simp only [Blk.In, e1b] at hyb
+    simp only [Blk.In, e1c] at hy
+    have hrc : regAddr r + 8 ≤ c.pay := by
+      have := hc1; simp only [regAddr, dcRegAddr, heapStart] at this ⊢; omega
+    simp only [levW]
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+      imgM_store_miss _ _ (by omega),
+      hp.frame y hna (by simp only [frameIn]; simp only [heapEnd] at hab hc2; omega)]
+    exact hMs y (by simp only [frameIn]; simp only [heapEnd] at hab hc2; omega)
+  have h5 := h4.insNode (pre := []) (post := []) (m1 := []) (m2 := []) (i := i) (v := v)
+    (b := b) (e := RLev.empty) (l := []) (en := ⟨none, []⟩) (es := [])
+    (M' := levW M1 b r (BitVec.ofNat 64 c.pay)) hr (by simp [DcG.setReg])
+    (by simp [St.setReg]) rfl .nil .nil hfc2
+    (fun y hy => by
+      simp only [lend, not_or] at hy
+      have hy' : y < b.pay + 16 ∨ b.pay + 16 + 8 ≤ y := by omega
+      simp only [levW]
+      rw [imgM_store_miss _ (BitVec.ofNat 64 c.pay) hy', imgM_store_miss _ (0#64) hy'])
+    (by simp only [lend, levW]; rw [ldv_store_hit])
+    (hn.congr24 fun y h1 h2 => hcM y ⟨h1, by rw [e1c]; omega⟩)
+    (by simp only [lend]
+        rw [ldv_congr .ld fun j hj => hcM _ ⟨by omega, by simp only [widthOfM] at hj; rw [e1c]; omega⟩,
+          hn24]
+        simp only [levW]; rw [ldv_store_hit]) hv
+  rw [DcG.setReg_setReg, St.setReg_setReg] at h5
+  exact h5
+
 end Dc.Mach

@@ -145,12 +145,11 @@ theorem rt_tos_str (hlive : ∀ p ∈ dcText, live p.1) {g : GV} (hg : g.tag = 2
 datum `.str p'`, `tail_depth + 1`, the new text and its end, `a2 = 0`. -/
 theorem rt_tail2 (hlive : ∀ p ∈ dcText, live p.1) {p' q td : Nat} {hs' : List GV}
     (h : DcAt S M H F L C G hs' st) (hq : DatSlot S (sp + 176) q) (hd : DatAt M (sp + 32) (.str p'))
-    (hp' : GV.str p' ∈ hs') (hown : ∀ b, sp ≤ b → b < sp + 88 → S b)
+    {o' : StrObj} (ho' : o' ∈ G.strs) (e1 : o'.hb.pay = p') (hown : ∀ b, sp ≤ b → b < sp + 88 → S b)
     (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
     (htd : td + 1 < 2 ^ 31) {R : Nat → BitVec 64} (h2 : R 2 = BitVec.ofNat 64 sp)
     (h22 : R 22 = BitVec.ofNat 64 q) (h24 : R 24 = BitVec.ofNat 64 td)
-    (hk : ∀ R2 M2 o', Keeps (1 :: 8 :: 9 :: 12 :: 24 :: cClob) R2 R → o' ∈ G.strs →
-      o'.hb.pay = p' → R2 8 = BitVec.ofNat 64 o'.tb.pay →
+    (hk : ∀ R2 M2, Keeps (1 :: 8 :: 9 :: 12 :: 24 :: cClob) R2 R → R2 8 = BitVec.ofNat 64 o'.tb.pay →
       R2 9 = BitVec.ofNat 64 (o'.tb.pay + o'.s.length) → R2 24 = BitVec.ofNat 64 (td + 1) →
       R2 12 = 0#64 → DcAt S M2 H F L C G hs' st → DatAt M2 q (.str p') →
       (∀ a, ¬ (q ≤ a ∧ a < q + 16) → imgM M2 a = imgM M a) →
@@ -167,12 +166,6 @@ theorem rt_tail2 (hlive : ∀ p ∈ dcText, live p.1) {p' q td : Nat} {hs' : Lis
   rw [show sp + 32 + 8 = sp + 40 by omega] at hpt
   have hqo : ∀ b, q ≤ b → b < q + 16 → S b := fun b h1 h2 => by
     have := hq.own (b - q) (by omega); rwa [Nat.add_sub_cancel' h1] at this
-  -- the popped string's object
-  obtain ⟨v, hv⟩ := h.den.hsDen _ hp'
-  obtain ⟨o', ho', e1⟩ : ∃ o' ∈ G.strs, o'.hb.pay = p' := by
-    cases v with
-    | num _ => exact absurd hv (by simp [GV.Den])
-    | str x => obtain ⟨o', ho', e1, -⟩ := hv; exact ⟨o', ho', e1⟩
   have hso' := h.view.strs o' ho'
   have hmem : o'.hb ∈ G.blocks :=
     List.mem_append_left _ (List.mem_append_right _ (List.mem_flatMap.mpr ⟨o', ho', by simp⟩))
@@ -221,7 +214,7 @@ theorem rt_tail2 (hlive : ∀ p ∈ dcText, live p.1) {p' q td : Nat} {hs' : Lis
     ⟨this.1, this.2.1⟩
   have htg := hd.tag
   rw [hw0] at htg
-  exact hk _ _ o' (by keeps_tac Keeps.refl _ _) ho' e1 (by bsimp []) (by bsimp [])
+  exact hk _ _ (by keeps_tac Keeps.refl _ _) (by bsimp []) (by bsimp [])
     (by bsimp []) (by bsimp []) (h.outWrite hmo hP)
     (slotMem_dat ⟨htg, by rw [← e1]; rfl⟩) hmo
 
@@ -231,12 +224,13 @@ current string (`.str p`, at `q`), then `rt_tail2`. -/
 theorem rt_tail (hlive : ∀ p ∈ dcText, live p.1) {p p' q td : Nat} {hs' : List GV}
     (h : DcAt S M H F L C G (.str p :: hs') st) (hq : DatSlot S (sp + 176) q)
     (hw : ldv .ld M (q + 8) = BitVec.ofNat 64 p) (hd : DatAt M (sp + 32) (.str p'))
-    (hp' : GV.str p' ∈ hs') (hown : ∀ b, sp ≤ b → b < sp + 88 → S b)
+    (hp' : GV.str p' ∈ hs') {o1 : StrObj} (ho1 : o1 ∈ G.strs) (hp1 : o1.hb.pay = p')
+    (hown : ∀ b, sp ≤ b → b < sp + 88 → S b)
     (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
     (htd : td + 1 < 2 ^ 31) {R : Nat → BitVec 64} (h2 : R 2 = BitVec.ofNat 64 sp)
     (h22 : R 22 = BitVec.ofNat 64 q) (h24 : R 24 = BitVec.ofNat 64 td)
     (hk : ∀ R2 H2 (G' : DcG) M2 o', Keeps (1 :: 8 :: 9 :: 12 :: 24 :: cClob) R2 R → o' ∈ G'.strs →
-      o'.hb.pay = p' → R2 8 = BitVec.ofNat 64 o'.tb.pay →
+      o'.hb = o1.hb → o'.tb = o1.tb → o'.s = o1.s → R2 8 = BitVec.ofNat 64 o'.tb.pay →
       R2 9 = BitVec.ofNat 64 (o'.tb.pay + o'.s.length) → R2 24 = BitVec.ofNat 64 (td + 1) →
       R2 12 = 0#64 → SameNodes G G' → DcAt S M2 H2 F L C G' hs' st → StrPin G.strs G'.strs hs' →
       DatAt M2 q (.str p') →
@@ -262,11 +256,13 @@ theorem rt_tail (hlive : ∀ p ∈ dcText, live p.1) {p p' q td : Nat} {hs' : Li
     hso x (outHeap_of_ge (by simp only [heapEnd]; omega)) (fun hg => by
       have := hg.1.lt; simp only [heapStart] at this; omega)
       (fun hf => by simp only [frameIn] at hf; omega)) hd
-  refine rt_tail2 hlive h1 hq hd1 hp' hown hsf hab htd (by rw [k1.get 2 (by decide)]; bsimp [h2])
+  obtain ⟨o', ho', f1, f2, f3⟩ := hpin o1 ho1 (by rw [hp1]; exact hp')
+  refine rt_tail2 hlive h1 hq hd1 ho' (by rw [f1, hp1]) hown hsf hab htd
+    (by rw [k1.get 2 (by decide)]; bsimp [h2])
     (by rw [k1.get 22 (by decide)]; bsimp [h22]) (by rw [k1.get 24 (by decide)]; bsimp [h24])
-    fun R2 M2 o' k2 ho' e1 e8 e9 e24 e12 h2' hd2 hm2 => ?_
+    fun R2 M2 k2 e8 e9 e24 e12 h2' hd2 hm2 => ?_
   exact hk R2 H1 G1 M2 o' (by keeps_tac ((k2.mono (by decide)).trans (by keeps_tac
-    ((k1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))) ho' e1 e8 e9 e24 e12 hsn h2' hpin hd2
+    ((k1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))) ho' f1 f2 f3 e8 e9 e24 e12 hsn h2' hpin hd2
     fun a e1 e2 e3 e4 => (hm2 a e4).trans (hso a e1 e2 e3)
 
 end

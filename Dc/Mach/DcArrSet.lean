@@ -1559,4 +1559,58 @@ theorem as_ins_head {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   · rw [hk2.get 9]; exact e9
   · rw [hk2.get 18]; exact e18
 
+/-- The insert path's end after the node `bx` (`0x80003cf8`, `a4` naming
+`bx`): the fresh node linked from `bx`. -/
+theorem as_ins_mid {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {en : Entry} {es : List Entry} {pre post : List (Blk × ANode)}
+    {bx : Blk × ANode} {c : Blk} {i sp : Nat} {m1 m2 : List (Nat × Val)} {v : Val}
+    {w0 w1 ra s0 s1 s2 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hst : st.regs r = en :: es) (harr : e.arr = (pre ++ [bx]) ++ post)
+    (hm1 : List.Forall₂ (ARel ⟨L, G.strs⟩) (pre ++ [bx]) m1)
+    (hm2 : List.Forall₂ (ARel ⟨L, G.strs⟩) post m2)
+    (hf : DcFresh H F L G c) (hcsz : 32 ≤ c.sz) (hi : i < 2 ^ 31) (hd : DatRegs w0 w1 g)
+    (hv : g.Den ⟨L, G.strs⟩ v) (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64))
+    (h14 : R 14 = BitVec.ofNat 64 bx.1.pay) (h10 : R 10 = BitVec.ofNat 64 c.pay)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps arrClob R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
+      DcAt S M' H F L C (G.setReg r ((b, { e with arr := (pre ++ [bx]) ++ (c, ⟨i, g⟩) :: post }) :: l))
+        hs (st.setReg r ({ en with arr := m1 ++ (i, v) :: m2 } :: es)) →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
+      DW live S Q ra R' M') :
+    DW live S Q 0x80003cf8#64 R (nodeW M c.pay i (headPtr post) w0 w1) := by
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  obtain ⟨hc1, hc2, hc3⟩ := blk_bounds h.heap.heap hf.live
+  have hbe : (b, e) ∈ G.regs r := by rw [hl]; exact List.mem_cons_self
+  obtain ⟨-, hp0⟩ := h.regWord hr hl
+  have hbm : bx ∈ e.arr := by rw [harr]; simp
+  have hxG := G.arr_mem hr hbe hbm
+  obtain ⟨hx1, hx2, hx3⟩ := h.node_bounds hxG (hp0.arr.forall bx hbm).sz
+  have hsl := hsf.lo
+  simp only [heapStart, heapEnd] at hc1 hc2 hab hx1 hx2
+  have hmf : ∀ k, k + 8 ≤ 64 → ldv .ld (nodeW M c.pay i (headPtr post) w0 w1) (sp - 64 + k) =
+      ldv .ld M (sp - 64 + k) := fun k hk => by
+    simp only [nodeW]
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+      ldv_ld_miss _ _ (by omega)]
+  refine as_link hlive hS hsf (by simp only [heapEnd]; omega)
+    ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega, by omega⟩ R h2 h14
+    ((hmf 56 (by omega)).trans l56) ((hmf 48 (by omega)).trans l48)
+    ((hmf 40 (by omega)).trans l40) ((hmf 32 (by omega)).trans l32) hal
+    fun R' hk1 e1 e2 e8 e9 e18 => ?_
+  have h1 := h.insNodeW hr hl hst harr hm1 hm2 hf hcsz hi hd hv
+  rw [lend_append] at h1
+  rw [h10]
+  refine hk R' _ (hk1.mono (by decide)) e1 e2 e8 e9 e18 h1 fun a ho hg _ => ?_
+  have hx := ho.1
+  simp only [heapStart, heapEnd] at hx
+  simp only [nodeW]
+  repeat rw [imgM_store_miss _ _ (by omega)]
+
 end Dc.Mach

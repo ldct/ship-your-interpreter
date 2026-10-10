@@ -159,6 +159,88 @@ theorem tos_tail (hlive : ∀ p ∈ dcText, live p.1)
     (by rw [← hstr]; exact hpin5.mono fun g hg => List.mem_cons_of_mem _ (List.mem_append_right _ hg))
     (by rw [f1, hp1]; exact hhead) (by rw [f1, hp1]; exact hend)
 
+/-- **The nested evaluation's hook**: a nesting level `d1` below `d`, a budget
+`k1 ≤ k`, outcomes `Pn` of the nested evaluation of the popped string over
+the state `st3`; the run of the nested `evalstr` from its entry for every
+return continuation covering `Pn`; for each outcome, the state's model facts
+and the activation's continuations (`DC_OKAY` on, `DC_QUIT` up or out). -/
+def TosNestK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (t0 : String) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → BitVec 64) (F : List Blk)
+    (L : List NumObj) (C : BcConsts) (G : DcG) (hs xs : List GV) (st3 : St) (rest : List Nat)
+    (td : Nat) : Prop :=
+  ∃ d1 k1 : Nat, ∃ Pn : St → Status → Prop, d = d1 + 1 ∧ k1 ≤ k ∧
+    (∀ (R1 : Nat → BitVec 64) (M1 : Mem) (H1 : Heap) (G1 : DcG) (p' : Nat) (o1 : StrObj),
+      EvEntry S (sp - 176) (W - 176) d1 k1 (sp - 176 + 32) M1 R1 H1 F L C G1
+        (.str p' :: (xs ++ hs)) [] st3 o1 →
+      EvOom live S Q (sp - 176) (W - 176) (sp - 176 + 32) M1 →
+      (∀ st1 r1, Pn st1 r1 → EvK live S Q t0 (sp - 176) (W - 176) k1 (sp - 176 + 32) M1 R1 G1
+        (.str p' :: (xs ++ hs)) [] st1 r1) →
+      DWO live S Q (t0 ++ Dc.outStr st3.out) 0x80001448#64 R1 M1) ∧
+    (∀ st1 r1, Pn st1 r1 → StrBound (2 ^ 24) st1 ∧ ArrSorted st1 ∧
+      (r1 = .ok →
+        EvHeadK live S Q t0 sp W d k (k - k1) q M0 R0 G hs xs st1 ⟨skipWs rest, td, false⟩ ∧
+        EvEndK live S Q t0 sp W d k q M0 R0 G hs xs st1 ⟨skipWs rest, td, false⟩) ∧
+      (r1 = .quit → 0 < st1.unwind →
+        EvRetK live S Q t0 sp W d k q M0 R0 G hs xs { st1 with unwind := st1.unwind - 1 } .quit) ∧
+      (r1 = .quit → st1.unwind = 0 → EvExitK live S Q t0 sp W d k q M0 R0 G hs xs st1))
+
+/-- **A string popped before another byte: the nested evaluation**
+(`0x800017a8`, then `evalstr (s9)` at `0x800017fc`). -/
+theorem tos_call (hlive : ∀ p ∈ dcText, live p.1)
+    (ev : EvAt S sp W d k q M0 R0 R M H F L C G hs xs st ⟨rest, td, false⟩ o)
+    (h25 : R 25 = BitVec.ofNat 64 (sp - 176 + 32)) (hoom : EvOom live S Q sp W q M0)
+    {j : Nat} (hj : j < o.s.length) (hdj : o.s.drop j = skipWs rest)
+    {R3 : Nat → BitVec 64} {M3 : Mem} {H3 : Heap} {G3 : DcG} {g : GV} {v : Val} {st3 : St} {c : Blk}
+    (hst : st = st3.push v) (hG : G = { G3 with stk := (c, g) :: G3.stk })
+    (hk3 : Keeps (1 :: 8 :: 23 :: cClob) R3 R) (h8 : R3 8 = BitVec.ofNat 64 (o.tb.pay + j))
+    (h3 : DcAt S M3 H3 F L C G3 (g :: (xs ++ hs)) st3) (hd3 : DatAt M3 (sp - 176 + 32) g)
+    (hpo : PopOut (sp - 176) (sp - 176 + 32) M3 M) {x : List Nat} (hv : v = .str x)
+    (hnest : TosNestK live S Q t0 sp W d k q M0 R0 F L C G hs xs st3 rest td) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) 0x800017a8#64 R3 M3 := by
+  have hstk := ev.stk; have hab := ev.room
+  have hfr := ev.frame
+  have hfl := hfr.lo; have hfh := hfr.hi; have hfa := hfr.al
+  have hgv := pop_den ev.dc hst hG
+  subst hv
+  obtain ⟨p', rfl⟩ : ∃ p', g = .str p' := by
+    cases g with
+    | num _ => exact absurd hgv (by simp [GV.Den])
+    | str p' => exact ⟨p', rfl⟩
+  obtain ⟨o1, ho1, hp1, hx1⟩ := hgv
+  obtain ⟨d1, k1, Pn, hd, hk1, hrun, hcont⟩ := hnest
+  have hlk : G3.lk = G.lk := by rw [hG]
+  have hstr : G3.strs = G.strs := by rw [hG]
+  have e2 : R3 2 = BitVec.ofNat 64 (sp - 176) := by rw [hk3.get 2 (by decide)]; exact ev.r2
+  have e9 : R3 9 = BitVec.ofNat 64 (o.tb.pay + o.s.length) := by rw [hk3.get 9 (by decide)]; exact ev.s1
+  have e25 : R3 25 = BitVec.ofNat 64 (sp - 176 + 32) := by
+    rw [hk3.get 25 (by decide)]; exact h25
+  have hne89 : R3 8 ≠ R3 9 := by
+    rw [h8, e9]; intro e
+    have := congrArg BitVec.toNat e
+    have hso := ev.dc.view.strs o ev.strIn
+    have hmem : o.tb ∈ G.blocks :=
+      List.mem_append_left _ (List.mem_append_right _ (List.mem_flatMap.mpr ⟨o, ev.strIn, by simp⟩))
+    have bt := blk_bounds ev.dc.heap.heap (ev.dc.heap.raw.live o.tb hmem)
+    have htz := hso.tsz
+    simp only [heapStart, heapEnd] at bt
+    simp only [BitVec.toNat_ofNat] at this; omega
+  have hst3 : st.out = st3.out := by rw [hst]; rfl
+  refine rt_tos_str hlive (g := .str p') rfl hd3 (fun b h1 h2 => hfr.own b (by omega) (by omega))
+    (hfr.within (m := 176) (n := 64) (by omega) (by decide)) e2
+    (fun R4 k4 h89 => absurd h89 hne89) (fun R4 k4 h23 _ => ?_)
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have e25' : R4 25 = BitVec.ofNat 64 (sp - 176 + 32) := by rw [k4.get 25 (by decide)]; exact e25
+  bc_run hlive hlive [e25'] at 0x80001448
+  rw [hst3]
+  refine hrun _ M3 H3 G3 p' o1 ?_ (ev.nestOom hoom hpo) fun st1 r1 hP => ?_
+  · exact ev.nestEntry hd hk1 h3 hst hlk hd3 hpo ho1 hp1 hx1
+      (by bsimp []; rw [k4.get 2 (by decide)]; exact e2) (by bsimp []) (by bsimp [])
+  · obtain ⟨hsb1, hsrt1, hok, hq1, hq0⟩ := hcont st1 r1 hP
+    exact nest_return hlive ev hd hk1 hlk hstr hpo (Nat.le_of_lt hj) hdj
+      (by keeps_tac ((k4.mono (by decide)).trans (hk3.mono (by decide))))
+      (by bsimp []; rw [k4.get 8 (by decide)]; exact h8) (by bsimp []; exact h23) (by bsimp [])
+      hsb1 hsrt1 hok hq1 hq0
+
 end
 
 end Dc.Mach

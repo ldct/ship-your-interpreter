@@ -1790,4 +1790,67 @@ theorem as_empty {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
   · rw [e10', hk2.get 18, hk1.get 18]; bsimp [h18]
   · rw [e11, hk2.get 10]; exact e10
 
+/-- `dc_set_stacked_array (r, c)` on a register with no level, after the
+fresh node `c` was stored: a fresh level whose array is `c`, or
+`dc_memfail`. -/
+theorem as_ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {c : Blk} {i sp : Nat}
+    {v : Val} {w0 w1 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = [])
+    (hf : DcFresh H F L G c) (hcsz : 32 ≤ c.sz) (hi : i < 2 ^ 31) (hd : DatRegs w0 w1 g)
+    (hv : g.Den ⟨L, G.strs⟩ v) (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 r) (h11 : R 11 = BitVec.ofNat 64 c.pay)
+    (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' b, Keeps (1 :: 2 :: 11 :: mallocClob) R' R → R' 2 = BitVec.ofNat 64 sp →
+      DcAt S M' H' F L C (G.setReg r [(b, ⟨none, [(c, ⟨i, g⟩)]⟩)]) hs
+        (st.setReg r [⟨none, [(i, v)]⟩]) →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
+      DW live S Q (R 1) R' M')
+    (hoom : ∀ R' M', (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
+      DW live S Q 0x80001e74#64 R' M') :
+    DW live S Q 0x8000391c#64 R (nodeW M c.pay i 0#64 w0 w1) := by
+  have hsl := hsf.lo
+  have e1c : c.fin = c.pay + c.sz := rfl
+  obtain ⟨hc1, hc2, hc3⟩ := blk_bounds h.heap.heap hf.live
+  simp only [heapStart, heapEnd] at hc1 hc2 hab
+  have hz : ldv .ld M (regAddr r) = 0#64 := by
+    have hv0 := h.view.regs r hr
+    rw [hl] at hv0; cases hv0; assumption
+  have hrc : regAddr r + 8 ≤ c.pay := by simp only [regAddr, dcRegAddr]; omega
+  have hw : ldv .ld (nodeW M c.pay i 0#64 w0 w1) (regAddr r) = 0#64 := by
+    simp only [nodeW]
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+      ldv_ld_miss _ _ (by omega)]
+    exact hz
+  have hnM : ∀ a, OutHeap a → imgM (nodeW M c.pay i 0#64 w0 w1) a = imgM M a := fun a ho => by
+    have hx := ho.1
+    simp only [heapStart, heapEnd] at hx
+    simp only [nodeW]
+    repeat rw [imgM_store_miss _ _ (by omega)]
+  have h1 := h.rawWrite hf (M' := nodeW M c.pay i 0#64 w0 w1) fun y hy => by
+    simp only [Blk.In, e1c] at hy
+    simp only [nodeW]
+    repeat rw [imgM_store_miss _ _ (by omega)]
+  have hi1 := h1.heap.heap
+  refine ss_new hlive hi1 h.glob hr hw (StackFrame.shrink hsf (by decide))
+    (by simp only [heapEnd]; omega) R h10 h2 hal
+    (fun R' Ms M1 H' b hk1 e2 hMs hp => ?_) fun R' M' hfr => hoom R' M' fun a ho hg hf => ?_
+  · rw [h11]
+    refine hk R' _ H' b hk1 e2 (h.newArr hr hl hf hcsz hi hd hv (by simp only [heapEnd]; omega) hMs hp)
+      fun a ho hg hf => ?_
+    have hx := ho.1
+    simp only [heapStart, heapEnd] at hx
+    obtain ⟨hb1, hb2, hb3⟩ := blk_bounds hp.inv (by rw [hp.live]; exact List.mem_cons_self)
+    simp only [heapStart, heapEnd] at hb1 hb2
+    have hrx : a < regAddr r ∨ regAddr r + 8 ≤ a := Classical.byContradiction fun hc =>
+      hg (by simp only [DcGlob, regAddr, dc_addrs] at hc ⊢; omega)
+    have hbs := hp.size
+    simp only [levW]
+    rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ hrx, imgM_store_miss _ _ (by omega),
+      imgM_store_miss _ _ (by omega),
+      hp.frame a (OutHeap.not_alloc hi1 ho) (by simp only [frameIn] at hf ⊢; omega),
+      hMs a (by simp only [frameIn] at hf ⊢; omega), hnM a ho]
+  · rw [hfr a (OutHeap.not_alloc hi1 ho) (by simp only [frameIn] at hf ⊢; omega), hnM a ho]
+
 end Dc.Mach

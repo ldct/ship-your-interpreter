@@ -72,7 +72,7 @@ theorem reg_get_err {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     rw [show (2147495800#64 + BitVec.signExtend 64 (26#20 +++ 0#12) + 18446744073709551080#64).toNat =
       0x8001cd60 by decide]
     intro b hb; have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs]; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs]; omega)
   bc_run hlive hS [h2, hpn, h15] at 0x80000774
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   have hwin : ∀ a, (a < sp - 336 ∨ sp ≤ a) → a < sp - 32 - 304 ∨ sp - 32 ≤ a :=
@@ -123,7 +123,7 @@ def StkOom (P : BitVec 64 → (Nat → BitVec 64) → Mem → Prop) (pc : BitVec
 
 /-- The bytes `dc_register_get` changes outside its frame and the slot: none. -/
 def GetOut (sp q : Nat) (M' M : Mem) : Prop :=
-  ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 336 a → (a < q ∨ q + 16 ≤ a) → imgM M' a = imgM M a
+  ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 336 a → (a < q ∨ q + 16 ≤ a) → imgM M' a = imgM M a
 
 /-- The slot stores `*result = d` and the epilogue at `0x80002f58`/`0x80002fcc`
 (`sp` lowered by 32): the datum `g` in `a0`/`a1` lands at `q`. -/
@@ -177,10 +177,10 @@ theorem reg_get_dup {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   have hfs : ∀ x, sp - 24 ≤ x → x < sp → imgM M2 x = imgM M x := fun x hx1 hx2 => by
     have hin : frameIn sp 336 x := by simp only [frameIn]; omega
     have hnf : ¬ frameIn (sp - 32) 16 x := by simp only [frameIn]; omega
-    rw [hfr x (hP x hin).1 (hP x hin).2 hnf, imgM_store_miss _ _ (by omega)]
+    rw [hfr x (hP x hin).1 (nglob_pin (hP x hin).2) hnf, imgM_store_miss _ _ (by omega)]
   have hlq : ldv .ld M2 (sp - 32) = BitVec.ofNat 64 q := by
     rw [ldv_congr .ld fun j hj => hfr _ (hP _ (by simp only [frameIn, widthOfM] at hj ⊢; omega)).1
-      (hP _ (by simp only [frameIn, widthOfM] at hj ⊢; omega)).2
+      (nglob_pin (hP _ (by simp only [frameIn, widthOfM] at hj ⊢; omega)).2)
       (by simp only [frameIn, widthOfM] at hj ⊢; omega)]
     exact ldv_store_hit _ _ _
   have hra2 : ldv .ld M2 (sp - 32 + 24) = ra := by
@@ -249,7 +249,7 @@ theorem reg_get_zero {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
   have hfs : ∀ x, sp - 32 ≤ x → x < sp → imgM M2 x = imgM (writeLog M [(sp - 32, 8, BitVec.ofNat 64 q)]) x :=
     fun x hx1 hx2 => by
       have hin : frameIn sp 336 x := by simp only [frameIn]; omega
-      exact hfr x (hP x hin).1 (hP x hin).2 (by simp only [frameIn]; omega)
+      exact hfr x (hP x hin).1 (nglob_pin (hP x hin).2) (by simp only [frameIn]; omega)
   have hlq : ldv .ld M2 (sp - 32) = BitVec.ofNat 64 q := by
     rw [ldv_congr .ld fun j hj => hfs _ (by simp only [widthOfM] at hj; omega)
       (by simp only [widthOfM] at hj; omega)]
@@ -335,7 +335,7 @@ theorem dc_register_get_spec {live S : Nat → Prop}
     simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs, regAddr] at this ⊢; omega)
   generalize hl : G.regs r = l at hv hd hmem
   cases hv with
   | nil h0 =>

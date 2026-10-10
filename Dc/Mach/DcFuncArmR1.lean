@@ -218,7 +218,7 @@ theorem FnAt.ldKeep {S : Nat → Prop} {sp W : Nat} {M0 M M' : Mem} {R0 R : Nat 
   have hab : heapEnd ≤ sp - 192 := by simp only [heapEnd] at hh ⊢; omega
   exact ldv_congr .ld fun j _ => by
     have := above_sp hab (a := sp - 192 + o + j) (by omega)
-    exact hout _ this.1 this.2.1 (this.2.2 _)
+    exact hout _ this.1 (fun hpg => this.2.1 hpg.1) (this.2.2 _)
 
 section
 
@@ -424,7 +424,7 @@ set_option hygiene false in
 /-- Global stores' ownership side conditions. -/
 macro "fr_glob" : tactic =>
   `(tactic| (all_goals first
-    | (intro b hb; have := of_mem_accAddrs hb; exact hg2 b (by simp only [DcGlob, dc_addrs]; omega))
+    | (intro b hb; have := of_mem_accAddrs hb; exact hg2 b (by simp only [DcGlob, PinWords, dc_addrs]; omega))
     | skip))
 
 theorem dcFunc_k_nil (he : st.stack = []) : dcFunc 70 st 107 peek neg = .ok st := by

@@ -134,7 +134,7 @@ theorem CfOut.inP {M M' : Mem} {sp fs o : Nat} (h : CfOut M M' sp fs o) (hab : h
     ldv .ld M' inPtrAddr = ldv .ld M inPtrAddr :=
   ldv_congr .ld fun j hj => by
     have hp : InP (inPtrAddr + j) := by simp only [InP, widthOfM] at hj ⊢; omega
-    exact h _ hp.off.1 hp.off.2 (fun hf => by simp only [frameIn, InP, inPtrAddr, heapEnd] at hf hp hab; omega)
+    exact h _ hp.off.1 (nglob_pin hp.off.2) (fun hf => by simp only [frameIn, InP, inPtrAddr, heapEnd] at hf hp hab; omega)
       (fun hs => by simp only [slotBytes, InP, inPtrAddr, heapEnd] at hs hp hab; omega)
 
 /-- `dc_getnum`'s out-of-memory continuation. -/

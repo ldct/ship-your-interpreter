@@ -263,7 +263,7 @@ theorem dc_out_str_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
         (by simp only [heapEnd, Blk.pay, Blk.fin] at *; omega), by simp only [Blk.pay] at *; omega,
         by simp only [Blk.pay, Blk.fin] at *; omega⟩,
       .inl (by simp only [Blk.pay, Blk.fin] at *; omega),
-      ⟨fun i hi => h.glob _ (by simp only [DcGlob, stdoutFile, dc_addrs]; omega), hfd1, by decide, by decide,
+      ⟨fun i hi => h.glob _ (by simp only [DcGlob, PinWords, stdoutFile, dc_addrs]; omega), hfd1, by decide, by decide,
         by decide⟩, .inl (by simp only [stdoutFile]; omega)⟩
     _ ?_ ?_ ?_ ?_ ?_ fun R' M' hk' e10 hso' => ?_
   · bsimp []

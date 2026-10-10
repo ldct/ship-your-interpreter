@@ -39,40 +39,40 @@ theorem DcView.withLbuf {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} {lb : 
     ldv_congr k fun j hj => hg _ (ha j hj).1 (ha j hj).2
   exact
     { stk := stkChain_frame h.stk
-        (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega)
+        (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega)
         fun bg hm x hx => hb x ⟨bg.1, G.stk_mem hm, hx⟩
       regs := fun r hr => regChain_frame (h.regs r hr)
-        (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, LbWords, regAddr, dc_addrs] at hj ⊢; omega)
+        (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, LbWords, regAddr, dc_addrs] at hj ⊢; omega)
         fun be hm c hc x hx => hb x ⟨c, by
           rcases List.mem_cons.mp hc with rfl | hc
           · exact G.reg_mem hr hm
           · obtain ⟨bn, hn, rfl⟩ := List.mem_map.mp hc
             exact G.arr_mem hr hm hn, hx⟩
       strs := fun o ho => (h.strs o ho).frame (G.str_mem ho).1 (G.str_mem ho).2 hb
-      zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.zw
-      ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.ow
-      tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.tw
+      zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.zw
+      ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.ow
+      tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.tw
       ibase := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.ibase
+        simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.ibase
       obase := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.obase
+        simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.obase
       scale := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.scale
+        simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.scale
       unwind := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.unwind
+        simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.unwind
       noexit := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.noexit
+        simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.noexit
       lineMax := by
-        rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega]
+        rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega]
         exact h.lineMax
       lbuf := hl
       lbufLen := hll
       outFd := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.outFd
+        simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.outFd
       errFd := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.errFd
+        simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.errFd
       prog := (gw .ld _ fun j hj => by
-        simp only [widthOfM, DcGlob, LbWords, dc_addrs] at hj ⊢; omega).trans h.prog }
+        simp only [widthOfM, DcGlob, PinWords, LbWords, dc_addrs] at hj ⊢; omega).trans h.prog }
 
 /-- **Stores to `buflen`/`line_buf`** keep the state when the words still
 name its line buffer. -/
@@ -279,7 +279,7 @@ theorem rs_make {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     intro b hb
     have hb' := VsaIris.Sym.of_mem_accAddrs hb
     apply hG
-    simp only [DcGlob, dc_addrs] at hb' ⊢
+    simp only [DcGlob, PinWords, dc_addrs] at hb' ⊢
     omega
   -- the frame above the callee's 16 bytes
   have hP : ∀ a, (sp - 112 ≤ a ∧ a < sp) → OutHeap a := fun a ha =>
@@ -382,7 +382,7 @@ theorem rs_read {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     intro b hb
     have hb' := VsaIris.Sym.of_mem_accAddrs hb
     apply hG
-    simp only [DcGlob, dc_addrs] at hb' ⊢
+    simp only [DcGlob, PinWords, dc_addrs] at hb' ⊢
     omega
   refine getc_spec hlive _ ?hal fun R1 hk1 e10 => ?_
   case hal => bsimp []
@@ -433,7 +433,7 @@ theorem rs_alloc {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     intro b hb
     have hb' := VsaIris.Sym.of_mem_accAddrs hb
     apply hG
-    simp only [DcGlob, dc_addrs] at hb' ⊢
+    simp only [DcGlob, PinWords, dc_addrs] at hb' ⊢
     omega
   case hea => simp only [StOK, htx, and_true]; omega
   have hm1 : MemOnly LbWords (writeLog M [(2147601824, 8, 2016#64)]) M := fun a ha =>
@@ -454,7 +454,7 @@ theorem rs_alloc {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   · refine hoom R1 M2 (by rw [hr2, Nat.sub_sub]) fun a ho hg hf => ?_
     rw [hfr a (OutHeap.not_alloc h1.heap.heap ho) fun hf' => hf (by
       simp only [frameIn] at hf' ⊢; omega)]
-    exact imgM_store_miss _ _ (by simp only [DcGlob, dc_addrs] at hg; omega)
+    exact imgM_store_miss _ _ (by simp only [DcGlob, PinWords, dc_addrs] at hg; omega)
   obtain ⟨h2', g⟩ := h1.malloc hp (by decide) (by simp only [heapEnd]; omega)
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk1.get 2 (by decide)]; bsimp [h2]
   have q24 : R1 24 = 0x8001cda8#64 := by rw [hk1.get 24 (by decide)]; bsimp [h24]
@@ -466,7 +466,7 @@ theorem rs_alloc {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     intro c hc
     have hc' := VsaIris.Sym.of_mem_accAddrs hc
     apply hG
-    simp only [DcGlob, dc_addrs] at hc' ⊢
+    simp only [DcGlob, PinWords, dc_addrs] at hc' ⊢
     omega
   have hm2 : MemOnly LbWords (writeLog M2 [(2147601832, 8, BitVec.ofNat 64 b.pay)]) M2 := fun a ha =>
     imgM_store_miss _ _ (by
@@ -492,7 +492,7 @@ theorem rs_alloc {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   have hso : ∀ M', StkOut sp 128 M' (writeLog M2 [(2147601832, 8, BitVec.ofNat 64 b.pay)]) →
       StkOut sp 128 M' M := fun M' hs1 a ho hg hf => by
     have hgl := hg
-    simp only [DcGlob, dc_addrs] at hgl
+    simp only [DcGlob, PinWords, dc_addrs] at hgl
     rw [hs1 a ho hg hf, imgM_store_miss _ _ (by omega),
       hfm a ho (fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)), imgM_store_miss _ _ (by omega)]
   refine rs_read hlive h3 rfl hsf hab hsv' _ ?r2 ?r8 ?r20 ?r24 hal

@@ -50,7 +50,7 @@ structure FnPost (S : Nat → Prop) (al sp W : Nat) (M : Mem) (G : DcG) (hs : Li
   lk : G'.lk.length + ex.length ≤ G.lk.length + al
   ex : ex.length ≤ 2
   pin : StrPin G.strs G'.strs hs
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp W a → imgM M' a = imgM M a
+  out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp W a → imgM M' a = imgM M a
 
 /-- **The caller's continuation** after `dc_func` on `st` returning `r`
 (entry registers `R`, memory `M`, frame `W` bytes below `sp`): the console
@@ -76,7 +76,7 @@ structure FnAt (S : Nat → Prop) (sp W : Nat) (M0 : Mem) (R0 : Nat → BitVec 6
   ra : ldv .ld M (sp - 192 + 184) = R0 1
   al : (R0 1).toNat % 4 = 0
   keep : Keeps (2 :: cClob) R R0
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp W a → imgM M a = imgM M0 a
+  out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp W a → imgM M a = imgM M0 a
 
 /-- The frame with registers changed among the caller-saved ones. -/
 theorem FnAt.mod {S : Nat → Prop} {sp W : Nat} {M0 M : Mem} {R0 R R' : Nat → BitVec 64}
@@ -103,7 +103,7 @@ the bytes `FnPost` keeps read as before the call. -/
 theorem FnAt.call {S : Nat → Prop} {sp W Wc : Nat} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64}
     (hc : FnAt S sp W M0 R0 R M) (hW : 192 + Wc ≤ W) (k : Keeps (1 :: 2 :: cClob) R' R)
     (e2 : R' 2 = R 2)
-    (hout : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn (sp - 192) Wc a →
+    (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn (sp - 192) Wc a →
       imgM M' a = imgM M a) : FnAt S sp W M0 R0 R' M' := by
   have hh := hc.room
   have hl := hc.frame.lo
@@ -112,7 +112,7 @@ theorem FnAt.call {S : Nat → Prop} {sp W Wc : Nat} {M0 M M' : Mem} {R0 R R' : 
   · rw [← hc.ra]
     exact ldv_congr .ld fun j hj => by
       have := above_sp hab (a := sp - 192 + 184 + j) (by omega)
-      exact hout _ this.1 this.2.1 (not_ocG_of_ge hab (by omega)) (this.2.2 _)
+      exact hout _ this.1 (fun hpg => this.2.1 hpg.1) (not_ocG_of_ge hab (by omega)) (this.2.2 _)
   · exact (k.mono (by decide)).trans hc.keep
   · intro a e1 e2 e3 e4
     exact (hout a e1 e2 e3 fun hf => e4 (by simp only [frameIn] at hf ⊢; omega)).trans
@@ -123,7 +123,7 @@ theorem FnAt.call {S : Nat → Prop} {sp W Wc : Nat} {M0 M M' : Mem} {R0 R R' : 
 theorem FnAt.callL {S : Nat → Prop} {sp W Wc : Nat} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64}
     (hc : FnAt S sp W M0 R0 R M) (hW : 192 + Wc ≤ W) (k : Keeps (1 :: 2 :: cClob) R' R)
     (e2 : R' 2 = R 2)
-    (hout : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn (sp - 192) Wc a →
+    (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn (sp - 192) Wc a →
       ¬ frameIn (sp - 8) 184 a → imgM M' a = imgM M a) : FnAt S sp W M0 R0 R' M' := by
   have hh := hc.room
   have hl := hc.frame.lo
@@ -132,7 +132,7 @@ theorem FnAt.callL {S : Nat → Prop} {sp W Wc : Nat} {M0 M M' : Mem} {R0 R R' :
   · rw [← hc.ra]
     exact ldv_congr .ld fun j hj => by
       have := above_sp hab (a := sp - 192 + 184 + j) (by omega)
-      exact hout _ this.1 this.2.1 (not_ocG_of_ge hab (by omega)) (this.2.2 _)
+      exact hout _ this.1 (fun hpg => this.2.1 hpg.1) (not_ocG_of_ge hab (by omega)) (this.2.2 _)
         (by simp only [frameIn, widthOfM] at hj ⊢; omega)
   · exact (k.mono (by decide)).trans hc.keep
   · intro a e1 e2 e3 e4
@@ -158,7 +158,7 @@ theorem FnAt.oom {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     {sp W Wc sp' : Nat} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {t' : String}
     (hc : FnAt S sp W M0 R0 R M) (ho : FnOom live S Q sp W M0) (hW : 192 + Wc ≤ W)
     (hlo : sp - 192 - Wc ≤ sp') (hhi : sp' ≤ sp - 192) (e2 : R' 2 = BitVec.ofNat 64 sp')
-    (hout : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn (sp - 192) Wc a →
+    (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn (sp - 192) Wc a →
       imgM M' a = imgM M a) : DWO live S Q t' 0x80001e74#64 R' M' :=
   ho t' R' M' sp' ⟨by omega, by omega, e2, fun a e1 e2' e3 e4 =>
     (hout a e1 e2' e4 fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)).trans

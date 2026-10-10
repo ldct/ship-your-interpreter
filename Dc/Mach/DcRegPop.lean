@@ -44,8 +44,8 @@ theorem DcAt.unconsLev {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L
   have hm : MemOnly (RegWord r) (popRegW M r c) M := MemOnly.store M _ 8 _
   have hrw : ∀ a, RegWord r a → OutHeap a ∧ DcGlob a := fun a ha => by
     simp only [RegWord, regAddr, dc_addrs] at ha
-    exact ⟨DcGlob.outHeap (by simp only [DcGlob, dc_addrs]; omega),
-      by simp only [DcGlob, dc_addrs]; omega⟩
+    exact ⟨DcGlob.outHeap (by simp only [DcGlob, PinWords, dc_addrs]; omega),
+      by simp only [DcGlob, PinWords, dc_addrs]; omega⟩
   have hblk : ∀ a, InBlocks G.blocks a → imgM (popRegW M r c) a = imgM M a := fun a ha => hm a fun hw => by
     have := (h.inBlocks_heap ha).1; have := (hrw a hw).1.1; contradiction
   -- the blocks
@@ -194,7 +194,7 @@ theorem rpop_err {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     rw [show (2147497764#64 + BitVec.signExtend 64 (25#20 +++ 0#12) + 1596#64).toNat =
       0x8001cd60 by decide]
     intro b hb; have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs]; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs]; omega)
   bc_run hlive hS [h2, hpn, h15] at 0x80000774
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   have hwin : ∀ a, (a < sp - 336 ∨ sp ≤ a) → a < sp - 32 - 304 ∨ sp - 32 ≤ a :=
@@ -272,7 +272,7 @@ theorem rpop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   have hdat : DatAt M c.pay g := by have := hnode.dat; rw [hev] at this; exact this
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs, regAddr] at this ⊢; omega)
   have hra8 : (BitVec.ofNat 64 (regAddr r)).toNat = regAddr r := by
     simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
   have hrA : 2147601872 ≤ regAddr r ∧ regAddr r + 8 ≤ 2147603920 := by
@@ -319,13 +319,13 @@ theorem rpop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   refine af_freeNode hlive hdc1 hcf1 (p := 0#64) (rest := [])
     ⟨.nil, (fun _ hm => nomatch hm), List.nodup_nil⟩ (fun hm => nomatch hm) _ (by bsimp [q8])
     (by bsimp [] <;> decide) fun R2 M2 H2 hk2 hdc2 _ hpost2 => ?_
-  have hfrq : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn (sp - 32) 80 a → imgM M2 a =
+  have hfrq : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn (sp - 32) 80 a → imgM M2 a =
       imgM (writeLog (writeLog (writeLog M [(q, 8, ldv .ld M c.pay)]) [(q + 8, 8, ldv .ld M (c.pay + 8))])
         [(regAddr r, 8, ldv .ld M (c.pay + 24))]) a := fun a ho hg hf =>
     (hpost2.out a ho hg fun h' => by simp only [frameIn] at h'; omega).trans (hpost.out a ho hg hf)
   have hfr : ∀ a, sp - 32 ≤ a → a < sp → imgM M2 a = imgM M a := fun a h1 h2 => by
     rw [hfrq a (outHeap_of_ge (by simp only [heapEnd]; omega))
-      (fun hg => by have := hg.lt; simp only [heapStart] at this; omega)
+      (fun hg => by have := hg.1.lt; simp only [heapStart] at this; omega)
       (by simp only [frameIn]; omega),
       imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
   have hra2 : ldv .ld M2 (sp - 32 + 24) = ra := by
@@ -343,7 +343,7 @@ theorem rpop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
       (writeLog (writeLog M [(q, 8, ldv .ld M c.pay)]) [(q + 8, 8, ldv .ld M (c.pay + 8))]) (q + k) :=
     fun k hk => by
       rw [ldv_congr .ld fun j hj => (hfrq _ (hqo _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩).1
-        (hqo _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩).2
+        (nglob_pin (hqo _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩).2)
         (by simp only [frameIn, widthOfM] at hj ⊢; omega))]
       rw [ldv_ld_miss _ _ (by omega)]
   have hdq : DatAt M2 q g := by
@@ -360,7 +360,7 @@ theorem rpop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     (hkeep g List.mem_cons_self v hgv) (hkeep.mono fun x hx => List.mem_cons_of_mem _ hx) hpin (hpost.same.lk.trans rfl) hdq
     fun a ho hg hf hqa => ?_
   rw [hfrq a ho hg fun h' => hf (by simp only [frameIn] at h' ⊢; omega)]
-  simp only [DcGlob, dc_addrs, not_or] at hg
+  simp only [DcGlob, PinWords, dc_addrs, not_or] at hg
   rw [imgM_store_miss _ _ (by simp only [regAddr] at *; omega), imgM_store_miss _ _ (by omega),
     imgM_store_miss _ _ (by omega)]
 
@@ -469,7 +469,7 @@ theorem rpop_pro {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     simp only [regAddr, dcRegAddr]; omega
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs, regAddr] at this ⊢; omega)
   bc_run hlive hS [h2, h10, regWord_addr hr, hra8] at 0x8000371c
   all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hrown | (simp only [LdOK, regAddr, dcRegAddr]; omega) | skip
   · intro hc
@@ -608,7 +608,7 @@ theorem rpush_tail {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat →
       R' 2 = BitVec.ofNat 64 sp → R' 8 = s0 →
       DcAt S M' H F L C (G.setReg r ((c, ⟨some g, []⟩) :: G.regs r)) hs
         (st.setReg r (⟨some v, []⟩ :: st.regs r)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → imgM M' a = imgM M a) → DW live S Q ra R' M') :
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → imgM M' a = imgM M a) → DW live S Q ra R' M') :
     DW live S Q 0x80002e44#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
   have htx : tohostAddr = 0x8001ad00 := rfl
@@ -625,7 +625,7 @@ theorem rpush_tail {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat →
     simp only [regAddr, dcRegAddr]; omega
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs, regAddr] at this ⊢; omega)
   bc_run hlive hS [h2, h8, h10, regWord_addr hr, hra8] at 0x80002e68
   all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hrown | (simp only [LdOK, StOK, regAddr, dcRegAddr]; omega) | skip
   have lst : ∀ a, a + 8 ≤ c.pay + 24 ∨ c.pay + 32 ≤ a →
@@ -679,7 +679,7 @@ theorem rpush_tail {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat →
   · rw [hk2.get 8]; bsimp []
   have hx := ho.1
   have hrx : x < regAddr r ∨ regAddr r + 8 ≤ x := Classical.byContradiction fun hc =>
-    hg (by simp only [DcGlob, regAddr, dc_addrs] at hc ⊢; omega)
+    hg (by simp only [DcGlob, PinWords, regAddr, dc_addrs] at hc ⊢; omega)
   simp only [heapStart, heapEnd] at hx
   rw [imgM_store_miss _ _ hrx]
   try (repeat rw [imgM_store_miss _ _ (by omega)])

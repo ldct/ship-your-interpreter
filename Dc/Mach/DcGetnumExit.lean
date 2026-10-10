@@ -118,14 +118,14 @@ theorem gn_tail {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     (sv4 : ∀ q ∈ gnSv, ldv .ld M4 (sp - 144 + q.1) = R0 q.2)
     (w4 : ldv .ld M4 (sp - 144 + 16) = BitVec.ofNat 64 pr) (p4 : ldv .ld M4 inPtrAddr = pw)
     (ra4 : ra ≠ 0 → imgLE (imgM M4) ra 4 = rw)
-    (out4 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
+    (out4 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
       imgM M4 a = imgM M0 a)
     (dr : (GV.num pr).Den ⟨L, G.strs⟩ (.num n)) (keep : HsKeep ⟨L0, G.strs⟩ ⟨L, G.strs⟩ hs0)
     (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R0 → R' 2 = R0 2 →
       DcAt S M' H' F' L' C' G (.num pr :: hs0) st → (GV.num pr).Den ⟨L', G.strs⟩ (.num n) →
       HsKeep ⟨L0, G.strs⟩ ⟨L', G.strs⟩ hs0 → R' 11 = BitVec.ofNat 64 pr → (R' 10).toNat % 2 ^ 32 = 1 →
       ldv .ld M' inPtrAddr = pw → (ra ≠ 0 → imgLE (imgM M') ra 4 = rw) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
         imgM M' a = imgM M0 a) →
       DWO live S Q t (R0 1) R' M') :
     DWO live S Q t 0x80002860#64 R3 M4 := by
@@ -187,7 +187,7 @@ theorem gn_exit {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
       HsKeep ⟨L0, G.strs⟩ ⟨L', G.strs⟩ hs0 → R' 11 = BitVec.ofNat 64 pr → (R' 10).toNat % 2 ^ 32 = 1 →
       ldv .ld M' inPtrAddr = BitVec.ofNat 64 (o.tb.pay + j0 + min (jE + 1) (rdW o j0).length) →
       (ra ≠ 0 → imgLE (imgM M') ra 4 = (chW (rdW o j0)[jE]?).toNat % 2 ^ 32) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
         imgM M' a = imgM M0 a) →
       DWO live S Q t (R0 1) R' M') :
     DWO live S Q t 0x80002840#64 R M := by

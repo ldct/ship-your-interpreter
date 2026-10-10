@@ -123,7 +123,7 @@ theorem pr_num {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     (h13 : R 13 = boolWord nl) (h14 : R 14 = boolWord keep) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R → R' 2 = R 2 →
       DcAt S M' H' F' L' C' G (if keep then hs else hs.tail) st →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a) →
       DWO live S Q (t ++ Dc.outStr (Dc.Num.out 70 ob x.rep.num ++ nlBytes nl)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp prN M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
     DWO live S Q t 0x8000200c#64 R M := by
@@ -169,7 +169,7 @@ theorem pr_num {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       (ho.out a e1 e2 (fun hf => e3 (by simp only [frameIn] at hf ⊢; omega)) e4).trans
         (hM1 a fun hf => e3 (by simp only [frameIn] at hf ⊢; omega))⟩
   have kf : ∀ o, 8 ≤ o → o < 48 → imgM M' (sp - 48 + o) = imgM M1 (sp - 48 + o) := fun o h8 h48 =>
-    hfr _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+    hfr _ (above_sp hab2 (by omega)).1 (fun hpg => (above_sp hab2 (by omega)).2.1 hpg.1)
       (by simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr]; simp only [heapEnd] at hab2; omega)
       ((above_sp hab2 (by omega)).2.2 _)
   have f8 : ldv .ld M' (sp - 48 + 8) = boolWord nl := (ldv_congr .ld fun j hj => by
@@ -177,7 +177,7 @@ theorem pr_num {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
   have f40 : ldv .ld M' (sp - 48 + 40) = R 1 := (ldv_congr .ld fun j hj => by
     have := kf (40 + j) (by omega) (by have : widthOfM .ld = 8 := rfl; omega); simpa [Nat.add_assoc] using this).trans m40
   have q2 : R' 2 = BitVec.ofNat 64 (sp - 48) := by rw [e2]; bsimp []
-  have hfr' : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a :=
+  have hfr' : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a :=
     fun a e1 e2 e3 e4 => (hfr a e1 e2 e3 (fun hf => e4 (by simp only [frameIn] at hf ⊢; omega))).trans
       (hM1 a fun hf => e4 (by simp only [frameIn] at hf ⊢; omega))
   have hsf48 : StackFrame S sp 48 := by simpa using hsf.within (m := 0) (n := 48) (by omega) (by decide)
@@ -200,7 +200,7 @@ theorem pr_num {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
   · have f8' : ldv .ld M' (sp - 48 + 8) = 1#64 := f8
     bc_run hlive hlive [q2, f8']
     all_goals first | exact frame_acc hsf48 (by omega) (by omega) | skip
-    refine pr_nl hlive ⟨fun i hi => hD.glob _ (by simp only [DcGlob, stdoutFile, dc_addrs]; omega),
+    refine pr_nl hlive ⟨fun i hi => hD.glob _ (by simp only [DcGlob, PinWords, stdoutFile, dc_addrs]; omega),
       hD.view.outFd, by decide, by decide, by decide⟩ hsf48 (by simp only [heapEnd]; omega) _
       ?q1 f40 hal fun R'' hk'' e1 e2' => ?_
     case q1 => bsimp [q2]
@@ -257,7 +257,7 @@ theorem pr_str {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp [])
     (fun R' M' H' G' hk' e2 hsn hD hstk hpin => ?_)
   have kf : ∀ o, 8 ≤ o → o < 48 → imgM M' (sp - 48 + o) = imgM M1 (sp - 48 + o) := fun o h8 h48 =>
-    hstk _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+    hstk _ (above_sp hab2 (by omega)).1 (fun hpg => (above_sp hab2 (by omega)).2.1 hpg.1)
       (by simp only [frameIn]; omega)
   have f8 : ldv .ld M' (sp - 48 + 8) = boolWord nl := (ldv_congr .ld fun j hj => by
     have := kf (8 + j) (by omega) (by have : widthOfM .ld = 8 := rfl; omega); simpa [Nat.add_assoc] using this).trans m8
@@ -269,7 +269,7 @@ theorem pr_str {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       (hM1 a fun hf => e4 (by simp only [frameIn] at hf ⊢; omega))
   have hsf48 : StackFrame S sp 48 := by simpa using hsf.within (m := 0) (n := 48) (by omega) (by decide)
   clear kf hM1 m8 m40 h1
-  refine pr_after_str hlive ⟨fun i hi => hD.glob _ (by simp only [DcGlob, stdoutFile, dc_addrs]; omega),
+  refine pr_after_str hlive ⟨fun i hi => hD.glob _ (by simp only [DcGlob, PinWords, stdoutFile, dc_addrs]; omega),
     hD.view.outFd, by decide, by decide, by decide⟩ hsf48 (by simp only [heapEnd]; omega) _
     q2 f8 f40 hal fun R'' hk'' e1 e2' => ?_
   rw [String.append_assoc, ← outStr_append]
@@ -297,7 +297,7 @@ theorem dc_print_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     (h13 : R 13 = boolWord nl) (h14 : R 14 = boolWord keep) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps cClob R' R → R' 2 = R 2 → SameNodes G G' →
       DcAt S M' H' F' L' C' G' (if keep then hs else hs.tail) st →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M a) →
       StrPin G.strs G'.strs (if keep then hs else hs.tail) →
       DWO live S Q (t ++ Dc.outStr (Dc.Val.out 70 ob v ++ nlBytes nl)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp prN M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :

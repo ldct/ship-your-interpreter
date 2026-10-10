@@ -241,7 +241,7 @@ theorem get_stacked {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs, regAddr] at this ⊢; omega)
   have hv := h.view.regs r hr
   have hmem : ∀ be ∈ G.regs r, ∀ c ∈ RLev.blocks be, c ∈ G.blocks := fun be hbe c hc =>
     G.lev_mem hr hbe hc

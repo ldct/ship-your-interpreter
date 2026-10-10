@@ -65,7 +65,7 @@ theorem fq_push {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {p : N
         (by rw [upd_other _ _ (by decide), upd_other _ _ (by decide), k5.get 2 (by decide)]
             bsimp [e2]) hout5
     have hs5 : ldv .ld M5 (sp - 192 + 176) = v8 := by
-      rw [ldv_congr .ld fun j hj => hout5 _ (hfr _ (by omega)).1 (hfr _ (by omega)).2.1
+      rw [ldv_congr .ld fun j hj => hout5 _ (hfr _ (by omega)).1 (fun hpg => (hfr _ (by omega)).2.1 hpg.1)
         ((hfr _ (by omega)).2.2 _)]
       exact l176
     have e52 : R5 2 = BitVec.ofNat 64 (sp - 192) := by rw [k5.get 2 (by decide)]; bsimp [e2]
@@ -134,7 +134,7 @@ theorem fq_rs {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem
       (by rw [upd_other _ _ (by decide)]; exact e2b.trans e2.symm)
       fun a e1 e2 _ e4 e5 => (hout2 a e1 e2 e4).trans (hm a (by simp only [frameIn] at e5; omega))
   have hs0 : ldv .ld M2 (sp - 192 + 176) = R 8 := by
-    rw [ldv_congr .ld fun j hj => hout2 _ (hfr _ (by omega)).1 (hfr _ (by omega)).2.1
+    rw [ldv_congr .ld fun j hj => hout2 _ (hfr _ (by omega)).1 (fun hpg => (hfr _ (by omega)).2.1 hpg.1)
       ((hfr _ (by omega)).2.2 _)]
     exact ldv_store_hit _ _ _
   rw [eq1]

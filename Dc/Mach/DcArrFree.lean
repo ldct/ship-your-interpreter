@@ -510,7 +510,7 @@ theorem dc_array_free_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → 
     have hfr : ∀ k, k + 8 ≤ 48 → ldv .ld M' (sp - 48 + k) = ldv .ld (afProW M sp R) (sp - 48 + k) :=
       fun k hk' => ldv_congr .ld fun j hj => by
         have hx : frameIn sp 48 (sp - 48 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
-        exact hp.out _ (hfo _ hx).1 (hfo _ hx).2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+        exact hp.out _ (hfo _ hx).1 (nglob_pin (hfo _ hx).2) (by simp only [frameIn, widthOfM] at hj ⊢; omega)
     have q32 : ldv .ld M' (sp - 48 + 32) = R 8 := by
       rw [hfr 32 (by omega)]; simp only [afProW]
       rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),

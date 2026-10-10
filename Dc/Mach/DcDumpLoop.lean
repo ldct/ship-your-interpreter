@@ -105,7 +105,7 @@ theorem dn_cell {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
         have := live_in_heap hi1 hf1.live ha
         simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at ho this; omega]
       exact e1 a ho hn
-    have e2 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) →
+    have e2 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) →
         imgM M2 a = imgM M a := fun a ho _ hn =>
       e2' a ho fun h => hn (by simp only [frameIn, dnW] at h ⊢; omega)
     have hS2 : HeapOwn S := fun a e1 e2 => h2.heap.heap.own a e1 e2
@@ -121,7 +121,7 @@ theorem dn_cell {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
         omega
       rw [← h2.heap.eq_of_p h2.den.mz hxv hp, h2.den.zv]; rfl
     refine bc_is_zero_spec hlive hS2 hnv (h2.den.pos xv hxv)
-      (fun b e1 e2 => h2.glob b (by simp only [DcGlob, dc_addrs]; omega)) hz _ ?c10 ?cal
+      (fun b e1 e2 => h2.glob b (by simp only [DcGlob, PinWords, dc_addrs]; omega)) hz _ ?c10 ?cal
       fun R3 hk3 h30 => ?_
     case c10 => bsimp []
     case cal => bsimp []

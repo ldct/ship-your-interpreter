@@ -114,7 +114,7 @@ theorem OpFail.of_leak {S : Nat → Prop} {M M2 M' : Mem} {H : Heap} {F : List B
     (hx2 : x2 ∈ L) (e2p : x2.rep.p = pb) (e2n : x2.rep.num = nb)
     (hnone : f st.scale na nb = none)
     (hm : MemOnly P M' M2) (hP : ∀ a, P a → OutHeap a ∧ ¬ DcGlob a)
-    (hout : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slotBytes q a →
+    (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp N a → ¬ slotBytes q a →
       imgM M' a = imgM M a)
     (R' : Nat → BitVec 64) (ha0 : R' 10 ≠ 0#64) :
     OpFail S M M' H F L C G { G with lk := p :: G.lk } hs st pa pb na nb f R' sp q N 1 where
@@ -193,7 +193,7 @@ theorem div_zero {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   have hP4 : ∀ a, frameIn sp 352 a → OutHeap a ∧ ¬ DcGlob a := fun a ha =>
     ⟨(above_sp hab2 (by simp only [frameIn] at ha; omega)).1,
       (above_sp hab2 (by simp only [frameIn] at ha; omega)).2.1⟩
-  have ho4 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 352 a → ¬ slotBytes q a →
+  have ho4 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 352 a → ¬ slotBytes q a →
       imgM M4 a = imgM M a := fun a ho _ hf hs => by
     have e1 := hm4 a hf
     have e2 := hout0 a ho hs (by simp only [frameIn] at hf ⊢; omega)
@@ -270,7 +270,7 @@ theorem rem_zero {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   have hP4 : ∀ a, frameIn sp N a → OutHeap a ∧ ¬ DcGlob a := fun a ha =>
     ⟨(above_sp hab2 (by simp only [frameIn] at ha; omega)).1,
       (above_sp hab2 (by simp only [frameIn] at ha; omega)).2.1⟩
-  have ho4 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slotBytes q a →
+  have ho4 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp N a → ¬ slotBytes q a →
       imgM M4 a = imgM M a := fun a ho _ hf hs => by
     have e1 := hm4 a hf
     have e2 := hout0 a ho hs (by simp only [frameIn] at hf ⊢; omega)
@@ -360,7 +360,7 @@ theorem dc_div_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     ⟨hsf.within (m := 48) (n := 304) (by omega) (by decide), by simp only [heapEnd]; omega,
       by decide, hin.slot, fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega),
       .inr (by omega), .inr (by simp only [dc_addrs]; omega),
-      fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp []⟩
     ⟨fun m hm R3 Mt H3 F3 L3 y hk3 h30 hp => ?_, fun hnone R3 Mt hk3 h30 hfr => ?_,
       fun R3 Mt sp' o1 o2 hr2' hout => ?_⟩
@@ -502,7 +502,7 @@ theorem dc_rem_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
   refine bc_modulo_spec hlive (W := 176 + rmStack (2 ^ 30)) (k := st.scale) (z := C2.z) (xr := x)
     ⟨hsf.within (m := 48) (n := 176 + rmStack (2 ^ 30)) (by omega) (by decide),
       by simp only [heapEnd]; omega, Nat.le_refl _, hin.mb.own,
-      fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp []⟩
     ⟨hx1, hx2, hd2.den.mz, hd2.den.norm x1 hx1, hd2.den.norm x2 hx2, hd2.den.pos x1 hx1, hsz,
       (hd2.kzero hlen).mono (by omega), hmb2, hd2.den.owns⟩

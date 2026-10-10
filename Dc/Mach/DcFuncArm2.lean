@@ -35,7 +35,7 @@ theorem FnAt.mulBase (hc : FnAt S sp W M0 R0 R M) (hmb : MulBase S M0) : MulBase
   hmb.transport fun a e1 e2 => by
     have ho := mulBase_off e1 e2
     have hab := hc.room
-    refine hc.out a ho.1 ho.2.1 (fun hg => ?_) (fun hf => ?_)
+    refine hc.out a ho.1 (fun hpg => ho.2.1 hpg.1) (fun hg => ?_) (fun hf => ?_)
     · simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr, mulBaseAddr] at hg e1 e2; omega
     · have := ho.2.2; simp only [frameIn, heapStart] at hf this; simp only [heapEnd] at hab; omega
 

@@ -43,7 +43,7 @@ theorem InP.off {a : Nat} (h : InP a) : OutHeap a ∧ ¬ DcGlob a := by
   simp only [InP, inPtrAddr] at h
   refine ⟨?_, fun hg => ?_⟩
   · simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega
-  · simp only [DcGlob, dc_addrs, stdFilesAddr] at hg; omega
+  · simp only [DcGlob, PinWords, dc_addrs, stdFilesAddr] at hg; omega
 
 /-- **The text `w` at `src`**: nonzero bytes in the heap, then `'\0'`. -/
 structure Rd (M : Mem) (src : Nat) (w : List Nat) : Prop where
@@ -431,7 +431,7 @@ theorem cf_div {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     ⟨cx.win (by omega), by simp only [heapEnd]; omega, by decide, cx.slot ho h8,
       fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega), .inr (by omega),
       .inr (by simp only [dc_addrs]; omega),
-      fun a ha => h.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      fun a ha => h.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       hfr.r2, hal⟩
     ⟨fun m' hm' R' Mt H' F' L' y hk' _ hp => ?_, fun hnone => absurd (hm.symm.trans hnone) (by simp),
       fun R' Mt sp' o1 o2 r2 hout => ?_⟩

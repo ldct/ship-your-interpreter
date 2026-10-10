@@ -458,7 +458,7 @@ theorem bc_free_num_dcP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Na
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S (Φ M') H' F' L' C' G hs st →
       ldv .ld M' q = 0#64 →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       (∀ c, DcFresh H F L G c → DcFresh H' F' L' G c ∧
         ∀ a, c.In a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs →
@@ -582,7 +582,7 @@ theorem dc_free_num_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S (Φ M') H' F' L' C' G hs st →
       ldv .ld M' q = 0#64 →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       (∀ c, DcFresh H F L G c → DcFresh H' F' L' G c ∧
         ∀ a, c.In a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs →
@@ -602,7 +602,7 @@ theorem bc_free_num_dc {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S M' H' F' L' C' G hs st →
       ldv .ld M' q = 0#64 →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x800048c0#64 R M :=
   bc_free_num_dcP hlive (Pend.id G) (M := M) h hq (.above hqh) hw hsf hab hqf R h10 h2 hal
@@ -621,7 +621,7 @@ theorem dc_free_num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S M' H' F' L' C' G hs st →
       ldv .ld M' q = 0#64 →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       DW live S Q (R 1) R' M') :
     DW live S Q 0x80002ba0#64 R M :=
   dc_free_num_specP hlive (Pend.id G) (M := M) h hq (.above hqh) hw hsf hab hqf R h10 h2 hal

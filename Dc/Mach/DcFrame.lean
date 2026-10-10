@@ -41,19 +41,19 @@ structure CFr (P : Nat → Prop) (fs : Nat) (sv : List (Nat × Nat)) (M0 M : Mem
   r2 : R 2 = BitVec.ofNat 64 (sp - fs)
   saved : ∀ p ∈ sv, ldv .ld M (sp - fs + p.1) = R0 p.2
   keep : Keeps (2 :: sv.map Prod.snd ++ cClob) R R0
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp (fs + cfW) a → ¬ P a → imgM M a = imgM M0 a
+  out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp (fs + cfW) a → ¬ P a → imgM M a = imgM M0 a
 
 /-- **A callee's frame**: off the heap and the globals only the window below
 the frame and the slot at `o` changed. -/
 def CfOut (M M' : Mem) (sp fs o : Nat) : Prop :=
-  ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn (sp - fs) cfW a → ¬ slotBytes (sp - fs + o) a →
+  ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn (sp - fs) cfW a → ¬ slotBytes (sp - fs + o) a →
     imgM M' a = imgM M a
 
 /-- Another slot's word through a callee. -/
 theorem CfOut.word {M M' : Mem} {sp fs o : Nat} (h : CfOut M M' sp fs o) (hab : heapEnd ≤ sp - fs)
     {o' : Nat} (hd : o' + 8 ≤ o ∨ o + 8 ≤ o') :
     ldv .ld M' (sp - fs + o') = ldv .ld M (sp - fs + o') :=
-  ldv_congr .ld fun j hj => h _ (above_sp hab (by omega)).1 (above_sp hab (by omega)).2.1
+  ldv_congr .ld fun j hj => h _ (above_sp hab (by omega)).1 (fun hpg => (above_sp hab (by omega)).2.1 hpg.1)
     (fun hf => by simp only [frameIn] at hf; omega)
     (fun hs => by simp only [slotBytes, widthOfM] at hs hj; omega)
 
@@ -84,7 +84,7 @@ theorem CFr.mulBase {S : Nat → Prop} {P : Nat → Prop} {fs : Nat} {sv : List 
     (hP : ∀ a, mulBaseAddr ≤ a → a < mulBaseAddr + 4 → ¬ P a) : MulBase S M :=
   hmb.transport fun a e1 e2 => hfr.out a
     (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, mulBaseAddr] at e1 e2 ⊢; omega)
-    (by simp only [DcGlob, dc_addrs, mulBaseAddr] at e1 e2 ⊢; omega)
+    (by simp only [DcGlob, PinWords, dc_addrs, mulBaseAddr] at e1 e2 ⊢; omega)
     (by simp only [frameIn, heapEnd, mulBaseAddr] at e1 e2 hab ⊢; omega) (hP a e1 e2)
 
 /-- The frame's place: the stack frame of `fs` bytes and the window, above
@@ -301,7 +301,7 @@ theorem cf_mul {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
   refine bc_multiply_spec hlive (W := 96 + rmStack (2 ^ 30))
     ⟨cx.win (by omega), by simp only [heapEnd]; omega, by omega, cx.slot ho h8,
       fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega), .inr (by omega),
-      hmb.own, fun a ha => h.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      hmb.own, fun a ha => h.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       hfr.r2, hal⟩
     hma (by
       have := rmDepth_mono (show x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) ≤ 2 ^ 30 by omega)

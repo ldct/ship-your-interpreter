@@ -48,7 +48,7 @@ theorem FnAt.popKeep {S : Nat → Prop} {sp W : Nat} {M0 M M' : Mem} {R0 R : Nat
   have hab : heapEnd ≤ sp - 192 := by simp only [heapEnd] at hh ⊢; omega
   exact ldv_congr .ld fun j hj => by
     have := above_sp hab (a := sp - 192 + o + j) (by omega)
-    exact hout _ this.1 this.2.1 (this.2.2 _) (.inl (by simp only [fnSlot, widthOfM] at hj ⊢; omega))
+    exact hout _ this.1 (fun hpg => this.2.1 hpg.1) (this.2.2 _) (.inl (by simp only [fnSlot, widthOfM] at hj ⊢; omega))
 
 /-- **`dc_pop (&datum)`** as `fn_pop0`, the status tested by a branch `hb`
 at `p + 4` (`bnez` to `tE`, or `beqz` to `tN`), the popped route also keeping

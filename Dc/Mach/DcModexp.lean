@@ -169,7 +169,7 @@ theorem OpFail3.of_leak {S : Nat → Prop} {M M2 M' : Mem} {H : Heap} {F : List 
     (hx3 : x3 ∈ L) (e3p : x3.rep.p = pc) (e3n : x3.rep.num = nc)
     (hnone : f st.scale na nb nc = none)
     (hm : MemOnly P M' M2) (hP : ∀ a, P a → OutHeap a ∧ ¬ DcGlob a)
-    (hout : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slotBytes q a →
+    (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp N a → ¬ slotBytes q a →
       imgM M' a = imgM M a)
     (R' : Nat → BitVec 64) (ha0 : R' 10 ≠ 0#64) :
     OpFail3 S M M' H F L C G { G with lk := p :: G.lk } hs st pa pb pc na nb nc f R' sp q N 1 where
@@ -314,7 +314,7 @@ theorem mx_out {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
   bc_run hlive hS [q5, fr.w24, fr.w32, fr.w40, fr.w16]
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   · exact hal
-  have ho : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slotBytes q a →
+  have ho : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp N a → ¬ slotBytes q a →
       imgM M5 a = imgM M a := fun a ho _ hf hs => by
     rw [hm5 a hf]
     exact hout0 a ho hs (by simp only [frameIn] at hf ⊢; omega)
@@ -527,7 +527,7 @@ theorem dc_modexp_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p
   refine bc_raisemod_spec hlive (W := 640 + rmStack (2 ^ 30)) (k := st.scale)
     ⟨hsf.within (m := 48) (n := 640 + rmStack (2 ^ 30)) (by omega) (by decide),
       by simp only [heapEnd]; omega, Nat.le_refl _, by simp only [stderrAddr]; omega, hin.mb.own,
-      fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp [],
       ⟨hin.slot, fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega),
         .inr (by omega)⟩⟩

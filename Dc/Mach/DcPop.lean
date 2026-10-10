@@ -159,7 +159,7 @@ theorem Keeps.restore3 {ks : List Nat} {R' R1 R : Nat → BitVec 64}
 /-- `dc_pop`'s memory frame: only the heap, `dc_stack`, the window below `sp`
 and the slot at `q` change. -/
 def PopOut (sp q : Nat) (M' M : Mem) : Prop :=
-  ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 336 a → (a < q ∨ q + 16 ≤ a) → imgM M' a = imgM M a
+  ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 336 a → (a < q ∨ q + 16 ≤ a) → imgM M' a = imgM M a
 
 /-- The registers `dc_pop` may change. -/
 abbrev popClob : List Nat := fprintfClob
@@ -177,7 +177,7 @@ theorem pop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     (hal : ra.toNat % 4 = 0)
     (hk : ∀ R' M' H', Keeps (1 :: 2 :: 8 :: popClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
       R' 8 = s0 → R' 10 = 0#64 → DcAt S M' H' F L C G (g :: hs) st → DatAt M' q g →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 336 a → (a < q ∨ q + 16 ≤ a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 336 a → (a < q ∨ q + 16 ≤ a) →
         imgM M' a = imgM M a) →
       DWO live S Q t ra R' M') :
     DWO live S Q t 0x80003124#64 R M := by
@@ -256,7 +256,7 @@ theorem pop_some {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     (by keeps_tac Keeps.refl _ _))) e1 e2 e8 e10 (h2c.free hfr hlv hp) hd fun a ho hg hf hqa => ?_
   rw [hp.frame a (OutHeap.not_alloc hi2 ho)]
   simp only [popMem]
-  simp only [DcGlob, dc_addrs, not_or] at hg
+  simp only [DcGlob, PinWords, dc_addrs, not_or] at hg
   rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by simp only [dc_addrs]; omega),
     imgM_store_miss _ _ (by omega)]
 

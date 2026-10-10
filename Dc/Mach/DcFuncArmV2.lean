@@ -135,7 +135,7 @@ theorem fv_ret (hlive : ∀ p ∈ dcText, live p.1) {st st1 : St} {res : Res} {r
       simp only [slotBytes, frameIn] at hb ⊢; omega)
   have m3 : ∀ a, sp - 192 ≤ a → ¬ (sp - 192 + 24 ≤ a ∧ a < sp - 192 + 32) →
       imgM M3 a = imgM M2 a := fun a l1 l2 =>
-    hout3 a (hfr a l1).1 (hfr a l1).2.1 ((hfr a l1).2.2 _) (by simp only [slotBytes]; omega)
+    hout3 a (hfr a l1).1 (fun hpg => (hfr a l1).2.1 hpg.1) ((hfr a l1).2.2 _) (by simp only [slotBytes]; omega)
   have hy3 : ldv .ld M3 (sp - 192 + 160) = BitVec.ofNat 64 y := by
     rw [ldv_congr .ld fun j hj => m3 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact hrq
   have htg3 : (ldv .ld M3 (sp - 192 + 16)).toNat % 2 ^ 32 = 1 := by
@@ -188,7 +188,7 @@ theorem fv_num {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {x : N
       (e2b.trans e21.symm) fun a e1 e2 _ e4 e5 => hout2 a e1 e2 e4 fun hb => e5 (by
         simp only [slotBytes, frameIn] at hb ⊢; omega)
     have m2 : ∀ a, sp - 192 + 16 ≤ a → a < sp - 192 + 32 → imgM M2 a = imgM M1 a := fun a l1 l2 =>
-      hout2 a (hfr a (by omega)).1 (hfr a (by omega)).2.1 ((hfr a (by omega)).2.2 _)
+      hout2 a (hfr a (by omega)).1 (fun hpg => (hfr a (by omega)).2.1 hpg.1) ((hfr a (by omega)).2.2 _)
         (by simp only [slotBytes]; omega)
     have hpt2 : ldv .ld M2 (sp - 192 + 24) = BitVec.ofNat 64 x.rep.p := by
       rw [ldv_congr .ld fun j hj => m2 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact hpt

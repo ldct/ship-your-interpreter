@@ -484,7 +484,7 @@ theorem dc_clear_stack_spec {live S : Nat → Prop}
       (Keeps.restore (by rw [h2]; congr 1; omega) (Keeps.restore rfl (by keeps_tac Keeps.refl _ _)))
       (show BitVec.ofNat 64 (sp - 48 + 48) = R 2 by rw [h2]; congr 1; omega) ⟨hst, rfl, rfl, rfl⟩ h1'
       (fun a ho hg hf => ?_) (StrPin.refl _ _)
-    rw [imgM_store_miss _ _ (Classical.byContradiction fun hc => hg (by simp only [DcGlob, dc_addrs]; omega))]
+    rw [imgM_store_miss _ _ (Classical.byContradiction fun hc => hg (by simp only [DcGlob, PinWords, dc_addrs]; omega))]
     exact hM2 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
   · rw [hst] at hv
     cases hv with
@@ -534,7 +534,7 @@ theorem dc_clear_stack_spec {live S : Nat → Prop}
     have hT : ∀ a, sp - 48 ≤ a → a + 8 ≤ sp → ldv .ld M' a = ldv .ld M3 a := fun a e1 e2 =>
       ldv_congr .ld fun j hj =>
         hfr _ (hP 48 (by omega) _ (by simp only [frameIn, widthOfM] at hj ⊢; omega)).1
-          (hP 48 (by omega) _ (by simp only [frameIn, widthOfM] at hj ⊢; omega)).2
+          (nglob_pin (hP 48 (by omega) _ (by simp only [frameIn, widthOfM] at hj ⊢; omega)).2)
           (fun hf => by simp only [frameIn, widthOfM] at hf hj; omega)
     have r2 : R' 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk1.get 2 (by decide)]; bsimp []
     refine cs_epi hlive hS hG hsf hab hal R' r2 ((hT _ (by omega) (by omega)).trans m8)
@@ -553,7 +553,7 @@ theorem dc_clear_stack_spec {live S : Nat → Prop}
       · exact e18
       · exact e19
     · rw [imgM_store_miss _ _ (Classical.byContradiction fun hc => hg (by
-          simp only [DcGlob, dc_addrs] at hc ⊢; omega)),
+          simp only [DcGlob, PinWords, dc_addrs] at hc ⊢; omega)),
         hfr a ho hg (fun h' => hf (by simp only [frameIn, Nat.sub_sub] at h' ⊢; omega)),
         hM3 a (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))]
       exact hM2 a fun h' => hf (by simp only [frameIn] at h' ⊢; omega)

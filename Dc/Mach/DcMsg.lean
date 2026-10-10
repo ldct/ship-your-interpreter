@@ -65,7 +65,7 @@ theorem progPieces_len (p n : Nat) : (fmt (progPieces p n) [progArg]).length = n
 theorem DcAt.errFile {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S Mt H F L C G hs st) :
     FdAt S Mt stderrAddr 2 :=
-  { own := fun i hi => h.glob _ (by simp only [DcGlob, dc_addrs, stderrAddr]; omega)
+  { own := fun i hi => h.glob _ (by simp only [DcGlob, PinWords, dc_addrs, stderrAddr]; omega)
     val := h.view.errFd
     lo := by simp only [stderrAddr, tohostAddr]; omega
     hi := by simp only [stderrAddr]; omega

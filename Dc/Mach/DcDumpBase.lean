@@ -238,7 +238,7 @@ theorem bc_free_num_dcK {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Na
     (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S M' H' F' L' C' G hs st →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs → DW live S Q (R 1) R' M') :
     DW live S Q 0x800048c0#64 R M :=
   bc_free_num_dcP hlive (Pend.id G) (M := M) h hq (.above hqh) hw hsf hab hqf R h10 h2 hal

@@ -101,9 +101,9 @@ theorem DcAt.ocRet {S : Nat → Prop} {M M' : Mem} {H H' : Heap} {F F' : List Bl
   refine ⟨hb.subRaw (fun c hc => hc) (fun c hc a ha => (hag a ⟨c, hc, ha⟩).symm), h.nodup,
     h.view.frameW hag (fun a hg hw => hfr a ?_ ?_ fun hw' => hW a hw' hg) hI.lm hI.fd, h.den, h.glob,
     h.col⟩
-  · simp only [DcGlob, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, dc_addrs] at hg ⊢
+  · simp only [DcGlob, PinWords, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, dc_addrs] at hg ⊢
     omega
-  · simp only [DcGlob, OcWords, ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr, dc_addrs] at hg hw ⊢
+  · simp only [DcGlob, PinWords, OcWords, ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr, dc_addrs] at hg hw ⊢
     omega
 
 /-! ## `dc_out_num` -/
@@ -135,7 +135,7 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     (e8 : R0 8 = boolWord keep)
     (hk : ∀ R' M' H' F' L' C', Keeps (2 :: 8 :: cClob) R' R0 → R' 2 = BitVec.ofNat 64 sp → R' 8 = s0v →
       DcAt S M' H' F' L' C' G (if keep then hs else hs.tail) st →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp onN a → imgM M' a = imgM M1 a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp onN a → imgM M' a = imgM M1 a) →
       DWO live S Q (t ++ Dc.outStr (Dc.Num.out 70 ob x.rep.num)) ra R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp onN M1 ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
     DWO live S Q t 0x80006f3c#64 R0 M1 := by
@@ -154,8 +154,8 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     ⟨fun a ha => by
       simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr] at ha
       rcases ha with ha | ha | ha | ha
-      · exact h1.glob a (by simp only [DcGlob, dc_addrs]; omega)
-      · exact h1.glob a (by simp only [DcGlob, dc_addrs]; omega)
+      · exact h1.glob a (by simp only [DcGlob, PinWords, dc_addrs]; omega)
+      · exact h1.glob a (by simp only [DcGlob, PinWords, dc_addrs]; omega)
       · exact herr a (by simp only [errnoAddr]; omega) (by simp only [errnoAddr]; omega)
       · exact h1.col a (by simp only [outColAddr]; omega) (by simp only [outColAddr]; omega),
      h1.view.outFd, h1.view.lineMax, hc0, by simp [ocRun, Dc.outStr]⟩
@@ -163,7 +163,7 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
   refine bc_out_num_spec hlive (X := G.raws M1) (I := OcInv S t) (G := ocG) (W := onW) (d := 48)
     (cs := []) (cb := by rw [e12]; exact out_char_fn hlive t)
     ⟨⟨hsf.within (m := 32) (n := onW) (by omega) (by decide), by simp only [heapEnd]; omega,
-      hmb.own, fun a ha => h1.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega)⟩,
+      hmb.own, fun a ha => h1.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega)⟩,
       Nat.le_refl _, by decide, e2, by rw [e1]; decide, by rw [e12]; decide, e13⟩
     ⟨hx, h1.den.norm x hx, h1.den.pos x hx, hsz,
       fun y hy => by have := h1.refs_le hy; omega,
@@ -208,7 +208,7 @@ theorem out_num_call {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
         (by simp only [heapEnd]; omega) (.inr (by omega)) _ (by bsimp []) (by bsimp [q2]) (by bsimp [])
         fun R6 M6 H6 F6 L6 C6 hk6 hd6 hz6 hout6 => ?_
       have k6 : ∀ o, 16 ≤ o → o < 32 → imgM M6 (sp - 32 + o) = imgM M' (sp - 32 + o) := fun o h8 h32 =>
-        hout6 _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+        hout6 _ (above_sp hab2 (by omega)).1 (fun hpg => (above_sp hab2 (by omega)).2.1 hpg.1)
           ((above_sp hab2 (by omega)).2.2 _) (fun hs' => by simp only [slotBytes] at hs'; omega)
       have f16 : ldv .ld M6 (sp - 32 + 16) = s0v := (ldv_congr .ld fun j hj => by
         have := k6 (16 + j) (by omega) (by have : widthOfM .ld = 8 := rfl; omega)
@@ -264,7 +264,7 @@ theorem dc_out_num_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
     (h11 : R 11 = BitVec.ofNat 64 ob) (h12 : R 12 = boolWord keep) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R → R' 2 = R 2 →
       DcAt S M' H' F' L' C' G (if keep then hs else hs.tail) st →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp onN a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp onN a → imgM M' a = imgM M a) →
       DWO live S Q (t ++ Dc.outStr (Dc.Num.out 70 ob x.rep.num)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp onN M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
     DWO live S Q t 0x80002a4c#64 R M := by
@@ -295,7 +295,7 @@ theorem dc_out_num_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
     · exact ⟨(above_sp hab2 ha.1).1, (above_sp hab2 ha.1).2.1⟩
     · refine ⟨?_, ?_⟩
       · simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, outColAddr] at ha ⊢; omega
-      · simp only [DcGlob, dc_addrs] at ha ⊢; omega
+      · simp only [DcGlob, PinWords, dc_addrs] at ha ⊢; omega
   have hmb1 := hmb.transport (M' := writeLog (writeLog (writeLog (writeLog M [(sp - 32 + 16, 8, R 8)])
       [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 x.rep.p)]) [(2147601808, 4, 0#64)])
     fun a e1 e2 => hM1 a fun hp => by

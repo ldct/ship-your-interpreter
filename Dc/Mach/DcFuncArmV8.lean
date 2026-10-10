@@ -166,7 +166,7 @@ theorem fa_str {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st1 : St} {o : S
     (by keeps_tac ((k3.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
     ((k3.get 2 (by decide)).trans (by bsimp [])) hout3
   have hby : imgM M3 (sp - 192 + 160) = BitVec.ofNat 8 (o.s.headD 0) := by
-    rw [hout3 _ (hfr _ (by omega)).1 (hfr _ (by omega)).2.1 ((hfr _ (by omega)).2.2 _), imgM_sb]
+    rw [hout3 _ (hfr _ (by omega)).1 (fun hpg => (hfr _ (by omega)).2.1 hpg.1) ((hfr _ (by omega)).2.2 _), imgM_sb]
     simp only [ite_true, sbData_ofNat]
   bsimp []
   bc_run hlive hlive [] at 0x80000f8c

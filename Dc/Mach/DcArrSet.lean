@@ -161,7 +161,7 @@ theorem DcAt.setArr {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L
           fun hx => hGoff _ (G.str_mem ho).2 (lo.strs o ho).2 x hx)
         (fun x hx _ => hglob x hx)
         (stkChain_frame h.view.stk (ldv_congr .ld fun j hj => hglob _ (by
-          simp only [widthOfM, DcGlob, dc_addrs] at hj ⊢; omega))
+          simp only [widthOfM, DcGlob, PinWords, dc_addrs] at hj ⊢; omega))
           fun bg hmm x hx => hGoff _ (G.stk_mem hmm) (lo.stk bg hmm) x hx) fun r' hr' => ?_
       den := ?_
       glob := h.glob
@@ -189,7 +189,7 @@ theorem DcAt.setArr {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L
                 (by simp only [Blk.In, Blk.pay, Blk.fin] at h1 h2 hcx hsz ⊢; omega)
           · omega
       refine .cons ((ldv_congr .ld fun j hj => hglob _ (by
-          simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega)).trans hw0)
+          simp only [widthOfM, DcGlob, PinWords, regAddr, dc_addrs] at hj ⊢; omega)).trans hw0)
         ⟨?_, hch, hsz⟩ (regChain_frame hrest0 (ldv_congr .ld fun j hj => hm _ fun hP => by
           rcases hP with ⟨c, hc, hcx⟩ | hw
           · rcases List.mem_append.mp hc with hc | hc
@@ -213,7 +213,7 @@ theorem DcAt.setArr {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L
         rw [ldv_congr .lw fun j hj => hdat _ (by omega) (by simp only [widthOfM] at hj; omega)]
         exact hd
     · exact regChain_frame (h.view.regs r' hr') (ldv_congr .ld fun j hj => hglob _ (by
-        simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega))
+        simp only [widthOfM, DcGlob, PinWords, regAddr, dc_addrs] at hj ⊢; omega))
         fun be hmm c hc x hx => hGoff c (G.lev_mem hr' hmm hc) (lo.regs r' hr' ‹_› be hmm c hc) x hx
   · have hd := h.den
     have hcount : ∀ y, ((G.setReg r ((b, { e with arr := arr' }) :: l)).vals ++ hs).count y =
@@ -887,7 +887,7 @@ theorem as_found_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     fun k hk => ldv_congr .ld fun j hj => by
       have hin : frameIn sp 112 (sp - 64 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
       have ho := asFrame_out (by simp only [heapEnd]; omega) hin
-      exact hfr _ ho.1 ho.2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+      exact hfr _ ho.1 (nglob_pin ho.2) (by simp only [frameIn, widthOfM] at hj ⊢; omega)
         (by simp only [slotBytes, widthOfM] at hj ⊢; omega)
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk1.get 2]; bsimp [h2]
   have q8 : R1 8 = BitVec.ofNat 64 c.pay := by rw [hk1.get 8]; bsimp [h8]
@@ -960,7 +960,7 @@ theorem as_found_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     fun k hk => ldv_congr .ld fun j hj => by
       have hin : frameIn sp 112 (sp - 64 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
       have ho := asFrame_out (by simp only [heapEnd]; omega) hin
-      exact hfr _ ho.1 ho.2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+      exact hfr _ ho.1 (nglob_pin ho.2) (by simp only [frameIn, widthOfM] at hj ⊢; omega)
   have q2 : R1 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk1.get 2]; bsimp [h2]
   have q8 : R1 8 = BitVec.ofNat 64 c.pay := by rw [hk1.get 8]; bsimp [h8]
   show DW live S Q 0x80003d74#64 R1 M3
@@ -1151,7 +1151,7 @@ theorem ss_lev {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
     simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs, regAddr] at this ⊢; omega)
   have hpw : (BitVec.ofNat 64 p).toNat = p := by simp only [BitVec.toNat_ofNat]; omega
   have hnz : BitVec.ofNat 64 p ≠ 0#64 := ofNat_ne_small (by omega) (by decide) (by omega)
   have hpS : ∀ b ∈ accAddrs (p + 16) 8, S b := fun b hb => by
@@ -1194,7 +1194,7 @@ theorem ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
     simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs, regAddr] at this ⊢; omega)
   bc_run hlive hS [h10, h2, regWord_addr hr, hra8, hw]
   all_goals first | exact hrown | (simp only [LdOK, StOK, regAddr, dcRegAddr, htx]; omega) | skip
   all_goals try (intro hc; exact (hc rfl).elim)
@@ -1485,7 +1485,7 @@ theorem as_lev_link {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (hk : ∀ R' M', Keeps [10, 15] R' R →
       DcAt S M' H F L C (G.setReg r ((b, { e with arr := (c, ⟨i, g⟩) :: post }) :: l)) hs
         (st.setReg r ({ en with arr := (i, v) :: m2 } :: es)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → imgM M' a = imgM M a) → DW live S Q (R 1) R' M') :
     DW live S Q 0x8000391c#64 R (nodeW M c.pay i (headPtr post) w0 w1) := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
   have hbe : (b, e) ∈ G.regs r := by rw [hl]; exact List.mem_cons_self
@@ -1530,7 +1530,7 @@ theorem as_ins_head {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
       DcAt S M' H F L C (G.setReg r ((b, { e with arr := (c, ⟨i, g⟩) :: post }) :: l)) hs
         (st.setReg r ({ en with arr := (i, v) :: m2 } :: es)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
       DW live S Q ra R' M') :
     DW live S Q 0x80003cf8#64 R (nodeW M c.pay i (headPtr post) w0 w1) := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
@@ -1580,7 +1580,7 @@ theorem as_ins_mid {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat →
       R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
       DcAt S M' H F L C (G.setReg r ((b, { e with arr := (pre ++ [bx]) ++ (c, ⟨i, g⟩) :: post }) :: l))
         hs (st.setReg r ({ en with arr := m1 ++ (i, v) :: m2 } :: es)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
       DW live S Q ra R' M') :
     DW live S Q 0x80003cf8#64 R (nodeW M c.pay i (headPtr post) w0 w1) := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
@@ -1638,7 +1638,7 @@ theorem as_ins_post {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
       DcAt S M' H F L C (G.setReg r ((b, { e with arr := pre ++ (c, ⟨i, g⟩) :: post }) :: l))
         hs (st.setReg r ({ en with arr := m1 ++ (i, v) :: m2 } :: es)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
       DW live S Q ra R' M') :
     DW live S Q 0x80003cdc#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
@@ -1743,7 +1743,7 @@ theorem as_empty {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → B
     (l56 : ldv .ld M (sp - 64 + 56) = ra)
     (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
     (hss : ∀ R1 Mm H' c, DcAt S Mm H' F L C G (g :: hs) st → DcFresh H' F L G c → 32 ≤ c.sz →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM Mm a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 112 a → imgM Mm a = imgM M a) →
       Keeps [1, 2, 9, 10, 11, 12, 13, 14, 15, 18] R1 R → R1 1 = ra → R1 2 = BitVec.ofNat 64 sp →
       R1 9 = s1 → R1 18 = s2 → R1 10 = BitVec.ofNat 64 r → R1 11 = BitVec.ofNat 64 c.pay →
       DW live S Q 0x8000391c#64 R1 (nodeW Mm c.pay i 0#64 w0 w1))
@@ -1806,10 +1806,10 @@ theorem as_ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
       R' 2 = BitVec.ofNat 64 sp →
       DcAt S M' H' F L C (G.setReg r [(b, ⟨none, [(c, ⟨i, g⟩)]⟩)]) hs
         (st.setReg r [⟨none, [(i, v)]⟩]) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 112 a → imgM M' a = imgM M a) →
       DW live S Q (R 1) R' M')
     (hoom : StkOom (DW live S Q) 0x80001e74#64 sp 112
-      (fun M' => ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM M' a = imgM M a)) :
+      (fun M' => ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 112 a → imgM M' a = imgM M a)) :
     DW live S Q 0x8000391c#64 R (nodeW M c.pay i 0#64 w0 w1) := by
   have hsl := hsf.lo
   have e1c : c.fin = c.pay + c.sz := rfl
@@ -1845,7 +1845,7 @@ theorem as_ss_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
     obtain ⟨hb1, hb2, hb3⟩ := blk_bounds hp.inv (by rw [hp.live]; exact List.mem_cons_self)
     simp only [heapStart, heapEnd] at hb1 hb2
     have hrx : a < regAddr r ∨ regAddr r + 8 ≤ a := Classical.byContradiction fun hc =>
-      hg (by simp only [DcGlob, regAddr, dc_addrs] at hc ⊢; omega)
+      hg (by simp only [DcGlob, PinWords, regAddr, dc_addrs] at hc ⊢; omega)
     have hbs := hp.size
     simp only [levW]
     rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ hrx, imgM_store_miss _ _ (by omega),

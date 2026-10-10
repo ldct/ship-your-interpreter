@@ -212,11 +212,11 @@ theorem main_init {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   have hb1 := (pre.bcHeap M0).out_frame hM1 fun a ha => by
     rcases ha with ha | ha
     · simp only [frameIn] at ha; exact outHeap_of_ge (by simp only [heapEnd]; omega)
-    · exact DcGlob.outHeap (by simp only [PnWord, DcGlob] at ha ⊢; omega)
+    · exact DcGlob.outHeap (by simp only [PnWord, DcGlob, PinWords] at ha ⊢; omega)
   refine bc_init_numbers_spec hlive hb1
     { frame := hsf.within (m := 32) (n := 48) (by omega) (by decide)
       above := by simp only [heapEnd]; omega
-      consts := fun a ha => hG a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega)
+      consts := fun a ha => hG a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega)
       sp0 := by bsimp []
       al := by bsimp []; try decide }
     ⟨fun R1 M2 H2 F2 z o t' k1 ip => ?_, fun R1 M2 e2 hout => ?_⟩
@@ -229,13 +229,13 @@ theorem main_init {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
       fun k a ha => ldv_congr k fun j hj => hout _ (ha j hj).1 (ha j hj).2
     refine dc_memfail_spec hlive hG ?_ ?_ (hsf.within (m := 80) (n := 320) (by omega) (by decide))
       (by simp only [stderrAddr]; omega) _ (by rw [e2, Nat.sub_sub]) (hex t)
-    · rw [hw .ld _ fun j hj => ⟨DcGlob.outHeap (by simp only [widthOfM, DcGlob, dc_addrs] at hj ⊢; omega),
+    · rw [hw .ld _ fun j hj => ⟨DcGlob.outHeap (by simp only [widthOfM, DcGlob, PinWords, dc_addrs] at hj ⊢; omega),
         by simp only [widthOfM, frameIn, constBytes, dc_addrs] at hj ⊢; omega⟩]
       exact ldv_store_hit _ _ _
-    · refine { own := fun i hi => hG _ (by simp only [DcGlob, dc_addrs, stderrAddr]; omega)
+    · refine { own := fun i hi => hG _ (by simp only [DcGlob, PinWords, dc_addrs, stderrAddr]; omega)
                val := ?_, lo := by simp only [stderrAddr]; omega, hi := by simp only [stderrAddr]; omega
                small := by decide }
-      rw [hw .lw _ fun j hj => ⟨DcGlob.outHeap (by simp only [widthOfM, DcGlob, dc_addrs, stderrAddr] at hj ⊢; omega),
+      rw [hw .lw _ fun j hj => ⟨DcGlob.outHeap (by simp only [widthOfM, DcGlob, PinWords, dc_addrs, stderrAddr] at hj ⊢; omega),
         by simp only [widthOfM, frameIn, constBytes, dc_addrs, stderrAddr] at hj ⊢; omega⟩,
         ldv_congr .lw fun j hj => hM1 _ (by simp only [widthOfM, frameIn, PnWord, dc_addrs, stderrAddr] at hj ⊢; omega)]
       exact pre.errFd
@@ -246,7 +246,7 @@ theorem main_init {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   refine dc_string_init_spec hlive _ (by bsimp []; try decide) fun R2 k2 _ => ?_
   bsimp []
   bc_run hlive hS2 [] at 0x80002cd0
-  refine dc_register_init_spec hlive (fun a h1 h2 => hG a (by simp only [DcGlob, dc_addrs] at h1 h2 ⊢; omega))
+  refine dc_register_init_spec hlive (fun a h1 h2 => hG a (by simp only [DcGlob, PinWords, dc_addrs] at h1 h2 ⊢; omega))
     _ (by bsimp []; try decide) fun R3 M3 k3 hf => ?_
   bsimp []
   bc_run hlive hS2 [] at 0x80003c78
@@ -309,12 +309,12 @@ theorem main_init {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
         simp only [widthOfM, PnWord, dc_addrs, freeListAddr, bcFreeAddr] at hj ⊢; omega).trans pre.errFd
       prog := by
         rw [gr .ld _ (by simp only [widthOfM, dc_addrs]; omega), OutFrame.ldv ip.out
-          (fun j hj => DcGlob.outHeap (by simp only [DcGlob, dc_addrs]; omega))
+          (fun j hj => DcGlob.outHeap (by simp only [DcGlob, PinWords, dc_addrs]; omega))
           (fun j hj => by simp only [frameIn, constBytes, dc_addrs]; omega)]
         exact ldv_store_hit _ _ _ }
   have hb3 := ip.heap.out_frame (P := fun a => dcRegAddr ≤ a ∧ a < dcRegAddr + 2048)
     (fun a ha => hf.rest a (by simp only [not_and, Nat.not_lt] at ha; omega))
-    fun a ha => DcGlob.outHeap (by simp only [DcGlob, dc_addrs] at ha ⊢; omega)
+    fun a ha => DcGlob.outHeap (by simp only [DcGlob, PinWords, dc_addrs] at ha ⊢; omega)
   refine hk R4 M3 H2 F2 z o t' ⟨boot_dcAt hb3 ip.zero ip.one ip.two hv hG pre.col, ?_, ?_, ?_, ?_⟩
   · bsimp [k4.get 2, k3.get 2, k2.get 2, k1.get 2]
   · rw [ldv_congr .ld fun j hj => hf.rest _ (.inr (by simp only [widthOfM, dc_addrs] at hj ⊢; omega)),
@@ -329,11 +329,11 @@ theorem main_init {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
       ite_false, k1 z (by simp [initClob]; omega)]
   · intro a e1 e2 e3
     refine keep3 a e1 (fun h => e3 (by simp only [frameIn] at h ⊢; omega))
-      (fun h => e2 (by simp only [constBytes, DcGlob, dc_addrs] at h ⊢; omega))
-      (fun h => e2 (by simp only [DcGlob, dc_addrs] at h ⊢; omega)) ?_
+      (fun h => e2 (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at h ⊢; omega))
+      (fun h => e2 (by simp only [DcGlob, PinWords, dc_addrs] at h ⊢; omega)) ?_
     rintro (h | h)
     · exact e3 (by simp only [frameIn] at h ⊢; omega)
-    · exact e2 (by simp only [PnWord, DcGlob, dc_addrs] at h ⊢; omega)
+    · exact e2 (by simp only [PnWord, DcGlob, PinWords, dc_addrs] at h ⊢; omega)
 
 /-- **At `main`'s call of `dc_evalstr`** (`0x80001914`, entry `M0`/`R0`): dc
 holds `St.init` over the ghost `bootG [o]`, the script's string object `o`
@@ -360,7 +360,7 @@ theorem main_mk {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 M : Mem} {sp W : Nat} {s : List Nat}
     {R0 R : Nat → BitVec 64} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts}
     (pre : BootPre S M0 sp W s) (mid : MainMid S sp W M0 R0 R M H F L C)
-    (hoom : ∀ R' M' sp', OomAt S sp W M0 (fun _ => False) sp' R' M' →
+    (hoom : ∀ R' M' sp', OomAt S sp W M0 PinWords sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M')
     (hk : ∀ R' M' H' b1 b2, BootEval S sp W M0 R0 R' M' H' F L C (msObj b1 b2 s) s →
       DWO live S Q t 0x80001914#64 R' M') :
@@ -376,7 +376,7 @@ theorem main_mk {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
   have hsc0 := pre.script
   have hsm : ∀ i, i ≤ s.length → imgM M (scriptAddr + i) = imgM M0 (scriptAddr + i) := fun i hi =>
     mid.out _ (by simp only [OutHeap, scriptAddr, heapStart, heapEnd, freeListAddr, bcFreeAddr]; omega)
-      (by simp only [DcGlob, scriptAddr, dc_addrs]; omega) (by simp only [frameIn, scriptAddr]; omega)
+      (by simp only [DcGlob, PinWords, scriptAddr, dc_addrs]; omega) (by simp only [frameIn, scriptAddr]; omega)
   have hsc : OwnedCStr S M scriptAddr s.length :=
     { own := hsc0.own, nz := fun i hi => by rw [hsm i (by omega)]; exact hsc0.nz i hi
       nul := by rw [hsm _ (Nat.le_refl _)]; exact hsc0.nul, lo := hsc0.lo, hi := hsc0.hi }
@@ -397,8 +397,9 @@ theorem main_mk {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     (by bsimp [q2]) (by bsimp []) (by bsimp [h10]) (by bsimp []; try decide)
     (fun R2 M2 H2 b1 b2 k2 e2 e10 e11 hd hso => ?_) (fun R2 M2 e2 hso => ?_)
   rotate_left
-  · refine hoom R2 M2 (sp - 32 - 64) ⟨by omega, by omega, e2, fun a e1 e2' e3 _ => ?_⟩
-    exact (hso a e1 e2' fun h => e3 (by simp only [frameIn] at h ⊢; omega)).trans (mid.out a e1 e2' e3)
+  · refine hoom R2 M2 (sp - 32 - 64) ⟨by omega, by omega, e2, fun a e1 e2' e3 hp => ?_⟩
+    exact (hso a e1 e2' fun h => e3 (by simp only [frameIn] at h ⊢; omega)).trans
+      (mid.out a e1 (fun hg => e2' ⟨hg, hp⟩) e3)
   have hS2 : HeapOwn S := fun a h1 h2 => hd.heap.heap.own a h1 h2
   have q2' : R2 2 = BitVec.ofNat 64 (sp - 32) := by rw [e2]; bsimp [q2]
   bsimp []
@@ -426,7 +427,7 @@ theorem main_mk {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
   · rw [ldv_store_miss _ _ _ (by simp only [widthOfM]; omega),
       ldv_store_miss _ _ _ (by simp only [widthOfM]; omega),
       ldv_congr .ld fun j hj => hso _ (outHeap_of_ge (by simp only [heapEnd]; omega))
-        (fun h => by have := h.lt; simp only [heapStart] at this; omega)
+        (fun h => by have := h.1.lt; simp only [heapStart] at this; omega)
         (by simp only [frameIn]; omega)]
     exact mid.ra
   · intro z hz
@@ -439,7 +440,7 @@ theorem main_mk {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     simp only [upd_apply, n1, ite_false]
   · intro a e1 e2' e3
     rw [hM a fun h => e3 (by simp only [frameIn]; omega),
-      hso a e1 e2' fun h => e3 (by simp only [frameIn] at h ⊢; omega)]
+      hso a e1 (fun hpg => e2' hpg.1) fun h => e3 (by simp only [frameIn] at h ⊢; omega)]
     exact mid.out a e1 e2' e3
 
 /-- **`main` from its entry to the call of `dc_evalstr`.** From the fresh
@@ -451,7 +452,7 @@ theorem main_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M0 : Mem} {sp W : Nat} {s : List Nat}
     (pre : BootPre S M0 sp W s) (R0 : Nat → BitVec 64) (h2 : R0 2 = BitVec.ofNat 64 sp)
     (hex : ExitK live S Q 1#64)
-    (hoom : ∀ R' M' sp', OomAt S sp W M0 (fun _ => False) sp' R' M' →
+    (hoom : ∀ R' M' sp', OomAt S sp W M0 PinWords sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M')
     (hk : ∀ R' M' H' F L C b1 b2, BootEval S sp W M0 R0 R' M' H' F L C (msObj b1 b2 s) s →
       DWO live S Q t 0x80001914#64 R' M') :

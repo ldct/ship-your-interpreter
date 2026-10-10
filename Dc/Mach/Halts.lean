@@ -179,7 +179,7 @@ theorem dc_halts {live S : Nat → Prop} (c : Config) {l s : List Nat} (φ : Nat
     (hl : l.Nodup ∧ ∀ a, a ∈ l ↔ S a) (hsep : ∀ a ∈ l, ∀ p ∈ dcText, p.1 ≠ a)
     (pre : StartPre S c.σ.mem s) (hφ1 : ∀ t, φ (1, t))
     (hoom : ∀ M1 R' M' sp', Filled M1 c.σ.mem freeListAddr bssLen (fun _ => 0#8) →
-      OomAt S stackTop mainW M1 (fun _ => False) sp' R' M' →
+      OomAt S stackTop mainW M1 PinWords sp' R' M' →
       DWO live S (fun t rv mv => ExitQ φ t rv mv) (Vsa.Machine.output c.σ) 0x80001e74#64 R' M')
     (hk : ∀ M1 R1 R' M' H' F L C b1 b2, Filled M1 c.σ.mem freeListAddr bssLen (fun _ => 0#8) →
       R1 1 = 0x8000003c#64 → R1 2 = BitVec.ofNat 64 stackTop →

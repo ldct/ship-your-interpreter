@@ -115,7 +115,7 @@ theorem n2i_toss {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     fun R6 M6 H6 F6 L6 C6 hk6 hd6 hz6 hout6 => ?_
   have k0 : ∀ o, o < 32 → (o + 8 ≤ 8 ∨ 16 ≤ o) → ∀ j, j < 8 →
       imgM M6 (sp - 32 + o + j) = imgM M2 (sp - 32 + o + j) :=
-    fun o ho h8 j hj => hout6 _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+    fun o ho h8 j hj => hout6 _ (above_sp hab2 (by omega)).1 (fun hpg => (above_sp hab2 (by omega)).2.1 hpg.1)
       ((above_sp hab2 (by omega)).2.2 _) (fun hs' => by simp only [slotBytes] at hs'; omega)
   have g0 : ldv .ld M6 (sp - 32) = R 15 :=
     (ldv_congr .ld fun j hj => by
@@ -291,7 +291,7 @@ theorem dc_num2int_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 
         omega
       rw [← h1.heap.eq_of_p h1.den.mz hx hp, h1.den.zv]; rfl
     refine bc_is_zero_spec hlive hS1 hn hlp
-      (fun b e1 e2 => h1.glob b (by simp only [DcGlob, dc_addrs]; omega)) hz _ (by bsimp [])
+      (fun b e1 e2 => h1.glob b (by simp only [DcGlob, PinWords, dc_addrs]; omega)) hz _ (by bsimp [])
       (by bsimp []) fun R2 hk2 e10b => ?_
     bsimp []
     have s2 : R2 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk2.get 2 (by decide)]; bsimp [r2]

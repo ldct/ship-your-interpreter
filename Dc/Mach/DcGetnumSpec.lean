@@ -405,7 +405,7 @@ theorem dc_getnum_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
       (readNum st.ibase (rdW o j0)).2 = (rdW o j0).drop jE →
       ldv .ld M' inPtrAddr = BitVec.ofNat 64 (o.tb.pay + j0 + min (jE + 1) (rdW o j0).length) →
       (ra ≠ 0 → imgLE (imgM M') ra 4 = (chW (rdW o j0)[jE]?).toNat % 2 ^ 32) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
         imgM M' a = imgM M a) →
       DWO live S Q t (R 1) R' M') :
     DWO live S Q t 0x80002714#64 R M := by

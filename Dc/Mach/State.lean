@@ -219,6 +219,16 @@ def DcGlob (a : Nat) : Prop :=
     (unwindAddr ≤ a ∧ a < scaleAddr + 4) ∨ (dcStackAddr ≤ a ∧ a < lineBufAddr + 8) ∨
     (twoAddr ≤ a ∧ a < dcRegAddr + 2048)
 
+/-- The globals no machine store touches after `main`'s set-up: `progname`
+and `stderr`'s descriptor word. Memory frames that exempt the globals
+(`StkOut`, `OomAt`, the callee posts) keep these, so an out-of-memory
+continuation can run `dc_memfail`. -/
+def PinWords (a : Nat) : Prop :=
+  (prognameAddr ≤ a ∧ a < prognameAddr + 8) ∨ (stdFilesAddr + 4 ≤ a ∧ a < stdFilesAddr + 8)
+
+/-- A byte off the globals is off the exemption `DcGlob a ∧ ¬ PinWords a`. -/
+theorem nglob_pin {a : Nat} (h : ¬ DcGlob a) : ¬ (DcGlob a ∧ ¬ PinWords a) := fun hc => h hc.1
+
 /-- A byte of one of the blocks. -/
 def InBlocks (bs : List Blk) (a : Nat) : Prop := ∃ b ∈ bs, b.In a
 
@@ -462,36 +472,36 @@ theorem DcView.withChainsW {Mt Mt' : Mem} {G G' : DcG} {C : BcConsts} {st st' : 
           rcases hc with rfl | rfl
           · exact hb o ho x (.inl hcx)
           · exact hb o ho x (.inr hcx)
-      zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.zw
-      ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.ow
-      tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.tw
+      zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.zw
+      ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.ow
+      tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.tw
       ibase := by
         rw [e1]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.ibase
+          simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.ibase
       obase := by
         rw [e2]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.obase
+          simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.obase
       scale := by
         rw [e3]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.scale
+          simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.scale
       unwind := by
         rw [e4]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.unwind
+          simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.unwind
       noexit := by
         rw [e5]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.noexit
+          simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.noexit
       lineMax := hlm
       lbuf := by
         rw [hlb]; exact (gw .ld _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.lbuf
+          simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.lbuf
       lbufLen := fun b e => (gw .ld _ fun j hj => by
-        simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans
+        simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans
           (h.lbufLen b (hlb ▸ e))
       outFd := hfd
       errFd := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.errFd
+        simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.errFd
       prog := (gw .ld _ fun j hj => by
-        simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.prog }
+        simp only [widthOfM, DcGlob, PinWords, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.prog }
 
 /-- **The view with new chains**: the strings and the globals other than the
 chain words read the same, the stack and register chains are given at `Mt'`. -/
@@ -508,10 +518,10 @@ theorem DcView.withChains {Mt Mt' : Mem} {G G' : DcG} {C : BcConsts} {st st' : S
       ldv k Mt' a = ldv k Mt a := fun k a ha =>
     ldv_congr k fun j hj => hg _ (ha j hj).1 (ha j hj).2
   h.withChainsW hstr hlb hst hb (fun a ha hc _ => hg a ha hc)
-    (by rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega]
+    (by rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ChainWords, dc_addrs] at hj ⊢; omega]
         exact h.lineMax)
     ((gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.outFd) hs hr
+        simp only [widthOfM, DcGlob, PinWords, ChainWords, dc_addrs] at hj ⊢; omega).trans h.outFd) hs hr
 
 /-- **The view reads only the ghost's blocks and dc's globals.** -/
 theorem DcView.frame {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} (h : DcView Mt G C st)
@@ -522,10 +532,10 @@ theorem DcView.frame {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} (h : DcVi
       fun hx => hb x ⟨o.tb, (G.str_mem ho).2, hx⟩)
     (fun a ha _ => hg a ha)
     (stkChain_frame h.stk
-      (ldv_glob hg .ld fun j hj => by simp only [widthOfM, DcGlob, dc_addrs] at hj ⊢; omega)
+      (ldv_glob hg .ld fun j hj => by simp only [widthOfM, DcGlob, PinWords, dc_addrs] at hj ⊢; omega)
       fun bg hm x hx => hb x ⟨bg.1, G.stk_mem hm, hx⟩)
     fun r hr => regChain_frame (h.regs r hr)
-      (ldv_glob hg .ld fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega)
+      (ldv_glob hg .ld fun j hj => by simp only [widthOfM, DcGlob, PinWords, regAddr, dc_addrs] at hj ⊢; omega)
       fun be hm c hc x hx => hb x ⟨c, by
         rcases List.mem_cons.mp hc with rfl | hc
         · exact G.reg_mem hr hm
@@ -549,10 +559,10 @@ theorem DcView.frameW {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} (h : DcV
       fun hx => hb x ⟨o.tb, (G.str_mem ho).2, hx⟩)
     (fun a ha _ hw => hg a ha hw) hlm hfd
     (stkChain_frame h.stk
-      (gc .ld _ fun j hj => by simp only [widthOfM, DcGlob, OcWords, dc_addrs] at hj ⊢; omega)
+      (gc .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, OcWords, dc_addrs] at hj ⊢; omega)
       fun bg hm x hx => hb x ⟨bg.1, G.stk_mem hm, hx⟩)
     fun r hr => regChain_frame (h.regs r hr)
-      (gc .ld _ fun j hj => by simp only [widthOfM, DcGlob, OcWords, regAddr, dc_addrs] at hj ⊢; omega)
+      (gc .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, OcWords, regAddr, dc_addrs] at hj ⊢; omega)
       fun be hm c hc x hx => hb x ⟨c, by
         rcases List.mem_cons.mp hc with rfl | hc
         · exact G.reg_mem hr hm

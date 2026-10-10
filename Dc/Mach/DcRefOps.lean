@@ -278,11 +278,11 @@ theorem DcAt.strView {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {
     v0.withChains rfl rfl ⟨rfl, rfl, rfl, rfl, rfl⟩ (fun o ho => by cases ho)
       (fun a ha _ => hgl a ha)
       (stkChain_frame h.view.stk
-        (ldv_glob hgl .ld fun j hj => by simp only [widthOfM, DcGlob, dc_addrs] at hj ⊢; omega)
+        (ldv_glob hgl .ld fun j hj => by simp only [widthOfM, DcGlob, PinWords, dc_addrs] at hj ⊢; omega)
         fun bg hmm x hx => hoff _ (G.stk_mem hmm)
           (h.str_ne hom (List.mem_append_left _ (List.mem_map.mpr ⟨bg, hmm, rfl⟩))).1 x hx)
       fun r hr => regChain_frame (h.view.regs r hr)
-        (ldv_glob hgl .ld fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega)
+        (ldv_glob hgl .ld fun j hj => by simp only [widthOfM, DcGlob, PinWords, regAddr, dc_addrs] at hj ⊢; omega)
         fun be hmm c hc x hx => by
           have hcr : c ∈ (List.range 256).flatMap (fun r => (G.regs r).flatMap RLev.blocks) :=
             List.mem_flatMap.mpr ⟨r, List.mem_range.mpr hr, List.mem_flatMap.mpr ⟨be, hmm, hc⟩⟩

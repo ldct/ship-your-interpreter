@@ -70,7 +70,7 @@ theorem dn_print {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   have hcp : c.pay = c.h + 16 := rfl
   have s0 : R 8 = BitVec.ofNat 64 c.pay := hd.p ▸ hp.s0
   have hfd : FdAt S M stdoutFile 1 :=
-    ⟨fun i hi => h.glob _ (by simp only [DcGlob, stdoutFile, dc_addrs]; omega),
+    ⟨fun i hi => h.glob _ (by simp only [DcGlob, PinWords, stdoutFile, dc_addrs]; omega),
       h.view.outFd, by decide, by decide, by decide⟩
   have po : putcStr (lo8 (BitVec.ofNat 64 d)) = Dc.outStr [d] := by rw [putc_ofNat hdl]; rfl
   bc_run hlive hS [s0, hd.word] at 0x80000628
@@ -176,7 +176,7 @@ theorem dn_exit {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     (hsf : StackFrame S sp dnN) (hab : heapEnd + dnN ≤ sp) (h02 : R0 2 = BitVec.ofNat 64 sp)
     (hal0 : (R0 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R0 → R' 2 = R0 2 → DcAt S M' H' F' L' C' G hs st →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp dnN a → imgM M' a = imgM M0 a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp dnN a → imgM M' a = imgM M0 a) →
       DWO live S Q t (R0 1) R' M') :
     DWO live S Q t 0x80002b68#64 R M := by
   have hsf' := hsf; have hab' := hab
@@ -233,7 +233,7 @@ theorem dc_dump_num_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (h10 : R 10 = BitVec.ofNat 64 xp)
     (h11 : R 11 = 0#64) (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R → R' 2 = R 2 → DcAt S M' H' F' L' C' G hs st →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp dnN a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp dnN a → imgM M' a = imgM M a) →
       DWO live S Q (t ++ Dc.outStr n.dump) (R 1) R' M')
     (hoom : ∀ R' M' sp', OomAt S sp dnN M (fun _ => False) sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M') :

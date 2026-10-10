@@ -24,9 +24,10 @@ local macro_rules | `(tactic| sx_side) => `(tactic| dc_side)
 
 /-- The bytes a stack relink changes are none of `FnPost`'s. -/
 theorem StkLinks.off {G : DcG} (g : StkGeo G) {a : Nat} (hl : StkLinks G a) (e1 : OutHeap a)
-    (e2 : ¬ DcGlob a) : False := by
+    (e2 : ¬ (DcGlob a ∧ ¬ PinWords a)) : False := by
   rcases hl with hw | ⟨bg, hm, h1, h2⟩
-  · exact e2 (by simp only [StkWord, DcGlob, dc_addrs] at hw ⊢; omega)
+  · exact e2 ⟨by simp only [StkWord, DcGlob, dc_addrs] at hw ⊢; omega,
+      by simp only [StkWord, PinWords, dc_addrs] at hw ⊢; omega⟩
   · obtain ⟨b1, b2, -⟩ := g.bnd bg hm
     exact e1.1 ⟨by omega, by omega⟩
 

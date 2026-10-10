@@ -510,7 +510,7 @@ theorem dc_mul_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
     ⟨hsf.within (m := 48) (n := 96 + rmStack (2 ^ 30)) (by omega) (by decide),
       by simp only [heapEnd]; omega, by omega, hin.slot,
       fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega), .inr (by omega),
-      hin.mb.own, fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      hin.mb.own, fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp []⟩
     hma (by
       have := rmDepth_mono (show x1.rep.len + x1.rep.scale + (x2.rep.len + x2.rep.scale) ≤ 2 ^ 30 by omega)

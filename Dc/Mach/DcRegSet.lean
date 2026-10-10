@@ -236,7 +236,7 @@ theorem DcAt.setHeadView {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} 
     rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega)]
   have hreg : ∀ r', r' < 256 → ldv .ld (datW M b.pay w0 w1) (regAddr r') = ldv .ld M (regAddr r') :=
     fun r' hr' => ldv_congr .ld fun j hj => hglob _ (by
-      simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega)
+      simp only [widthOfM, DcGlob, PinWords, regAddr, dc_addrs] at hj ⊢; omega)
   refine h.view.withChains rfl rfl hst (fun o hom x hx => ?_) (fun x hx _ => hglob x hx) ?_
     fun r' hr' => ?_
   · obtain ⟨n1, n2⟩ := ho.strs o hom
@@ -244,7 +244,7 @@ theorem DcAt.setHeadView {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} 
     · exact hoff _ (G.str_mem hom).1 n1 x hx
     · exact hoff _ (G.str_mem hom).2 n2 x hx
   · exact stkChain_frame h.view.stk (ldv_congr .ld fun j hj => hglob _ (by
-      simp only [widthOfM, DcGlob, dc_addrs] at hj ⊢; omega))
+      simp only [widthOfM, DcGlob, PinWords, dc_addrs] at hj ⊢; omega))
       fun bg hm x hx => hoff _ (G.stk_mem hm) (ho.stk bg hm) x hx
   · have e1 : (G.setReg r ((b, e.withV g) :: l)).regs r' =
         if r' = r then (b, e.withV g) :: l else G.regs r' := rfl
@@ -386,8 +386,8 @@ theorem DcAt.consLev {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {
     omega
   have hrw : ∀ a, RegWord r a → OutHeap a ∧ DcGlob a := fun a ha => by
     simp only [RegWord, regAddr, dc_addrs] at ha
-    exact ⟨DcGlob.outHeap (by simp only [DcGlob, dc_addrs]; omega),
-      by simp only [DcGlob, dc_addrs]; omega⟩
+    exact ⟨DcGlob.outHeap (by simp only [DcGlob, PinWords, dc_addrs]; omega),
+      by simp only [DcGlob, PinWords, dc_addrs]; omega⟩
   have hoff : ∀ c' ∈ H.live, c' ≠ c → ∀ a, c'.In a → imgM M' a = imgM M a := fun c' hc' hne a ha =>
     hm a fun h' => h'.elim (fun hca => live_apart hi hc' hf.live hne ha hca)
       fun hrg => (hrw a hrg).1.1 (live_in_heap hi hc' ha)
@@ -439,7 +439,7 @@ theorem DcAt.consLev {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {
         (fun a ha hc => hglob a ha fun hrg => hc (.inr (by
           simp only [RegWord, regAddr] at hrg; omega)))
         (stkChain_frame h.view.stk (ldv_congr .ld fun j hj => hglob _ (by
-          simp only [widthOfM, DcGlob, dc_addrs] at hj ⊢; omega) (by
+          simp only [widthOfM, DcGlob, PinWords, dc_addrs] at hj ⊢; omega) (by
           simp only [widthOfM, RegWord, regAddr, dc_addrs] at hj ⊢; omega))
           fun bg hmm x hx => hGoff _ (G.stk_mem hmm) x hx) fun r' hr' => ?_
       den := ?_
@@ -452,7 +452,7 @@ theorem DcAt.consLev {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {
     · subst_vars
       exact .cons hw hn hold
     · exact regChain_frame (h.view.regs r' hr') (ldv_congr .ld fun j hj => hglob _ (by
-        simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega) (by
+        simp only [widthOfM, DcGlob, PinWords, regAddr, dc_addrs] at hj ⊢; omega) (by
         simp only [widthOfM, RegWord, regAddr, dc_addrs] at hj ⊢; omega))
         fun be hmm c' hc' x hx => hGoff c' (G.lev_mem hr' hmm hc') x hx
   · refine { hd with
@@ -672,7 +672,7 @@ theorem reg_set_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     fun k hk => ldv_congr .ld fun j hj => by
       have hin : frameIn sp 80 (sp - 48 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
       have ho := setFrame_out (by simp only [heapEnd]; omega) hin
-      exact hfr _ ho.1 ho.2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+      exact hfr _ ho.1 (nglob_pin ho.2) (by simp only [frameIn, widthOfM] at hj ⊢; omega)
         (by simp only [slotBytes, widthOfM] at hj ⊢; omega)
   have hsn : ldv .ld M3 (sp - 48 + 8) = BitVec.ofNat 64 (regAddr r) := by
     rw [hfs 8 (by omega), ldv_store_hit]
@@ -688,7 +688,7 @@ theorem reg_set_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       ldv_ld_miss _ _ (by simp only [regAddr, dc_addrs]; omega)] at this
   refine reg_set_tailF hlive hS hsf (by simp only [heapEnd]; omega)
     ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega, by omega⟩ hr
-    (fun x hx => hG x (by have := of_mem_accAddrs hx; simp only [DcGlob, regAddr, dc_addrs] at this ⊢; omega))
+    (fun x hx => hG x (by have := of_mem_accAddrs hx; simp only [DcGlob, PinWords, regAddr, dc_addrs] at this ⊢; omega))
     R1 q2 hsn hreg hs16 hs24 hs40 hal fun R' hk2 e1 e2 => ?_
   refine hk R' _ H' F' L' C' _ (hk2.trans (by keeps_tac ((hk1.mono (by decide)).trans
     (by keeps_tac Keeps.refl _ _)))) e1 e2 h3 (fun x ho hg hf => ?_) (StrPin.refl _ _) rfl
@@ -749,7 +749,7 @@ theorem reg_set_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     fun k hk => ldv_congr .ld fun j hj => by
       have hin : frameIn sp 80 (sp - 48 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
       have ho := setFrame_out (by simp only [heapEnd]; omega) hin
-      exact hfr _ ho.1 ho.2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+      exact hfr _ ho.1 (nglob_pin ho.2) (by simp only [frameIn, widthOfM] at hj ⊢; omega)
   have hsn : ldv .ld M3 (sp - 48 + 8) = BitVec.ofNat 64 (regAddr r) := by
     rw [hfs 8 (by omega), ldv_store_hit]
   have hs16 : ldv .ld M3 (sp - 48 + 16) = w0 := by
@@ -765,7 +765,7 @@ theorem reg_set_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
       ldv_ld_miss _ _ (by simp only [regAddr, dc_addrs]; omega)] at this
   refine reg_set_tailS hlive hS hsf (by simp only [heapEnd]; omega)
     ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega, by omega⟩ hr
-    (fun x hx => hG x (by have := of_mem_accAddrs hx; simp only [DcGlob, regAddr, dc_addrs] at this ⊢; omega))
+    (fun x hx => hG x (by have := of_mem_accAddrs hx; simp only [DcGlob, PinWords, regAddr, dc_addrs] at this ⊢; omega))
     R1 q2 hsn hreg hs16 hs24 hs40 hal fun R' hk2 e1 e2 => ?_
   refine hk R' _ H' F L C _ (hk2.trans (by keeps_tac ((hk1.mono (by decide)).trans
     (by keeps_tac Keeps.refl _ _)))) e1 e2 h3 (fun x ho hg hf => ?_) hpin hsn3.lk
@@ -845,7 +845,7 @@ theorem reg_set_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
   have hra8 : (BitVec.ofNat 64 (regAddr r)).toNat = regAddr r := by
     simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun x hx => hG x (by
-    have := of_mem_accAddrs hx; simp only [DcGlob, regAddr, dc_addrs] at this ⊢; omega)
+    have := of_mem_accAddrs hx; simp only [DcGlob, PinWords, regAddr, dc_addrs] at this ⊢; omega)
   bsimp []
   bc_run hlive hS [q2, e10, hsn, hra8] at 0x80003090
   all_goals first | exact frame_acc hsf (by omega) (by omega) | exact hrown | (simp only [LdOK, StOK, regAddr, dcRegAddr]; omega) | skip
@@ -880,7 +880,7 @@ theorem reg_set_new {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     (by keeps_tac Keeps.refl _ _)))) e1 e2 h5 (fun x ho hg hf => ?_) (StrPin.refl _ _) rfl
   have hx := ho.1
   have hrx : x < regAddr r ∨ regAddr r + 8 ≤ x := Classical.byContradiction fun hc =>
-    hg (by simp only [DcGlob, regAddr, dc_addrs] at hc ⊢; omega)
+    hg (by simp only [DcGlob, PinWords, regAddr, dc_addrs] at hc ⊢; omega)
   simp only [heapStart, heapEnd] at hx
   rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), imgM_store_miss _ _ hrx,
     imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
@@ -1008,7 +1008,7 @@ theorem dc_register_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) �
     simp only [BitVec.toNat_ofNat, regAddr, dcRegAddr]; omega
   have hrown : ∀ b ∈ accAddrs (regAddr r) 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs, regAddr] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs, regAddr] at this ⊢; omega)
   have hM1 : MemOnly (frameIn sp 80) (writeLog (writeLog (writeLog M [(sp - 48 + 40, 8, R 1)])
       [(sp - 48 + 16, 8, R 11)]) [(sp - 48 + 24, 8, R 12)]) M := fun x hx => by
     simp only [frameIn] at hx

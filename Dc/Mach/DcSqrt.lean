@@ -203,7 +203,7 @@ theorem sqrt_neg {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     fun R6 M6 H6 F6 L6 C6 hk6 hd6 hz6 hout6 => ?_
   have hab3 : heapEnd ≤ sp - 48 := by simp only [heapEnd] at hab2 ⊢; omega
   have g40' : ldv .ld M6 (sp - 48 + 40) = ra :=
-    (ldv_congr .ld fun j hj => hout6 _ (above_sp hab3 (by omega)).1 (above_sp hab3 (by omega)).2.1
+    (ldv_congr .ld fun j hj => hout6 _ (above_sp hab3 (by omega)).1 (fun hpg => (above_sp hab3 (by omega)).2.1 hpg.1)
       ((above_sp hab3 (by omega)).2.2 _)
       (fun hs' => by simp only [slotBytes, widthOfM] at hs' hj; omega)).trans g40
   have q6 : R6 2 = BitVec.ofNat 64 (sp - 48) := by rw [hk6.get 2 (by decide)]; bsimp [q4]
@@ -242,7 +242,7 @@ theorem sqrt_k {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       R' 2 = R 2 → R' 10 = 0#64 → pl.length ≤ 1 →
       DcAt S M' H' F' L' C' { G with lk := pl ++ G.lk } (.num y :: .num x.rep.p :: hs) st →
       (GV.num y).Den ⟨L', G.strs⟩ (.num r) → ldv .ld M' rq = BitVec.ofNat 64 y →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp sqN a → ¬ slotBytes rq a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp sqN a → ¬ slotBytes rq a → imgM M' a = imgM M a) →
       DWO live S Q t (R 1) R' M')
     (hfail : n = none → ∀ R' M' H' F' L' C', Keeps (1 :: 2 :: opClob) R' R → R' 2 = R 2 →
       R' 10 = 1#64 → DcAt S M' H' F' L' C' G (.num x.rep.p :: hs) st → StkOut sp sqN M' M →
@@ -336,7 +336,7 @@ theorem dc_sqrt_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
       R' 2 = R 2 → R' 10 = 0#64 → pl.length ≤ 1 →
       DcAt S M' H' F' L' C' { G with lk := pl ++ G.lk } (.num y :: .num x.rep.p :: hs) st →
       (GV.num y).Den ⟨L', G.strs⟩ (.num r) → ldv .ld M' rq = BitVec.ofNat 64 y →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp sqN a → ¬ slotBytes rq a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp sqN a → ¬ slotBytes rq a → imgM M' a = imgM M a) →
       DWO live S Q t (R 1) R' M')
     (hfail : n = none → ∀ R' M' H' F' L' C', Keeps (1 :: 2 :: opClob) R' R → R' 2 = R 2 →
       R' 10 = 1#64 → DcAt S M' H' F' L' C' G (.num x.rep.p :: hs) st → StkOut sp sqN M' M →
@@ -436,7 +436,7 @@ theorem dc_sqrt_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
   refine bc_sqrt_spec hlive (W := 160 + 512 + rmStack (2 ^ 30)) (q := sp - 48 + 24) (k := k)
     ⟨⟨hsf.within (m := 48) (n := 160 + 512 + rmStack (2 ^ 30)) (by omega) (by decide),
       by simp only [heapEnd]; omega, hmb.own,
-      fun a ha => h.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega)⟩,
+      fun a ha => h.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega)⟩,
       Nat.le_refl _, by simp only [stderrAddr]; omega, by bsimp [], by bsimp [],
       ⟨hsf.slot (by omega) (by omega) (by omega),
         fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega), .inr (by omega)⟩,

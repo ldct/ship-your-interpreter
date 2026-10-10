@@ -352,7 +352,7 @@ theorem dc_tell_scale_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → 
     fun R6 M6 H6 F6 L6 C6 hk6 hd6 hz6 hout6 => ?_
   have hab3 : heapEnd ≤ sp - 32 := by simp only [heapEnd]; omega
   have k0 : ∀ o, o < 32 → (o + 8 ≤ 8 ∨ 16 ≤ o) → ∀ j, j < 8 → imgM M6 (sp - 32 + o + j) = imgM M2 (sp - 32 + o + j) :=
-    fun o ho h8 j hj => hout6 _ (above_sp hab3 (by omega)).1 (above_sp hab3 (by omega)).2.1
+    fun o ho h8 j hj => hout6 _ (above_sp hab3 (by omega)).1 (fun hpg => (above_sp hab3 (by omega)).2.1 hpg.1)
       ((above_sp hab3 (by omega)).2.2 _) (fun hs' => by simp only [slotBytes] at hs'; omega)
   have g0 : ldv .ld M6 (sp - 32) = BitVec.ofNat 64 x.rep.scale :=
     (ldv_congr .ld fun j hj => by simpa using k0 0 (by omega) (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans m0
@@ -462,7 +462,7 @@ theorem tl_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
     fun R6 M6 H6 F6 L6 C6 hk6 hd6 hz6 hout6 => ?_
   have k0 : ∀ o, o < 48 → (o + 8 ≤ 24 ∨ 32 ≤ o) → ∀ j, j < 8 →
       imgM M6 (sp - 48 + o + j) = imgM M2 (sp - 48 + o + j) :=
-    fun o ho h8 j hj => hout6 _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+    fun o ho h8 j hj => hout6 _ (above_sp hab2 (by omega)).1 (fun hpg => (above_sp hab2 (by omega)).2.1 hpg.1)
       ((above_sp hab2 (by omega)).2.2 _) (fun hs' => by simp only [slotBytes] at hs'; omega)
   have g8 : ldv .ld M6 (sp - 48 + 8) = BitVec.ofNat 64 x.rep.num.numLen :=
     (ldv_congr .ld fun j hj => k0 8 (by omega) (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans n8
@@ -557,7 +557,7 @@ theorem tl_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
     fun R6 M6 H6 G6 hk6 hsn6 hd6 hout6 hpin6 => ?_
   have k0 : ∀ o, o < 48 → ∀ j, j < 8 →
       imgM M6 (sp - 48 + o + j) = imgM M2 (sp - 48 + o + j) :=
-    fun o ho j hj => hout6 _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+    fun o ho j hj => hout6 _ (above_sp hab2 (by omega)).1 (fun hpg => (above_sp hab2 (by omega)).2.1 hpg.1)
       ((above_sp hab2 (by omega)).2.2 _)
   have g8 : ldv .ld M6 (sp - 48 + 8) = BitVec.ofNat 64 o.s.length :=
     (ldv_congr .ld fun j hj => k0 8 (by omega) j (by have : widthOfM .ld = 8 := rfl; omega)).trans n8

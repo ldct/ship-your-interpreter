@@ -21,7 +21,7 @@ def ScalarWord (a : Nat) : Prop :=
     (noexitAddr ≤ a ∧ a < noexitAddr + 4)
 
 theorem ScalarWord.glob {a : Nat} (h : ScalarWord a) : DcGlob a := by
-  simp only [ScalarWord, DcGlob, dc_addrs] at h ⊢; omega
+  simp only [ScalarWord, DcGlob, PinWords, dc_addrs] at h ⊢; omega
 
 /-- **The scalar globals stored**: memory changed only in their words holds
 the state with the values the words now read. -/
@@ -47,33 +47,33 @@ theorem DcAt.setScalars {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk
       nodup := h.nodup
       view :=
         { stk := stkChain_frame v.stk
-            (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega)
+            (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega)
             fun bg hm' x hx => hblk x ⟨bg.1, G.stk_mem hm', hx⟩
           regs := fun r hr => regChain_frame (v.regs r hr)
-            (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, regAddr, dc_addrs] at hj ⊢; omega)
+            (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, regAddr, dc_addrs] at hj ⊢; omega)
             fun be hm' c hc x hx => hblk x ⟨c, by
               rcases List.mem_cons.mp hc with rfl | hc
               · exact G.reg_mem hr hm'
               · obtain ⟨bn, hn', rfl⟩ := List.mem_map.mp hc
                 exact G.arr_mem hr hm' hn', hx⟩
           strs := fun o ho => (v.strs o ho).frame (bs := G.blocks) (G.str_mem ho).1 (G.str_mem ho).2 hblk
-          zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.zw
-          ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.ow
-          tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.tw
+          zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.zw
+          ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.ow
+          tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.tw
           ibase := hi
           obase := ho
           scale := hk
           unwind := hu
           noexit := hn
           lineMax := by
-            rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega]
+            rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega]
             exact v.lineMax
-          lbuf := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.lbuf
+          lbuf := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.lbuf
           lbufLen := fun b e => (gw .ld _ fun j hj => by
-            simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega).trans (v.lbufLen b e)
-          outFd := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.outFd
-          errFd := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.errFd
-          prog := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.prog }
+            simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega).trans (v.lbufLen b e)
+          outFd := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.outFd
+          errFd := (gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.errFd
+          prog := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, PinWords, ScalarWord, dc_addrs] at hj ⊢; omega).trans v.prog }
       den := { d with ibase := hir, obase := hor, scale := hkr, unwind := hur }
       glob := h.glob
       col := h.col }

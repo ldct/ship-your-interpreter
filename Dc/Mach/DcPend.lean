@@ -83,7 +83,7 @@ theorem Pend.not_alloc (hp : Pend G E W Φ) {S : Nat → Prop} {Mt : Mem} {H : H
     (hi : HeapInv S Mt H) (hE : ∀ e ∈ E, e ∈ H.live) {x : Nat} (hw : W x) : ¬ AllocByte H x := by
   rcases hp.win x hw with ⟨e, he, hex⟩ | hs
   · exact live_not_alloc hi (hE e he) hex
-  · exact OutHeap.not_alloc hi (DcGlob.outHeap (by simp only [StkWord, DcGlob, dc_addrs] at hs ⊢; omega))
+  · exact OutHeap.not_alloc hi (DcGlob.outHeap (by simp only [StkWord, DcGlob, PinWords, dc_addrs] at hs ⊢; omega))
 
 theorem Pend.inHeap (hp : Pend G E W Φ) {S : Nat → Prop} {Mt : Mem} {H : Heap}
     (hi : HeapInv S Mt H) (hE : ∀ e ∈ E, e ∈ H.live) {x : Nat} (hw : W x) :

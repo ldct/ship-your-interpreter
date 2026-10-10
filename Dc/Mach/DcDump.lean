@@ -30,7 +30,7 @@ structure DnAt (S : Nat → Prop) (M0 M : Mem) (R0 R : Nat → BitVec 64) (sp : 
   w64 : ldv .ld M (sp - 80 + 64) = R0 8
   w72 : ldv .ld M (sp - 80 + 72) = R0 1
   keep : Keeps (2 :: 8 :: 9 :: cClob) R R0
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp dnN a → imgM M a = imgM M0 a
+  out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp dnN a → imgM M a = imgM M0 a
 
 theorem perm_rev3 {α : Type} (a b c : α) (l : List α) : (a :: b :: c :: l).Perm (c :: b :: a :: l) :=
   ((List.Perm.cons a (List.Perm.swap c b l)).trans (List.Perm.swap c a (b :: l))).trans
@@ -44,16 +44,16 @@ theorem perm_4th {α : Type} (a b c d : α) (l : List α) :
 /-- A word of the frame through a step that kept the bytes off the heap, the
 globals and `P`. -/
 theorem dn_ld {M M' : Mem} {sp o : Nat} (hab : heapEnd ≤ sp - 80) (P : Nat → Prop)
-    (hM : ∀ a, OutHeap a → ¬ DcGlob a → ¬ P a → imgM M' a = imgM M a)
+    (hM : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ P a → imgM M' a = imgM M a)
     (hP : ∀ j, j < 8 → ¬ P (sp - 80 + o + j)) : ldv .ld M' (sp - 80 + o) = ldv .ld M (sp - 80 + o) :=
   ldv_congr .ld fun j hj =>
-    hM _ (above_sp hab (by omega)).1 (above_sp hab (by omega)).2.1 (hP j hj)
+    hM _ (above_sp hab (by omega)).1 (fun hpg => (above_sp hab (by omega)).2.1 hpg.1) (hP j hj)
 
 /-- **The frame through a callee** that changed, off the heap and the
 globals, only its window and `dc_dump_num`'s four slots. -/
 theorem DnAt.next {S : Nat → Prop} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64} {sp : Nat}
     (hfr : DnAt S M0 M R0 R sp) (hab : heapEnd ≤ sp - 80)
-    (hM : ∀ a, OutHeap a → ¬ DcGlob a → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) → imgM M' a = imgM M a)
+    (hM : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) → imgM M' a = imgM M a)
     (k : Keeps (2 :: 8 :: 9 :: cClob) R' R) (r2 : R' 2 = BitVec.ofNat 64 (sp - 80)) :
     DnAt S M0 M' R0 R' sp where
   r2 := r2
@@ -248,7 +248,7 @@ theorem dn_div {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
       by simp only [dnW]; omega, hsf'.slot (by omega) (by omega) (by omega),
       fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega),
       .inr (by omega), .inr (by simp only [dc_addrs]; omega),
-      fun a ha => hG a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      fun a ha => hG a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp []⟩
     ⟨fun m' hm' R3 Mt H3 F3 L3 y hk3 h30 hp => ?_, fun hnone => (Option.some_ne_none m hnone).elim,
       fun R3 Mt sp' o1 o2 hr2' hout => ?_⟩
@@ -298,7 +298,7 @@ theorem dn_div {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     have hS6 : HeapOwn S := fun a e1 e2 => hd6.heap.heap.own a e1 e2
     bsimp []
     bc_run hlive hS6 [] at 0x80002af8
-    have e6 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) →
+    have e6 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) →
         imgM M6 a = imgM M a := fun a ho hg hn => by
       rw [hout6 a ho hg (fun h => hn (by simp only [frameIn, dnW] at h ⊢; omega))
         (fun h => hn (by simp only [slotBytes] at h; omega))]
@@ -355,7 +355,7 @@ theorem DnAt.mulBase {S : Nat → Prop} {M0 M : Mem} {R0 R : Nat → BitVec 64} 
     (hfr : DnAt S M0 M R0 R sp) (hab : heapEnd + dnN ≤ sp) (hmb : MulBase S M0) : MulBase S M :=
   hmb.transport fun a e1 e2 => hfr.out a
     (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, mulBaseAddr] at e1 e2 ⊢; omega)
-    (by simp only [DcGlob, dc_addrs, mulBaseAddr] at e1 e2 ⊢; omega)
+    (by simp only [DcGlob, PinWords, dc_addrs, mulBaseAddr] at e1 e2 ⊢; omega)
     (by simp only [frameIn, heapEnd, mulBaseAddr] at e1 e2 hab ⊢; omega)
 
 /-- **`bc_int2num (&obase, 256)`** (`0x80002af8` to the loop head): `obase`
@@ -397,7 +397,7 @@ theorem dn_i2n {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     have hS1 : HeapOwn S := fun a e1 e2 => hd1.heap.heap.own a e1 e2
     bsimp []
     bc_run hlive hS1 [] at 0x80002b08
-    have e1 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) →
+    have e1 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) →
         imgM M1 a = imgM M a := fun a ho _ hn =>
       hout1 a ho (fun h => hn (by simp only [slotBytes] at h; omega))
         (fun h => hn (by simp only [frameIn, dnW] at h ⊢; omega))
@@ -490,7 +490,7 @@ theorem dn_dm {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (N
   refine bc_divmod_spec hlive (W := dnW) (sp := sp - 80) (k := 0) (z := C.z) (xq := xv) (xr := xd)
     (qq := sp - 80 + 24) (qr := sp - 80 + 40)
     ⟨StackFrame.sub (m := 80) (n := dnW) hsf (by decide), by simp only [heapEnd, dnW]; omega,
-      Nat.le_refl _, hmb1.own, fun a ha => hG a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      Nat.le_refl _, hmb1.own, fun a ha => hG a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp []⟩
     ⟨hxv, hxb, h.den.mz, h.den.norm xv hxv, h.den.norm xb hxb, h.den.pos xv hxv, by omega,
       (h.kzero hlen).mono (by omega), hmb1.word, h.den.owns⟩
@@ -512,7 +512,7 @@ theorem dn_dm {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (N
         (fun h => by have := ha.lt; simp only [slotBytes, heapStart] at h this; omega)
         (fun h => by have := ha.lt; simp only [slotBytes, heapStart] at h this; omega)
         (fun h => by have := ha.lt; simp only [frameIn, heapStart, dnW] at h this; omega)
-    have e4 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) →
+    have e4 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ (sp - 80 - dnW ≤ a ∧ a < sp - 32) →
         imgM Mt a = imgM M a := fun a ho _ hn =>
       hp.out a ho (fun h => hn (by simp only [slotBytes] at h; omega))
         (fun h => hn (by simp only [slotBytes] at h; omega))

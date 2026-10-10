@@ -59,7 +59,8 @@ theorem FnAt.scalars {S : Nat → Prop} {sp W : Nat} {M0 M M' : Mem} {R0 R R' : 
     (hc : FnAt S sp W M0 R0 R M) (k : Keeps cClob R' R) (hm : MemOnly ScalarWord M' M) :
     FnAt S sp W M0 R0 R' M' :=
   hc.call (Wc := 0) (by have := hc.big; omega) (k.mono (by decide)) (k.get 2 (by decide))
-    fun a _ e2 _ _ => hm a fun hw => e2 hw.glob
+    fun a _ e2 _ _ => hm a fun hw => e2 ⟨hw.glob, fun hp => by
+      simp only [ScalarWord, PinWords, dc_addrs] at hw hp; omega⟩
 
 /-- `DC_OKAY` (`0x80000c10`) after an arm's callees. -/
 theorem fa_ok {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
@@ -201,7 +202,7 @@ theorem fa_q {al : Nat} (hlive : ∀ p ∈ dcText, live p.1)
   have hg := h.glob
   bc_run hlive hS [] at 0x80000c14
   all_goals first
-    | (intro b hb; have := of_mem_accAddrs hb; exact hg b (by simp only [DcGlob, dc_addrs]; omega))
+    | (intro b hb; have := of_mem_accAddrs hb; exact hg b (by simp only [DcGlob, PinWords, dc_addrs]; omega))
     | skip
   have hm : MemOnly ScalarWord (writeLog (writeLog M [(noexitAddr, 4, 0#64)]) [(unwindAddr, 4, 1#64)]) M :=
     fun a ha => by

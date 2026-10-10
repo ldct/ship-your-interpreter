@@ -489,7 +489,7 @@ theorem rot_entry {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
   have htx : tohostAddr = 0x8001ad00 := rfl
   have hown : ∀ b ∈ accAddrs dcStackAddr 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs] at this ⊢; omega)
   unfold absw at habs
   bc_run hlive hS [habs, hw] at 0x80003780
   all_goals first | exact hown | (simp only [LdOK, dc_addrs, htx]; omega) | skip
@@ -619,7 +619,7 @@ theorem rot_up_st {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → 
     exact hS b (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
   have hown : ∀ b ∈ accAddrs dcStackAddr 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs] at this ⊢; omega)
   have e0 : (0#64).toInt = 0 := by decide
   bc_run hlive hS [h12, h14, hpw, hcw] at 0x800037b0
   all_goals try (intro hc; exact (hnz hc).elim)
@@ -656,7 +656,7 @@ theorem rot_down_st {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     exact hS b (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega)
   have hown : ∀ b ∈ accAddrs dcStackAddr 8, S b := fun b hb => by
     have := of_mem_accAddrs hb
-    exact hG b (by simp only [DcGlob, dc_addrs] at this ⊢; omega)
+    exact hG b (by simp only [DcGlob, PinWords, dc_addrs] at this ⊢; omega)
   have e0 : (0#64).toInt = 0 := by decide
   bc_run hlive hS [h11, h14, hpw, hcw] at 0x800037b0
   all_goals try (intro hc; exact (hnz hc).elim)

@@ -28,7 +28,7 @@ abbrev pushClob : List Nat := [10, 11, 12, 13, 14, 15]
 
 /-- Memory changed only in the heap, `dc_stack`, and the window below `sp`. -/
 def StkOut (sp W : Nat) (M' M : Mem) : Prop :=
-  ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp W a → imgM M' a = imgM M a
+  ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp W a → imgM M' a = imgM M a
 
 /-- The node stores of `dc_push` (`0x80002df4` to the `ret`): the saved
 handle words `w0`/`w1` go to the node at `p`, its link to the old `dc_stack`,
@@ -222,7 +222,7 @@ theorem dc_push_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
     simp only [upd, e1, e2, n10, ite_false]
   · have hnb : ¬ b.In a := fun hb => by
       simp only [Blk.In, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at hb ho; omega
-    rw [hm6 a fun hc => hc.elim hnb fun hs => hg (by simp only [DcGlob, dc_addrs] at hs ⊢; omega)]
+    rw [hm6 a fun hc => hc.elim hnb fun hs => hg (by simp only [DcGlob, PinWords, dc_addrs] at hs ⊢; omega)]
     rw [hp.frame a (OutHeap.not_alloc h1.heap.heap ho) fun hf' => hf (by
       simp only [frameIn] at hf' ⊢; omega)]
     exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)

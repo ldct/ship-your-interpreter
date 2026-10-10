@@ -46,7 +46,7 @@ theorem FnAt.popped {S : Nat → Prop} {sp W : Nat} {M0 M M' : Mem} {R0 R R' : N
   · rw [← hc.ra]
     exact ldv_congr .ld fun j hj => by
       have := above_sp hab (a := sp - 192 + 184 + j) (by omega)
-      exact hout _ this.1 this.2.1 (this.2.2 _) (Or.inr (by simp only [fnSlot]; omega))
+      exact hout _ this.1 (fun hpg => this.2.1 hpg.1) (this.2.2 _) (Or.inr (by simp only [fnSlot]; omega))
   · intro a e1 e2 e3 e4
     simp only [frameIn] at e4
     exact (hout a e1 e2 (fun hf => by simp only [frameIn] at hf; omega)

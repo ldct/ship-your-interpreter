@@ -77,7 +77,7 @@ theorem fd_show {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {c : N
   bc_run hlive hlive [e2, hc0, stdout_word] at 0x80001ec0
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
   have hfd : FdAt S M2 stdoutFile 1 :=
-    ⟨fun i hi => h2.glob _ (by simp only [DcGlob, stdoutFile, dc_addrs]; omega),
+    ⟨fun i hi => h2.glob _ (by simp only [DcGlob, PinWords, stdoutFile, dc_addrs]; omega),
       h2.view.outFd, by decide, by decide, by decide⟩
   refine dc_show_id_spec hlive (sp := sp - 192) (f := stdoutFile) (fd := 1) (id := c)
     (m := 0x80007b28) (hc2.cf (Wc := 304) (by omega)) hfd (.inl (by simp only [stdoutFile]; omega))

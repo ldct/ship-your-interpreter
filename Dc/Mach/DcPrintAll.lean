@@ -63,11 +63,11 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
       {L : List NumObj} {C : BcConsts} {G : DcG} (R : Nat → BitVec 64),
     DcAt S M H F L C G hs st → G.stk = pre ++ (b, g) :: rest → SameNodes G0 G → StrPin G0.strs G.strs hs →
     MulBase S M →
-    (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M a = imgM M0 a) →
+    (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp prN a → imgM M a = imgM M0 a) →
     R 2 = BitVec.ofNat 64 sp → R 8 = BitVec.ofNat 64 b.pay → R 9 = BitVec.ofNat 64 ob →
     (∀ R' M' H' F' L' C' G', Keeps (8 :: cClob) R' R → R' 2 = R 2 → SameNodes G0 G' →
       DcAt S M' H' F' L' C' G' hs st → StrPin G0.strs G'.strs hs →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M0 a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M0 a) →
       DWO live S Q (t ++ Dc.outStr (paOut ob (st.stack.drop pre.length))) 0x800038e4#64 R' M') →
     DWO live S Q t 0x800038c4#64 R M := by
   intro rest
@@ -114,10 +114,10 @@ theorem pa_loop {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     have hS' : HeapOwn S := fun a e1 e2 => hD'.heap.heap.own a e1 e2
     have hmb' : MulBase S M' := hmb.transport fun a e1 e2 => by
       have ho := mulBase_off e1 e2
-      refine hfr' a ho.1 ho.2.1 (fun hg => ?_) (fun hf => ?_)
+      refine hfr' a ho.1 (nglob_pin ho.2.1) (fun hg => ?_) (fun hf => ?_)
       · simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr, mulBaseAddr] at hg e1 e2; omega
       · have := ho.2.2; have h' := hab; simp only [frameIn, heapStart] at hf this; simp only [heapEnd] at h'; omega
-    have hfr2 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M0 a :=
+    have hfr2 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp prN a → imgM M' a = imgM M0 a :=
       fun a e1 e2 e3 e4 => (hfr' a e1 e2 e3 e4).trans (hfr a e1 e2 e3 e4)
     have hsn2 := hsn.trans hsn'
     have hpin2 : StrPin G0.strs G'.strs hs := hpin.trans hpin'
@@ -196,7 +196,7 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
     (hal : (R 1).toNat % 4 = 0)
     (hk : ∀ R' M' H' F' L' C' G', Keeps cClob R' R → R' 2 = R 2 → SameNodes G G' →
       DcAt S M' H' F' L' C' G' hs st → StrPin G.strs G'.strs hs →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn sp (32 + prN) a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ ocG a → ¬ frameIn sp (32 + prN) a → imgM M' a = imgM M a) →
       DWO live S Q (t ++ Dc.outStr (paOut ob st.stack)) (R 1) R' M')
     (hoom : ∀ t' R' M' sp', OomAt S sp (32 + prN) M ocG sp' R' M' → DWO live S Q t' 0x80001e74#64 R' M') :
     DWO live S Q t 0x800038a4#64 R M := by
@@ -295,7 +295,7 @@ theorem dc_printall_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec
     case r8 => bsimp []
     case r9 => bsimp []
     have kf : ∀ o, 8 ≤ o → o < 32 → imgM M' (sp - 32 + o) = imgM M1 (sp - 32 + o) := fun o h8 h32 =>
-      hfr _ (above_sp hab2 (by omega)).1 (above_sp hab2 (by omega)).2.1
+      hfr _ (above_sp hab2 (by omega)).1 (fun hpg => (above_sp hab2 (by omega)).2.1 hpg.1)
         (by simp only [ocG, stdoutFile, lineMaxAddr, errnoAddr, outColAddr]; simp only [heapEnd] at hab2; omega)
         ((above_sp hab2 (by omega)).2.2 _)
     have f8 : ldv .ld M' (sp - 32 + 8) = R 9 := (ldv_congr .ld fun j hj => by

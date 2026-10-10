@@ -59,7 +59,7 @@ theorem cf_copy {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     DWO live S Q t 0x800049ac#64 R M :=
   dc_copy_spec hlive h hhs hx R h10 hal fun R' M' L' C' k h' hd hkp hout => by
     have k' : Keeps cClob R' R := k.mono (by decide)
-    have hO : ∀ a, OutHeap a → ¬ DcGlob a → imgM M' a = imgM M a := fun a ho _ => hout a ho
+    have hO : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → imgM M' a = imgM M a := fun a ho _ => hout a ho
     refine hk R' M' L' C' k { hfr.regs k' with
         saved := fun q hq => (ldv_congr .ld fun j _ => hout _ (outHeap_of_ge (by omega))).trans
           (hfr.saved q hq)
@@ -96,7 +96,7 @@ theorem gn_sign {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
   have hG : ∀ a, DcGlob a → S a := h.glob
   bc_run hlive hS [q2, r20, zw, w16] at 0x80004ac4
   case hLDS =>
-    intro b hb; have := of_mem_accAddrs hb; exact hG b (by simp only [DcGlob, dc_addrs]; omega)
+    intro b hb; have := of_mem_accAddrs hb; exact hG b (by simp only [DcGlob, PinWords, dc_addrs]; omega)
   case hk.hLDS => exact frame_acc hsf (by omega) (by omega)
   refine cf_sub hlive cx (hX.fr.regs (by keeps_tac Keeps.refl _ _)) h (gnSv_above (by omega)) (o := 16)
     (by omega) (by omega) w16 ⟨C.z, h.den.mz, rfl, h.den.zv⟩ hX.dr (smin := 0) (by decide)
@@ -264,7 +264,7 @@ theorem gn_fentry {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   have hG4 : ∀ a, DcGlob a → S a := h4.glob
   bc_run hlive hS4 [q23, r20, zw] at 0x800049ac
   case hk.hk.hLDS =>
-    intro b hb; have := of_mem_accAddrs hb; exact hG4 b (by simp only [DcGlob, dc_addrs]; omega)
+    intro b hb; have := of_mem_accAddrs hb; exact hG4 b (by simp only [DcGlob, PinWords, dc_addrs]; omega)
   refine cf_copy hlive (fr4.sregs ((by keeps_tac Keeps.refl _ _ : Keeps [23, 10, 1] _ R3).mono (by decide))
       (by bsimp [])) cx.abv h4 (by simp only [List.length_cons]; omega) h4.den.mz (by bsimp [])
     (by bsimp []) fun R5 M5 L5 C5 k5 fr5 h5 ez5 hd5 hkp5 hout5 => ?_

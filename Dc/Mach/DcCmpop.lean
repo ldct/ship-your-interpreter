@@ -103,7 +103,7 @@ theorem cmpop_go {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     (hk : ∀ R' M' H' F' L' C' G', Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs → R' 10 = ordWord (cmpop st).1 →
       DcAt S M' H' F' L' C' G' hs (cmpop st).2 →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 400 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 400 a → imgM M' a = imgM M a) →
       DWO live S Q t ra R' M') :
     DWO live S Q t 0x800034dc#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -148,7 +148,7 @@ theorem cmpop_go {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
   obtain ⟨na, rfl, hda⟩ := (by cases hden1 with | cons hh _ => exact den_num_head hh :
     ∃ na, v2 = .num na ∧ (GV.num pa).Den ⟨L, G2.strs⟩ (.num na))
   have ag3 : ∀ a, sp - 64 ≤ a → (a < sp - 64 + 16 ∨ sp - 64 + 32 ≤ a) → imgM M3 a = imgM M2 a :=
-    fun a ha hn => hout2 a (above_sp hab2 ha).1 (above_sp hab2 ha).2.1 ((above_sp hab2 ha).2.2 _) hn
+    fun a ha hn => hout2 a (above_sp hab2 ha).1 (fun hpg => (above_sp hab2 ha).2.1 hpg.1) ((above_sp hab2 ha).2.2 _) hn
   have hb3 : ldv .ld M3 (sp - 64 + 32 + 8) = BitVec.ofNat 64 pb := by
     rw [ldv_congr .ld fun j hj => ag3 _ (by omega) (by simp only [widthOfM] at hj; omega)]
     exact hd1.ptr
@@ -183,7 +183,7 @@ theorem cmpop_go {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     (by bsimp [q4]) (by bsimp []) (fun R5 M5 H5 F5 L5 C5 hk5 h5 _ hout5 => ?_)
   have ag5 : ∀ a, sp - 64 ≤ a → ¬ slotBytes (sp - 64 + 24) a →
       imgM M5 a = imgM (writeLog M3 [(sp - 64 + 8, 8, R4 10)]) a :=
-    fun a ha hn => hout5 a (above_sp hab2 ha).1 (above_sp hab2 ha).2.1 ((above_sp hab2 ha).2.2 32) hn
+    fun a ha hn => hout5 a (above_sp hab2 ha).1 (fun hpg => (above_sp hab2 ha).2.1 hpg.1) ((above_sp hab2 ha).2.2 32) hn
   have q5 : R5 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk5.get 2 (by decide)]; bsimp [q4]
   have hS5 : HeapOwn S := fun a e1 e2 => h5.heap.heap.own a e1 e2
   have hwb : ldv .ld M5 (sp - 64 + 40) = BitVec.ofNat 64 pb := by
@@ -197,7 +197,7 @@ theorem cmpop_go {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     (by omega) hwb hsf32 (by simp only [heapEnd]; omega) (Or.inr (by omega)) _ (by bsimp [])
     (by bsimp [q5]) (by bsimp []) (fun R6 M6 H6 F6 L6 C6 hk6 h6 _ hout6 => ?_)
   have ag6 : ∀ a, sp - 64 ≤ a → ¬ slotBytes (sp - 64 + 40) a → imgM M6 a = imgM M5 a :=
-    fun a ha hn => hout6 a (above_sp hab2 ha).1 (above_sp hab2 ha).2.1 ((above_sp hab2 ha).2.2 32) hn
+    fun a ha hn => hout6 a (above_sp hab2 ha).1 (fun hpg => (above_sp hab2 ha).2.1 hpg.1) ((above_sp hab2 ha).2.2 32) hn
   have q6 : R6 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk6.get 2 (by decide)]; bsimp [q5]
   have hS6 : HeapOwn S := fun a e1 e2 => h6.heap.heap.own a e1 e2
   have hag : ∀ a, sp - 64 + 48 ≤ a → imgM M6 a = imgM M3 a :=
@@ -213,7 +213,7 @@ theorem cmpop_go {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     rw [ldv_congr .ld fun j hj => hag _ (by simp only [widthOfM] at hj; omega),
       ldv_congr .ld fun j hj => ag3 _ (by omega) (.inr (by simp only [widthOfM] at hj; omega)),
       ldv_congr .ld fun j hj => hout1 _ (above_sp hab2 (a := sp - 64 + 56 + j) (by omega)).1
-        (above_sp hab2 (a := sp - 64 + 56 + j) (by omega)).2.1
+        (fun hpg => (above_sp hab2 (a := sp - 64 + 56 + j) (by omega)).2.1 hpg.1)
         ((above_sp hab2 (a := sp - 64 + 56 + j) (by omega)).2.2 _)
         (.inr (by simp only [widthOfM] at hj; omega))]
     exact hra

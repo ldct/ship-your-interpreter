@@ -254,7 +254,7 @@ theorem dc_exp_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1)
   refine bc_raise_spec hlive (W := 512 + rmStack (2 ^ 30)) (k := st.scale) (z := C2.z) (o := C2.o)
     ⟨hsf.within (m := 48) (n := 512 + rmStack (2 ^ 30)) (by omega) (by decide),
       by simp only [heapEnd]; omega, by omega, by simp only [stderrAddr]; omega, hin.mb.own,
-      fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      fun a ha => hd2.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q2], by bsimp [],
       ⟨hin.slot, fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega),
         .inr (by omega)⟩,

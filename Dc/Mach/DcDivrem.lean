@@ -119,7 +119,7 @@ theorem OpFail2.of_leak2 {S : Nat → Prop} {M M2 M' : Mem} {H : Heap} {F : List
     (hx2 : x2 ∈ L) (e2p : x2.rep.p = pb) (e2n : x2.rep.num = nb)
     (hnone : f st.scale na nb = none)
     (hm : MemOnly P M' M2) (hP : ∀ a, P a → OutHeap a ∧ ¬ DcGlob a)
-    (hout : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slots2 qq qr a →
+    (hout : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp N a → ¬ slots2 qq qr a →
       imgM M' a = imgM M a)
     (R' : Nat → BitVec 64) (ha0 : R' 10 ≠ 0#64) :
     OpFail2 S M M' H F L C G { G with lk := p2 :: p1 :: G.lk } hs st pa pb na nb f R' sp qq qr
@@ -301,7 +301,7 @@ theorem divrem_zero {live S : Nat → Prop}
   have hP4 : ∀ a, frameIn sp N a → OutHeap a ∧ ¬ DcGlob a := fun a ha =>
     ⟨(above_sp hab2 (by simp only [frameIn] at ha; omega)).1,
       (above_sp hab2 (by simp only [frameIn] at ha; omega)).2.1⟩
-  have ho4 : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slots2 qq qr a →
+  have ho4 : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp N a → ¬ slots2 qq qr a →
       imgM M4 a = imgM M a := fun a ho _ hf hs => by
     have e1 := hm4 a hf
     have e2 := hout0 a ho hs (by simp only [frameIn] at hf ⊢; omega)
@@ -420,7 +420,7 @@ theorem dc_divrem_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p
     (xq := C3.z) (xr := C3.z)
     ⟨hsf.within (m := 48) (n := 176 + rmStack (2 ^ 30)) (by omega) (by decide),
       by simp only [heapEnd]; omega, Nat.le_refl _, hin.mb.own,
-      fun a ha => hd3.glob a (by simp only [constBytes, DcGlob, dc_addrs] at ha ⊢; omega),
+      fun a ha => hd3.glob a (by simp only [constBytes, DcGlob, PinWords, dc_addrs] at ha ⊢; omega),
       by bsimp [q3], by bsimp []⟩
     ⟨hx1, hx2, hd3.den.mz, hd3.den.norm x1 hx1, hd3.den.norm x2 hx2, hd3.den.pos x1 hx1, hsz,
       (hd3.kzero hlen).mono (by omega), hmb3, hd3.den.owns⟩

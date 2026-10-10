@@ -178,7 +178,7 @@ theorem start_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {s : List Nat}
     (h : StartPre S M s) (R : Nat → BitVec 64) (hex : ExitK live S Q 1#64)
     (hoom : ∀ M1 R' M' sp', Filled M1 M freeListAddr bssLen (fun _ => 0#8) →
-      OomAt S stackTop mainW M1 (fun _ => False) sp' R' M' → DWO live S Q t 0x80001e74#64 R' M')
+      OomAt S stackTop mainW M1 PinWords sp' R' M' → DWO live S Q t 0x80001e74#64 R' M')
     (hk : ∀ M1 R1 R' M' H' F L C b1 b2, Filled M1 M freeListAddr bssLen (fun _ => 0#8) →
       R1 1 = 0x8000003c#64 → R1 2 = BitVec.ofNat 64 stackTop →
       BootEval S stackTop mainW M1 R1 R' M' H' F L C (msObj b1 b2 s) s →

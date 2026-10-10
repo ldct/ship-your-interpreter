@@ -20,10 +20,10 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 set_option linter.unusedSimpArgs false
 
 theorem DcGlob.lt {a : Nat} (h : DcGlob a) : 0x8001ad14 ≤ a ∧ a < heapStart := by
-  simp only [DcGlob, dc_addrs, heapStart] at h ⊢; omega
+  simp only [DcGlob, PinWords, dc_addrs, heapStart] at h ⊢; omega
 
 theorem DcGlob.outHeap {a : Nat} (h : DcGlob a) : OutHeap a := by
-  simp only [DcGlob, OutHeap, dc_addrs, heapStart, heapEnd, freeListAddr] at h ⊢; omega
+  simp only [DcGlob, PinWords, OutHeap, dc_addrs, heapStart, heapEnd, freeListAddr] at h ⊢; omega
 
 /-- The type word of a datum, as `lw` reads it. -/
 theorem DatAt.lw {Mt : Mem} {a : Nat} {g : GV} (h : DatAt Mt a g) :
@@ -153,7 +153,7 @@ theorem DcAt.pushNode {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L 
   have hm : MemOnly StkWord (writeLog M [(dcStackAddr, 8, BitVec.ofNat 64 c.pay)]) M :=
     MemOnly.store M _ 8 _
   have hstk : ∀ a, StkWord a → OutHeap a ∧ ¬ InBlocks G.blocks a := fun a ha =>
-    ⟨DcGlob.outHeap (by simp only [StkWord, DcGlob, dc_addrs] at ha ⊢; omega), fun hb => by
+    ⟨DcGlob.outHeap (by simp only [StkWord, DcGlob, PinWords, dc_addrs] at ha ⊢; omega), fun hb => by
       have := (h.inBlocks_heap hb).1; simp only [StkWord, dc_addrs, heapStart] at ha this; omega⟩
   have hcIn : ∀ a, c.In a → ¬ StkWord a := fun a hca hs => by
     have := live_in_heap hi hf.live hca; simp only [StkWord, dc_addrs, heapStart] at hs this; omega
@@ -220,7 +220,7 @@ theorem DcAt.popNode {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L :
   have hbG : ∀ b ∈ G.blocks, b ∈ ({ G with stk := (c, g) :: G.stk } : DcG).blocks := fun b hb => by
     rw [G.blocks_pushStk]; exact List.mem_cons_of_mem _ hb
   have hstk : ∀ a, StkWord a → OutHeap a ∧ ¬ InBlocks G.blocks a := fun a ha =>
-    ⟨DcGlob.outHeap (by simp only [StkWord, DcGlob, dc_addrs] at ha ⊢; omega), fun ⟨b, hb, hba⟩ => by
+    ⟨DcGlob.outHeap (by simp only [StkWord, DcGlob, PinWords, dc_addrs] at ha ⊢; omega), fun ⟨b, hb, hba⟩ => by
       have hbl : b ∈ H.live := h.heap.raw.live b (hbG b hb)
       have := live_in_heap hi hbl hba; simp only [StkWord, dc_addrs, heapStart] at ha this; omega⟩
   have hcIn : ∀ a, c.In a → ¬ StkWord a := fun a hca hs => by
@@ -294,7 +294,7 @@ theorem DcAt.stkAcc {S : Nat → Prop} {Mt : Mem} {H : Heap} {F : List Blk} {L :
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S Mt H F L C G hs st) :
     ∀ b ∈ accAddrs dcStackAddr 8, S b := fun b hb => by
   have := of_mem_accAddrs hb
-  exact h.glob b (by simp only [DcGlob, dc_addrs] at this ⊢; omega)
+  exact h.glob b (by simp only [DcGlob, PinWords, dc_addrs] at this ⊢; omega)
 
 theorem ldOK_dcStack : LdOK dcStackAddr 8 := by
   simp only [LdOK, dc_addrs, tohostAddr]; omega
@@ -321,7 +321,7 @@ namespace Dc.Mach
 
 /-- An access to dc's globals, owned through `hG : ∀ a, DcGlob a → S a`. -/
 macro "dc_glob_side" : tactic =>
-  `(tactic| (intro b hb; have hb' := VsaIris.Sym.of_mem_accAddrs hb; apply ‹∀ a, DcGlob a → _›; simp only [DcGlob, dc_addrs] at hb' ⊢; omega))
+  `(tactic| (intro b hb; have hb' := VsaIris.Sym.of_mem_accAddrs hb; apply ‹∀ a, DcGlob a → _›; simp only [DcGlob, PinWords, dc_addrs] at hb' ⊢; omega))
 
 /-- `dc_glob_side` or a hypothesis. -/
 macro "dc_side" : tactic => `(tactic| first | assumption | dc_glob_side)

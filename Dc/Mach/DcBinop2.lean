@@ -75,7 +75,7 @@ structure OpRet2 (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : 
   wr : ldv .ld M qr = BitVec.ofNat 64 yr
   same : G = { G0 with lk := G.lk }
   lkLen : G.lk.length ≤ G0.lk.length + lk
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slots2 qq qr a → imgM M a = imgM M0 a
+  out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp N a → ¬ slots2 qq qr a → imgM M a = imgM M0 a
 
 /-- A two-result operation's failure: nonzero, the operands kept. -/
 structure OpFail2 (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L : List NumObj)
@@ -89,7 +89,7 @@ structure OpFail2 (S : Nat → Prop) (M0 M : Mem) (H : Heap) (F : List Blk) (L :
   db : (GV.num pb).Den ⟨L, G.strs⟩ (.num nb)
   same : G = { G0 with lk := G.lk }
   lkLen : G.lk.length ≤ G0.lk.length + lk
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp N a → ¬ slots2 qq qr a → imgM M a = imgM M0 a
+  out : ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp N a → ¬ slots2 qq qr a → imgM M a = imgM M0 a
 
 /-- **The contract of a two-result operation at `fa`** computing `f k a b`
 within the stack window `N`, losing at most `lk` references. -/
@@ -308,13 +308,13 @@ theorem binop2_pops {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   have hab2 : heapEnd ≤ sp - 128 := by omega
   have hfr3 : B2Frame M3 (sp - 128) fa k (R 1) := (hfr1.transport fun a ha => by
       have ⟨o1, o2, o3⟩ := above_sp hab2 (a := a) (by omega)
-      exact hout1 a o1 o2 (o3 _) (by omega)).transport fun a ha => by
+      exact hout1 a o1 (nglob_pin o2) (o3 _) (by omega)).transport fun a ha => by
     have ⟨o1, o2, o3⟩ := above_sp hab2 (a := a) (by omega)
-    exact hout2 a o1 o2 (o3 _) (by omega)
+    exact hout2 a o1 (nglob_pin o2) (o3 _) (by omega)
   have hb3 : ldv .ld M3 (sp - 128 + 48 + 8) = BitVec.ofNat 64 pb := by
     rw [ldv_congr .ld fun j hj => by
       have ⟨o1, o2, o3⟩ := above_sp hab2 (a := sp - 128 + 48 + 8 + j) (by omega)
-      exact hout2 _ o1 o2 (o3 _) (by simp only [widthOfM] at hj; omega)]
+      exact hout2 _ o1 (nglob_pin o2) (o3 _) (by simp only [widthOfM] at hj; omega)]
     exact hd1.ptr
   have ha3 := hd2.ptr
   have q3 : R3 2 = BitVec.ofNat 64 (sp - 128) := by rw [hk3.get 2 (by decide)]; bsimp [q2]
@@ -332,7 +332,7 @@ theorem binop2_pops {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     refine ⟨?_, hb3⟩
     rw [ldv_congr .ld fun j hj => by
       have ⟨o1, o2, o3⟩ := above_sp hab2 (a := sp - 128 + 48 + j) (by omega)
-      exact hout2 _ o1 o2 (o3 _) (by simp only [widthOfM] at hj; omega)]
+      exact hout2 _ o1 (nglob_pin o2) (o3 _) (by simp only [widthOfM] at hj; omega)]
     exact hd1.tag
   refine hk _ M3 H3 G2 st2 na nb
     (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac ((hk2.mono (by decide)).trans
@@ -377,7 +377,7 @@ theorem binop2_fail {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
   have habv : ∀ a, sp - 128 ≤ a → ∀ M1 : Mem, StkOut (sp - 128) 64 M1 M → imgM M1 a = imgM M a :=
     fun a ha M1 ho => by
       have ⟨o1, o2, o3⟩ := above_sp hab2 ha
-      exact ho a o1 o2 (o3 _)
+      exact ho a o1 (nglob_pin o2) (o3 _)
   refine dc_push_spec hlive h hda hfs (by simp only [heapEnd]; omega) _ ⟨by bsimp []; exact hsa.tag,
     by bsimp []⟩ (by bsimp [h2]) (by bsimp [])
     (fun R1 M1 H1 c1 hk1 h1 hout1 => ?_) (fun R1 M1 e2 hout1 => hoom R1 M1 e2 hout1)
@@ -442,7 +442,7 @@ theorem binop2_frees {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     (h10 : R 10 = BitVec.ofNat 64 (sp - 128 + 32 + 8)) (h1 : R 1 = 0x8000342c#64)
     (hk : ∀ R' M' H' F' L' C', Keeps (1 :: 2 :: freeNumClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → DcAt S M' H' F' L' C' G hs st →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M3 a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M3 a) →
       DWO live S Q t ra R' M') :
     DWO live S Q t 0x80002ba0#64 R M3 := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
@@ -455,7 +455,7 @@ theorem binop2_frees {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     (by omega) hwa hsf32 (by omega) (Or.inr (by omega)) _ h10 q1 (by rw [h1]; decide)
     (fun R4 M4 H4 F4 L4 C4 hk4 h4 _ hout4 => ?_)
   have ag4 : ∀ a, sp - 128 ≤ a → ¬ slotBytes (sp - 128 + 32 + 8) a → imgM M4 a = imgM M3 a :=
-    fun a ha hn => hout4 a (above_sp hab2 ha).1 (above_sp hab2 ha).2.1 ((above_sp hab2 ha).2.2 32) hn
+    fun a ha hn => hout4 a (above_sp hab2 ha).1 (fun hpg => (above_sp hab2 ha).2.1 hpg.1) ((above_sp hab2 ha).2.2 32) hn
   have q4 : R4 2 = BitVec.ofNat 64 (sp - 128) := by rw [hk4.get 2 (by decide)]; bsimp [q1]
   have hwb4 : ldv .ld M4 (sp - 128 + 48 + 8) = BitVec.ofNat 64 pb := by
     rw [ldv_congr .ld fun j hj => ag4 _ (by omega) (by simp only [slotBytes, widthOfM] at hj ⊢; omega)]
@@ -468,7 +468,7 @@ theorem binop2_frees {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     (by omega) hwb4 hsf32 (by omega) (Or.inr (by omega)) _ (by bsimp []) (by bsimp [q4]) (by bsimp [])
     (fun R5 M5 H5 F5 L5 C5 hk5 h5 _ hout5 => ?_)
   have ag5 : ∀ a, sp - 128 ≤ a → ¬ slotBytes (sp - 128 + 48 + 8) a → imgM M5 a = imgM M4 a :=
-    fun a ha hn => hout5 a (above_sp hab2 ha).1 (above_sp hab2 ha).2.1 ((above_sp hab2 ha).2.2 32) hn
+    fun a ha hn => hout5 a (above_sp hab2 ha).1 (fun hpg => (above_sp hab2 ha).2.1 hpg.1) ((above_sp hab2 ha).2.2 32) hn
   have q5 : R5 2 = BitVec.ofNat 64 (sp - 128) := by rw [hk5.get 2 (by decide)]; bsimp [q4]
   have hwr5 : ldv .ld M5 (sp - 128 + 120) = ra := by
     rw [ldv_congr .ld fun j hj => ag5 _ (by omega) (by simp only [slotBytes, widthOfM] at hj ⊢; omega),
@@ -507,10 +507,10 @@ theorem binop2_second {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
     (h1 : R 1 = 0x800033fc#64)
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs → DcAt S M' H' F' L' C' G' hs (st.push (.num rr)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
       DWO live S Q t ra R' M')
     (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 128 - 16) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
       DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x80001ea0#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
@@ -571,7 +571,7 @@ theorem binop2_second {live S : Nat → Prop} {Q : String → (Nat → BitVec 64
       rw [hout' a ho hg hf, hm3 a (fun hb => by
         rcases hb with hb | hb
         · simp only [Blk.In, Blk.pay, Blk.fin] at hb hbhi hpl1; simp only [OutHeap, heapStart, heapEnd] at ho; omega
-        · exact hg (by simp only [StkWord, DcGlob, dc_addrs] at hb ⊢; omega)),
+        · exact hg (by simp only [StkWord, DcGlob, PinWords, dc_addrs] at hb ⊢; omega)),
         hp.frame a (OutHeap.not_alloc hi ho) fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)]
 
 /-- **The first push's node stores** (`0x800033dc` to the second
@@ -598,10 +598,10 @@ theorem binop2_mid {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs →
       DcAt S M' H' F' L' C' G' hs ((st.push (.num rq)).push (.num rr)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M2 a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M2 a) →
       DWO live S Q t ra R' M')
     (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 128 - 16) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M2 a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M2 a) →
       DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x800033dc#64 R (writeLog (writeLog M2 [(b.pay, 8, w0)]) [(sp - 128 + 80, 4, 1#64)]) := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
@@ -613,7 +613,7 @@ theorem binop2_mid {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   have hG2 := h2'.glob
   bc_run hlive hS2 [h2, h10, h11, h12, h13, h14, h15, h16] at 0x80001ea0
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-  all_goals try (intro x hx; have hx' := VsaIris.Sym.of_mem_accAddrs hx; exact hG2 x (by simp only [DcGlob, dc_addrs] at hx' ⊢; omega))
+  all_goals try (intro x hx; have hx' := VsaIris.Sym.of_mem_accAddrs hx; exact hG2 x (by simp only [DcGlob, PinWords, dc_addrs] at hx' ⊢; omega))
   all_goals try (show StOK _ _; refine ⟨?_, ?_, ?_, ?_⟩ <;> omega)
   generalize hMx : writeLog (writeLog (writeLog (writeLog (writeLog (writeLog (writeLog (writeLog M2
       [(b.pay, 8, w0)]) [(sp - 128 + 80, 4, 1#64)]) [(b.pay + 8, 8, BitVec.ofNat 64 yq)])
@@ -668,14 +668,14 @@ theorem binop2_mid {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
         exact hm4 a fun hb => by
           rcases hb with hb | hb | hb
           · simp only [Blk.In, Blk.pay, Blk.fin] at hb hbhi hpl1; simp only [OutHeap, heapStart, heapEnd] at ho; omega
-          · exact hg (by simp only [StkWord, DcGlob, dc_addrs] at hb ⊢; omega)
+          · exact hg (by simp only [StkWord, DcGlob, PinWords, dc_addrs] at hb ⊢; omega)
           · exact hf (by simp only [frameIn]; omega))
     fun R' M' e2 hout' => hoom R' M' e2 fun a ho hg hf => by
       rw [hout' a ho hg hf]
       exact hm4 a fun hb => by
         rcases hb with hb | hb | hb
         · simp only [Blk.In, Blk.pay, Blk.fin] at hb hbhi hpl1; simp only [OutHeap, heapStart, heapEnd] at ho; omega
-        · exact hg (by simp only [StkWord, DcGlob, dc_addrs] at hb ⊢; omega)
+        · exact hg (by simp only [StkWord, DcGlob, PinWords, dc_addrs] at hb ⊢; omega)
         · exact hf (by simp only [frameIn]; omega)
 
 /-- **The first push** (after `dc_malloc` at `0x800033ac` returns): the
@@ -700,10 +700,10 @@ theorem binop2_first {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs →
       DcAt S M' H' F' L' C' G' hs ((st.push (.num rq)).push (.num rr)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a) →
       DWO live S Q t ra R' M')
     (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 128 - 16) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a) →
       DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x800033b0#64 R M2 := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
@@ -757,8 +757,8 @@ theorem binop2_first {live S : Nat → Prop} {Q : String → (Nat → BitVec 64)
     rw [ldv_congr .ld fun j hj => agw _ (by omega)]; exact hwb
   have hwr2 : ldv .ld M2 (sp - 128 + 120) = ra := by
     rw [ldv_congr .ld fun j hj => agw _ (by omega)]; exact hwr
-  have out2 : ∀ M' : Mem, (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M2 a) →
-      ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a := fun M' ho a o1 o2 o3 => by
+  have out2 : ∀ M' : Mem, (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M2 a) →
+      ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a := fun M' ho a o1 o2 o3 => by
     rw [ho a o1 o2 o3]
     exact hp.frame a (OutHeap.not_alloc hi1 o1) fun hf' => o3 (by simp only [frameIn] at hf' ⊢; omega)
   exact binop2_mid hlive h2' hfresh hbsz hpl1 hpl2 hpl3 hbhi hdq hdr hsf hab hwa2 hwb2 hwr2 hral hd hw1 hold _
@@ -785,10 +785,10 @@ theorem binop2_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     (hk : ∀ R' M' H' F' L' C' (G' : DcG), Keeps (1 :: 2 :: opClob) R' R → R' 1 = ra →
       R' 2 = BitVec.ofNat 64 sp → G'.lk = G.lk → G'.strs = G.strs →
       DcAt S M' H' F' L' C' G' hs ((st.push (.num rq)).push (.num rr)) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
       DWO live S Q t ra R' M')
     (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 128 - 16) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M a) →
       DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x80003388#64 R M := by
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
@@ -837,8 +837,8 @@ theorem binop2_ok {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     rw [ldv_congr .ld fun j hj => ag1 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact hsb.ptr
   have hwr : ldv .ld M1 (sp - 128 + 120) = ra := by
     rw [ldv_congr .ld fun j hj => ag1 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact hfr.wra
-  have out1 : ∀ M' : Mem, (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a) →
-      ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M' a = imgM M a := fun M' ho a o1 o2 o3 => by
+  have out1 : ∀ M' : Mem, (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M1 a) →
+      ∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M' a = imgM M a := fun M' ho a o1 o2 o3 => by
     rw [ho a o1 o2 o3]
     exact hM1 a fun ha => o3 (by simp only [frameIn]; omega)
   refine dc_malloc_spec hlive hi1 (n := 32) (sp := sp - 128) (by omega)
@@ -908,18 +908,18 @@ theorem dc_binop2_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
   have kk : Keeps (1 :: 2 :: opClob) R1 R :=
     (hk1.mono (by decide)).trans (hk0.mono (by decide))
   -- what the operation leaves of the caller's frame words
-  have after : ∀ M' : Mem, (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn (sp - 128) N a →
+  have after : ∀ M' : Mem, (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn (sp - 128) N a →
       ¬ slots2 (sp - 128 + 72) (sp - 128 + 88) a → imgM M' a = imgM M2 a) →
       B2Frame M' (sp - 128) fa st2.scale (R 1) ∧ DatAt M' (sp - 128 + 32) (.num pa) ∧
         DatAt M' (sp - 128 + 48) (.num pb) := fun M' ho => by
     have ag : ∀ a, sp - 128 ≤ a → ¬ slots2 (sp - 128 + 72) (sp - 128 + 88) a → imgM M' a = imgM M2 a :=
-      fun a ha hn => ho a (above_sp hab2 ha).1 (above_sp hab2 ha).2.1 ((above_sp hab2 ha).2.2 N) hn
+      fun a ha hn => ho a (above_sp hab2 ha).1 (fun hpg => (above_sp hab2 ha).2.1 hpg.1) ((above_sp hab2 ha).2.2 N) hn
     refine ⟨hfr.transport fun a ha => ag a (by omega) (by simp only [slots2, slotBytes]; omega),
       DatAt.congr16 (fun x h1 h2 => ag x (by omega) (by simp only [slots2, slotBytes]; omega)) hsa,
       DatAt.congr16 (fun x h1 h2 => ag x (by omega) (by simp only [slots2, slotBytes]; omega)) hsb⟩
-  have outW : ∀ M' M'' : Mem, (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn (sp - 128) N a →
+  have outW : ∀ M' M'' : Mem, (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn (sp - 128) N a →
       ¬ slots2 (sp - 128 + 72) (sp - 128 + 88) a → imgM M' a = imgM M2 a) →
-      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 192 a → imgM M'' a = imgM M' a) →
+      (∀ a, OutHeap a → ¬ (DcGlob a ∧ ¬ PinWords a) → ¬ frameIn sp 192 a → imgM M'' a = imgM M' a) →
       StkOut sp W M'' M := fun M' M'' o1 o2 a ho hg hf => by
     rw [o2 a ho hg (fun h' => hf (by simp only [frameIn] at h' ⊢; omega)),
       o1 a ho hg (fun h' => hf (by simp only [frameIn] at h' ⊢; omega))
@@ -931,7 +931,7 @@ theorem dc_binop2_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
       hsf.slot (by omega) (by omega) (by omega), by omega, by omega,
       e10, e11, e12, e13, e14, e2, by rw [e1]; decide, hmb.transport fun a e1 e2 => by
         have ⟨o1, o2, o3⟩ := mulBase_off e1 e2
-        exact hout2 a o1 o2 fun hf => by simp only [frameIn, heapStart] at hf o3; omega⟩
+        exact hout2 a o1 (nglob_pin o2) fun hf => by simp only [frameIn, heapStart] at hf o3; omega⟩
     (hok nb na st2.stack rfl)
     (fun R' M' H' F' L' C' G' yq yr rq rr hk' hr => ?_) (fun R' M' H' F' L' C' G' hk' hf => ?_)
     fun R' M' sp' ho => hoom R' M' sp' ⟨by have := ho.lo; omega, by have := ho.hi; omega, ho.r2,

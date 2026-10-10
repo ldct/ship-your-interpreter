@@ -19,14 +19,16 @@ set_option linter.unusedSimpArgs false
 
 local macro_rules | `(tactic| sx_side) => `(tactic| dc_side)
 
-/-- **`dc_push (dc_int2data (v))`** from the call of `dc_int2data` (return
-address `p + 4`, where `dc_push` is called; `p + 8` jumps to `DC_OKAY`). -/
-theorem fn_i2d_push {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+/-- **`dc_push (dc_int2data (v))`** as `fn_i2d_push`, over handles `ex ++ hs`
+whose front `ex` (strings the arm lost) is left to the caller's post. -/
+theorem fn_i2d_pushE {live S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {st : St} {M0 M : Mem} {H : Heap}
-    {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {sp W p : Nat}
-    {R0 R : Nat → BitVec 64} {v : Int} (h : DcAt S M H F L C G hs st)
+    {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {sp W : Nat}
+    {R0 R : Nat → BitVec 64} {ex : List GV} {p : Nat}
+    {v : Int} (h : DcAt S M H F L C G (ex ++ hs) st) (hex : ex.length ≤ 2)
     (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W) (ho : FnOom live S Q sp W M0)
-    (hhs : hs.length ≤ 2 ^ 30) (hvlo : -2 ^ 31 < v) (hvhi : v < 2 ^ 31)
+    (hhs : (ex ++ hs).length ≤ 2 ^ 30) (hvlo : -2 ^ 31 < v) (hvhi : v < 2 ^ 31)
     (h10 : R 10 = BitVec.ofInt 64 v) (h1 : R 1 = BitVec.ofNat 64 (p + 4))
     (hp : (p + 4) % 4 = 0 ∧ p + 8 < 2 ^ 64)
     (hj1 : JalAt live S Q (p + 4) 0x80002da4) (hj2 : JAt live S Q (p + 8) 0x80000c10)
@@ -49,7 +51,8 @@ theorem fn_i2d_push {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     · have hc3 := hc2.callS (Wc := 64) (by omega) ((k3.mono (by decide)).trans (Keeps.refl _ _))
         (k3.get 2 (by decide)) hout3
       rw [e1]
-      exact hj2 _ R3 M3 (fa_ok (st' := st.push (.num (Num.ofInt v))) hlive (ex := []) h3 hc3 hk (.ok _) (by simp) (by simp) (StrPin.refl _ _))
+      exact hj2 _ R3 M3 (fa_ok (st' := st.push (.num (Num.ofInt v))) hlive h3 hc3 hk (.ok _) hex
+        (by simp) (StrPin.refl _ _))
     · exact hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3 fun a e1 e2 _ e4 => hout3 a e1 e2 e4
   · have hj : JAt live S Q 0x80002bcc 0x80001e74 := fun t R M k => by
       have htx : tohostAddr = 0x8001ad00 := rfl
@@ -57,6 +60,21 @@ theorem fn_i2d_push {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
       exact k
     exact hj _ R1 M1 (hc.oom ho (Wc := 192) (by omega) (by omega) (by omega) e2
       fun a e1 e2 _ e4 => hout1 a e1 e2 e4)
+
+/-- **`dc_push (dc_int2data (v))`** from the call of `dc_int2data` (return
+address `p + 4`, where `dc_push` is called; `p + 8` jumps to `DC_OKAY`). -/
+theorem fn_i2d_push {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {st : St} {M0 M : Mem} {H : Heap}
+    {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {sp W p : Nat}
+    {R0 R : Nat → BitVec 64} {v : Int} (h : DcAt S M H F L C G hs st)
+    (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W) (ho : FnOom live S Q sp W M0)
+    (hhs : hs.length ≤ 2 ^ 30) (hvlo : -2 ^ 31 < v) (hvhi : v < 2 ^ 31)
+    (h10 : R 10 = BitVec.ofInt 64 v) (h1 : R 1 = BitVec.ofNat 64 (p + 4))
+    (hp : (p + 4) % 4 = 0 ∧ p + 8 < 2 ^ 64)
+    (hj1 : JalAt live S Q (p + 4) 0x80002da4) (hj2 : JAt live S Q (p + 8) 0x80000c10)
+    (hk : FnK live S Q t0 st (.ok (st.push (.num (Num.ofInt v)))) G hs sp W M0 R0) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) 0x800026d8#64 R M :=
+  fn_i2d_pushE (ex := []) hlive h (by simp) hc hW ho hhs hvlo hvhi h10 h1 hp hj1 hj2 hk
 
 section
 

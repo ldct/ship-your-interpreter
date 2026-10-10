@@ -27,27 +27,6 @@ theorem sqrtNonnumMsg : ProgMsg 0x80007a98 38 :=
     by decide, by decide⟩, by decide⟩
 
 
-/-- **The frame after a callee** that may also write `dc_func`'s own locals
-(below the saved `ra`), e.g. a result slot of the frame. -/
-theorem FnAt.callL {S : Nat → Prop} {sp W Wc : Nat} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64}
-    (hc : FnAt S sp W M0 R0 R M) (hW : 192 + Wc ≤ W) (k : Keeps (1 :: 2 :: cClob) R' R)
-    (e2 : R' 2 = R 2)
-    (hout : ∀ a, OutHeap a → ¬ DcGlob a → ¬ ocG a → ¬ frameIn (sp - 192) Wc a →
-      ¬ frameIn (sp - 8) 184 a → imgM M' a = imgM M a) : FnAt S sp W M0 R0 R' M' := by
-  have hh := hc.room
-  have hl := hc.frame.lo
-  have hab : heapEnd ≤ sp - 192 := by simp only [heapEnd] at hh ⊢; omega
-  refine { hc with r2 := e2.trans hc.r2, ra := ?_, keep := ?_, out := ?_ }
-  · rw [← hc.ra]
-    exact ldv_congr .ld fun j hj => by
-      have := above_sp hab (a := sp - 192 + 184 + j) (by omega)
-      exact hout _ this.1 this.2.1 (not_ocG_of_ge hab (by omega)) (this.2.2 _)
-        (by simp only [frameIn, widthOfM] at hj ⊢; omega)
-  · exact (k.mono (by decide)).trans hc.keep
-  · intro a e1 e2 e3 e4
-    exact (hout a e1 e2 e3 (fun hf => e4 (by simp only [frameIn] at hf ⊢; omega))
-      fun hf => e4 (by simp only [frameIn] at hf ⊢; omega)).trans (hc.out a e1 e2 e3 e4)
-
 /-- `dcFunc`'s `v` on a popped number. -/
 theorem dcFunc_v (st : St) (n : Num) (peek : Option Nat) (neg : Bool) :
     dcFunc 70 (st.push (.num n)) 118 peek neg =

@@ -9,9 +9,8 @@ import Dc.Mach.DcTell
 `r` (`dc_stack_rotate (2)`) and `X` (`dc_tell_scale` of a popped number, `0`
 for a string, then `dc_int2data` and `dc_push`). Generic pieces: `FnK.okIdx`
 (an `.ok` continuation moved to another start state and ghost with the same
-lost references and strings), `fn_pop0` (`fn_pop` with `a0 = 0` on the popped
-route), `fn_i2d_pushE` (`fn_i2d_push` over handles `ex ++ hs`, the front lost
-to the caller's post: `X` on a string never frees it), and `StkLinks.off`.
+lost references and strings) and `StkLinks.off`; `X` on a string never frees
+it, so its handle goes to the post's `ex` (`fn_i2d_pushE`, `DcFuncArm1.lean`).
 -/
 
 namespace Dc.Mach
@@ -42,85 +41,6 @@ theorem FnK.okIdx {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   fun R' M' H' F' L' C' G' code st' ex k e2 e10 hf hp =>
     hk R' M' H' F' L' C' G' code st' ex k e2 e10 (by cases hf; exact .ok _)
       ⟨hp.dc, hp.ex, hl ▸ hp.lk, hst ▸ hp.pin, hp.out⟩
-
-section
-
-variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-  {t : String} {st : St} {M0 M : Mem} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts}
-  {G : DcG} {hs : List GV} {sp W : Nat} {R0 R : Nat → BitVec 64}
-
-/-- **`dc_pop (&datum)`** as `fn_pop`, the popped route also given `a0 = 0`
-(`DC_SUCCESS`, which `X` passes on to `dc_int2data`). -/
-theorem fn_pop0 (hlive : ∀ p ∈ dcText, live p.1) {p tgt0 : Nat}
-    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
-    (h10 : R 10 = BitVec.ofNat 64 (fnSlot sp)) (hp : (p + 4) % 4 = 0 ∧ p + 4 < 2 ^ 64)
-    (hj : JalAt live S Q p 0x8000310c) (hb : BnezAt live S Q (p + 4) tgt0)
-    (hempty : st.stack = [] → ∀ R' M', FnAt S sp W M0 R0 R' M' → DcAt S M' H F L C G hs st →
-      DWO live S Q t (BitVec.ofNat 64 tgt0) R' M')
-    (hne : ∀ R' M' H' (G' : DcG) g v st', st = st'.push v →
-      (∃ c, G = { G' with stk := (c, g) :: G'.stk }) → FnAt S sp W M0 R0 R' M' →
-      DcAt S M' H' F L C G' (g :: hs) st' → g.Den ⟨L, G'.strs⟩ v → DatAt M' (fnSlot sp) g →
-      R' 10 = 0#64 → DWO live S Q t (BitVec.ofNat 64 (p + 8)) R' M') :
-    DWO live S Q t (BitVec.ofNat 64 p) R M := by
-  refine hj t R M fun R1 k1 e1 => ?_
-  have hc1 := hc.mod (k1.mono (by decide))
-  refine dc_pop_spec hlive h (hc1.cf (Wc := 336) hW) (hc1.cab hW) hc1.slot R1
-    (by rw [k1.get 10 (by decide)]; exact h10) hc1.r2
-    (by rw [e1, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hp.2]; exact hp.1)
-    (fun R' M' H' G' g v st' est eG k2 e10 h' hd hout => ?_)
-    (fun he R' M' k2 e10 h' hout => ?_)
-  · rw [e1]
-    have hc2 := hc1.popped hW k2 hout
-    have hv : g.Den ⟨L, G'.strs⟩ v := by
-      obtain ⟨c, rfl⟩ := eG
-      have hden := h.den.stk
-      subst est
-      cases hden with | cons hh _ => exact hh
-    refine hb t R' M' (fun hne' => absurd e10 hne') fun _ => ?_
-    exact hne R' M' H' G' g v st' est eG hc2 h' hv hd e10
-  · rw [e1]
-    exact hb t R' M' (fun _ => hempty he R' M' (hc1.popped hW k2 hout) h')
-      fun e => absurd (e10.symm.trans e) (by decide)
-
-/-- **`dc_push (dc_int2data (v))`** as `fn_i2d_push`, over handles `ex ++ hs`
-whose front `ex` (strings the arm lost) is left to the caller's post. -/
-theorem fn_i2d_pushE (hlive : ∀ p ∈ dcText, live p.1) {t0 : String} {ex : List GV} {p : Nat}
-    {v : Int} (h : DcAt S M H F L C G (ex ++ hs) st) (hex : ex.length ≤ 2)
-    (hc : FnAt S sp W M0 R0 R M) (hW : 384 ≤ W) (ho : FnOom live S Q sp W M0)
-    (hhs : (ex ++ hs).length ≤ 2 ^ 30) (hvlo : -2 ^ 31 < v) (hvhi : v < 2 ^ 31)
-    (h10 : R 10 = BitVec.ofInt 64 v) (h1 : R 1 = BitVec.ofNat 64 (p + 4))
-    (hp : (p + 4) % 4 = 0 ∧ p + 8 < 2 ^ 64)
-    (hj1 : JalAt live S Q (p + 4) 0x80002da4) (hj2 : JAt live S Q (p + 8) 0x80000c10)
-    (hk : FnK live S Q t0 st (.ok (st.push (.num (Num.ofInt v)))) G hs sp W M0 R0) :
-    DWO live S Q (t0 ++ Dc.outStr st.out) 0x800026d8#64 R M := by
-  obtain ⟨hp1, hp2⟩ := hp
-  refine dc_int2data_spec hlive h hhs (hc.cf (Wc := 192) (by omega)) (hc.cab (by omega)) R h10 hc.r2
-    (by rw [h1, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (a := p + 4) (by omega)]; exact hp1)
-    hvlo hvhi (fun R1 M1 H1 F1 L1 C1 g k1 hd hv h1' hout1 => ?_)
-    (fun R1 M1 e2 hout1 => ?_)
-  · have hc1 := hc.callS (Wc := 192) (by omega) ((k1.mono (by decide)).trans (Keeps.refl _ _))
-      (k1.get 2 (by decide)) hout1
-    rw [h1]
-    refine hj1 _ R1 M1 fun R2 k2 e1 => ?_
-    have hc2 := hc1.mod (R' := R2) (k2.mono (by decide))
-    refine dc_push_spec hlive h1' hv (hc2.cf (Wc := 64) (by omega)) (hc2.cab (by omega)) R2
-      ⟨by rw [k2.get 10 (by decide)]; exact hd.tag, by rw [k2.get 11 (by decide)]; exact hd.ptr⟩
-      hc2.r2 (by rw [e1, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (a := p + 4 + 4) (by omega)]; omega)
-      (fun R3 M3 H3 c k3 h3 hout3 => ?_) (fun R3 M3 e3 hout3 => ?_)
-    · have hc3 := hc2.callS (Wc := 64) (by omega) ((k3.mono (by decide)).trans (Keeps.refl _ _))
-        (k3.get 2 (by decide)) hout3
-      rw [e1]
-      exact hj2 _ R3 M3 (fa_ok (st' := st.push (.num (Num.ofInt v))) hlive h3 hc3 hk (.ok _) hex
-        (by simp) (StrPin.refl _ _))
-    · exact hc2.oom ho (Wc := 64) (by omega) (by omega) (by omega) e3 fun a e1 e2 _ e4 => hout3 a e1 e2 e4
-  · have hj : JAt live S Q 0x80002bcc 0x80001e74 := fun t R M k => by
-      have htx : tohostAddr = 0x8001ad00 := rfl
-      bc_run hlive hlive [] at 0x80001e74
-      exact k
-    exact hj _ R1 M1 (hc.oom ho (Wc := 192) (by omega) (by omega) (by omega) e2
-      fun a e1 e2 _ e4 => hout1 a e1 e2 e4)
-
-end
 
 section
 

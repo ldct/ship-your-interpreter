@@ -58,9 +58,9 @@ variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat �
   {t : String} {st : St} {M0 M : Mem} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts}
   {G : DcG} {hs : List GV} {sp W : Nat} {R0 R : Nat → BitVec 64}
 
-/-- **`dc_pop (&datum)`** from its call at `p` (`a0` the slot), the status
-tested at `p + 4` (`bnez a0, tgt0`). -/
-theorem fn_pop (hlive : ∀ p ∈ dcText, live p.1) {p tgt0 : Nat}
+/-- **`dc_pop (&datum)`** as `fn_pop`, the popped route also given `a0 = 0`
+(`DC_SUCCESS`, which `X` passes on to `dc_int2data`). -/
+theorem fn_pop0 (hlive : ∀ p ∈ dcText, live p.1) {p tgt0 : Nat}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
     (h10 : R 10 = BitVec.ofNat 64 (fnSlot sp)) (hp : (p + 4) % 4 = 0 ∧ p + 4 < 2 ^ 64)
     (hj : JalAt live S Q p 0x8000310c) (hb : BnezAt live S Q (p + 4) tgt0)
@@ -69,7 +69,7 @@ theorem fn_pop (hlive : ∀ p ∈ dcText, live p.1) {p tgt0 : Nat}
     (hne : ∀ R' M' H' (G' : DcG) g v st', st = st'.push v →
       (∃ c, G = { G' with stk := (c, g) :: G'.stk }) → FnAt S sp W M0 R0 R' M' →
       DcAt S M' H' F L C G' (g :: hs) st' → g.Den ⟨L, G'.strs⟩ v → DatAt M' (fnSlot sp) g →
-      DWO live S Q t (BitVec.ofNat 64 (p + 8)) R' M') :
+      R' 10 = 0#64 → DWO live S Q t (BitVec.ofNat 64 (p + 8)) R' M') :
     DWO live S Q t (BitVec.ofNat 64 p) R M := by
   refine hj t R M fun R1 k1 e1 => ?_
   have hc1 := hc.mod (k1.mono (by decide))
@@ -86,10 +86,25 @@ theorem fn_pop (hlive : ∀ p ∈ dcText, live p.1) {p tgt0 : Nat}
       subst est
       cases hden with | cons hh _ => exact hh
     refine hb t R' M' (fun hne' => absurd e10 hne') fun _ => ?_
-    exact hne R' M' H' G' g v st' est eG hc2 h' hv hd
+    exact hne R' M' H' G' g v st' est eG hc2 h' hv hd e10
   · rw [e1]
     exact hb t R' M' (fun _ => hempty he R' M' (hc1.popped hW k2 hout) h')
       fun e => absurd (e10.symm.trans e) (by decide)
+
+/-- **`dc_pop (&datum)`**: `fn_pop0` without the status word. -/
+theorem fn_pop (hlive : ∀ p ∈ dcText, live p.1) {p tgt0 : Nat}
+    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
+    (h10 : R 10 = BitVec.ofNat 64 (fnSlot sp)) (hp : (p + 4) % 4 = 0 ∧ p + 4 < 2 ^ 64)
+    (hj : JalAt live S Q p 0x8000310c) (hb : BnezAt live S Q (p + 4) tgt0)
+    (hempty : st.stack = [] → ∀ R' M', FnAt S sp W M0 R0 R' M' → DcAt S M' H F L C G hs st →
+      DWO live S Q t (BitVec.ofNat 64 tgt0) R' M')
+    (hne : ∀ R' M' H' (G' : DcG) g v st', st = st'.push v →
+      (∃ c, G = { G' with stk := (c, g) :: G'.stk }) → FnAt S sp W M0 R0 R' M' →
+      DcAt S M' H' F L C G' (g :: hs) st' → g.Den ⟨L, G'.strs⟩ v → DatAt M' (fnSlot sp) g →
+      DWO live S Q t (BitVec.ofNat 64 (p + 8)) R' M') :
+    DWO live S Q t (BitVec.ofNat 64 p) R M :=
+  fn_pop0 hlive h hc hW h10 hp hj hb hempty
+    fun R' M' H' G' g v st' est eG hc' h' hv hd _ => hne R' M' H' G' g v st' est eG hc' h' hv hd
 
 /-- **`dc_top_of_stack (&datum)`** from its call at `p`, the status tested
 at `p + 4` (`bnez a0, tgt0`). -/

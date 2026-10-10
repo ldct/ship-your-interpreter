@@ -426,21 +426,32 @@ theorem regChain_frame {Mt Mt' : Mem} {a : Nat} {l : List (Blk × RLev)}
     have := ldv_blk (o := 0) hcm hb' .lw (by simp only [widthOfM]; omega)
     simp only [Nat.add_zero] at this; rw [this]; exact hq.idx
 
-/-- **The view with new chains**: the strings and the globals other than the
-chain words read the same, the stack and register chains are given at `Mt'`. -/
-theorem DcView.withChains {Mt Mt' : Mem} {G G' : DcG} {C : BcConsts} {st st' : St}
+/-- The words `out_char` may store among dc's globals: `line_max` and
+`stdout`'s descriptor (the latter only within its footprint). -/
+def OcWords (a : Nat) : Prop :=
+  (lineMaxAddr ≤ a ∧ a < lineMaxAddr + 4) ∨ (stdFilesAddr ≤ a ∧ a < stdFilesAddr + 4)
+
+/-- **The view with new chains and new `out_char` words**: the strings and
+the globals other than the chain words and `OcWords` read the same, the
+stack and register chains are given at `Mt'`, and `line_max` and `stdout`'s
+descriptor are read again at `Mt'`. -/
+theorem DcView.withChainsW {Mt Mt' : Mem} {G G' : DcG} {C : BcConsts} {st st' : St}
     (h : DcView Mt G C st) (hstr : G'.strs = G.strs) (hlb : G'.lbuf = G.lbuf)
     (hst : st'.ibase = st.ibase ∧ st'.obase = st.obase ∧ st'.scale = st.scale ∧
       st'.unwind = st.unwind ∧ st'.noexit = st.noexit)
     (hb : ∀ o ∈ G.strs, ∀ x, (o.hb.In x ∨ o.tb.In x) → imgM Mt' x = imgM Mt x)
-    (hg : ∀ a, DcGlob a → ¬ ChainWords a → imgM Mt' a = imgM Mt a)
+    (hg : ∀ a, DcGlob a → ¬ ChainWords a → ¬ OcWords a → imgM Mt' a = imgM Mt a)
+    (hlm : ldv .lw Mt' lineMaxAddr = BitVec.ofInt 64 (-1) ∨
+      ldv .lw Mt' lineMaxAddr = BitVec.ofNat 64 70)
+    (hfd : ldv .lw Mt' stdFilesAddr = BitVec.ofNat 64 1)
     (hs : LChain Mt' 24 (SNodeAt Mt') dcStackAddr G'.stk)
     (hr : ∀ r, r < 256 → LChain Mt' 24 (RLevAt Mt') (regAddr r) (G'.regs r)) :
     DcView Mt' G' C st' := by
   obtain ⟨e1, e2, e3, e4, e5⟩ := hst
-  have gw : ∀ (k : MKind) a, (∀ j, j < widthOfM k → DcGlob (a + j) ∧ ¬ ChainWords (a + j)) →
+  have gw : ∀ (k : MKind) a,
+      (∀ j, j < widthOfM k → DcGlob (a + j) ∧ ¬ ChainWords (a + j) ∧ ¬ OcWords (a + j)) →
       ldv k Mt' a = ldv k Mt a := fun k a ha =>
-    ldv_congr k fun j hj => hg _ (ha j hj).1 (ha j hj).2
+    ldv_congr k fun j hj => hg _ (ha j hj).1 (ha j hj).2.1 (ha j hj).2.2
   refine
     { stk := hs
       regs := hr
@@ -451,39 +462,56 @@ theorem DcView.withChains {Mt Mt' : Mem} {G G' : DcG} {C : BcConsts} {st st' : S
           rcases hc with rfl | rfl
           · exact hb o ho x (.inl hcx)
           · exact hb o ho x (.inr hcx)
-      zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.zw
-      ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.ow
-      tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.tw
+      zw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.zw
+      ow := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.ow
+      tw := (gw .ld _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.tw
       ibase := by
         rw [e1]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.ibase
+          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.ibase
       obase := by
         rw [e2]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.obase
+          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.obase
       scale := by
         rw [e3]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.scale
+          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.scale
       unwind := by
         rw [e4]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.unwind
+          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.unwind
       noexit := by
         rw [e5]; exact (gw .lw _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.noexit
-      lineMax := by
-        rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega]
-        exact h.lineMax
+          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.noexit
+      lineMax := hlm
       lbuf := by
         rw [hlb]; exact (gw .ld _ fun j hj => by
-          simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.lbuf
+          simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.lbuf
       lbufLen := fun b e => (gw .ld _ fun j hj => by
-        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans
+        simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans
           (h.lbufLen b (hlb ▸ e))
-      outFd := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.outFd
+      outFd := hfd
       errFd := (gw .lw _ fun j hj => by
-        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.errFd
+        simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.errFd
       prog := (gw .ld _ fun j hj => by
-        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.prog }
+        simp only [widthOfM, DcGlob, ChainWords, OcWords, dc_addrs] at hj ⊢; omega).trans h.prog }
+
+/-- **The view with new chains**: the strings and the globals other than the
+chain words read the same, the stack and register chains are given at `Mt'`. -/
+theorem DcView.withChains {Mt Mt' : Mem} {G G' : DcG} {C : BcConsts} {st st' : St}
+    (h : DcView Mt G C st) (hstr : G'.strs = G.strs) (hlb : G'.lbuf = G.lbuf)
+    (hst : st'.ibase = st.ibase ∧ st'.obase = st.obase ∧ st'.scale = st.scale ∧
+      st'.unwind = st.unwind ∧ st'.noexit = st.noexit)
+    (hb : ∀ o ∈ G.strs, ∀ x, (o.hb.In x ∨ o.tb.In x) → imgM Mt' x = imgM Mt x)
+    (hg : ∀ a, DcGlob a → ¬ ChainWords a → imgM Mt' a = imgM Mt a)
+    (hs : LChain Mt' 24 (SNodeAt Mt') dcStackAddr G'.stk)
+    (hr : ∀ r, r < 256 → LChain Mt' 24 (RLevAt Mt') (regAddr r) (G'.regs r)) :
+    DcView Mt' G' C st' :=
+  have gw : ∀ (k : MKind) a, (∀ j, j < widthOfM k → DcGlob (a + j) ∧ ¬ ChainWords (a + j)) →
+      ldv k Mt' a = ldv k Mt a := fun k a ha =>
+    ldv_congr k fun j hj => hg _ (ha j hj).1 (ha j hj).2
+  h.withChainsW hstr hlb hst hb (fun a ha hc _ => hg a ha hc)
+    (by rw [gw .lw _ fun j hj => by simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega]
+        exact h.lineMax)
+    ((gw .lw _ fun j hj => by
+        simp only [widthOfM, DcGlob, ChainWords, dc_addrs] at hj ⊢; omega).trans h.outFd) hs hr
 
 /-- **The view reads only the ghost's blocks and dc's globals.** -/
 theorem DcView.frame {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} (h : DcView Mt G C st)
@@ -498,6 +526,33 @@ theorem DcView.frame {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} (h : DcVi
       fun bg hm x hx => hb x ⟨bg.1, G.stk_mem hm, hx⟩)
     fun r hr => regChain_frame (h.regs r hr)
       (ldv_glob hg .ld fun j hj => by simp only [widthOfM, DcGlob, regAddr, dc_addrs] at hj ⊢; omega)
+      fun be hm c hc x hx => hb x ⟨c, by
+        rcases List.mem_cons.mp hc with rfl | hc
+        · exact G.reg_mem hr hm
+        · obtain ⟨bn, hn, rfl⟩ := List.mem_map.mp hc
+          exact G.arr_mem hr hm hn, hx⟩
+
+/-- **The view through `out_char`'s stores**: the blocks and the globals
+other than `OcWords` read the same, `line_max` and `stdout`'s descriptor
+read again. -/
+theorem DcView.frameW {Mt Mt' : Mem} {G : DcG} {C : BcConsts} {st : St} (h : DcView Mt G C st)
+    (hb : ∀ a, InBlocks G.blocks a → imgM Mt' a = imgM Mt a)
+    (hg : ∀ a, DcGlob a → ¬ OcWords a → imgM Mt' a = imgM Mt a)
+    (hlm : ldv .lw Mt' lineMaxAddr = BitVec.ofInt 64 (-1) ∨
+      ldv .lw Mt' lineMaxAddr = BitVec.ofNat 64 70)
+    (hfd : ldv .lw Mt' stdFilesAddr = BitVec.ofNat 64 1) : DcView Mt' G C st :=
+  have gc : ∀ (k : MKind) a, (∀ j, j < widthOfM k → DcGlob (a + j) ∧ ¬ OcWords (a + j)) →
+      ldv k Mt' a = ldv k Mt a := fun k a ha =>
+    ldv_congr k fun j hj => hg _ (ha j hj).1 (ha j hj).2
+  h.withChainsW rfl rfl ⟨rfl, rfl, rfl, rfl, rfl⟩
+    (fun o ho x hx => hx.elim (fun hx => hb x ⟨o.hb, (G.str_mem ho).1, hx⟩)
+      fun hx => hb x ⟨o.tb, (G.str_mem ho).2, hx⟩)
+    (fun a ha _ hw => hg a ha hw) hlm hfd
+    (stkChain_frame h.stk
+      (gc .ld _ fun j hj => by simp only [widthOfM, DcGlob, OcWords, dc_addrs] at hj ⊢; omega)
+      fun bg hm x hx => hb x ⟨bg.1, G.stk_mem hm, hx⟩)
+    fun r hr => regChain_frame (h.regs r hr)
+      (gc .ld _ fun j hj => by simp only [widthOfM, DcGlob, OcWords, regAddr, dc_addrs] at hj ⊢; omega)
       fun be hm c hc x hx => hb x ⟨c, by
         rcases List.mem_cons.mp hc with rfl | hc
         · exact G.reg_mem hr hm

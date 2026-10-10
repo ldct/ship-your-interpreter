@@ -35,13 +35,13 @@ abbrev cfW : Nat := 176 + rmStack (2 ^ 30)
 
 /-- **Inside a dc function's frame**: `sp` lowered by `fs`, each register
 `r` of `sv` saved at `sp - fs + o` (`(o, r) ∈ sv`), off the heap and the
-globals only the frame and the window below it changed. -/
-structure CFr (fs : Nat) (sv : List (Nat × Nat)) (M0 M : Mem) (R0 R : Nat → BitVec 64) (sp : Nat) :
-    Prop where
+globals only the frame, the window below it and the bytes `P` changed. -/
+structure CFr (P : Nat → Prop) (fs : Nat) (sv : List (Nat × Nat)) (M0 M : Mem) (R0 R : Nat → BitVec 64)
+    (sp : Nat) : Prop where
   r2 : R 2 = BitVec.ofNat 64 (sp - fs)
   saved : ∀ p ∈ sv, ldv .ld M (sp - fs + p.1) = R0 p.2
   keep : Keeps (2 :: sv.map Prod.snd ++ cClob) R R0
-  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp (fs + cfW) a → imgM M a = imgM M0 a
+  out : ∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp (fs + cfW) a → ¬ P a → imgM M a = imgM M0 a
 
 /-- **A callee's frame**: off the heap and the globals only the window below
 the frame and the slot at `o` changed. -/
@@ -58,8 +58,8 @@ theorem CfOut.word {M M' : Mem} {sp fs o : Nat} (h : CfOut M M' sp fs o) (hab : 
     (fun hs => by simp only [slotBytes, widthOfM] at hs hj; omega)
 
 /-- The frame with registers a callee kept. -/
-theorem CFr.regs {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp : Nat}
-    (hfr : CFr fs sv M0 M R0 R sp) (k : Keeps cClob R' R) : CFr fs sv M0 M R0 R' sp where
+theorem CFr.regs {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem} {R0 R R' : Nat → BitVec 64} {sp : Nat}
+    (hfr : CFr P fs sv M0 M R0 R sp) (k : Keeps cClob R' R) : CFr P fs sv M0 M R0 R' sp where
   r2 := by rw [k.get 2 (by decide)]; exact hfr.r2
   saved := hfr.saved
   keep := (k.mono fun z hz => List.mem_cons_of_mem _ (List.mem_append_right _ hz)).trans hfr.keep
@@ -67,24 +67,25 @@ theorem CFr.regs {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem} {R0 R R' : Nat
 
 /-- **The frame through a callee** that changed only the window and the slot
 at `o`, below the saved words. -/
-theorem CFr.next {fs : Nat} {sv : List (Nat × Nat)} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64}
-    {sp o : Nat} (hfr : CFr fs sv M0 M R0 R sp) (hab : heapEnd ≤ sp - fs) (hfs : fs ≤ sp)
+theorem CFr.next {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M M' : Mem} {R0 R R' : Nat → BitVec 64}
+    {sp o : Nat} (hfr : CFr P fs sv M0 M R0 R sp) (hab : heapEnd ≤ sp - fs) (hfs : fs ≤ sp)
     (hsv : ∀ p ∈ sv, o + 8 ≤ p.1) (hof : o + 8 ≤ fs) (hM : CfOut M M' sp fs o)
-    (k : Keeps cClob R' R) : CFr fs sv M0 M' R0 R' sp :=
+    (k : Keeps cClob R' R) : CFr P fs sv M0 M' R0 R' sp :=
   { hfr.regs k with
     saved := fun p hp => ((hM.word hab (.inr (hsv p hp))).trans (hfr.saved p hp))
-    out := fun a ho hg hf =>
+    out := fun a ho hg hf hp =>
       (hM a ho hg (fun h => hf (by simp only [frameIn] at h ⊢; omega))
-        (fun h => hf (by simp only [slotBytes, frameIn] at h ⊢; omega))).trans (hfr.out a ho hg hf) }
+        (fun h => hf (by simp only [slotBytes, frameIn] at h ⊢; omega))).trans (hfr.out a ho hg hf hp) }
 
 /-- `_bc_rec_mul`'s base word, off every byte the frame changes. -/
-theorem CFr.mulBase {S : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
-    {R0 R : Nat → BitVec 64} {sp : Nat} (hfr : CFr fs sv M0 M R0 R sp)
-    (hab : heapEnd + (fs + cfW) ≤ sp) (hmb : MulBase S M0) : MulBase S M :=
+theorem CFr.mulBase {S : Nat → Prop} {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
+    {R0 R : Nat → BitVec 64} {sp : Nat} (hfr : CFr P fs sv M0 M R0 R sp)
+    (hab : heapEnd + (fs + cfW) ≤ sp) (hmb : MulBase S M0)
+    (hP : ∀ a, mulBaseAddr ≤ a → a < mulBaseAddr + 4 → ¬ P a) : MulBase S M :=
   hmb.transport fun a e1 e2 => hfr.out a
     (by simp only [OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr, mulBaseAddr] at e1 e2 ⊢; omega)
     (by simp only [DcGlob, dc_addrs, mulBaseAddr] at e1 e2 ⊢; omega)
-    (by simp only [frameIn, heapEnd, mulBaseAddr] at e1 e2 hab ⊢; omega)
+    (by simp only [frameIn, heapEnd, mulBaseAddr] at e1 e2 hab ⊢; omega) (hP a e1 e2)
 
 /-- The frame's place: the stack frame of `fs` bytes and the window, above
 the heap; `fs` a multiple of `16`. -/
@@ -105,18 +106,18 @@ theorem CfCtx.abv {S : Nat → Prop} {fs sp : Nat} (cx : CfCtx S fs sp) : heapEn
   have := cx.ab; omega
 
 /-- `out_of_memory` from a callee: the frame's `OomAt`. -/
-theorem CFr.oom {S : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M M' : Mem}
-    {R0 R R' : Nat → BitVec 64} {sp sp' o W : Nat} (hfr : CFr fs sv M0 M R0 R sp)
+theorem CFr.oom {S : Nat → Prop} {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M M' : Mem}
+    {R0 R R' : Nat → BitVec 64} {sp sp' o W : Nat} (hfr : CFr P fs sv M0 M R0 R sp)
     (cx : CfCtx S fs sp) (hW : W ≤ cfW) (ho : o + 8 ≤ fs) (h1 : sp - fs - W ≤ sp') (h2 : sp' ≤ sp - fs)
     (r2 : R' 2 = BitVec.ofNat 64 sp')
     (hout : ∀ a, OutHeap a → ¬ slotBytes (sp - fs + o) a → ¬ frameIn (sp - fs) W a →
       imgM M' a = imgM M a) :
-    OomAt S sp (fs + cfW) M0 (fun _ => False) sp' R' M' := by
+    OomAt S sp (fs + cfW) M0 P sp' R' M' := by
   have := cx.ab
-  refine ⟨by omega, by omega, r2, fun a ho' hg hf _ => ?_⟩
+  refine ⟨by omega, by omega, r2, fun a ho' hg hf hp => ?_⟩
   rw [hout a ho' (fun h => hf (by simp only [slotBytes, frameIn] at h ⊢; omega))
     (fun h => hf (by simp only [frameIn] at h ⊢; omega))]
-  exact hfr.out a ho' hg hf
+  exact hfr.out a ho' hg hf hp
 
 /-- The window's first `n` bytes as a callee's frame. -/
 theorem CfCtx.win {S : Nat → Prop} {fs sp : Nat} (cx : CfCtx S fs sp) {n : Nat} (hn : n ≤ cfW) :
@@ -124,18 +125,18 @@ theorem CfCtx.win {S : Nat → Prop} {fs sp : Nat} (cx : CfCtx S fs sp) {n : Nat
   have sf := cx.sub
   ⟨fun a h1 h2 => sf.own a (by omega) h2, by have := sf.lo; omega, sf.hi, sf.al⟩
 
-/-- **`bc_free_num` of the handle in the slot at `o`**. -/
+/-- **`bc_free_num` of the handle in the slot at `o`**: the slot `NULL`. -/
 theorem cf_free {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
-    {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
-    {p sp o : Nat} {R0 R : Nat → BitVec 64}
-    (cx : CfCtx S fs sp) (hfr : CFr fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)}
+    {M0 M : Mem} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
+    {st : St} {p sp o : Nat} {R0 R : Nat → BitVec 64}
+    (cx : CfCtx S fs sp) (hfr : CFr P fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
     (hsv : ∀ q ∈ sv, o + 8 ≤ q.1) (ho : o + 8 ≤ fs) (h8 : o % 8 = 0)
     (hw : ldv .ld M (sp - fs + o) = BitVec.ofNat 64 p)
     (h10 : R 10 = BitVec.ofNat 64 (sp - fs + o)) (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R → CFr fs sv M0 M' R0 R' sp →
-      DcAt S M' H' F' L' C' G hs st → CfOut M M' sp fs o → HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs →
-      DWO live S Q t (R 1) R' M') :
+    (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R → CFr P fs sv M0 M' R0 R' sp →
+      DcAt S M' H' F' L' C' G hs st → ldv .ld M' (sp - fs + o) = 0#64 → CfOut M M' sp fs o →
+      HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs → DWO live S Q t (R 1) R' M') :
     DWO live S Q t 0x800048c0#64 R M := by
   have hab := cx.abv
   have hab' := cx.ab
@@ -143,23 +144,51 @@ theorem cf_free {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
   have hrm : 224 ≤ rmStack (2 ^ 30) := by unfold rmStack; omega
   have hsl := cx.sf.lo
   simp only [heapEnd] at hab hab'
-  refine bc_free_num_dcK hlive h (cx.slot ho h8) (by simp only [heapEnd]; omega) hw
-    (cx.win (n := 32) (by omega)) (by simp only [heapEnd]; omega) (.inr (by omega)) R h10 hfr.r2 hal fun R' M' H' F' L' C' hk' hd hout hkp => ?_
+  refine bc_free_num_dcP hlive (Pend.id G) (M := M) h (cx.slot ho h8) (.above (by simp only [heapEnd]; omega)) hw
+    (cx.win (n := 32) (by omega)) (by simp only [heapEnd]; omega) (.inr (by omega)) R h10 hfr.r2 hal
+    fun R' M' H' F' L' C' hk' hd h0 hout _ hkp => ?_
   have hO : CfOut M M' sp fs o := fun a ho' hg hf hs' =>
     hout a ho' hg (fun h => hf (by simp only [frameIn] at h ⊢; omega)) hs'
   have k : Keeps cClob R' R := hk'.mono (by decide)
-  exact hk R' M' H' F' L' C' k (hfr.next cx.abv (by omega) hsv ho hO k) hd hO hkp
+  exact hk R' M' H' F' L' C' k (hfr.next cx.abv (by omega) hsv ho hO k) hd h0 hO hkp
+
+/-- The handle a slot may hold: none for a `NULL` slot. -/
+def slotHs : Option Nat → List GV
+  | none => []
+  | some p => [.num p]
+
+/-- **`bc_free_num` of the slot at `o`**, holding the handle `og` or `NULL`:
+the slot `NULL`. -/
+theorem cf_freeO {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)}
+    {M0 M : Mem} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
+    {st : St} {og : Option Nat} {sp o : Nat} {R0 R : Nat → BitVec 64}
+    (cx : CfCtx S fs sp) (hfr : CFr P fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (slotHs og ++ hs) st)
+    (hsv : ∀ q ∈ sv, o + 8 ≤ q.1) (ho : o + 8 ≤ fs) (h8 : o % 8 = 0)
+    (hw : ldv .ld M (sp - fs + o) = BitVec.ofNat 64 (og.getD 0))
+    (h10 : R 10 = BitVec.ofNat 64 (sp - fs + o)) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C', Keeps cClob R' R → CFr P fs sv M0 M' R0 R' sp →
+      DcAt S M' H' F' L' C' G hs st → ldv .ld M' (sp - fs + o) = 0#64 → CfOut M M' sp fs o →
+      HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs → DWO live S Q t (R 1) R' M') :
+    DWO live S Q t 0x800048c0#64 R M := by
+  cases og with
+  | some p => exact cf_free hlive cx hfr h hsv ho h8 hw h10 hal hk
+  | none =>
+    have hab := cx.abv
+    refine bc_free_num_null hlive (cx.slot ho h8) hw R h10 hal fun R' hk' => ?_
+    have k : Keeps cClob R' R := hk'.mono (by decide)
+    exact hk R' M H F L C k (hfr.regs k) h hw (fun _ _ _ _ _ => rfl) (HsKeep.refl _ _)
 
 /-- **`bc_init_num` of the slot at `o`**: the slot holds a new `_zero_`
 handle. -/
 theorem cf_init {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
     {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
     {sp o : Nat} {R0 R : Nat → BitVec 64}
-    (cx : CfCtx S fs sp) (hfr : CFr fs sv M0 M R0 R sp) (h : DcAt S M H F L C G hs st)
+    (cx : CfCtx S fs sp) (hfr : CFr P fs sv M0 M R0 R sp) (h : DcAt S M H F L C G hs st)
     (hhs : hs.length ≤ 2 ^ 30) (hsv : ∀ q ∈ sv, o + 8 ≤ q.1) (ho : o + 8 ≤ fs) (h8 : o % 8 = 0)
     (h10 : R 10 = BitVec.ofNat 64 (sp - fs + o)) (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' L' C', Keeps cClob R' R → CFr fs sv M0 M' R0 R' sp →
+    (hk : ∀ R' M' L' C', Keeps cClob R' R → CFr P fs sv M0 M' R0 R' sp →
       DcAt S M' H F L' C' G (.num C.z.rep.p :: hs) st → C'.z.rep.p = C.z.rep.p →
       ldv .ld M' (sp - fs + o) = BitVec.ofNat 64 C.z.rep.p → CfOut M M' sp fs o →
       HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs → DWO live S Q t (R 1) R' M') :
@@ -179,19 +208,19 @@ theorem cf_init {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
 /-- **`bc_int2num` of `v` into the slot at `o`**: the slot's handle replaced
 by a fresh number for `v`, or `out_of_memory`. -/
 theorem cf_i2n {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
     {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
     {p sp o : Nat} {v : Int} {R0 R : Nat → BitVec 64}
-    (cx : CfCtx S fs sp) (hfr : CFr fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
+    (cx : CfCtx S fs sp) (hfr : CFr P fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
     (hsv : ∀ q ∈ sv, o + 8 ≤ q.1) (ho : o + 8 ≤ fs) (h8 : o % 8 = 0)
     (hw : ldv .ld M (sp - fs + o) = BitVec.ofNat 64 p)
     (h10 : R 10 = BitVec.ofNat 64 (sp - fs + o)) (h11 : R 11 = BitVec.ofInt 64 v)
     (hal : (R 1).toNat % 4 = 0) (hvlo : -2 ^ 31 < v) (hvhi : v < 2 ^ 31)
-    (hk : ∀ R' M' H' F' L' C' y, Keeps cClob R' R → CFr fs sv M0 M' R0 R' sp →
+    (hk : ∀ R' M' H' F' L' C' y, Keeps cClob R' R → CFr P fs sv M0 M' R0 R' sp →
       DcAt S M' H' F' (y :: L') C' G (.num y.rep.p :: hs) st → y.rep.num = Num.ofInt v →
       ldv .ld M' (sp - fs + o) = BitVec.ofNat 64 y.rep.p → CfOut M M' sp fs o →
       HsKeep ⟨L, G.strs⟩ ⟨y :: L', G.strs⟩ hs → DWO live S Q t (R 1) R' M')
-    (hoom : ∀ R' M' sp', OomAt S sp (fs + cfW) M0 (fun _ => False) sp' R' M' →
+    (hoom : ∀ R' M' sp', OomAt S sp (fs + cfW) M0 P sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x8000690c#64 R M := by
   have hab := cx.abv
@@ -214,16 +243,16 @@ theorem cf_i2n {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
 
 /-- **A callee's result into the slot at `o`**: the state holds the new
 number's handle instead of the slot's old one, the frame is kept. -/
-theorem cf_ret {S : Nat → Prop} {P : Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M Mt : Mem}
+theorem cf_ret {S : Nat → Prop} {Pk : Prop} {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M Mt : Mem}
     {H H' : Heap} {F F' : List Blk} {L1 L2 L' : List NumObj} {x y : NumObj} {C : BcConsts} {G : DcG}
     {hs : List GV} {st : St} {sp o W : Nat} {n : Num} {R0 R R' : Nat → BitVec 64}
-    (cx : CfCtx S fs sp) (hfr : CFr fs sv M0 M R0 R sp)
+    (cx : CfCtx S fs sp) (hfr : CFr P fs sv M0 M R0 R sp)
     (h : DcAt S M H F (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st)
     (hp : BinPostW S (G.raws M) M Mt H' F' L1 L2 x (sp - fs + o) (sp - fs) W n L' y)
     (hW : W ≤ cfW) (hsv : ∀ q ∈ sv, o + 8 ≤ q.1) (ho : o + 8 ≤ fs) (k : Keeps cClob R' R)
-    (hk : ∀ C', CFr fs sv M0 Mt R0 R' sp → DcAt S Mt H' F' (y :: L') C' G (.num y.rep.p :: hs) st →
+    (hk : ∀ C', CFr P fs sv M0 Mt R0 R' sp → DcAt S Mt H' F' (y :: L') C' G (.num y.rep.p :: hs) st →
       ldv .ld Mt (sp - fs + o) = BitVec.ofNat 64 y.rep.p → CfOut M Mt sp fs o →
-      HsKeep ⟨L1 ++ x :: L2, G.strs⟩ ⟨y :: L', G.strs⟩ hs → P) : P := by
+      HsKeep ⟨L1 ++ x :: L2, G.strs⟩ ⟨y :: L', G.strs⟩ hs → Pk) : Pk := by
   have hab := cx.abv
   have hab' := cx.ab
   simp only [heapEnd] at hab hab'
@@ -238,10 +267,10 @@ theorem cf_ret {S : Nat → Prop} {P : Prop} {fs : Nat} {sv : List (Nat × Nat)}
 /-- **`bc_multiply (a, b, &slot, k)`** with the slot at `o` holding a handle
 of the state: its handle replaced by the product's, or `out_of_memory`. -/
 theorem cf_mul {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
     {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
     {p p1 p2 sp o k : Nat} {n1 n2 : Num} {R0 R : Nat → BitVec 64}
-    (cx : CfCtx S fs sp) (hfr : CFr fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
+    (cx : CfCtx S fs sp) (hfr : CFr P fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
     (hmb : MulBase S M) (hhs : hs.length + 1 ≤ 2 ^ 20)
     (hsv : ∀ q ∈ sv, o + 8 ≤ q.1) (ho : o + 8 ≤ fs) (h8 : o % 8 = 0)
     (hw : ldv .ld M (sp - fs + o) = BitVec.ofNat 64 p)
@@ -250,11 +279,11 @@ theorem cf_mul {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     (h10 : R 10 = BitVec.ofNat 64 p1) (h11 : R 11 = BitVec.ofNat 64 p2)
     (h12 : R 12 = BitVec.ofNat 64 (sp - fs + o)) (h13 : R 13 = BitVec.ofNat 64 k)
     (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' H' F' L' C' y, Keeps cClob R' R → CFr fs sv M0 M' R0 R' sp →
+    (hk : ∀ R' M' H' F' L' C' y, Keeps cClob R' R → CFr P fs sv M0 M' R0 R' sp →
       DcAt S M' H' F' (y :: L') C' G (.num y.rep.p :: hs) st → y.rep.num = Num.mul n1 n2 k →
       ldv .ld M' (sp - fs + o) = BitVec.ofNat 64 y.rep.p → CfOut M M' sp fs o →
       HsKeep ⟨L, G.strs⟩ ⟨y :: L', G.strs⟩ hs → DWO live S Q t (R 1) R' M')
-    (hoom : ∀ R' M' sp', OomAt S sp (fs + cfW) M0 (fun _ => False) sp' R' M' →
+    (hoom : ∀ R' M' sp', OomAt S sp (fs + cfW) M0 P sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x8000573c#64 R M := by
   have hab := cx.abv
@@ -289,10 +318,10 @@ theorem cf_mul {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
 /-- **`bc_add (a, b, &slot, smin)`** with the slot at `o` holding a handle of
 the state. -/
 theorem cf_add {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
     {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
     {p p1 p2 sp o smin : Nat} {n1 n2 : Num} {R0 R : Nat → BitVec 64}
-    (cx : CfCtx S fs sp) (hfr : CFr fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
+    (cx : CfCtx S fs sp) (hfr : CFr P fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
     (hsv : ∀ q ∈ sv, o + 8 ≤ q.1) (ho : o + 8 ≤ fs) (h8 : o % 8 = 0)
     (hw : ldv .ld M (sp - fs + o) = BitVec.ofNat 64 p)
     (hd1 : (GV.num p1).Den ⟨L, G.strs⟩ (.num n1)) (hd2 : (GV.num p2).Den ⟨L, G.strs⟩ (.num n2))
@@ -300,11 +329,11 @@ theorem cf_add {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     (h10 : R 10 = BitVec.ofNat 64 p1) (h11 : R 11 = BitVec.ofNat 64 p2)
     (h12 : R 12 = BitVec.ofNat 64 (sp - fs + o)) (h13 : R 13 = BitVec.ofNat 64 smin)
     (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' H' F' L' C' y, Keeps cClob R' R → CFr fs sv M0 M' R0 R' sp →
+    (hk : ∀ R' M' H' F' L' C' y, Keeps cClob R' R → CFr P fs sv M0 M' R0 R' sp →
       DcAt S M' H' F' (y :: L') C' G (.num y.rep.p :: hs) st → y.rep.num = Num.add n1 n2 smin →
       ldv .ld M' (sp - fs + o) = BitVec.ofNat 64 y.rep.p → CfOut M M' sp fs o →
       HsKeep ⟨L, G.strs⟩ ⟨y :: L', G.strs⟩ hs → DWO live S Q t (R 1) R' M')
-    (hoom : ∀ R' M' sp', OomAt S sp (fs + cfW) M0 (fun _ => False) sp' R' M' →
+    (hoom : ∀ R' M' sp', OomAt S sp (fs + cfW) M0 P sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x80005634#64 R M := by
   have hab := cx.abv
@@ -334,10 +363,10 @@ theorem cf_add {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
 /-- **`bc_sub (a, b, &slot, smin)`** with the slot at `o` holding a handle of
 the state. -/
 theorem cf_sub {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem}
     {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
     {p p1 p2 sp o smin : Nat} {n1 n2 : Num} {R0 R : Nat → BitVec 64}
-    (cx : CfCtx S fs sp) (hfr : CFr fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
+    (cx : CfCtx S fs sp) (hfr : CFr P fs sv M0 M R0 R sp) (h : DcAt S M H F L C G (.num p :: hs) st)
     (hsv : ∀ q ∈ sv, o + 8 ≤ q.1) (ho : o + 8 ≤ fs) (h8 : o % 8 = 0)
     (hw : ldv .ld M (sp - fs + o) = BitVec.ofNat 64 p)
     (hd1 : (GV.num p1).Den ⟨L, G.strs⟩ (.num n1)) (hd2 : (GV.num p2).Den ⟨L, G.strs⟩ (.num n2))
@@ -345,11 +374,11 @@ theorem cf_sub {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (
     (h10 : R 10 = BitVec.ofNat 64 p1) (h11 : R 11 = BitVec.ofNat 64 p2)
     (h12 : R 12 = BitVec.ofNat 64 (sp - fs + o)) (h13 : R 13 = BitVec.ofNat 64 smin)
     (hal : (R 1).toNat % 4 = 0)
-    (hk : ∀ R' M' H' F' L' C' y, Keeps cClob R' R → CFr fs sv M0 M' R0 R' sp →
+    (hk : ∀ R' M' H' F' L' C' y, Keeps cClob R' R → CFr P fs sv M0 M' R0 R' sp →
       DcAt S M' H' F' (y :: L') C' G (.num y.rep.p :: hs) st → y.rep.num = Num.sub n1 n2 smin →
       ldv .ld M' (sp - fs + o) = BitVec.ofNat 64 y.rep.p → CfOut M M' sp fs o →
       HsKeep ⟨L, G.strs⟩ ⟨y :: L', G.strs⟩ hs → DWO live S Q t (R 1) R' M')
-    (hoom : ∀ R' M' sp', OomAt S sp (fs + cfW) M0 (fun _ => False) sp' R' M' →
+    (hoom : ∀ R' M' sp', OomAt S sp (fs + cfW) M0 P sp' R' M' →
       DWO live S Q t 0x80001e74#64 R' M') :
     DWO live S Q t 0x80004ac4#64 R M := by
   have hab := cx.abv

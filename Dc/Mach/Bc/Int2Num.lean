@@ -383,11 +383,11 @@ structure I2NCtx (S : Nat → Prop) (R0 : Nat → BitVec 64) (sp q : Nat) (v : I
 /-- `bc_int2num`'s result: the new number `y` for `v` (normalized, one
 reference) heads the heap left by freeing `x`, its struct is in the slot, and
 off the heap only the slot and the stack window changed. -/
-structure I2NPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
-    (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (v : Int) (L : List NumObj) (y : NumObj) :
+structure I2NPostF (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
+    (Fr : List NumObj → Prop) (q sp : Nat) (v : Int) (L : List NumObj) (y : NumObj) :
     Prop where
   heap : BcHeap S X Mt H F (y :: L)
-  rest : FreedRest L1 L2 x L
+  rest : Fr L
   num : y.rep.num = Num.ofInt v
   norm : y.rep.Norm
   refs : y.rep.refs = 1
@@ -397,14 +397,25 @@ structure I2NPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : L
   out : ∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 128 a → imgM Mt a = imgM Mt0 a
 
 /-- `bc_int2num`'s continuations: the result, or `out_of_memory`. -/
-structure I2NK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
-    (R0 : Nat → BitVec 64) (Mt0 : Mem) (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (v : Int) :
+structure I2NKF (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (R0 : Nat → BitVec 64) (Mt0 : Mem) (Fr : List NumObj → Prop) (q sp : Nat) (v : Int) :
     Prop where
-  ret : ∀ R' Mt' H F L y, Keeps i2nClob R' R0 → I2NPost S X Mt0 Mt' H F L1 L2 x q sp v L y →
+  ret : ∀ R' Mt' H F L y, Keeps i2nClob R' R0 → I2NPostF S X Mt0 Mt' H F Fr q sp v L y →
     DW live S Q (R0 1) R' Mt'
   oom : ∀ R' Mt', R' 2 = BitVec.ofNat 64 (sp - 128) →
     (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 128 a → imgM Mt' a = imgM Mt0 a) →
     DW live S Q 0x80002bcc#64 R' Mt'
+
+/-- `I2NPostF` for a slot that held `x` (freed once). -/
+abbrev I2NPost (S : Nat → Prop) (X : Raws) (Mt0 Mt : Mem) (H : Heap) (F : List Blk)
+    (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (v : Int) (L : List NumObj) (y : NumObj) : Prop :=
+  I2NPostF S X Mt0 Mt H F (FreedRest L1 L2 x) q sp v L y
+
+/-- `I2NKF` for a slot that held `x` (freed once). -/
+abbrev I2NK (live S : Nat → Prop) (X : Raws) (Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
+    (R0 : Nat → BitVec 64) (Mt0 : Mem) (L1 L2 : List NumObj) (x : NumObj) (q sp : Nat) (v : Int) :
+    Prop :=
+  I2NKF live S X Q R0 Mt0 (FreedRest L1 L2 x) q sp v
 
 /-- Leaving `bc_int2num`: `ra`, `sp` and `s0`–`s5` restored, the rest kept. -/
 theorem keeps_restore {R' R R0 : Nat → BitVec 64} (h1 : R' 1 = R0 1) (h2 : R' 2 = R0 2)
@@ -426,11 +437,10 @@ theorem keeps_restore {R' R R0 : Nat → BitVec 64} (h1 : R' 1 = R0 1) (h2 : R' 
 /-- The epilogue at `0x800069e8`: the saved registers back, `sp` up. -/
 theorem i2n_epi {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
-    {x : NumObj} {H : Heap} {F : List Blk} {L : List NumObj} {y : NumObj}
-    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S X Q R0 Mt0 L1 L2 x q sp v)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {Fr : List NumObj → Prop} {H : Heap} {F : List Blk} {L : List NumObj} {y : NumObj}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NKF live S X Q R0 Mt0 Fr q sp v)
     (hsv : I2NSaved M sp R0) (h2 : R 2 = BitVec.ofNat 64 (sp - 96)) (hkp : Keeps i2nAll R R0)
-    (hp : I2NPost S X Mt0 M H F L1 L2 x q sp v L y) :
+    (hp : I2NPostF S X Mt0 M H F Fr q sp v L y) :
     DW live S Q 0x800069e8#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -524,13 +534,12 @@ theorem I2NAt.a5 {S : Nat → Prop} {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp
 epilogue. -/
 theorem i2n_fill {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
-    {x : NumObj} {H : Heap} {F : List Blk} {L : List NumObj} {y : NumObj}
-    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S X Q R0 Mt0 L1 L2 x q sp v)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {Fr : List NumObj → Prop} {H : Heap} {F : List Blk} {L : List NumObj} {y : NumObj}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NKF live S X Q R0 Mt0 Fr q sp v)
     (st : I2NAt S Mt0 M R0 R sp q v) (hb : BcHeap S X M H F (y :: L))
     (hy : y.rep = { zeroRep y.sb.pay y.db.pay (i2nBuf v.natAbs).length 0 with neg := decide (v < 0) })
     (hr10 : R 10 = BitVec.ofNat 64 y.sb.pay) (hslot : ldv .ld M q = BitVec.ofNat 64 y.sb.pay)
-    (hrest : FreedRest L1 L2 x L) :
+    (hrest : Fr L) :
     DW live S Q 0x800069c8#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -593,12 +602,11 @@ theorem i2n_fill {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
 slot and its sign set when `v < 0`, then the digits and the epilogue. -/
 theorem i2n_tail {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
-    {x : NumObj} {H : Heap} {F : List Blk} {L : List NumObj} {y : NumObj}
-    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S X Q R0 Mt0 L1 L2 x q sp v)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {Fr : List NumObj → Prop} {H : Heap} {F : List Blk} {L : List NumObj} {y : NumObj}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NKF live S X Q R0 Mt0 Fr q sp v)
     (st : I2NAt S Mt0 M R0 R sp q v) (hb : BcHeap S X M H F (y :: L))
     (hy : y.rep = zeroRep y.sb.pay y.db.pay (i2nBuf v.natAbs).length 0)
-    (hr10 : R 10 = BitVec.ofNat 64 y.sb.pay) (hrest : FreedRest L1 L2 x L) :
+    (hr10 : R 10 = BitVec.ofNat 64 y.sb.pay) (hrest : Fr L) :
     DW live S Q 0x800069b8#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -643,10 +651,9 @@ theorem i2n_tail {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
 of memory reaches `I2NK.oom`. -/
 theorem i2n_new {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
-    {x : NumObj} {H : Heap} {F : List Blk} {L : List NumObj}
-    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S X Q R0 Mt0 L1 L2 x q sp v)
-    (st : I2NAt S Mt0 M R0 R sp q v) (hb : BcHeap S X M H F L) (hrest : FreedRest L1 L2 x L) :
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {Fr : List NumObj → Prop} {H : Heap} {F : List Blk} {L : List NumObj}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NKF live S X Q R0 Mt0 Fr q sp v)
+    (st : I2NAt S Mt0 M R0 R sp q v) (hb : BcHeap S X M H F L) (hrest : Fr L) :
     DW live S Q 0x800069ac#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -736,6 +743,62 @@ theorem FreeEntry.window {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H : Heap}
         rw [ldv_congr .ld fun j hj => hmo _ (by simp only [frameIn, widthOfM] at *; omega)]
         exact e.word }
 
+/-- **`bc_int2num`'s slot at entry**: a number of the heap, freed once
+(`FreedRest`), or `NULL` (`bc_free_num` returns at once, the heap kept). -/
+inductive I2NSlot (S : Nat → Prop) (X : Raws) (Mt : Mem) (H : Heap) (F : List Blk) (q sp : Nat) :
+    List NumObj → (List NumObj → Prop) → Prop
+  | num {L1 L2 : List NumObj} {x : NumObj} :
+      FreeEntry S X Mt H F L1 L2 x q sp → I2NSlot S X Mt H F q sp (L1 ++ x :: L2) (FreedRest L1 L2 x)
+  | null {L : List NumObj} : BcHeap S X Mt H F L → ldv .ld Mt q = 0#64 →
+      I2NSlot S X Mt H F q sp L (· = L)
+
+theorem I2NSlot.heap {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk} {q sp : Nat}
+    {L0 : List NumObj} {Fr : List NumObj → Prop} (e : I2NSlot S X Mt H F q sp L0 Fr) :
+    BcHeap S X Mt H F L0 := by
+  cases e with
+  | num e => exact e.heap
+  | null hb _ => exact hb
+
+/-- The slot's entry facts through writes confined to `bc_int2num`'s stack
+window. -/
+theorem I2NSlot.window {S : Nat → Prop} {X : Raws} {Mt Mt' : Mem} {H : Heap} {F : List Blk}
+    {L0 : List NumObj} {Fr : List NumObj → Prop} {R0 : Nat → BitVec 64} {sp q : Nat} {v : Int}
+    (e : I2NSlot S X Mt H F q (sp - 96) L0 Fr) (cx : I2NCtx S R0 sp q v)
+    (hmo : MemOnly (frameIn sp 128) Mt' Mt) : I2NSlot S X Mt' H F q (sp - 96) L0 Fr := by
+  cases e with
+  | num e => exact .num (e.window cx hmo)
+  | null hb h0 =>
+    have hab := cx.above
+    have hap := cx.slotApart
+    simp only [heapEnd] at hab
+    refine .null (hb.out_frame hmo fun a ha => by
+      simp only [frameIn, OutHeap, heapStart, heapEnd, freeListAddr, bcFreeAddr] at *; omega) ?_
+    rw [ldv_congr .ld fun j hj => hmo _ (by simp only [frameIn, widthOfM] at *; omega)]
+    exact h0
+
+/-- The `bc_free_num(num)` call from `0x800069a4` on either slot, then
+`bc_new_num`. -/
+theorem i2n_freeS {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L0 : List NumObj}
+    {Fr : List NumObj → Prop} {H : Heap} {F : List Blk}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NKF live S X Q R0 Mt0 Fr q sp v)
+    (st : I2NAt S Mt0 M R0 R sp q v) (e : I2NSlot S X M H F q (sp - 96) L0 Fr) :
+    DW live S Q 0x800069a4#64 R M := by
+  cases e with
+  | num e => exact i2n_free hlive cx hk st e
+  | null hb h0 =>
+    have hsf := cx.frame
+    have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+    have htx : tohostAddr = 0x8001ad00 := rfl
+    have hS : HeapOwn S := fun a h1 h2 => hb.heap.own a h1 h2
+    have hr20 := st.rq; have hr2 := st.r2
+    bc_run hlive hS [hr20, hr2] at 0x800048c0
+    refine bc_free_num_null hlive cx.slot h0 _ (by bsimp [hr20]) (by bsimp []) fun R' hk1 => ?_
+    bsimp []
+    exact i2n_new hlive cx hk (st.calls ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
+      hb rfl
+
 /-- Inside `bc_int2num` after its prologue and sign test: `sp` lowered by
 96, the saved registers in the frame, `s4 = q`, `s5` the sign flag,
 `s0 = |v|`, and only the stack window changed. -/
@@ -776,10 +839,10 @@ theorem I2NHead.toAt {S : Nat → Prop} {Mt0 M M' : Mem} {R0 R R' : Nat → BitV
 (for `|v| < 10`) straight to `bc_free_num`. -/
 theorem i2n_head {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
-    {x : NumObj} {H : Heap} {F : List Blk}
-    (cx : I2NCtx S R0 sp q v) (hk : I2NK live S X Q R0 Mt0 L1 L2 x q sp v)
-    (hd : I2NHead S Mt0 M R0 R sp q v) (e : FreeEntry S X Mt0 H F L1 L2 x q (sp - 96)) :
+    {Mt0 M : Mem} {R0 R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L0 : List NumObj}
+    {Fr : List NumObj → Prop} {H : Heap} {F : List Blk}
+    (cx : I2NCtx S R0 sp q v) (hk : I2NKF live S X Q R0 Mt0 Fr q sp v)
+    (hd : I2NHead S Mt0 M R0 R sp q v) (e : I2NSlot S X Mt0 H F q (sp - 96) L0 Fr) :
     DW live S Q 0x80006944#64 R M := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -823,7 +886,7 @@ theorem i2n_head {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     have hq : v.natAbs / 10 = 0 := (ofNat_eq_iff (x := v.natAbs / 10) (y := 0) (by omega) (by omega)).mp hz
     have hb1 : i2nBuf v.natAbs = [v.natAbs % 10] := i2nBuf_small (by omega)
     bc_run hlive hS [hr2, q2, hsx] at 0x800069a4
-    refine i2n_free hlive cx hk (hd.toAt cx hmo1 (by rw [hb1]; exact hbuf1) (by rw [hb1]; bsimp [List.length_cons, List.length_nil])
+    refine i2n_freeS hlive cx hk (hd.toAt cx hmo1 (by rw [hb1]; exact hbuf1) (by rw [hb1]; bsimp [List.length_cons, List.length_nil])
       (by rw [hb1]; bsimp [List.length_cons, List.length_nil])
       (by rw [hb1]; bsimp [q2, List.length_cons, List.length_nil]) (by keeps_tac hkk)) (e.window cx (hwin hmo1))
   · -- the digit loop
@@ -843,7 +906,7 @@ theorem i2n_head {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     have hbe : buf = i2nBuf v.natAbs := by
       simp only [i2nBuf, hv0, if_false]; rw [hd', List.reverse_reverse]
     subst hbe
-    exact i2n_free hlive cx hk (hd.toAt cx (hmo.trans hmo1) hbuf h18 h19 h8
+    exact i2n_freeS hlive cx hk (hd.toAt cx (hmo.trans hmo1) hbuf h18 h19 h8
       (hkp.trans (by keeps_tac hkk))) (e.window cx (hwin (hmo.trans hmo1)))
 
 /-- The memory after `bc_int2num`'s prologue: seven saved registers. -/
@@ -900,13 +963,13 @@ the object `x` in the slot `num` (`L = L1 ++ x :: L2`): frees `x`
 (`bc_free_num`), then stores in the slot a fresh normalized number for `val`
 with one reference (`I2NK.ret`, `I2NPost`), or reaches `out_of_memory`;
 clobbers `a0`–`a5`. -/
-theorem bc_int2num_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
+theorem bc_int2num_specS {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
-    {Mt : Mem} {R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
-    {x : NumObj} {H : Heap} {F : List Blk}
-    (cx : I2NCtx S R sp q v) (e : FreeEntry S X Mt H F L1 L2 x q (sp - 96))
+    {Mt : Mem} {R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L0 : List NumObj}
+    {Fr : List NumObj → Prop} {H : Heap} {F : List Blk}
+    (cx : I2NCtx S R sp q v) (e : I2NSlot S X Mt H F q (sp - 96) L0 Fr)
     (h10 : R 10 = BitVec.ofNat 64 q) (h11 : R 11 = BitVec.ofInt 64 v)
-    (hk : I2NK live S X Q R Mt L1 L2 x q sp v) :
+    (hk : I2NKF live S X Q R Mt Fr q sp v) :
     DW live S Q 0x8000690c#64 R Mt := by
   have hsf := cx.frame
   have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
@@ -946,5 +1009,17 @@ theorem bc_int2num_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       · bsimp []
       · keeps_tac Keeps.refl _ _
     · intro hc; rw [hti] at hc; simp only [BitVec.toInt_zero] at hc; omega
+
+/-- **`bc_int2num(num, val)`** at `0x8000690c` with the object `x` in the
+slot: `bc_int2num_specS` at a slot holding a number. -/
+theorem bc_int2num_spec {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
+    {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} (hlive : ∀ p ∈ dcText, live p.1)
+    {Mt : Mem} {R : Nat → BitVec 64} {sp q : Nat} {v : Int} {L1 L2 : List NumObj}
+    {x : NumObj} {H : Heap} {F : List Blk}
+    (cx : I2NCtx S R sp q v) (e : FreeEntry S X Mt H F L1 L2 x q (sp - 96))
+    (h10 : R 10 = BitVec.ofNat 64 q) (h11 : R 11 = BitVec.ofInt 64 v)
+    (hk : I2NK live S X Q R Mt L1 L2 x q sp v) :
+    DW live S Q 0x8000690c#64 R Mt :=
+  bc_int2num_specS hlive cx (.num e) h10 h11 hk
 
 end Dc.Mach

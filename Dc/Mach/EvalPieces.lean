@@ -147,7 +147,8 @@ theorem ev_cont_k {p : Nat} (hb : BltuAt live S Q p) {R : Nat → BitVec 64} {M 
 
 end
 
-/-- **`DC_INT`** (status `5`): the number read pushed, on to the rest after it. -/
+/-- **`DC_INT`** (status `5`): the number read pushed, on to the rest after
+it; a fractional literal's read loses one reference (`numLeak`). -/
 def EvIntCore (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop) :
     Prop :=
   ∀ (t0 : String) (sp W d k q : Nat) (M0 : Mem) (R0 R : Nat → BitVec 64) (M : Mem) (H : Heap)
@@ -156,9 +157,9 @@ def EvIntCore (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (N
     (H' : Heap) (F' : List Blk) (L' : List NumObj) (C' : BcConsts) (G' : DcG) (ex : List GV),
     EvCall S sp W d k q M0 R0 R M H F L C G hs xs st c rest td neg o Rc R' Mc M' H' F' L' C' G'
       st ex →
-    dcFunc 70 st c rest.head? neg = .int → R' 10 = BitVec.ofNat 64 5 → leakOne c ≤ k →
-    EvOom live S Q sp W q M0 →
-    EvHeadK live S Q t0 sp W d k (k - leakOne c) q M0 R0 G hs xs
+    dcFunc 70 st c rest.head? neg = .int → R' 10 = BitVec.ofNat 64 5 →
+    leakOne c + numLeak (c :: rest) ≤ k → EvOom live S Q sp W q M0 →
+    EvHeadK live S Q t0 sp W d k (k - leakOne c - numLeak (c :: rest)) q M0 R0 G hs xs
       (st.push (.num (readNum st.ibase (c :: rest)).1)) ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ →
     EvEndK live S Q t0 sp W d k q M0 R0 G hs xs (st.push (.num (readNum st.ibase (c :: rest)).1))
       ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ →

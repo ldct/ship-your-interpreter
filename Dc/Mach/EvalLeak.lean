@@ -30,9 +30,22 @@ def leakAllow (c : Nat) : Nat :=
 /-- The commands that may lose a reference (`leakAllow c ≠ 0`). -/
 def leakCmd (c : Nat) : Bool := leakAllow c != 0
 
+/-- A number literal with a fraction part (`readNum`'s `.` route), whose
+read (`dc_getnum`) loses the divisor's reference. -/
+def numFrac (s : List Nat) : Bool :=
+  match (takeDigits (match s with
+    | 95 :: rest => rest.dropWhile isSpace
+    | _ => s)).2 with
+  | 46 :: _ => true
+  | _ => false
+
+/-- The references a number literal's read loses: one for a fraction. -/
+def numLeak (s : List Nat) : Nat := if numFrac s then 1 else 0
+
 mutual
 
-/-- Leaking commands run by `run lm n st f`. -/
+/-- Leaking commands run by `run lm n st f`; a fractional number literal
+counts one. -/
 def leakCount (lm : Nat) : Nat → St → Frame → Nat
   | 0, _, _ => 0
   | _ + 1, _, ⟨[], _, _⟩ => 0
@@ -49,8 +62,8 @@ def leakCount (lm : Nat) : Nat → St → Frame → Nat
     | .quit st' =>
       if td ≤ st'.unwind then 0 else leakCount lm fuel st' ⟨rest, td - st'.unwind, false⟩
     | .int =>
-      leakCount lm fuel (st.push (.num (readNum st.ibase (c :: rest)).1))
-        ⟨(readNum st.ibase (c :: rest)).2, td, false⟩
+      (leakCount lm fuel (st.push (.num (readNum st.ibase (c :: rest)).1))
+        ⟨(readNum st.ibase (c :: rest)).2, td, false⟩) + numLeak (c :: rest)
     | .str => leakCount lm fuel (st.push (.str (scanStr 1 rest).1)) ⟨(scanStr 1 rest).2, td, false⟩
     | .comment => leakCount lm fuel st ⟨skipEol rest, td, false⟩
     | .negcmp => leakCount lm fuel st ⟨rest, td, true⟩

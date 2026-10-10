@@ -85,10 +85,19 @@ theorem EvFuel.quitOut (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st
 
 theorem EvFuel.int (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .int) :
-    EvFuel lm n d (k - leakOne c) (st.push (.num (readNum st.ibase (c :: rest)).1))
-      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ st'' r ∧ CallOK st ∧ leakOne c ≤ k := by
+    EvFuel lm n d (k - leakOne c - numLeak (c :: rest)) (st.push (.num (readNum st.ibase (c :: rest)).1))
+      ⟨(readNum st.ibase (c :: rest)).2, td, false⟩ st'' r ∧ CallOK st ∧
+      leakOne c + numLeak (c :: rest) ≤ k := by
   fuel_step
-  all_goals exact ⟨⟨hrun, hn, by omega, hsz.2, ht⟩, hsz.1, by omega⟩
+  all_goals refine ⟨⟨hrun, hn, ?_, hsz.2, ht⟩, hsz.1, ?_⟩
+  all_goals
+    generalize numLeak (c :: rest) = B at *
+    generalize leakCount lm n _ _ = A at *
+    first
+      | exact Nat.le_sub_of_add_le hl
+      | exact Nat.le_trans (Nat.le_add_left B A) hl
+      | exact Nat.le_sub_of_add_le (Nat.le_sub_of_add_le (by rw [Nat.add_comm] at hl; exact hl))
+      | exact Nat.le_trans (Nat.add_le_add_left (Nat.le_add_left B A) 1) hl
 
 theorem EvFuel.str (h : EvFuel lm (n + 1) d k st ⟨c :: rest, td, neg⟩ st'' r)
     (hr : dcFunc lm st c rest.head? neg = .str) :

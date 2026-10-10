@@ -34,7 +34,54 @@ local macro_rules | `(tactic| sx_side) => `(tactic| dc_side)
 macro "ld48" : tactic =>
   `(tactic| ((repeat rw [ldv_ld_miss _ _ (by omega)]); rw [ldv_store_hit]))
 
-/-- **A handle given up**: the caller's handle `p` becomes a lost reference. -/
+/-- **A handle's reference lost** on the ghost side: it moves to `DcG.lk`. -/
+theorem DcDen.leak {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat}
+    (d : DcDen L C G (.num p :: hs) st) (hl : G.lk.length < 2 ^ 29) :
+    DcDen L C { G with lk := p :: G.lk } hs st where
+  stk := d.stk
+  regs := d.regs
+  regsHi := d.regsHi
+  hsDen := fun g hg => d.hsDen g (List.mem_cons_of_mem _ hg)
+  owns := d.owns
+  norm := d.norm
+  pos := d.pos
+  numRefs := fun x hx => by
+    have e := d.numRefs x hx
+    have ev : ({ G with lk := p :: G.lk } : DcG).vals = G.vals := rfl
+    rw [ev]
+    simp only [List.count_append, List.count_cons] at e ⊢
+    by_cases ep : p = x.rep.p
+    · subst ep; simp only [beq_self_eq_true, ite_true] at e ⊢; omega
+    · have : (GV.num p == GV.num x.rep.p) = false := by simp [ep]
+      have : (p == x.rep.p) = false := by simp [ep]
+      simp only [*, Bool.false_eq_true, ite_false] at e ⊢; omega
+  strRefs := fun o ho => by
+    have e := d.strRefs o ho
+    have ev : ({ G with lk := p :: G.lk } : DcG).vals = G.vals := rfl
+    rw [ev]
+    simp only [List.count_append, List.count_cons] at e ⊢
+    simp at e ⊢; omega
+  lkLen := by simp only [List.length_cons]; omega
+  lkIn := fun q hq => by
+    rcases List.mem_cons.mp hq with rfl | hq
+    · obtain ⟨v, hv⟩ := d.hsDen _ List.mem_cons_self
+      cases v with
+      | num n => obtain ⟨x, hx, e, -⟩ := hv; exact ⟨x, hx, e⟩
+      | str s => exact hv.elim
+    · exact d.lkIn q hq
+  mz := d.mz
+  mo := d.mo
+  mt := d.mt
+  zv := d.zv
+  ov := d.ov
+  tv := d.tv
+  ibase := d.ibase
+  obase := d.obase
+  scale := d.scale
+  unwind := d.unwind
+  lbuf := d.lbuf
+
+/-- **A handle's reference lost**: it moves to `DcG.lk`. -/
 theorem DcAt.leak {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat}
     (h : DcAt S M H F L C G (.num p :: hs) st) (hl : G.lk.length < 2 ^ 29) :
@@ -42,35 +89,7 @@ theorem DcAt.leak {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : Li
   heap := h.heap
   nodup := h.nodup
   view := { h.view with }
-  den :=
-    { stk := h.den.stk, regs := h.den.regs, regsHi := h.den.regsHi
-      hsDen := fun g hg => h.den.hsDen g (List.mem_cons_of_mem _ hg)
-      owns := h.den.owns, norm := h.den.norm, pos := h.den.pos
-      numRefs := fun x hx => by
-        have e := h.den.numRefs x hx
-        have ev : ({ G with lk := p :: G.lk } : DcG).vals = G.vals := rfl
-        rw [ev]
-        simp only [List.count_append, List.count_cons] at e ⊢
-        by_cases ep : p = x.rep.p
-        · subst ep; simp only [beq_self_eq_true, ite_true] at e ⊢; omega
-        · have : (GV.num p == GV.num x.rep.p) = false := by simp [ep]
-          have : (p == x.rep.p) = false := by simp [ep]
-          simp only [*, Bool.false_eq_true, ite_false] at e ⊢; omega
-      strRefs := fun o ho => by
-        have e := h.den.strRefs o ho
-        have ev : ({ G with lk := p :: G.lk } : DcG).vals = G.vals := rfl
-        rw [ev]
-        simp only [List.count_append, List.count_cons] at e ⊢
-        simp at e ⊢; omega
-      lkLen := by simp only [List.length_cons]; omega
-      lkIn := fun q hq => by
-        rcases List.mem_cons.mp hq with rfl | hq
-        · obtain ⟨L1, L2, x, e, hx⟩ := h.handle_num
-          exact ⟨x, by rw [e]; exact List.mem_append_right _ List.mem_cons_self, hx⟩
-        · exact h.den.lkIn q hq
-      mz := h.den.mz, mo := h.den.mo, mt := h.den.mt, zv := h.den.zv, ov := h.den.ov
-      ibase := h.den.ibase, obase := h.den.obase, scale := h.den.scale, unwind := h.den.unwind
-      lbuf := h.den.lbuf }
+  den := h.den.leak hl
   glob := h.glob
   col := h.col
 

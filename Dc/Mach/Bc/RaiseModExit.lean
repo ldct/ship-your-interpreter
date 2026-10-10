@@ -272,7 +272,7 @@ theorem rx_ret {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       (by keeps_tac ra.keep))) (by bsimp []; rw [hk1.get 22 (by decide)]; bsimp [h22])
     fun R' hk' h10' => hret R' _ H1 F1 L' (RH.obj [hT] hT) hk' (by rw [h10']; bsimp [])
       { heap := hb2
-        mid := ⟨w, Lw, _, hw1, hw2, ⟨L1, L2, _, rfl, rfl, hfr⟩, hwn, hwl, hwo⟩
+        mid := ⟨w, Lw, _, hw1, hw2, ⟨L1, L2, _, rfl, rfl, hfr⟩, hb.pdist, hwn, hwl, hwo⟩
         num := by rw [RH.obj_num]; exact hn
         norm := (RH.obj_norm _ _).mpr hnn
         pos := by rw [RH.obj_len]; exact hl

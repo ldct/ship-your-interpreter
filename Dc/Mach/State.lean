@@ -265,6 +265,7 @@ structure DcDen (L : List NumObj) (C : BcConsts) (G : DcG) (hs : List GV) (st : 
   mt : C.t ∈ L
   zv : C.z.rep.num = Num.zero 0
   ov : C.o.rep.num = Num.one
+  tv : C.t.rep.num = ⟨false, 2, 0⟩
   ibase : 2 ≤ st.ibase ∧ st.ibase ≤ 16
   obase : 2 ≤ st.obase ∧ st.obase < 2 ^ 31
   scale : st.scale < 2 ^ 31

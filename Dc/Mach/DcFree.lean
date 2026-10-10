@@ -110,6 +110,7 @@ theorem DcDen.rel {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
       mt := hmem _ (by simp) d.mt
       zv := d.zv
       ov := d.ov
+      tv := d.tv
       ibase := d.ibase
       obase := d.obase
       scale := d.scale
@@ -147,7 +148,8 @@ theorem DcDen.dec {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
     mo := hcz _ d.mo
     mt := hcz _ d.mt
     zv := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.zv
-    ov := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.ov }
+    ov := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.ov
+    tv := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.tv }
   · obtain ⟨w, hw⟩ := d.hsDen g (List.mem_cons_of_mem _ hg); exact ⟨w, hw.relist (hsub _)⟩
   · rcases mem_split_cases hy with rfl | hy
     · exact d.owns x hx
@@ -697,6 +699,7 @@ theorem DcAt.dropStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L :
         mt := d.mt
         zv := d.zv
         ov := d.ov
+        tv := d.tv
         ibase := d.ibase
         obase := d.obase
         scale := d.scale

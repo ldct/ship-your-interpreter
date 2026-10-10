@@ -105,6 +105,7 @@ structure RxMid (L : List NumObj) (w : NumObj) (Lw : List NumObj) (y : NumObj) (
   addW : AddRef L w Lw
   addY : AddRef Lw y Lm
   drop : DropAt Lm p Lf
+  pdist : PDist Lm
   normW : w.rep.Norm
   posW : 1 ≤ w.rep.len
   ownsW : w.Owns

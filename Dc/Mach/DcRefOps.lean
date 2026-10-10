@@ -129,7 +129,8 @@ theorem DcDen.bump {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {
     mo := hcz _ d.mo
     mt := hcz _ d.mt
     zv := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.zv
-    ov := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.ov }
+    ov := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.ov
+    tv := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.tv }
   · rcases List.mem_cons.mp hg with rfl | hg
     · exact ⟨.num x.rep.num, x.withRefs (x.rep.refs + 1), List.mem_append_right _ List.mem_cons_self, rfl, rfl⟩
     · obtain ⟨w, hw⟩ := d.hsDen g hg; exact ⟨w, hw.relist (hsub _)⟩

@@ -98,6 +98,58 @@ theorem count_cons_self (g : GV) (vs hs : List GV) :
     (vs ++ g :: hs).count g = (vs ++ hs).count g + 1 := by
   simp only [List.count_append, List.count_cons, beq_self_eq_true, ite_true]; omega
 
+/-- **One more reference**, on the ghost side: the handle `.num x.p` joins
+`hs`; the constants follow the bumped object. -/
+theorem DcDen.bump {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
+    {st : St} (d : DcDen (L1 ++ x :: L2) C G hs st) (hne : ∀ y ∈ L1 ++ L2, y.rep.p ≠ x.rep.p) :
+    DcDen (L1 ++ x.withRefs (x.rep.refs + 1) :: L2) (C.subst x (x.withRefs (x.rep.refs + 1))) G
+      (.num x.rep.p :: hs) st := by
+  classical
+  have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
+  have hp' : (x.withRefs (x.rep.refs + 1)).rep.p = x.rep.p := rfl
+  have hn' : (x.withRefs (x.rep.refs + 1)).rep.num = x.rep.num := rfl
+  have hsub : ∀ ss : List StrObj, DObjs.Sub ⟨L1 ++ x :: L2, ss⟩ ⟨L1 ++ x.withRefs (x.rep.refs + 1) :: L2, ss⟩ := fun ss =>
+    ⟨fun y hy => ⟨_, BcConsts.subst_mem (x' := x.withRefs (x.rep.refs + 1)) hy, ite_rep hp' hn' y _⟩,
+      fun o ho => ⟨o, ho, rfl, rfl⟩⟩
+  have hcz : ∀ (y : NumObj) [Decidable (y = x)], y ∈ L1 ++ x :: L2 →
+      (if y = x then x.withRefs (x.rep.refs + 1) else y) ∈ L1 ++ x.withRefs (x.rep.refs + 1) :: L2 := fun y _ hy => BcConsts.subst_mem hy
+  refine { d with
+    stk := d.stk.imp fun hh => hh.relist (hsub _)
+    regs := fun r hr => (d.regs r hr).imp fun hh => hh.relist (hsub _)
+    hsDen := fun g hg => ?_
+    owns := fun y hy => ?_
+    norm := fun y hy => ?_
+    pos := fun y hy => ?_
+    numRefs := fun y hy => ?_
+    strRefs := fun o ho => ?_
+    lkIn := fun p hp => by
+      obtain ⟨y, hy, e⟩ := d.lkIn p hp
+      exact ⟨_, hcz y hy, (ite_rep hp' hn' y _).1.trans e⟩
+    mz := hcz _ d.mz
+    mo := hcz _ d.mo
+    mt := hcz _ d.mt
+    zv := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.zv
+    ov := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.ov }
+  · rcases List.mem_cons.mp hg with rfl | hg
+    · exact ⟨.num x.rep.num, x.withRefs (x.rep.refs + 1), List.mem_append_right _ List.mem_cons_self, rfl, rfl⟩
+    · obtain ⟨w, hw⟩ := d.hsDen g hg; exact ⟨w, hw.relist (hsub _)⟩
+  · rcases mem_split_cases hy with rfl | hy
+    · exact d.owns x hx
+    · exact d.owns y (mem_split_of hy)
+  · rcases mem_split_cases hy with rfl | hy
+    · exact d.norm x hx
+    · exact d.norm y (mem_split_of hy)
+  · rcases mem_split_cases hy with rfl | hy
+    · exact d.pos x hx
+    · exact d.pos y (mem_split_of hy)
+  · rw [BcConsts.subst_cnt C hp' hn']
+    rcases mem_split_cases hy with rfl | hy
+    · show x.rep.refs + 1 = (G.vals ++ .num x.rep.p :: hs).count (.num x.rep.p) + C.cnt x.rep.p +
+        G.lk.count x.rep.p
+      rw [count_cons_self]; have := d.numRefs x hx; omega
+    · rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hne y hy (GV.num.inj e).symm]
+  · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+
 /-- **`n_refs` of a heap number incremented**: the handle `.num p` joins
 `hs`; the constants follow the bumped object. -/
 theorem DcAt.bumpNum {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L1 L2 : List NumObj}
@@ -127,56 +179,14 @@ theorem DcAt.bumpNum {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L1 
       have := live_in_heap hi hb.sLive hxa; have := ha.lt; omega
   have hp' : (x.withRefs (x.rep.refs + 1)).rep.p = x.rep.p := rfl
   have hn' : (x.withRefs (x.rep.refs + 1)).rep.num = x.rep.num := rfl
-  have hsub : ∀ ss : List StrObj, DObjs.Sub ⟨L1 ++ x :: L2, ss⟩ ⟨L1 ++ x.withRefs (x.rep.refs + 1) :: L2, ss⟩ := fun ss =>
-    ⟨fun y hy => ⟨_, BcConsts.subst_mem (x' := x.withRefs (x.rep.refs + 1)) hy, ite_rep hp' hn' y _⟩,
-      fun o ho => ⟨o, ho, rfl, rfl⟩⟩
-  have hne := h.heap.p_ne_all
-  have hcz : ∀ (y : NumObj) [Decidable (y = x)], y ∈ L1 ++ x :: L2 →
-      (if y = x then x.withRefs (x.rep.refs + 1) else y) ∈ L1 ++ x.withRefs (x.rep.refs + 1) :: L2 := fun y _ hy => BcConsts.subst_mem hy
   have hv0 := h.view.frame hblk hgl
-  have d := h.den
   refine ⟨?_, h.nodup, ?_, ?_, h.glob, h.col⟩
   · exact hb1.subRaw (fun c hc => hc) fun c hc a ha => (hblk a ⟨c, hc, ha⟩).symm
   · refine { hv0 with zw := ?_, ow := ?_, tw := ?_ }
     · simp only [BcConsts.subst, (ite_rep hp' hn' _ _).1]; exact hv0.zw
     · simp only [BcConsts.subst, (ite_rep hp' hn' _ _).1]; exact hv0.ow
     · simp only [BcConsts.subst, (ite_rep hp' hn' _ _).1]; exact hv0.tw
-  · refine { d with
-      stk := d.stk.imp fun hh => hh.relist (hsub _)
-      regs := fun r hr => (d.regs r hr).imp fun hh => hh.relist (hsub _)
-      hsDen := fun g hg => ?_
-      owns := fun y hy => ?_
-      norm := fun y hy => ?_
-      pos := fun y hy => ?_
-      numRefs := fun y hy => ?_
-      strRefs := fun o ho => ?_
-      lkIn := fun p hp => by
-        obtain ⟨y, hy, e⟩ := d.lkIn p hp
-        exact ⟨_, hcz y hy, (ite_rep hp' hn' y _).1.trans e⟩
-      mz := hcz _ d.mz
-      mo := hcz _ d.mo
-      mt := hcz _ d.mt
-      zv := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.zv
-      ov := by simp only [BcConsts.subst, (ite_rep hp' hn' _ _).2]; exact d.ov }
-    · rcases List.mem_cons.mp hg with rfl | hg
-      · exact ⟨.num x.rep.num, x.withRefs (x.rep.refs + 1), List.mem_append_right _ List.mem_cons_self, rfl, rfl⟩
-      · obtain ⟨w, hw⟩ := d.hsDen g hg; exact ⟨w, hw.relist (hsub _)⟩
-    · rcases mem_split_cases hy with rfl | hy
-      · exact d.owns x hx
-      · exact d.owns y (mem_split_of hy)
-    · rcases mem_split_cases hy with rfl | hy
-      · exact d.norm x hx
-      · exact d.norm y (mem_split_of hy)
-    · rcases mem_split_cases hy with rfl | hy
-      · exact d.pos x hx
-      · exact d.pos y (mem_split_of hy)
-    · rw [BcConsts.subst_cnt C hp' hn']
-      rcases mem_split_cases hy with rfl | hy
-      · show x.rep.refs + 1 = (G.vals ++ .num x.rep.p :: hs).count (.num x.rep.p) + C.cnt x.rep.p +
-          G.lk.count x.rep.p
-        rw [count_cons_self]; have := d.numRefs x hx; omega
-      · rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hne y hy (GV.num.inj e).symm]
-    · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+  · exact h.den.bump h.heap.p_ne_all
 
 /-! ## Stores into the state's own blocks -/
 

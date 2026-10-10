@@ -125,7 +125,7 @@ theorem dc_int2num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Na
       DcAt S M' H' F' (y :: L') C' G (.num y.rep.p :: hs) st → y.rep.num = Num.ofInt v →
       ldv .ld M' q = BitVec.ofNat 64 y.rep.p →
       (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 128 a → imgM M' a = imgM M a) →
-      DW live S Q (R 1) R' M')
+      HsKeep ⟨L, G.strs⟩ ⟨y :: L', G.strs⟩ hs → DW live S Q (R 1) R' M')
     (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 128) →
       (∀ a, OutHeap a → ¬ slotBytes q a → ¬ frameIn sp 128 a → imgM M' a = imgM M a) →
       DW live S Q 0x80002bcc#64 R' M') :
@@ -139,10 +139,10 @@ theorem dc_int2num_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Na
     (by simp only [heapEnd]; omega) (by omega)
   refine bc_int2num_spec hlive ⟨hsf, hab, hq, hsl', hqf, h2, hal, hvlo, hvhi⟩ e h10 h11
     ⟨fun R' Mt' H' F' L' y hk1 hp => ?_, fun R' Mt' h2' hm => hoom R' Mt' h2' hm⟩
-  obtain ⟨C', hd, -⟩ := h.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
+  obtain ⟨C', hd, hkp⟩ := h.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
     hp.out a ha.outHeap (fun hs => by have := ha.lt; simp only [heapStart] at this; omega)
       (fun hf => by have := ha.lt; simp only [heapStart, frameIn] at this hf; omega)
-  refine hk R' Mt' H' F' L' C' y hk1 hd hp.num ?_ hp.out
+  refine hk R' Mt' H' F' L' C' y hk1 hd hp.num ?_ hp.out hkp
   rw [hp.slot, (hp.heap.blocks y List.mem_cons_self).sPay]
 
 /-- **`dc_int2data(val)`** at `0x800026d8`, `-2^31 < val < 2^31`: returns a
@@ -190,7 +190,7 @@ theorem dc_int2data_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (N
   refine dc_int2num_spec hlive hd2 hq (by simp only [heapEnd]; omega) hw2
     (StackFrame.sub (m := 64) (n := 128) hsf (by decide)) (by simp only [heapEnd]; omega)
     (.inr (by omega)) _ (by bsimp []) (by bsimp []) (by bsimp [q1]) (by bsimp []) hvlo hvhi
-    (fun R3 M3 H3 F3 L3 C3 y hk3 hd3 hnum hw3 hfr3 => ?_) (fun R3 M3 hr2 hfr3 => ?_)
+    (fun R3 M3 H3 F3 L3 C3 y hk3 hd3 hnum hw3 hfr3 _ => ?_) (fun R3 M3 hr2 hfr3 => ?_)
   rotate_left
   · refine hoom R3 M3 (by rw [hr2, Nat.sub_sub]) fun a ho hg hf => ?_
     rw [hfr3 a ho (fun hs => hf (by simp only [slotBytes, frameIn] at hs ⊢; omega))

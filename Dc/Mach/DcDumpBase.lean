@@ -25,6 +25,8 @@ the state; a bc callee gets them as raw blocks beside the state's
 - `CellsK`: a stack of `[word, next]` cells with the word read as `k`.
 - `DnStk`: the digit cells, fresh to the state.
 - `DcAt.withCells`, `DnStk.ofRaw`: the cells as a callee's raw blocks.
+- `bc_free_num_dcK`: `bc_free_num_dc` keeping the other handles' values.
+- `dumpDs`, `DumpInv`: the digit loop's model (`.start`, `.step`, `.exit`).
 -/
 
 namespace Dc.Mach
@@ -124,10 +126,11 @@ structure DnStk (H : Heap) (F : List Blk) (L : List NumObj) (G : DcG) (M : Mem)
   fresh : ∀ c ∈ cells, DcFresh H F L G c
   stk : CellsK .lw M G.blocks cells ds p
   dig : ∀ d ∈ ds, d < 256
+  lt : p < 2 ^ 64
 
 /-- No cells. -/
 theorem DnStk.nil (H : Heap) (F : List Blk) (L : List NumObj) (G : DcG) (M : Mem) :
-    DnStk H F L G M [] [] 0 := ⟨fun _ h => (nomatch h), rfl, fun _ h => (nomatch h)⟩
+    DnStk H F L G M [] [] 0 := ⟨fun _ h => (nomatch h), rfl, fun _ h => (nomatch h), by decide⟩
 
 /-- **The cells as raw blocks beside the state's**, imaged at the current
 memory. -/
@@ -159,5 +162,141 @@ theorem DnStk.ofRaw {S : Nat → Prop} {G : DcG} {cells : List Blk} {ds : List N
       hb.raw.out c (List.mem_append_left _ hc)⟩
   stk := sk.stk.transport (by decide) fun c hc a ha => hb.raw.img c (List.mem_append_left _ hc) a ha
   dig := sk.dig
+  lt := sk.lt
+
+/-- **The cells through `dc_malloc`**: still fresh, their bytes kept. -/
+theorem DnStk.malloc {S : Nat → Prop} {H H' : Heap} {F : List Blk} {L : List NumObj} {G : DcG}
+    {M M' : Mem} {cells : List Blk} {ds : List Nat} {p n sp : Nat} {c : Blk}
+    (sk : DnStk H F L G M cells ds p) (hi : HeapInv S M H) (hp : DcMallocPost S M M' H H' n sp c)
+    (hsp : heapEnd + 16 ≤ sp) : DnStk H' F L G M' cells ds p where
+  fresh := fun c' hc' => ⟨by rw [hp.live]; exact List.mem_cons_of_mem _ (sk.fresh c' hc').live,
+    (sk.fresh c' hc').notG, (sk.fresh c' hc').notNum⟩
+  stk := sk.stk.transport (by decide) fun c' hc' a ha =>
+    hp.frame a (live_not_alloc hi (sk.fresh c' hc').live ha) fun hf => by
+      have := live_in_heap hi (sk.fresh c' hc').live ha
+      simp only [frameIn, heapEnd] at hf this hsp; omega
+  dig := sk.dig
+  lt := sk.lt
+
+/-- The block `dc_malloc` returned is none of the cells. -/
+theorem DnStk.not_mem {S : Nat → Prop} {H H' : Heap} {F : List Blk} {L : List NumObj} {G : DcG}
+    {M M' : Mem} {cells : List Blk} {ds : List Nat} {p n sp : Nat} {c : Blk}
+    (sk : DnStk H F L G M cells ds p) (hi : HeapInv S M H) (hp : DcMallocPost S M M' H H' n sp c)
+    (hn : 1 ≤ n) : c ∉ cells := fun hc => by
+  have hsz := hp.size
+  exact live_not_alloc hi (sk.fresh c hc).live (a := c.pay) ⟨Nat.le_refl _, by simp only [Blk.pay, Blk.fin]; omega⟩
+    (hp.alloc _ (by simp only [Blk.pay]; omega) (by simp only [Blk.pay, Blk.fin]; omega))
+
+/-- **A cell pushed**: the fresh block `c`, written only in its bytes, holds
+the digit `d` and the old top `p`. -/
+theorem DnStk.push {S : Nat → Prop} {H : Heap} {F : List Blk} {L : List NumObj} {G : DcG}
+    {M M' : Mem} {cells : List Blk} {ds : List Nat} {p d : Nat} {c : Blk}
+    (sk : DnStk H F L G M cells ds p) (hi : HeapInv S M H) (hc : DcFresh H F L G c)
+    (hcs : c ∉ cells) (hsz : 16 ≤ c.sz) (hd : d < 256) (hm : MemOnly c.In M' M)
+    (hw : ldv .lw M' c.pay = BitVec.ofNat 64 d) (hl : ldv .ld M' (c.pay + 8) = BitVec.ofNat 64 p) :
+    DnStk H F L G M' (c :: cells) (d :: ds) c.pay where
+  fresh := List.forall_mem_cons.mpr ⟨hc, sk.fresh⟩
+  stk := ⟨rfl, hsz, hw, fun hm' => (List.mem_append.mp hm').elim hcs hc.notG, by
+    rw [hl, BitVec.toNat_ofNat, Nat.mod_eq_of_lt sk.lt]
+    exact sk.stk.transport (by decide) fun c' hc' a ha => hm a fun hca =>
+      live_apart hi hc.live (sk.fresh c' hc').live (fun e => hcs (e ▸ hc')) hca ha⟩
+  dig := List.forall_mem_cons.mpr ⟨hd, sk.dig⟩
+  lt := by
+    have := live_in_heap hi hc.live (a := c.pay) ⟨Nat.le_refl _, by simp only [Blk.pay, Blk.fin]; omega⟩
+    simp only [heapEnd] at this; omega
+
+/-- **The top cell freed**: the rest from the top's link. -/
+theorem DnStk.free {S : Nat → Prop} {H H' : Heap} {F : List Blk} {L : List NumObj} {G : DcG}
+    {M M' : Mem} {c : Blk} {cells lpre lpost : List Blk} {d : Nat} {ds : List Nat} {p : Nat}
+    (sk : DnStk H F L G M (c :: cells) (d :: ds) p) (hi : HeapInv S M H)
+    (hl : H.live = lpre ++ c :: lpost) (hp : FreePost S M M' H H' c lpre lpost) :
+    DnStk H' F L G M' cells ds (ldv .ld M (c.pay + 8)).toNat where
+  fresh := fun c' hc' => by
+    have hf := sk.fresh c' (List.mem_cons_of_mem _ hc')
+    have hne : c' ≠ c := fun e => sk.stk.head.fresh (List.mem_append_left _ (e ▸ hc'))
+    refine ⟨?_, hf.notG, hf.notNum⟩
+    have := hf.live
+    rw [hl, List.mem_append, List.mem_cons] at this
+    rw [hp.live, List.mem_append]
+    rcases this with h | h | h
+    · exact .inl h
+    · exact absurd h hne
+    · exact .inr h
+  stk := sk.stk.head.rest.transport (by decide) fun c' hc' a ha =>
+    hp.frame a (live_not_alloc hi (sk.fresh c' (List.mem_cons_of_mem _ hc')).live ha)
+  dig := fun d' hd' => sk.dig d' (List.mem_cons_of_mem _ hd')
+  lt := BitVec.isLt _
+
+/-- **`bc_free_num` on a handle of the state**, the other handles keeping
+their values. -/
+theorem bc_free_num_dcK {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat}
+    (h : DcAt S M H F L C G (.num p :: hs) st) {q sp : Nat} (hq : PtrSlot S q) (hqh : heapEnd ≤ q)
+    (hw : ldv .ld M q = BitVec.ofNat 64 p) (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
+    (hqf : q + 8 ≤ sp - 32 ∨ sp ≤ q)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S M' H' F' L' C' G hs st →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs → DW live S Q (R 1) R' M') :
+    DW live S Q 0x800048c0#64 R M :=
+  bc_free_num_dcP hlive (Pend.id G) (M := M) h hq (.above hqh) hw hsf hab hqf R h10 h2 hal
+    fun R' M' H' F' L' C' k1 k2 _ k4 _ k6 => hk R' M' H' F' L' C' k1 k2 k4 k6
+
+/-! ## The model -/
+
+/-- The bytes `dc_dump_num` prints for the integer part `k`: its base-256
+digits, at least one. -/
+def dumpDs (k : Nat) : List Nat :=
+  match Dc.Num.digits 256 k with
+  | [] => [0]
+  | ds => ds
+
+theorem dump_eq (n : Dc.Num) : n.dump = dumpDs n.intPart := rfl
+
+/-- **The digit loop's invariant** at its head, `v` the quotient left and
+`ds` the digits pushed (top first): nothing pushed yet, or the bytes are the
+digits still to compute followed by the pushed ones. -/
+def DumpInv (n0 v : Nat) (ds : List Nat) : Prop :=
+  (ds = [] ∧ v = n0) ∨ (ds ≠ [] ∧ dumpDs n0 = Dc.Num.digits 256 v ++ ds)
+
+theorem DumpInv.start (n0 : Nat) : DumpInv n0 n0 [] := .inl ⟨rfl, rfl⟩
+
+theorem digits_zero (b : Nat) : Dc.Num.digits b 0 = [] := rfl
+
+/-- One turn: `v % 256` pushed, `v / 256` left. -/
+theorem DumpInv.step {n0 v : Nat} {ds : List Nat} (h : DumpInv n0 v ds) (hc : ds ≠ [] → v ≠ 0) :
+    DumpInv n0 (v / 256) (v % 256 :: ds) := by
+  refine .inr ⟨List.cons_ne_nil _ _, ?_⟩
+  rcases h with ⟨rfl, hv⟩ | ⟨hne, he⟩
+  · subst hv
+    by_cases h0 : v = 0
+    · subst h0; rfl
+    · rw [dumpDs, Dc.BcModel.digits_step 256 (by decide) v h0]
+      cases Dc.Num.digits 256 (v / 256) <;> rfl
+  · rw [he, Dc.BcModel.digits_step 256 (by decide) v (hc hne), List.append_assoc]; rfl
+
+/-- A smaller magnitude has no more decimal digits. -/
+theorem decLen_mono : ∀ {a b : Nat}, a ≤ b → decLen a ≤ decLen b := by
+  intro a b
+  induction b using Nat.strongRecOn generalizing a with
+  | ind b ih =>
+    intro hab
+    rw [decLen.eq_1 a, decLen.eq_1 b]
+    split
+    · split <;> omega
+    · rename_i ha
+      have hb : ¬ b < 10 := by omega
+      rw [if_neg hb]
+      have := ih (b / 10) (by omega) (a := a / 10) (Nat.div_le_div_right hab)
+      omega
+
+/-- The loop's exit: the digits pushed are the bytes. -/
+theorem DumpInv.exit {n0 : Nat} {ds : List Nat} (h : DumpInv n0 0 ds) (hne : ds ≠ []) :
+    dumpDs n0 = ds := by
+  rcases h with ⟨e, _⟩ | ⟨_, he⟩
+  · exact absurd e hne
+  · rw [he, digits_zero, List.nil_append]
 
 end Dc.Mach

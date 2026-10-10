@@ -18,6 +18,8 @@ THEOREMS=(
   Dc.refinement                                   # the generic composition (Dc/Refinement.lean)
   Dc.dc_term_sim
   Dc.dc_stuck_sim
+  Dc.sqrt_total                                   # bc_sqrt's Newton loop terminates (Dc/SqrtTotal.lean)
+  Dc.Mach.sqOut_total
   Dc.evOomBoot                                    # evalstr's out-of-memory at the boot call
   Dc.Mach.bc_add_spec
   Dc.Mach.bc_compare_spec

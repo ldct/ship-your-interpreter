@@ -1,6 +1,7 @@
 import Dc.Mach.DcFuncArmV1
 import Dc.Mach.DcFuncArm2
 import Dc.Mach.DcSqrt
+import Dc.SqrtTotal
 
 /-!
 # `dc_func`'s `v` arm (M10)
@@ -34,6 +35,26 @@ theorem dcFunc_v (st : St) (n : Num) (peek : Option Nat) (neg : Bool) :
       | .lt => .ok st
       | .eq => .ok (st.push (.num (Num.zero 0)))
       | .gt => if Num.cmp n Num.one == .eq then .ok (st.push (.num Num.one)) else .sqrt st n := rfl
+
+/-- **`bc_sqrt` always has an outcome** (`Dc.sqrt_total`: the Newton loop
+terminates). -/
+theorem sqOut_total (x : Num) (k : Nat) : ∃ o, SqOut x k o := by
+  cases hc : Num.cmp x (Num.zero 0)
+  · exact ⟨none, .neg hc⟩
+  · exact ⟨_, .zero hc⟩
+  · have hx : x.neg = false ∧ 0 < x.mag := by
+      unfold Num.cmp Num.zero at hc
+      cases hn : x.neg <;> simp only [hn] at hc
+      · refine ⟨rfl, ?_⟩
+        simp only [Num.cmpMag, Num.align, Nat.compare_eq_gt] at hc
+        rcases Nat.eq_zero_or_pos x.mag with h | h
+        · rw [h] at hc; simp at hc
+        · exact h
+      · simp at hc
+    by_cases h1 : Num.cmp x Num.one = .eq
+    · exact ⟨_, .one hc h1⟩
+    · obtain ⟨r, hr⟩ := sqrt_total hx.1 hx.2 k
+      exact ⟨_, .root hc h1 hr⟩
 
 /-- `v`'s result through `SqOut`: the returned code and state. -/
 theorem sqOut_fn {st : St} {n r : Num} (peek : Option Nat) (neg : Bool)
@@ -256,7 +277,6 @@ theorem fa_v {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 1216 + rmStack (2 ^ 30) ≤ W)
     (ho : FnOom live S Q sp W M0) (hmb : MulBase S M0)
     (hhs : hs.length + 4 ≤ 2 ^ 20) (hlk : G.lk.length + 2 ≤ 2 ^ 29) (hal : 1 ≤ al)
-    (hsq : ∀ n rest, st.stack = .num n :: rest → ∃ o, SqOut n st.scale o)
     (hsz : ∀ n rest, st.stack = .num n :: rest → n.wid + st.scale < 2 ^ 20)
     (hk : FnK live S Q al t0 st (dcFunc 70 st 118 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x800011e8#64 R M := by
@@ -288,7 +308,7 @@ theorem fa_v {al : Nat} (hlive : ∀ p ∈ dcText, live p.1) {st : St} {M : Mem}
       | str _ => exact hv.elim
       | num n =>
       obtain ⟨x, hx, rfl, rfl⟩ := hv
-      obtain ⟨o, hO⟩ := hsq x.rep.num st1.stack rfl
+      obtain ⟨o, hO⟩ := sqOut_total x.rep.num st1.scale
       exact fv_num (st1 := st1) (G1 := G1) hlive h1 hx hd hc1 hW ho hmb hc1.r2 hhs hlk hO (hsz x.rep.num st1.stack rfl)
         rfl rfl hal hk
 

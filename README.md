@@ -219,7 +219,7 @@ specifications (`evalstr_spec`, `evalstrDiv_of_term`). Those rest on
 | `len`, `nz`, `byte` | the program fits the 8 KiB buffer with its `NUL` and holds no `NUL` |
 | `nest : NestBound 70 prog dcD` | macro nesting at most `dcD` = 47,589 at every fuel (the 8 MiB stack) |
 | `leak : LeakBound 70 prog dcK` | at most `dcK` = 250,000 runs, at every fuel, of the commands that may lose a bc reference (`leakAllow`/`numLeak`, `Dc/Mach/EvalLeak.lean`) |
-| `size` | every `dc_func` call meets `FnSize` (operand widths, and a `bc_sqrt` result for a number on top) |
+| `size` | every `dc_func` call meets `FnSize` (operand widths of the bc callees) |
 | `tail : TailBound 70 prog` | `evalstr`'s 32-bit tail depth stays below `2^31` |
 
 The bounds are quantified over every fuel, so they also bound

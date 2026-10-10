@@ -27,8 +27,8 @@ open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 set_option linter.unusedSimpArgs false
 
 /-- **SizeBound for one command**: the operand sizes the bc callees bound
-(the printing commands' widths, `/ % ~ ^ |`, `v`), and that the square root
-of the top number exists (`SqOut`, the Newton relation's result). -/
+(the printing commands' widths, `/ % ~ ^ |`, `v`). The square root of the
+top number always exists (`sqOut_total`). -/
 structure FnSize (st : St) : Prop where
   all : ∀ v ∈ st.stack, ∀ n, v = .num n → n.wid < 2 ^ 20
   div : ∀ b a rest, st.stack = .num b :: .num a :: rest → a.wid + st.scale + b.wid < 2 ^ 27
@@ -38,7 +38,6 @@ structure FnSize (st : St) : Prop where
   modexp : ∀ c b a rest, st.stack = .num c :: .num b :: .num a :: rest →
     8 * (a.wid + c.wid + st.scale + 1) + b.wid < 2 ^ 24
   sqrt : ∀ n rest, st.stack = .num n :: rest → n.wid + st.scale < 2 ^ 20
-  sqOut : ∀ n rest, st.stack = .num n :: rest → ∃ o, SqOut n st.scale o
 
 theorem FnSize.top {st : St} (h : FnSize st) : ∀ n rest, st.stack = .num n :: rest → n.wid < 2 ^ 20 :=
   fun n rest e => h.all (.num n) (by rw [e]; exact List.mem_cons_self) n rfl

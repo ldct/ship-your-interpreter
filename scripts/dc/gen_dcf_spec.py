@@ -75,7 +75,7 @@ ARMS = {
     0x800011A8: ("Dc.Mach.DcFuncArm2", "fa_modexp", f"{OP} hp.size.modexp {HS} hp.lkLen (by decide) hk"),
     0x800011C0: ("Dc.Mach.DcFuncArm1", "fa_z", f"hlive h hc {W} ho {HS} hk"),
     0x800011D0: ("Dc.Mach.DcFuncArm2", "fa_mul", f"{OP} {HS} hp.lkLen hk"),
-    0x800011E8: ("Dc.Mach.DcFuncArmV2", "fa_v", f"{OP} {HS} hp.lkLen (by decide) hp.size.sqOut hp.size.sqrt hk"),
+    0x800011E8: ("Dc.Mach.DcFuncArmV2", "fa_v", f"{OP} {HS} hp.lkLen (by decide) hp.size.sqrt hk"),
     0x80000BD4: ("Dc.Mach.DcFuncArmV7", "fa_P", f"{OP} {HS} hp.size.top hk"),
     0x80001220: ("Dc.Mach.DcFuncArmR3", "fa_l", f"hlive h hc {W} ho {HS} e11 hp.pk hk"),
     0x80001240: ("Dc.Mach.DcFuncArm2", "fa_divrem", f"{OP} hp.size.rem {HS} hp.lkLen (by decide) hk"),

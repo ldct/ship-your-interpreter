@@ -54,58 +54,23 @@ theorem ofInt_mod32 {t : Int} (h0 : 0 ≤ t) (h1 : t < 2 ^ 31) :
     (BitVec.ofInt 64 t).toNat % 2 ^ 32 = t.toNat := by
   rw [BitVec.toNat_ofInt]; omega
 
-/-- `dc_scale` stored. -/
-theorem DcAt.setScale {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+/-- `unwind_depth` rewritten by stores confined to its word. -/
+theorem DcAt.setUnwind' {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
-    {v : BitVec 64} {k : Nat} (hv : v.toNat % 2 ^ 32 = k) (hk : k < 2 ^ 31) :
-    DcAt S (writeLog M [(scaleAddr, 4, v)]) H F L C G hs { st with scale := k } := by
-  have hm : MemOnly ScalarWord (writeLog M [(scaleAddr, 4, v)]) M := fun a ha => by
-    simp only [ScalarWord, dc_addrs, not_or] at ha
-    exact imgM_store_miss _ _ (by simp only [dc_addrs]; omega)
+    (hm : MemOnly (fun a => unwindAddr ≤ a ∧ a < unwindAddr + 4) M' M) {k : Nat}
+    (hv : ldv .lw M' unwindAddr = BitVec.ofNat 64 k) (hk : k < 2 ^ 31) :
+    DcAt S M' H F L C G hs { st with unwind := k } := by
+  have hm' : MemOnly ScalarWord M' M := fun a ha => hm a fun hw => ha (by
+    simp only [ScalarWord]; omega)
   have w := h.view
-  have h' := h.setScalars hm (i := st.ibase) (o := st.obase) (k := k) (u := st.unwind) (n := st.noexit)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.ibase)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.obase)
-    (ldv_lw_hitN _ rfl hv hk)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.unwind)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.noexit)
-    h.den.ibase h.den.obase hk h.den.unwind
-  cases st; exact h'
-
-/-- `dc_ibase` stored. -/
-theorem DcAt.setIbase {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
-    {v : BitVec 64} {k : Nat} (hv : v.toNat % 2 ^ 32 = k) (hk : 2 ≤ k ∧ k ≤ 16) :
-    DcAt S (writeLog M [(ibaseAddr, 4, v)]) H F L C G hs { st with ibase := k } := by
-  have hm : MemOnly ScalarWord (writeLog M [(ibaseAddr, 4, v)]) M := fun a ha => by
-    simp only [ScalarWord, dc_addrs, not_or] at ha
-    exact imgM_store_miss _ _ (by simp only [dc_addrs]; omega)
-  have w := h.view
-  have h' := h.setScalars hm (i := k) (o := st.obase) (k := st.scale) (u := st.unwind) (n := st.noexit)
-    (ldv_lw_hitN _ rfl hv (by omega))
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.obase)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.scale)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.unwind)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.noexit)
-    hk h.den.obase h.den.scale h.den.unwind
-  cases st; exact h'
-
-/-- `dc_obase` stored. -/
-theorem DcAt.setObase {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
-    {v : BitVec 64} {k : Nat} (hv : v.toNat % 2 ^ 32 = k) (hk : 2 ≤ k ∧ k < 2 ^ 31) :
-    DcAt S (writeLog M [(obaseAddr, 4, v)]) H F L C G hs { st with obase := k } := by
-  have hm : MemOnly ScalarWord (writeLog M [(obaseAddr, 4, v)]) M := fun a ha => by
-    simp only [ScalarWord, dc_addrs, not_or] at ha
-    exact imgM_store_miss _ _ (by simp only [dc_addrs]; omega)
-  have w := h.view
-  have h' := h.setScalars hm (i := st.ibase) (o := k) (k := st.scale) (u := st.unwind) (n := st.noexit)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.ibase)
-    (ldv_lw_hitN _ rfl hv hk.2)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.scale)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.unwind)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.noexit)
-    h.den.ibase hk h.den.scale h.den.unwind
+  have gw : ∀ (a : Nat), a + 4 ≤ unwindAddr ∨ unwindAddr + 4 ≤ a → ldv .lw M' a = ldv .lw M a :=
+    fun a ha => ldv_congr .lw fun j hj => hm _ (by simp only [widthOfM] at hj; omega)
+  have h' := h.setScalars hm' (i := st.ibase) (o := st.obase) (k := st.scale) (u := k) (n := st.noexit)
+    ((gw _ (by simp only [dc_addrs]; omega)).trans w.ibase)
+    ((gw _ (by simp only [dc_addrs]; omega)).trans w.obase)
+    ((gw _ (by simp only [dc_addrs]; omega)).trans w.scale) hv
+    ((gw _ (by simp only [dc_addrs]; omega)).trans w.noexit)
+    h.den.ibase h.den.obase h.den.scale hk
   cases st; exact h'
 
 /-- `i`'s message `"%s: input base must be a number between 2 and %d (inclusive)\n"`
@@ -149,42 +114,62 @@ theorem iPieces_args : ArgStrs iPieces iArgs :=
 set_option maxRecDepth 100000 in
 theorem iPieces_len : (fmt iPieces iArgs).length + 1 < 2 ^ 62 := by decide +kernel
 
-/-- `unwind_depth` stored. -/
-theorem DcAt.setUnwind {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
-    {v : BitVec 64} {k : Nat} (hv : v.toNat % 2 ^ 32 = k) (hk : k < 2 ^ 31) :
-    DcAt S (writeLog M [(unwindAddr, 4, v)]) H F L C G hs { st with unwind := k } := by
-  have hm : MemOnly ScalarWord (writeLog M [(unwindAddr, 4, v)]) M := fun a ha => by
-    simp only [ScalarWord, dc_addrs, not_or] at ha
-    exact imgM_store_miss _ _ (by simp only [dc_addrs]; omega)
-  have w := h.view
-  have h' := h.setScalars hm (i := st.ibase) (o := st.obase) (k := st.scale) (u := k) (n := st.noexit)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.ibase)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.obase)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.scale)
-    (ldv_lw_hitN _ rfl hv hk)
-    (by rw [ldv_store_miss _ _ _ (by simp only [dc_addrs, widthOfM]; omega)]; exact w.noexit)
-    h.den.ibase h.den.obase h.den.scale hk
-  cases st; exact h'
+/-- One of dc's 32-bit scalar globals that an arm stores a number into. -/
+inductive ScalarF | ibase | obase | scale | unwind
 
-/-- `unwind_depth` rewritten by stores confined to its word. -/
-theorem DcAt.setUnwind' {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+/-- The global's address. -/
+def ScalarF.addr : ScalarF → Nat
+  | .ibase => ibaseAddr | .obase => obaseAddr | .scale => scaleAddr | .unwind => unwindAddr
+
+/-- The model state with the global set to `k`. -/
+def ScalarF.set (st : St) (k : Nat) : ScalarF → St
+  | .ibase => { st with ibase := k } | .obase => { st with obase := k }
+  | .scale => { st with scale := k } | .unwind => { st with unwind := k }
+
+/-- The range `DcDen` keeps for the global. -/
+def ScalarF.ok (k : Nat) : ScalarF → Prop
+  | .ibase => 2 ≤ k ∧ k ≤ 16 | .obase => 2 ≤ k ∧ k < 2 ^ 31 | .scale => k < 2 ^ 31
+  | .unwind => k < 2 ^ 31
+
+/-- **A scalar global stored** (`sw` of `v` whose low word is `k`). -/
+theorem DcAt.setScalar {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
-    (hm : MemOnly (fun a => unwindAddr ≤ a ∧ a < unwindAddr + 4) M' M) {k : Nat}
-    (hv : ldv .lw M' unwindAddr = BitVec.ofNat 64 k) (hk : k < 2 ^ 31) :
-    DcAt S M' H F L C G hs { st with unwind := k } := by
-  have hm' : MemOnly ScalarWord M' M := fun a ha => hm a fun hw => ha (by
-    simp only [ScalarWord]; omega)
+    (f : ScalarF) {v : BitVec 64} {k : Nat} (hv : v.toNat % 2 ^ 32 = k) (hk : f.ok k) :
+    DcAt S (writeLog M [(f.addr, 4, v)]) H F L C G hs (f.set st k) := by
+  have hm : MemOnly ScalarWord (writeLog M [(f.addr, 4, v)]) M := fun a ha => by
+    simp only [ScalarWord, dc_addrs, not_or] at ha
+    exact imgM_store_miss _ _ (by cases f <;> simp only [ScalarF.addr, dc_addrs] <;> omega)
   have w := h.view
-  have gw : ∀ (a : Nat), a + 4 ≤ unwindAddr ∨ unwindAddr + 4 ≤ a → ldv .lw M' a = ldv .lw M a :=
-    fun a ha => ldv_congr .lw fun j hj => hm _ (by simp only [widthOfM] at hj; omega)
-  have h' := h.setScalars hm' (i := st.ibase) (o := st.obase) (k := st.scale) (u := k) (n := st.noexit)
-    ((gw _ (by simp only [dc_addrs]; omega)).trans w.ibase)
-    ((gw _ (by simp only [dc_addrs]; omega)).trans w.obase)
-    ((gw _ (by simp only [dc_addrs]; omega)).trans w.scale) hv
-    ((gw _ (by simp only [dc_addrs]; omega)).trans w.noexit)
-    h.den.ibase h.den.obase h.den.scale hk
-  cases st; exact h'
+  have d := h.den
+  cases f <;> simp only [ScalarF.ok] at hk
+  · have h' := h.setScalars hm (i := k) (o := st.obase) (k := st.scale) (u := st.unwind)
+      (n := st.noexit) (ldv_lw_hitN _ rfl hv (by omega))
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.obase)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.scale)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.unwind)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.noexit)
+      hk d.obase d.scale d.unwind
+    cases st; exact h'
+  · have h' := h.setScalars hm (i := st.ibase) (o := k) (k := st.scale) (u := st.unwind)
+      (n := st.noexit)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.ibase)
+      (ldv_lw_hitN _ rfl hv hk.2)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.scale)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.unwind)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.noexit)
+      d.ibase hk d.scale d.unwind
+    cases st; exact h'
+  · have h' := h.setScalars hm (i := st.ibase) (o := st.obase) (k := k) (u := st.unwind)
+      (n := st.noexit)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.ibase)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.obase)
+      (ldv_lw_hitN _ rfl hv hk)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.unwind)
+      (by rw [ldv_store_miss _ _ _ (by simp only [ScalarF.addr, dc_addrs, widthOfM]; omega)]; exact w.noexit)
+      d.ibase d.obase hk d.unwind
+    cases st; exact h'
+  · exact h.setUnwind' (fun a ha => imgM_store_miss _ _ (by simp only [ScalarF.addr]; omega))
+      (ldv_lw_hitN _ rfl hv hk) hk
 
 /-- `unwind_noexit` stored. -/
 theorem DcAt.setNoexit {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
@@ -204,24 +189,24 @@ theorem DcAt.setNoexit {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L
     h.den.ibase h.den.obase h.den.scale h.den.unwind
   cases st; exact h'
 
-/-- A doubleword stored at `o` of `dc_func`'s frame (below the saved `ra`). -/
+/-- A doubleword stored at `a` in `dc_func`'s frame (below the saved `ra`). -/
 theorem FnAt.store {S : Nat → Prop} {sp W : Nat} {M0 M : Mem} {R0 R : Nat → BitVec 64}
-    (hc : FnAt S sp W M0 R0 R M) {o : Nat} (ho : o + 8 ≤ 184) (v : BitVec 64) :
-    FnAt S sp W M0 R0 R (writeLog M [(sp - 192 + o, 8, v)]) := by
+    (hc : FnAt S sp W M0 R0 R M) {a : Nat} (ha : sp - 192 ≤ a) (ha2 : a + 8 ≤ sp - 192 + 184)
+    (v : BitVec 64) : FnAt S sp W M0 R0 R (writeLog M [(a, 8, v)]) := by
   have hl := hc.frame.lo; have hb := hc.big
-  refine { hc with ra := ?_, out := fun a e1 e2 e3 e4 => ?_ }
+  refine { hc with ra := ?_, out := fun b e1 e2 e3 e4 => ?_ }
   · rw [ldv_ld_miss _ _ (by omega)]; exact hc.ra
-  · rw [imgM_store_miss _ _ (by simp only [frameIn] at e4; omega)]; exact hc.out a e1 e2 e3 e4
+  · rw [imgM_store_miss _ _ (by simp only [frameIn] at e4; omega)]; exact hc.out b e1 e2 e3 e4
 
 /-- The state through a store into `dc_func`'s frame. -/
 theorem DcAt.fnStore {S : Nat → Prop} {sp W : Nat} {M0 M : Mem} {R0 R : Nat → BitVec 64}
     {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
-    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (o : Nat) (v : BitVec 64) :
-    DcAt S (writeLog M [(sp - 192 + o, 8, v)]) H F L C G hs st :=
-  h.outWrite (MemOnly.store M _ 8 v) fun a ha =>
+    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) {a : Nat} (ha : sp - 192 ≤ a)
+    (v : BitVec 64) : DcAt S (writeLog M [(a, 8, v)]) H F L C G hs st :=
+  h.outWrite (MemOnly.store M _ 8 v) fun b hb' =>
     have hh := hc.room
     have hb := hc.big
-    have := above_sp (sp := sp - 192) (by simp only [heapEnd] at hh ⊢; omega) (a := a) (by omega)
+    have := above_sp (sp := sp - 192) (by simp only [heapEnd] at hh ⊢; omega) (a := b) (by omega)
     ⟨this.1, this.2.1⟩
 
 /-- A frame word above `sp - 192` through a callee's `StkOut`. -/
@@ -237,7 +222,7 @@ theorem FnAt.ldKeep {S : Nat → Prop} {sp W : Nat} {M0 M M' : Mem} {R0 R : Nat 
 
 section
 
-variable {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+variable {al : Nat} {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
   {t0 t : String} {st : St} {M0 M : Mem} {H : Heap} {F : List Blk} {L : List NumObj} {C : BcConsts}
   {G : DcG} {hs : List GV} {sp W : Nat} {R0 R : Nat → BitVec 64} {peek : Option Nat} {neg : Bool}
 
@@ -311,8 +296,8 @@ at `ret`. -/
 theorem fn_msg_ok (hlive : ∀ p ∈ dcText, live p.1) {p n ret code : Nat} (hm : ProgMsg p n)
     (hn : n < 2 ^ 60) {st' : St} {G' : DcG} {ex : List GV} {r : Res}
     (h : DcAt S M H F L C G' (ex ++ hs) st') (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 304 ≤ W)
-    (hk : FnK live S Q t0 st r G hs sp W M0 R0) (hf : FnOut st r code st') (hc0 : code = 0)
-    (hex : ex.length ≤ 2) (hlk : G'.lk.length ≤ G.lk.length + 2) (hpin : StrPin G.strs G'.strs hs)
+    (hk : FnK live S Q al t0 st r G hs sp W M0 R0) (hf : FnOut st r code st') (hc0 : code = 0)
+    (hex : ex.length ≤ 2) (hlk : G'.lk.length + ex.length ≤ G.lk.length + al) (hpin : StrPin G.strs G'.strs hs)
     (h10 : (R 10).toNat = stderrAddr) (h11 : (R 11).toNat = p)
     (h12 : R 12 = BitVec.ofNat 64 dcNameAddr) (h1 : R 1 = BitVec.ofNat 64 ret)
     (hret : ret % 4 = 0 ∧ ret < 2 ^ 64) (hj : JAt live S Q ret 0x80000c10) :
@@ -352,26 +337,26 @@ theorem kMsg : ProgMsg 0x80007a38 37 :=
 /-- **A popping arm's number route** at `pc` (after the `bnez`): the
 number `x` popped from `st` into the slot, its handle held. -/
 def PopNumK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
-    (t0 : String) (st : St) (r : Res) (G : DcG) (hs : List GV) (F : List Blk) (L : List NumObj)
+    (al : Nat) (t0 : String) (st : St) (r : Res) (G : DcG) (hs : List GV) (F : List Blk) (L : List NumObj)
     (C : BcConsts) (sp W : Nat) (M0 : Mem) (R0 : Nat → BitVec 64) (pc : BitVec 64) : Prop :=
   ∀ R' M' H' (G' : DcG) (x : NumObj) st', st = st'.push (.num x.rep.num) →
     G.lk = G'.lk → G.strs = G'.strs → x ∈ L → FnAt S sp W M0 R0 R' M' →
     DcAt S M' H' F L C G' (.num x.rep.p :: hs) st' →
     ldv .lw M' (sp - 192 + 16) = BitVec.ofNat 64 1 →
     ldv .ld M' (sp - 192 + 24) = BitVec.ofNat 64 x.rep.p →
-    FnK live S Q t0 st r G hs sp W M0 R0 →
+    FnK live S Q al t0 st r G hs sp W M0 R0 →
     DWO live S Q (t0 ++ Dc.outStr st.out) pc R' M'
 
 /-- **A popping arm's string route** at `pc`: the string `o` popped. -/
 def PopStrK (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop)
-    (t0 : String) (st : St) (r : Res) (G : DcG) (hs : List GV) (F : List Blk) (L : List NumObj)
+    (al : Nat) (t0 : String) (st : St) (r : Res) (G : DcG) (hs : List GV) (F : List Blk) (L : List NumObj)
     (C : BcConsts) (sp W : Nat) (M0 : Mem) (R0 : Nat → BitVec 64) (pc : BitVec 64) : Prop :=
   ∀ R' M' H' (G' : DcG) (o : StrObj) st', st = st'.push (.str o.s) →
     G.lk = G'.lk → G.strs = G'.strs → o ∈ G'.strs → FnAt S sp W M0 R0 R' M' →
     DcAt S M' H' F L C G' (.str o.hb.pay :: hs) st' →
     ldv .lw M' (sp - 192 + 16) = BitVec.ofNat 64 2 →
-    ldv .ld M' (sp - 192 + 24) = BitVec.ofNat 64 o.hb.pay →
-    FnK live S Q t0 st r G hs sp W M0 R0 →
+    ldv .ld M' (sp - 192 + 24) = BitVec.ofNat 64 o.hb.pay → R' 10 = 0#64 →
+    FnK live S Q al t0 st r G hs sp W M0 R0 →
     DWO live S Q (t0 ++ Dc.outStr st.out) pc R' M'
 
 /-- **An arm that pops a datum** (`dc_pop` called at `p`, `bnez` to
@@ -381,20 +366,20 @@ theorem fn_pop_arm (hlive : ∀ p ∈ dcText, live p.1) {p : Nat} {r : Res}
     (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
     (h10 : R 10 = BitVec.ofNat 64 (fnSlot sp)) (hp : (p + 4) % 4 = 0 ∧ p + 4 < 2 ^ 64)
     (hj : JalAt live S Q p 0x8000310c) (hb : BnezAt live S Q (p + 4) 0x80000c10)
-    (hnil : st.stack = [] → r = .ok st) (hk : FnK live S Q t0 st r G hs sp W M0 R0)
-    (hnum : PopNumK live S Q t0 st r G hs F L C sp W M0 R0 (BitVec.ofNat 64 (p + 8)))
-    (hstr : PopStrK live S Q t0 st r G hs F L C sp W M0 R0 (BitVec.ofNat 64 (p + 8))) :
+    (hnil : st.stack = [] → r = .ok st) (hk : FnK live S Q al t0 st r G hs sp W M0 R0)
+    (hnum : PopNumK live S Q al t0 st r G hs F L C sp W M0 R0 (BitVec.ofNat 64 (p + 8)))
+    (hstr : PopStrK live S Q al t0 st r G hs F L C sp W M0 R0 (BitVec.ofNat 64 (p + 8))) :
     DWO live S Q (t0 ++ Dc.outStr st.out) (BitVec.ofNat 64 p) R M := by
-  refine fn_pop hlive h hc hW h10 hp hj hb (fun he R' M' hc' h' => ?_)
-    fun R' M' H' G' g v st' est eG hc' h' hv hd => ?_
+  refine fn_pop0 hlive h hc hW h10 hp hj hb (fun he R' M' hc' h' => ?_)
+    fun R' M' H' G' g v st' est eG hc' h' hv hd e10 => ?_
   · rw [hnil he] at hk
-    exact fa_ok hlive (ex := []) h' hc' hk (.ok _) (by simp) (by omega) (StrPin.refl _ _)
+    exact fa_ok hlive (ex := []) h' hc' hk (.ok _) (by simp) (by simp) (StrPin.refl _ _)
   · obtain ⟨c, rfl⟩ := eG
     have htg := hd.lw
     have hpt := hd.ptr
     rcases GV.den_cases hv with ⟨x, hx, rfl, rfl⟩ | ⟨o, ho, rfl, rfl⟩
     · exact hnum R' M' H' G' x st' est rfl rfl hx hc' h' htg hpt hk
-    · exact hstr R' M' H' G' o st' est rfl rfl ho hc' h' htg hpt hk
+    · exact hstr R' M' H' G' o st' est rfl rfl ho hc' h' htg hpt e10 hk
 
 /-- Stores to a scalar word only. -/
 theorem scalar_store (M : Mem) (v : BitVec 64) {a : Nat}
@@ -424,7 +409,7 @@ macro "fr_ctx" : tactic =>
     have hsf : StackFrame S sp 192 := hc'.frame.mono hc'.big
     have htx : tohostAddr = 0x8001ad00 := rfl
     have hsl := hc'.frame.lo; have hsh := hc'.frame.hi; have hbig := hc'.big
-    have hroom := hc'.room))
+    have hsa := hc'.frame.al; have hroom := hc'.room))
 
 set_option hygiene false in
 /-- The facts after `dc_num2int`. -/
@@ -450,7 +435,7 @@ theorem dcFunc_k_cons (st : St) (v : Val) : dcFunc 70 (st.push v) 107 peek neg =
   cases st; rfl
 
 theorem fk_num (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
-    PopNumK live S Q t0 st (dcFunc 70 st 107 peek neg) G hs F L C sp W M0 R0 0x80000e4c#64 := by
+    PopNumK live S Q al t0 st (dcFunc 70 st 107 peek neg) G hs F L C sp W M0 R0 0x80000e4c#64 := by
   intro R' M' H' G' x st' est elk estr hx hc' h' htg hpt hk
   subst est
   rw [dcFunc_k_cons] at hk
@@ -468,7 +453,7 @@ theorem fk_num (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
     rw [ite_F (by simp only [valInt]; omega)] at hk
     bc_run hlive hS [hpn2, stderr_word] at 0x80000774
     exact fn_msg_ok (st' := st') (ret := 0x80000e74) hlive kMsg (by decide) (ex := []) h2
-      (hc2.mod (by keeps_tac Keeps.refl _ _)) (by omega) hk (.ok _) rfl (by simp) (by simp [elk])
+      (hc2.mod (by keeps_tac Keeps.refl _ _)) (by omega) hk (.ok _) rfl (by simp) (by simp [elk] <;> omega)
       (StrPin.of_eq estr.symm _) (by bsimp []; decide) (by bsimp []) (by bsimp []) (by bsimp []) (by decide)
       (jat_c10 hlive (by decide))
   · intro hge
@@ -476,12 +461,12 @@ theorem fk_num (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
     bc_run hlive hS [e10] at 0x80000c10
     fr_glob
     exact fa_ok (st' := { st' with scale := x.rep.num.toInt.1.toNat }) hlive (ex := [])
-      (h2.setScale (ofInt_mod32 (by omega) hrg.2) (by omega)) (hc2.scalars (by keeps_tac Keeps.refl _ _)
-        (scalar_store _ _ (by decide))) hk (.ok _) (by simp) (by simp [elk]) (StrPin.of_eq estr.symm _)
+      (h2.setScalar .scale (ofInt_mod32 (by omega) hrg.2) (show _ < _ by omega)) (hc2.scalars (by keeps_tac Keeps.refl _ _)
+        (scalar_store _ _ (by decide))) hk (.ok _) (by simp) (by simp [elk] <;> omega) (StrPin.of_eq estr.symm _)
 
-theorem fk_str (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
-    PopStrK live S Q t0 st (dcFunc 70 st 107 peek neg) G hs F L C sp W M0 R0 0x80000e4c#64 := by
-  intro R' M' H' G' o st' est elk estr ho hc' h' htg _ hk
+theorem fk_str (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) (hal1 : 1 ≤ al) :
+    PopStrK live S Q al t0 st (dcFunc 70 st 107 peek neg) G hs F L C sp W M0 R0 0x80000e4c#64 := by
+  intro R' M' H' G' o st' est elk estr ho hc' h' htg _ _ hk
   subst est
   rw [dcFunc_k_cons] at hk
   fr_ctx
@@ -491,18 +476,18 @@ theorem fk_str (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
   all_goals try exact frame_acc hsf (by omega) (by omega)
   rw [ite_F (by simp only [valInt]; omega)] at hk
   exact fn_msg_ok (st' := st') (ret := 0x80000e74) hlive kMsg (by decide) (ex := [_]) h'
-    (hc'.mod (by keeps_tac Keeps.refl _ _)) (by omega) hk (.ok _) rfl (by simp) (by simp [elk])
+    (hc'.mod (by keeps_tac Keeps.refl _ _)) (by omega) hk (.ok _) rfl (by simp) (by simp [elk] <;> omega)
     (StrPin.of_eq estr.symm _) (by bsimp []; decide) (by bsimp []) (by bsimp []) (by bsimp []) (by decide)
     (jat_c10 hlive (by decide))
 
 /-- `k` (`0x80000e40`): pop, `dc_num2int`, `dc_scale` when nonnegative. -/
 theorem fa_k (hlive : ∀ p ∈ dcText, live p.1)
-    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 107 peek neg) G hs sp W M0 R0) :
+    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W) (hal1 : 1 ≤ al)
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 107 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000e40#64 R M := by
   fr_pre 0x80000e44
   refine fn_pop_arm (p := 0x80000e44) hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hW (by bsimp [])
-    (by decide) ?_ ?_ dcFunc_k_nil hk (fk_num hlive hW) (fk_str hlive hW)
+    (by decide) ?_ ?_ dcFunc_k_nil hk (fk_num hlive hW) (fk_str hlive hW hal1)
   fr_pop_sites 0x80000e4c
 
 /-- `addi`/`addiw` of a negative immediate `-k` (the word `K`) to an `int`. -/
@@ -528,7 +513,7 @@ theorem dcFunc_i_cons (st : St) (v : Val) : dcFunc 70 (st.push v) 105 peek neg =
   cases st; rfl
 
 theorem fi_num (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
-    PopNumK live S Q t0 st (dcFunc 70 st 105 peek neg) G hs F L C sp W M0 R0 0x80000e84#64 := by
+    PopNumK live S Q al t0 st (dcFunc 70 st 105 peek neg) G hs F L C sp W M0 R0 0x80000e84#64 := by
   intro R' M' H' G' x st' est elk estr hx hc' h' htg hpt hk
   subst est
   rw [dcFunc_i_cons] at hk
@@ -552,7 +537,7 @@ theorem fi_num (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
       (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) fun R3 M3 k3 hc3 h3 => ?_
     bsimp []
     exact jat_c10 hlive (by decide) _ R3 M3 (fa_ok (st' := st') hlive (ex := []) h3 hc3 hk (.ok _)
-      (by simp) (by simp [elk]) (StrPin.of_eq estr.symm _))
+      (by simp) (by simp [elk] <;> omega) (StrPin.of_eq estr.symm _))
   · intro hge
     rw [i_range hrg.1 hrg.2, Classical.not_not] at hge
     rw [ite_T (by simp only [Bool.and_eq_true, decide_eq_true_eq]; exact hge)] at hk
@@ -561,13 +546,13 @@ theorem fi_num (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
     bc_run hlive hS [e10] at 0x80000c10
     fr_glob
     exact fa_ok (st' := { st' with ibase := x.rep.num.toInt.1.toNat }) hlive (ex := [])
-      (h2.setIbase (ofInt_mod32 (by omega) (by omega)) (by omega)) (hc2.scalars
+      (h2.setScalar .ibase (ofInt_mod32 (by omega) (by omega)) (show _ ∧ _ by omega)) (hc2.scalars
         (by keeps_tac Keeps.refl _ _) (scalar_store _ _ (by decide))) hk (.ok _) (by simp)
-        (by simp [elk]) (StrPin.of_eq estr.symm _)
+        (by simp [elk] <;> omega) (StrPin.of_eq estr.symm _)
 
-theorem fi_str (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
-    PopStrK live S Q t0 st (dcFunc 70 st 105 peek neg) G hs F L C sp W M0 R0 0x80000e84#64 := by
-  intro R' M' H' G' o st' est elk estr ho hc' h' htg _ hk
+theorem fi_str (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) (hal1 : 1 ≤ al) :
+    PopStrK live S Q al t0 st (dcFunc 70 st 105 peek neg) G hs F L C sp W M0 R0 0x80000e84#64 := by
+  intro R' M' H' G' o st' est elk estr ho hc' h' htg _ _ hk
   subst est
   rw [dcFunc_i_cons] at hk
   fr_ctx
@@ -580,17 +565,245 @@ theorem fi_str (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
     (by bsimp []) (by bsimp []) (by bsimp []) (by bsimp []) fun R3 M3 k3 hc3 h3 => ?_
   bsimp []
   exact jat_c10 hlive (by decide) _ R3 M3 (fa_ok (st' := st') hlive (ex := [_]) h3 hc3 hk (.ok _)
-    (by simp) (by simp [elk]) (StrPin.of_eq estr.symm _))
+    (by simp) (by simp [elk] <;> omega) (StrPin.of_eq estr.symm _))
 
 /-- `i` (`0x80000e78`): pop, `dc_num2int`, `dc_ibase` when in `2..16`. -/
 theorem fa_i (hlive : ∀ p ∈ dcText, live p.1)
-    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W)
-    (hk : FnK live S Q t0 st (dcFunc 70 st 105 peek neg) G hs sp W M0 R0) :
+    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W) (hal1 : 1 ≤ al)
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 105 peek neg) G hs sp W M0 R0) :
     DWO live S Q (t0 ++ Dc.outStr st.out) 0x80000e78#64 R M := by
   fr_pre 0x80000e7c
   refine fn_pop_arm (p := 0x80000e7c) hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hW (by bsimp [])
-    (by decide) ?_ ?_ dcFunc_i_nil hk (fi_num hlive hW) (fi_str hlive hW)
+    (by decide) ?_ ?_ dcFunc_i_nil hk (fi_num hlive hW) (fi_str hlive hW hal1)
   fr_pop_sites 0x80000e84
+
+theorem one_toInt : (1#64 : BitVec 64).toInt = 1 := rfl
+
+theorem oMsg : ProgMsg 0x80007a60 46 :=
+  ⟨by decide +kernel, by decide +kernel, ⟨by decide +kernel, by decide +kernel, by decide +kernel,
+    by decide, by decide⟩, by decide⟩
+
+theorem dcFunc_o_nil (he : st.stack = []) : dcFunc 70 st 111 peek neg = .ok st := by
+  obtain ⟨stk⟩ := st; simp only at he; subst he; rfl
+
+theorem dcFunc_o_cons (st : St) (v : Val) : dcFunc 70 (st.push v) 111 peek neg =
+    .ok (if 1 < valInt 0 v then { st with obase := (valInt 0 v).toNat } else st) := by
+  cases st; rfl
+
+theorem fo_num (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
+    PopNumK live S Q al t0 st (dcFunc 70 st 111 peek neg) G hs F L C sp W M0 R0 0x800010fc#64 := by
+  intro R' M' H' G' x st' est elk estr hx hc' h' htg hpt hk
+  subst est
+  rw [dcFunc_o_cons] at hk
+  fr_ctx
+  bc_run hlive hS [e2', htg, hpt] at 0x80002648
+  all_goals try exact frame_acc hsf (by omega) (by omega)
+  bc_run hlive hS [e2', htg, hpt] at 0x80002648
+  all_goals try exact frame_acc hsf (by omega) (by omega)
+  refine fn_n2i hlive (h'.fnStore hc' (a := sp - 192) (by omega) _) hx
+    ((hc'.store (a := sp - 192) (by omega) (by omega) _).mod (by keeps_tac Keeps.refl _ _)) (by omega)
+    (by bsimp []) (by bsimp []) (by bsimp []) fun R2 M2 H2 F2 L2 C2 k2 hc2 e10 h2 hout2 => ?_
+  have hc1 := hc'.store (a := sp - 192) (by omega) (by omega) 1#64
+  have h0 : ldv .ld M2 (sp - 192) = 1#64 := by
+    have e := hc1.ldKeep (o := 0) hout2
+    simp only [Nat.add_zero] at e
+    rw [e]; exact ldv_store_hit _ _ _
+  have e22 := hc2.r2
+  bsimp []
+  fr_n2i_ctx
+  bc_run hlive hS [e10, hti, h0, e22, one_toInt] at 0x80001108 0x80000c10
+  all_goals try exact frame_acc hsf (by omega) (by omega)
+  · intro hle
+    rw [ite_F (by simp only [valInt]; omega)] at hk
+    bc_run hlive hS [hpn2, stderr_word] at 0x80000774
+    exact fn_msg_ok (st' := st') (ret := 0x80001124) hlive oMsg (by decide) (ex := []) h2
+      (hc2.mod (by keeps_tac Keeps.refl _ _)) (by omega) hk (.ok _) rfl (by simp) (by simp [elk] <;> omega)
+      (StrPin.of_eq estr.symm _) (by bsimp []; decide) (by bsimp []) (by bsimp []) (by bsimp []) (by decide)
+      (jat_c10 hlive (by decide))
+  · intro hgt
+    rw [ite_T (by simp only [valInt]; omega)] at hk
+    bc_run hlive hS [e10] at 0x80000c10
+    fr_glob
+    exact fa_ok (st' := { st' with obase := x.rep.num.toInt.1.toNat }) hlive (ex := [])
+      (h2.setScalar .obase (ofInt_mod32 (by omega) hrg.2) (show _ ∧ _ by omega)) (hc2.scalars (by keeps_tac Keeps.refl _ _)
+        (scalar_store _ _ (by decide))) hk (.ok _) (by simp) (by simp [elk] <;> omega) (StrPin.of_eq estr.symm _)
+
+theorem fo_str (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) (hal1 : 1 ≤ al) :
+    PopStrK live S Q al t0 st (dcFunc 70 st 111 peek neg) G hs F L C sp W M0 R0 0x800010fc#64 := by
+  intro R' M' H' G' o st' est elk estr ho hc' h' htg _ _ hk
+  subst est
+  rw [dcFunc_o_cons] at hk
+  fr_ctx
+  bc_run hlive hS [e2', htg, hpn, stderr_word] at 0x80000774
+  all_goals try exact frame_acc hsf (by omega) (by omega)
+  bc_run hlive hS [e2', htg, hpn, stderr_word] at 0x80000774
+  all_goals try exact frame_acc hsf (by omega) (by omega)
+  rw [ite_F (by simp only [valInt]; omega)] at hk
+  exact fn_msg_ok (st' := st') (ret := 0x80001124) hlive oMsg (by decide) (ex := [_]) h'
+    (hc'.mod (by keeps_tac Keeps.refl _ _)) (by omega) hk (.ok _) rfl (by simp) (by simp [elk] <;> omega)
+    (StrPin.of_eq estr.symm _) (by bsimp []; decide) (by bsimp []) (by bsimp []) (by bsimp []) (by decide)
+    (jat_c10 hlive (by decide))
+
+/-- `o` (`0x800010f0`): pop, `dc_num2int`, `dc_obase` when above `1`. -/
+theorem fa_o (hlive : ∀ p ∈ dcText, live p.1)
+    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W) (hal1 : 1 ≤ al)
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 111 peek neg) G hs sp W M0 R0) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) 0x800010f0#64 R M := by
+  fr_pre 0x800010f4
+  refine fn_pop_arm (p := 0x800010f4) hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hW (by bsimp [])
+    (by decide) ?_ ?_ dcFunc_o_nil hk (fo_num hlive hW) (fo_str hlive hW hal1)
+  fr_pop_sites 0x800010fc
+
+theorem QMsg : ProgMsg 0x80007ac8 35 :=
+  ⟨by decide +kernel, by decide +kernel, ⟨by decide +kernel, by decide +kernel, by decide +kernel,
+    by decide, by decide⟩, by decide⟩
+
+theorem dcFunc_Q_nil (he : st.stack = []) : dcFunc 70 st 81 peek neg = .ok st := by
+  obtain ⟨stk⟩ := st; simp only at he; subst he; rfl
+
+theorem dcFunc_Q_cons (st : St) (v : Val) : dcFunc 70 (st.push v) 81 peek neg =
+    if 0 < valInt 0 v then .quit { st with unwind := (valInt 0 v - 1).toNat, noexit := true }
+    else .ok { st with unwind := 0, noexit := true } := by
+  cases st; rfl
+
+/-- `Q`'s stores before its type test: `unwind_depth = 0`, `unwind_noexit = 1`. -/
+theorem DcAt.qPre {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st) :
+    DcAt S (writeLog (writeLog M [(unwindAddr, 4, 0#64)]) [(noexitAddr, 4, 1#64)]) H F L C G hs
+      { st with unwind := 0, noexit := true } := by
+  have := (h.setScalar .unwind (v := 0#64) (k := 0) (by decide) (show _ < _ by decide)).setNoexit (v := 1#64) (n := true) (by decide)
+  cases st; exact this
+
+theorem qPre_only (M : Mem) (v w : BitVec 64) :
+    MemOnly ScalarWord (writeLog (writeLog M [(unwindAddr, 4, v)]) [(noexitAddr, 4, w)]) M :=
+  fun a ha => by
+    simp only [ScalarWord, dc_addrs, not_or] at ha
+    rw [imgM_store_miss _ _ (by simp only [dc_addrs]; omega),
+      imgM_store_miss _ _ (by simp only [dc_addrs]; omega)]
+
+/-- `Q`'s number route after `dc_num2int` (`0x80001278`). -/
+theorem fq_ret (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) (x : NumObj) {st' : St}
+    {G' : DcG} {R2 : Nat → BitVec 64} {M2 : Mem} {H2 : Heap} {F2 : List Blk} {L2 : List NumObj}
+    {C2 : BcConsts} (hc2 : FnAt S sp W M0 R0 R2 M2)
+    (h2 : DcAt S M2 H2 F2 L2 C2 G' hs { st' with unwind := 0, noexit := true })
+    (e10 : R2 10 = BitVec.ofInt 64 x.rep.num.toInt.1)
+    (hk : FnK live S Q al t0 (st'.push (.num x.rep.num)) (dcFunc 70 (st'.push (.num x.rep.num)) 81 peek neg)
+      G hs sp W M0 R0) (elk : G.lk = G'.lk) (estr : G.strs = G'.strs) :
+    DWO live S Q (t0 ++ Dc.outStr st'.out) 0x80001278#64 R2 M2 := by
+  rw [dcFunc_Q_cons] at hk
+  have hS : HeapOwn S := fun a e1 e2 => h2.heap.heap.own a e1 e2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hsl := hc2.frame.lo; have hsh := hc2.frame.hi; have hbig := hc2.big
+  have hsa := hc2.frame.al; have hroom := hc2.room
+  have hro : ∀ b ∈ accAddrs 2147516928 8, (b, dcROImg b) ∈ dcRO := by decide +kernel
+  fr_n2i_ctx
+  have hw : BitVec.signExtend 64 (BitVec.extractLsb 31 0
+      (BitVec.ofInt 64 x.rep.num.toInt.1 + 18446744073709551615#64)) =
+      BitVec.ofInt 64 (Dc.Num.toInt32 (x.rep.num.toInt.1 - 1)) := by
+    rw [ofInt_addK (k := 1) (by decide), sxw_ofInt]; rfl
+  bc_run hlive hS [e10, hti, hw, BitVec.toInt_zero] at 0x80001080 0x80000c14
+  fr_glob
+  · intro hle
+    rw [ite_F (by simp only [valInt]; omega)] at hk
+    generalize BitVec.ofInt 64 (Dc.Num.toInt32 (x.rep.num.toInt.1 - 1)) = bad
+    have hpn3 : ldv .ld (writeLog M2 [(2147601800, 4, bad)]) 2147601760 = BitVec.ofNat 64 dcNameAddr := by
+      rw [ldv_ld_miss _ _ (by omega)]; exact hpn2
+    generalize hM3 : writeLog M2 [(2147601800, 4, bad)] = M3 at hpn3 ⊢
+    bc_run hlive hS [hpn3, stderr_word] at 0x80000774
+    fr_glob
+    subst hM3
+    have h3 := h2.setUnwind' (k := 0) (M' := writeLog (writeLog M2 [(unwindAddr, 4, bad)])
+        [(unwindAddr, 4, 0#64)])
+      (fun a ha => by
+        rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)])
+      (ldv_lw_hitN _ rfl (by decide) (by decide)) (by decide)
+    exact fn_msg_ok (st' := { st' with unwind := 0, noexit := true }) (ret := 0x800010a4) hlive QMsg
+      (by decide) (ex := []) h3 (hc2.scalars (by keeps_tac Keeps.refl _ _) fun a ha => by
+        simp only [ScalarWord, dc_addrs, not_or] at ha
+        rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)])
+      (by omega) hk (.ok _) rfl (by simp) (by simp [elk] <;> omega)
+      (StrPin.of_eq estr.symm _) (by bsimp []; decide) (by bsimp []) (by bsimp []) (by bsimp []) (by decide)
+      (jat_c10 hlive (by decide))
+  · intro hgt
+    rw [ite_T (by simp only [valInt]; omega)] at hk
+    have e32 : Dc.Num.toInt32 (x.rep.num.toInt.1 - 1) = x.rep.num.toInt.1 - 1 := by
+      simp only [Dc.Num.toInt32]; split <;> omega
+    rw [e32] at *
+    bc_run hlive hS [] at 0x80000c14
+    have h3 := h2.setScalar .unwind (ofInt_mod32 (t := x.rep.num.toInt.1 - 1) (by omega) (by omega)) (show _ < _ by omega)
+    exact (hc2.scalars (by keeps_tac Keeps.refl _ _) (scalar_store _ _ (by decide))).close
+      (st' := { st' with unwind := (x.rep.num.toInt.1 - 1).toNat, noexit := true }) hlive hk (.quit _) (ex := [])
+      h3 (by simp) (by simp [elk] <;> omega) (StrPin.of_eq estr.symm _) (by bsimp [])
+
+
+theorem fq_num (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) :
+    PopNumK live S Q al t0 st (dcFunc 70 st 81 peek neg) G hs F L C sp W M0 R0 0x80001064#64 := by
+  intro R' M' H' G' x st' est elk estr hx hc' h' htg hpt hk
+  subst est
+  fr_ctx
+  have hg2 := hG
+  bc_run hlive hS [e2', htg, hpt] at 0x80002648
+  all_goals try exact frame_acc hsf (by omega) (by omega)
+  fr_glob
+  bc_run hlive hS [e2', htg, hpt] at 0x80002648
+  all_goals try exact frame_acc hsf (by omega) (by omega)
+  fr_glob
+  have hpt' : ldv .ld (writeLog (writeLog M' [(unwindAddr, 4, 0#64)]) [(noexitAddr, 4, 1#64)])
+      (sp - 192 + 24) = BitVec.ofNat 64 x.rep.p := by
+    rw [ldv_ld_miss _ _ (by simp only [dc_addrs]; have := hc'.room; simp only [heapEnd] at this; omega),
+      ldv_ld_miss _ _ (by simp only [dc_addrs]; have := hc'.room; simp only [heapEnd] at this; omega)]
+    exact hpt
+  refine fn_n2i hlive h'.qPre hx ((hc'.scalars (Keeps.refl _ _) (qPre_only M' _ _)).mod
+      (by keeps_tac Keeps.refl _ _)) (by omega) (by bsimp [hpt']) (by bsimp []) (by bsimp [])
+    fun R2 M2 H2 F2 L2 C2 k2 hc2 e10 h2 _ => ?_
+  bsimp []
+  exact fq_ret (st' := st') hlive hW x hc2 h2 e10 hk elk estr
+/-- `Q`'s message route from `0x80001080` (`unwind_depth = 0` again, then
+the message), the popped string's handle lost. -/
+theorem fq_msg (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) {s : St} {G' : DcG}
+    {ex : List GV} {Rx : Nat → BitVec 64} {Mx : Mem} {H' : Heap}
+    (h3 : DcAt S Mx H' F L C G' (ex ++ hs) { s with unwind := 0, noexit := true })
+    (hc3 : FnAt S sp W M0 R0 Rx Mx)
+    (hk : FnK live S Q al t0 st (.ok { s with unwind := 0, noexit := true }) G hs sp W M0 R0)
+    (hex : ex.length ≤ 2) (hexl : ex.length ≤ al) (elk : G.lk = G'.lk) (estr : G.strs = G'.strs) :
+    DWO live S Q (t0 ++ Dc.outStr s.out) 0x80001080#64 Rx Mx := by
+  have hS : HeapOwn S := fun a e1 e2 => h3.heap.heap.own a e1 e2
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hpn := h3.view.prog
+  have hg2 := h3.glob
+  have hro : ∀ b ∈ accAddrs 2147516928 8, (b, dcROImg b) ∈ dcRO := by decide +kernel
+  bc_run hlive hS [hpn, stderr_word] at 0x80000774
+  fr_glob
+  exact fn_msg_ok (st' := { s with unwind := 0, noexit := true }) (ret := 0x800010a4) hlive QMsg
+    (by decide) (ex := ex) (h3.setScalar .unwind (v := 0#64) (k := 0) (by decide) (show _ < _ by decide))
+    (hc3.scalars (by keeps_tac Keeps.refl _ _) (scalar_store _ _ (by decide)))
+    (by omega) hk (.ok _) rfl hex (by simp [elk] <;> omega)
+    (StrPin.of_eq estr.symm _) (by bsimp []; decide) (by bsimp []) (by bsimp []) (by bsimp []) (by decide)
+    (jat_c10 hlive (by decide))
+
+theorem fq_str (hlive : ∀ p ∈ dcText, live p.1) (hW : 192 + 336 ≤ W) (hal1 : 1 ≤ al) :
+    PopStrK live S Q al t0 st (dcFunc 70 st 81 peek neg) G hs F L C sp W M0 R0 0x80001064#64 := by
+  intro R' M' H' G' o st' est elk estr ho hc' h' htg _ _ hk
+  subst est
+  rw [dcFunc_Q_cons, ite_F (by simp [valInt])] at hk
+  fr_ctx
+  have hg2 := hG
+  bc_run hlive hS [e2', htg] at 0x80001080
+  all_goals try exact frame_acc hsf (by omega) (by omega)
+  fr_glob
+  exact fq_msg (s := st') hlive hW (ex := [_]) h'.qPre
+    (hc'.scalars (by keeps_tac Keeps.refl _ _) (qPre_only M' _ _)) hk (by simp) (by simp; omega) elk estr
+
+/-- `Q` (`0x80001058`): pop; `unwind_noexit = 1`; a positive number `n`
+quits `n` levels, anything else sets `unwind_depth = 0` (with a message). -/
+theorem fa_Q (hlive : ∀ p ∈ dcText, live p.1)
+    (h : DcAt S M H F L C G hs st) (hc : FnAt S sp W M0 R0 R M) (hW : 192 + 336 ≤ W) (hal1 : 1 ≤ al)
+    (hk : FnK live S Q al t0 st (dcFunc 70 st 81 peek neg) G hs sp W M0 R0) :
+    DWO live S Q (t0 ++ Dc.outStr st.out) 0x80001058#64 R M := by
+  fr_pre 0x8000105c
+  refine fn_pop_arm (p := 0x8000105c) hlive h (hc.mod (by keeps_tac Keeps.refl _ _)) hW (by bsimp [])
+    (by decide) ?_ ?_ dcFunc_Q_nil hk (fq_num hlive hW) (fq_str hlive hW hal1)
+  fr_pop_sites 0x80001064
 
 end
 

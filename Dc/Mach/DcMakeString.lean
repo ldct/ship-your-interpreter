@@ -85,6 +85,71 @@ theorem DcAt.newStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : 
 /-- The new string object of `dc_makestring`. -/
 abbrev msObj (b1 b2 : Blk) (s : List Nat) : StrObj := ⟨b1, b2, s, 1⟩
 
+/-- Two distinct blocks fresh to the state are apart. -/
+theorem fresh_sep {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {b1 b2 : Blk}
+    (h : DcAt S M H F L C G hs st) (f1 : DcFresh H F L G b1) (f2 : DcFresh H F L G b2)
+    (hne : b1 ≠ b2) (z1 : 0 < b1.sz) (z2 : 0 < b2.sz) :
+    b1.pay + b1.sz ≤ b2.pay ∨ b2.pay + b2.sz ≤ b1.pay := by
+  refine Classical.byContradiction fun hc => ?_
+  exact live_apart h.heap.heap f1.live f2.live hne (a := max b1.pay b2.pay)
+    (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)
+    (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)
+
+/-- The string stores of `dc_makestring`/`dc_readstring`: the terminating
+`NUL`, `s_len`, `s_refs = 1`. -/
+abbrev msW (M : Mem) (b1 b2 : Blk) (s : List Nat) : Mem :=
+  writeLog (writeLog (writeLog M [(b2.pay + s.length, 1, 0#64)])
+    [(b1.pay + 8, 8, BitVec.ofNat 64 s.length)]) [(b1.pay + 16, 4, 1#64)]
+
+/-- **A new string** on two fresh blocks, its text and `s_ptr` already
+written, after the stores `msW`: the state gains it with one handle. -/
+theorem DcAt.makeStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {b1 b2 : Blk} {s : List Nat}
+    (h : DcAt S M H F L C G hs st) (f1 : DcFresh H F L G b1) (f2 : DcFresh H F L G b2)
+    (hne : b1 ≠ b2) (hs1 : 24 ≤ b1.sz) (hs2 : s.length + 1 ≤ b2.sz) (hlen : s.length < 2 ^ 60)
+    (hby : ∀ c ∈ s, c < 256)
+    (hbytes : ∀ i, i < s.length → imgM M (b2.pay + i) = BitVec.ofNat 8 (s.getD i 0))
+    (hptr : ldv .ld M b1.pay = BitVec.ofNat 64 b2.pay) :
+    DcAt S (msW M b1 b2 s) H F L C { G with strs := msObj b1 b2 s :: G.strs } (.str b1.pay :: hs) st := by
+  have hb1 := blk_bounds h.heap.heap f1.live
+  have hb2 := blk_bounds h.heap.heap f2.live
+  simp only [heapStart, heapEnd] at hb1 hb2
+  have hsep := fresh_sep h f1 f2 hne (by omega) (by omega)
+  have hin : ∀ (b : Blk) (x w : Nat), b.pay ≤ x → x + w ≤ b.pay + b.sz →
+      ∀ a, (x ≤ a ∧ a < x + w) → b.In a := fun b x w h1 h2 a ha => by
+    simp only [Blk.In, Blk.pay, Blk.fin] at *; omega
+  have hA := h.rawWrite f2 ((MemOnly.store M (b2.pay + s.length) 1 0#64).mono
+    (hin b2 _ 1 (by omega) (by omega)))
+  have hB := hA.rawWrite f1 ((MemOnly.store _ (b1.pay + 8) 8 (BitVec.ofNat 64 s.length)).mono
+    (hin b1 _ 8 (by omega) (by omega)))
+  have hC := hB.rawWrite f1 ((MemOnly.store _ (b1.pay + 16) 4 1#64).mono
+    (hin b1 _ 4 (by omega) (by omega)))
+  have hso : StrAt (msW M b1 b2 s) (msObj b1 b2 s) := {
+    ptr := by
+      show ldv .ld _ b1.pay = _
+      rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), hptr]
+    len := by
+      show ldv .ld _ (b1.pay + 8) = _
+      rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
+    refs := ldv_lw_hitN _ rfl (k := 1) (by decide) (by decide)
+    bytes := fun i hi' => by
+      change i < s.length at hi'
+      show imgM _ (b2.pay + i) = _
+      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+        imgM_store_miss _ _ (by omega)]
+      exact hbytes i hi'
+    nul := by
+      show imgM _ (b2.pay + s.length) = _
+      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega), imgM_sb]
+      rfl
+    hsz := hs1
+    tsz := hs2
+    byte := hby
+    refsPos := Nat.le_refl 1
+    refsLt := show 1 < 2 ^ 31 by decide }
+  exact hC.newStr f1 f2 hne hso rfl
+
 /-- `dc_makestring`'s epilogue (`0x80003ab4`): `s_refs = 1`, the tag word
 `DC_STRING` in the frame, the saved registers restored. -/
 theorem ms_epi {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
@@ -149,11 +214,7 @@ theorem ms_tail {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
   have hb1 := blk_bounds hi f1.live
   have hb2 := blk_bounds hi f2.live
   simp only [heapStart, heapEnd] at hb1 hb2
-  have hsep : b1.pay + b1.sz ≤ b2.pay ∨ b2.pay + b2.sz ≤ b1.pay := by
-    refine Classical.byContradiction fun hc => ?_
-    exact live_apart hi f1.live f2.live hne (a := max b1.pay b2.pay)
-      (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)
-      (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)
+  have hsep := fresh_sep h f1 f2 hne (by omega) (by omega)
   bc_run hlive hS [h2, h8, h9, hptr] at 0x80003ab4
   refine ms_epi (p := b1.pay) (sp := sp) hlive hS (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega) (by omega)
     hsf hab _ (by bsimp [h2]) (by bsimp [h8]) (by bsimp []) (by bsimp []) (by bsimp [])
@@ -162,50 +223,12 @@ theorem ms_tail {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
     (by rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), f24])
     (by rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), f16]) hal
     fun R' hk1 e1 e2 e8 e9 e18 e10 e11 => ?_
-  have hin : ∀ (b : Blk) (x w : Nat), b.pay ≤ x → x + w ≤ b.pay + b.sz →
-      ∀ a, (x ≤ a ∧ a < x + w) → b.In a := fun b x w h1 h2 a ha => by
-    simp only [Blk.In, Blk.pay, Blk.fin] at *; omega
-  have hA := h.rawWrite f2 ((MemOnly.store M (b2.pay + s.length) 1 0#64).mono
-    (hin b2 _ 1 (by omega) (by omega)))
-  have hB := hA.rawWrite f1 ((MemOnly.store _ (b1.pay + 8) 8 (BitVec.ofNat 64 s.length)).mono
-    (hin b1 _ 8 (by omega) (by omega)))
-  have hC := hB.rawWrite f1 ((MemOnly.store _ (b1.pay + 16) 4 1#64).mono
-    (hin b1 _ 4 (by omega) (by omega)))
-  have hD := hC.outWrite (MemOnly.store _ (sp - 48) 4 2#64) fun a ha =>
+  have hD := (h.makeStr f1 f2 hne hs1 hs2 hlen hby hbytes hptr).outWrite
+    (MemOnly.store _ (sp - 48) 4 2#64) fun a ha =>
     ⟨outHeap_of_ge (by simp only [heapEnd]; omega), fun hg => by
       have := hg.lt; simp only [heapStart] at this; omega⟩
-  have hso : StrAt (writeLog (writeLog (writeLog (writeLog M [(b2.pay + s.length, 1, 0#64)])
-      [(b1.pay + 8, 8, BitVec.ofNat 64 s.length)]) [(b1.pay + 16, 4, 1#64)]) [(sp - 48, 4, 2#64)])
-      (msObj b1 b2 s) := {
-    ptr := by
-      show ldv .ld _ b1.pay = _
-      rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
-        ldv_ld_miss _ _ (by omega), hptr]
-    len := by
-      show ldv .ld _ (b1.pay + 8) = _
-      rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
-    refs := by
-      show ldv .lw _ (b1.pay + 16) = _
-      rw [ldv_lw_miss _ _ (by omega)]
-      exact ldv_lw_hitN _ rfl (k := 1) (by decide) (by decide)
-    bytes := fun i hi' => by
-      change i < s.length at hi'
-      show imgM _ (b2.pay + i) = _
-      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
-        imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega)]
-      exact hbytes i hi'
-    nul := by
-      show imgM _ (b2.pay + s.length) = _
-      rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
-        imgM_store_miss _ _ (by omega), imgM_sb]
-      rfl
-    hsz := hs1
-    tsz := hs2
-    byte := hby
-    refsPos := Nat.le_refl 1
-    refsLt := show 1 < 2 ^ 31 by decide }
-  refine hk R' _ (hk1.trans (by keeps_tac Keeps.refl _ _)) e1 e2 e8 e9 e18 e10 e11
-    (hD.newStr f1 f2 hne hso rfl) fun a ho _ hf => ?_
+  refine hk R' _ (hk1.trans (by keeps_tac Keeps.refl _ _)) e1 e2 e8 e9 e18 e10 e11 hD
+    fun a ho _ hf => ?_
   simp only [frameIn] at hf
   have := ho.1
   simp only [heapStart, heapEnd] at this
@@ -247,11 +270,7 @@ theorem ms_copy {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → 
   have hb2 := blk_bounds hi f2.live
   simp only [heapStart, heapEnd] at hb1 hb2
   bc_run hlive hS [h2, h8, h9, h10, h18] at 0x8000086c
-  have hsep : b1.pay + b1.sz ≤ b2.pay ∨ b2.pay + b2.sz ≤ b1.pay := by
-    refine Classical.byContradiction fun hc => ?_
-    exact live_apart hi f1.live f2.live hne (a := max b1.pay b2.pay)
-      (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)
-      (by simp only [Blk.In, Blk.pay, Blk.fin] at *; omega)
+  have hsep := fresh_sep h f1 f2 hne (by omega) (by omega)
   have hdst : OwnedBytes S b2.pay s.length :=
     ⟨fun i hi' => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega),
       by rw [htx]; omega, by omega⟩

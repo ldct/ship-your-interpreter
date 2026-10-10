@@ -829,4 +829,158 @@ theorem as_tail {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bi
   · bsimp []
   · bsimp []
 
+theorem asFrame_out {sp a : Nat} (hab : heapEnd + 112 ≤ sp) (ha : frameIn sp 112 a) :
+    OutHeap a ∧ ¬ DcGlob a := by
+  simp only [frameIn] at ha
+  exact ⟨outHeap_of_ge (by simp only [heapEnd] at *; omega), fun hg => by
+    have := hg.lt; simp only [heapStart, heapEnd] at *; omega⟩
+
+/-- The registers the replacing path of `dc_array_set` may change. -/
+abbrev foundClob : List Nat := [1, 2, 8, 9, 18, 10, 13, 14, 15]
+
+/-- `dc_array_set` on an existing index holding a number (`0x80003d20`, `sp`
+lowered by 64, `s0` the node `c`): `dc_free_num` of the old value through the
+node's pointer word, then the new datum and the return. -/
+theorem as_found_num {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {en : Entry} {es : List Entry} {pre post : List (Blk × ANode)}
+    {c : Blk} {x : ANode} {m1 m2 : List (Nat × Val)} {v : Val} {w0 w1 ra s0 s1 s2 : BitVec 64}
+    {p sp : Nat}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hst : st.regs r = en :: es) (harr : e.arr = pre ++ (c, x) :: post)
+    (hm1 : List.Forall₂ (ARel ⟨L, G.strs⟩) pre m1) (hm2 : List.Forall₂ (ARel ⟨L, G.strs⟩) post m2)
+    (hxv : x.v = .num p) (hxw : ∃ w, x.v.Den ⟨L, G.strs⟩ w) (hd : DatRegs w0 w1 g)
+    (hv : g.Den ⟨L, G.strs⟩ v) (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h8 : R 8 = BitVec.ofNat 64 c.pay)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C' G', Keeps foundClob R' R → R' 1 = ra →
+      R' 2 = BitVec.ofNat 64 sp → R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
+      DcAt S M' H' F' L' C' G' hs (st.setReg r ({ en with arr := m1 ++ (x.idx, v) :: m2 } :: es)) →
+      StkOut sp 112 M' M → DW live S Q ra R' M') :
+    DW live S Q 0x80003d20#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hbe : (b, e) ∈ G.regs r := by rw [hl]; exact List.mem_cons_self
+  have hcA : (c, x) ∈ e.arr := by rw [harr]; exact List.mem_append_right _ List.mem_cons_self
+  have hcG : c ∈ G.blocks := G.arr_mem hr hbe hcA
+  obtain ⟨-, hp0⟩ := h.regWord hr hl
+  have hnc : ANodeAt M c x := hp0.arr.forall (c, x) hcA
+  have hsz := hnc.sz
+  obtain ⟨hb1, hb2, hb3⟩ := h.node_bounds hcG hsz
+  have htag : ldv .lw M (c.pay + 8) = BitVec.ofNat 64 1 := by
+    have := hnc.dat.lw; rw [hxv] at this; exact this
+  have hptr : ldv .ld M (c.pay + 16) = BitVec.ofNat 64 p := by
+    have := hnc.dat.ptr; rw [hxv] at this; exact this
+  obtain ⟨h1, hpd⟩ := h.setNode hr hl hst harr hm1 hm2 hd hv hxw
+  rw [hxv] at h1
+  simp only [heapEnd, heapStart] at hab hb1 hb2
+  bc_run hlive hS [h2, h8, htag] at 0x80002ba0
+  bc_run hlive hS [h2, h8] at 0x80002ba0
+  refine dc_free_num_specP hlive hpd h1 (q := c.pay + 16)
+    ⟨fun i _ => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+      by omega, by omega⟩
+    (.win fun y hy => by simp only [datWin, slotBytes] at hy ⊢; omega) hptr
+    (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
+    (by simp only [heapEnd]; omega) (Or.inl (by omega)) _ (by bsimp [h8]) (by bsimp [h2]) (by bsimp [])
+    fun R1 M3 H' F' L' C' hk1 h3 _ hfr _ _ => ?_
+  have hfs : ∀ k, k + 8 ≤ 64 → ldv .ld M3 (sp - 64 + k) = ldv .ld M (sp - 64 + k) :=
+    fun k hk => ldv_congr .ld fun j hj => by
+      have hin : frameIn sp 112 (sp - 64 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
+      have ho := asFrame_out (by simp only [heapEnd]; omega) hin
+      exact hfr _ ho.1 ho.2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+        (by simp only [slotBytes, widthOfM] at hj ⊢; omega)
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk1.get 2]; bsimp [h2]
+  have q8 : R1 8 = BitVec.ofNat 64 c.pay := by rw [hk1.get 8]; bsimp [h8]
+  show DW live S Q 0x80003da0#64 R1 M3
+  bc_run hlive hS [] at 0x80003d44
+  refine as_tail hlive hS hsf (by simp only [heapEnd]; omega)
+    ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega, by omega⟩ R1 q2 q8
+    ((hfs 16 (by omega)).trans l16) ((hfs 24 (by omega)).trans l24) ((hfs 56 (by omega)).trans l56)
+    ((hfs 48 (by omega)).trans l48) ((hfs 40 (by omega)).trans l40) ((hfs 32 (by omega)).trans l32)
+    hal fun R' hk2 e1 e2 e8 e9 e18 => ?_
+  refine hk R' _ H' F' L' C' _ ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
+    (by keeps_tac Keeps.refl _ _)))) e1 e2 e8 e9 e18 h3 fun y ho hg hf => ?_
+  have hnw : y < c.pay + 8 ∨ c.pay + 24 ≤ y := by
+    have := ho.1; simp only [heapStart, heapEnd] at this; omega
+  simp only [datW]
+  rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+    hfr y ho hg (by simp only [frameIn] at hf ⊢; omega) (by simp only [slotBytes]; omega)]
+
+/-- `dc_array_set` on an existing index holding a string (`0x80003d20`, `sp`
+lowered by 64, `s0` the node `c`): `dc_free_str` of the old value through the
+node's pointer word, then the new datum and the return. -/
+theorem as_found_str {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r : Nat} {b : Blk} {e : RLev}
+    {l : List (Blk × RLev)} {en : Entry} {es : List Entry} {pre post : List (Blk × ANode)}
+    {c : Blk} {x : ANode} {m1 m2 : List (Nat × Val)} {v : Val} {w0 w1 ra s0 s1 s2 : BitVec 64}
+    {p sp : Nat}
+    (h : DcAt S M H F L C G (g :: hs) st) (hr : r < 256) (hl : G.regs r = (b, e) :: l)
+    (hst : st.regs r = en :: es) (harr : e.arr = pre ++ (c, x) :: post)
+    (hm1 : List.Forall₂ (ARel ⟨L, G.strs⟩) pre m1) (hm2 : List.Forall₂ (ARel ⟨L, G.strs⟩) post m2)
+    (hxv : x.v = .str p) (hxw : ∃ w, x.v.Den ⟨L, G.strs⟩ w) (hd : DatRegs w0 w1 g)
+    (hv : g.Den ⟨L, G.strs⟩ v) (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64)) (h8 : R 8 = BitVec.ofNat 64 c.pay)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra) (l48 : ldv .ld M (sp - 64 + 48) = s0)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hal : ra.toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C' G', Keeps foundClob R' R → R' 1 = ra →
+      R' 2 = BitVec.ofNat 64 sp → R' 8 = s0 → R' 9 = s1 → R' 18 = s2 →
+      DcAt S M' H' F' L' C' G' hs (st.setReg r ({ en with arr := m1 ++ (x.idx, v) :: m2 } :: es)) →
+      StkOut sp 112 M' M → DW live S Q ra R' M') :
+    DW live S Q 0x80003d20#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hbe : (b, e) ∈ G.regs r := by rw [hl]; exact List.mem_cons_self
+  have hcA : (c, x) ∈ e.arr := by rw [harr]; exact List.mem_append_right _ List.mem_cons_self
+  have hcG : c ∈ G.blocks := G.arr_mem hr hbe hcA
+  obtain ⟨-, hp0⟩ := h.regWord hr hl
+  have hnc : ANodeAt M c x := hp0.arr.forall (c, x) hcA
+  have hsz := hnc.sz
+  obtain ⟨hb1, hb2, hb3⟩ := h.node_bounds hcG hsz
+  have htag : ldv .lw M (c.pay + 8) = BitVec.ofNat 64 2 := by
+    have := hnc.dat.lw; rw [hxv] at this; exact this
+  have hptr : ldv .ld M (c.pay + 16) = BitVec.ofNat 64 p := by
+    have := hnc.dat.ptr; rw [hxv] at this; exact this
+  obtain ⟨h1, hpd⟩ := h.setNode hr hl hst harr hm1 hm2 hd hv hxw
+  rw [hxv] at h1
+  simp only [heapEnd, heapStart] at hab hb1 hb2
+  bc_run hlive hS [h2, h8, htag] at 0x80002ba0
+  bc_run hlive hS [h2, h8] at 0x800039a4
+  refine dc_free_str_specP hlive hpd h1 (q := c.pay + 16)
+    ⟨fun i _ => hS _ (by simp only [heapStart]; omega) (by simp only [heapEnd]; omega), by omega,
+      by omega, by omega⟩
+    hptr
+    (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
+    (by simp only [heapEnd]; omega) _ (by bsimp [h8]) (by bsimp [h2]) (by bsimp [])
+    fun R1 M3 H' G' hk1 _ h3 hfr _ _ => ?_
+  have hfs : ∀ k, k + 8 ≤ 64 → ldv .ld M3 (sp - 64 + k) = ldv .ld M (sp - 64 + k) :=
+    fun k hk => ldv_congr .ld fun j hj => by
+      have hin : frameIn sp 112 (sp - 64 + k + j) := by simp only [frameIn, widthOfM] at hj ⊢; omega
+      have ho := asFrame_out (by simp only [heapEnd]; omega) hin
+      exact hfr _ ho.1 ho.2 (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk1.get 2]; bsimp [h2]
+  have q8 : R1 8 = BitVec.ofNat 64 c.pay := by rw [hk1.get 8]; bsimp [h8]
+  show DW live S Q 0x80003d74#64 R1 M3
+  bc_run hlive hS [] at 0x80003d44
+  refine as_tail hlive hS hsf (by simp only [heapEnd]; omega)
+    ⟨by simp only [heapStart]; omega, by simp only [heapEnd]; omega, by omega⟩ R1 q2 q8
+    ((hfs 16 (by omega)).trans l16) ((hfs 24 (by omega)).trans l24) ((hfs 56 (by omega)).trans l56)
+    ((hfs 48 (by omega)).trans l48) ((hfs 40 (by omega)).trans l40) ((hfs 32 (by omega)).trans l32)
+    hal fun R' hk2 e1 e2 e8 e9 e18 => ?_
+  refine hk R' _ H' F L C G' ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
+    (by keeps_tac Keeps.refl _ _)))) e1 e2 e8 e9 e18 h3 fun y ho hg hf => ?_
+  have hnw : y < c.pay + 8 ∨ c.pay + 24 ≤ y := by
+    have := ho.1; simp only [heapStart, heapEnd] at this; omega
+  simp only [datW]
+  rw [imgM_store_miss _ _ (by omega), imgM_store_miss _ _ (by omega),
+    hfr y ho hg (by simp only [frameIn] at hf ⊢; omega)]
+
 end Dc.Mach

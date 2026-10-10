@@ -5230,6 +5230,8 @@ Checked so far:
 - `dc_register_push_spec` (`DcRegPop.lean`): `dc_malloc(32)`, then the caller's datum, an empty array and the old top stored into the node and register `r` set to it (`rpush_tail`, `rpush_stores`, state step `DcAt.consLev`); `dc_malloc` may reach `out_of_memory`.
 - `dc_array_get_spec` (`DcArray.lean`): `arrayGet st r i` into `a0`/`a1` with one more reference. `get_stacked` reads the top level's array head (`DcAt.topArr`: chain, bounds, values against `topArrSt`), the search loop is `ag_walk` over `afind`, a hit ends in `dc_dup` (`ag_found`), a miss or empty array in `dc_int2data(0)` (`ag_zero`, may reach `out_of_memory`).
 
+- `dc_array_set_spec` (`DcArrSet.lean`): `arraySet st r i v`. The search `as_walk` either finds index `i` (the node's datum is replaced: `DcAt.setNode`, then `dc_free_num`/`dc_free_str` of the old datum through the pending view, `as_found`) or stops before the first larger index (a fresh node spliced in after `pre`: `as_ins`, `DcAt.insNodeW`, link word `lend`). With no array the empty path stores a one-node array (`as_empty`), linking it into the existing level (`as_lev_link`) or a fresh level (`as_ss_new`, `DcAt.newArr`). The spec needs no sortedness premise: `arrSet_hit`/`arrSet_ins` follow from the search's own index bounds. `dc_malloc` may reach `dc_memfail` (`hoom`).
+
 Open premise: `dc_array_get_spec` takes `hsrt` (the top array of `r` is strictly sorted by index), so the machine's early-exit search agrees with `find?` (`afind_find`). The M10 state invariant must supply it: every register array strictly sorted, preserved by `arrSet`.
 
 Open premise: reference counts below `2^31` for `bc_copy_num` must come

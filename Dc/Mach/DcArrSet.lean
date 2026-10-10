@@ -2085,4 +2085,86 @@ theorem as_case_walk {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat �
         e18 h4 (hout M' hso)) fun R' M' hso => hoom R' M' (hout M' hso)
     exact hk4.trans (by keeps_tac ((hk3.mono (by decide)).trans (by keeps_tac Keeps.refl _ _)))
 
+theorem ofNat_sub64 {sp : Nat} (h1 : 64 ≤ sp) :
+    BitVec.ofNat 64 sp + 18446744073709551552#64 = BitVec.ofNat 64 (sp - 64) := by
+  change BitVec.ofNat 64 sp + -(64#64) = _
+  rw [BitVec.add_neg_eq_sub]
+  exact BitVec.ofNat_sub_ofNat_of_le sp 64 (by decide) h1
+
+/-- **`dc_array_set (regid, index, value)`** at `0x80003c7c`, `r = regid`,
+`i = index`: the datum `g` (in `a2`/`a3`, the caller's handle, denoting `v`)
+stored at index `i` of register `r`'s top array (a new level when the
+register is empty), the replaced datum released; `dc_malloc` may run out of
+memory. -/
+theorem dc_array_set_spec {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {v : Val} {sp r i : Nat}
+    (h : DcAt S M H F L C G (g :: hs) st) (hv : g.Den ⟨L, G.strs⟩ v) (hr : r < 256)
+    (hi : i < 2 ^ 31) (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 r) (h11 : R 11 = BitVec.ofNat 64 i)
+    (hd : DatRegs (R 12) (R 13) g) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C' G', Keeps setClob R' R → DcAt S M' H' F' L' C' G' hs (arraySet st r i v) →
+      StkOut sp 112 M' M → DW live S Q (R 1) R' M')
+    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    DW live S Q 0x80003c7c#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  simp only [heapEnd] at hab
+  have hsp := ofNat_sub64 (sp := sp) (by omega)
+  bc_run hlive hS [h2, hsp] at 0x800038f8
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  generalize hM1 : writeLog (writeLog (writeLog (writeLog (writeLog M [(sp - 64 + 40, 8, R 9)])
+    [(sp - 64 + 32, 8, R 18)]) [(sp - 64 + 56, 8, R 1)]) [(sp - 64 + 16, 8, R 12)])
+    [(sp - 64 + 24, 8, R 13)] = M1
+  have hMo : MemOnly (frameIn sp 112) M1 M := fun x hx => by
+    rw [← hM1]; simp only [frameIn] at hx; repeat rw [imgM_store_miss _ _ (by omega)]
+  have l16 : ldv .ld M1 (sp - 64 + 16) = R 12 := by
+    rw [← hM1, ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  have l24 : ldv .ld M1 (sp - 64 + 24) = R 13 := by rw [← hM1, ldv_store_hit]
+  have l56 : ldv .ld M1 (sp - 64 + 56) = R 1 := by
+    rw [← hM1, ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  have l32 : ldv .ld M1 (sp - 64 + 32) = R 18 := by
+    rw [← hM1, ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+      ldv_store_hit]
+  have l40 : ldv .ld M1 (sp - 64 + 40) = R 9 := by
+    rw [← hM1, ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+      ldv_ld_miss _ _ (by omega), ldv_store_hit]
+  have h1 := h.outWrite hMo fun a ha => asFrame_out (by simp only [heapEnd]; omega) ha
+  have hK : AsK live S Q sp M1 R (R 1) (R 8) (R 9) (R 18) hs (arraySet st r i v) :=
+    fun R' M' H' F' L' C' G' hk2 e1 e2 e8 e9 e18 h' hso =>
+      hk R' M' H' F' L' C' G' (Keeps.restoreAll (rs := [1, 2, 8, 9, 18]) hk2 fun z hz => by
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hz
+        rcases hz with rfl | rfl | rfl | rfl | rfl
+        · exact e1
+        · rw [e2, h2]
+        · exact e8
+        · exact e9
+        · exact e18) h' fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)
+  have hoom' : ∀ R' M', StkOut sp 112 M' M1 → DW live S Q 0x80001e74#64 R' M' :=
+    fun R' M' hso => hoom R' M' fun a ho hg hf => (hso a ho hg hf).trans (hMo a hf)
+  clear hM1
+  refine get_stacked hlive h1 hr _ (by bsimp [h10]) (by bsimp []) fun R1 hk1 e10 => ?_
+  rw [show upd (upd (upd (upd R 2 (BitVec.ofNat 64 (sp - 64))) 9 (R 11)) 18 (R 10)) 1
+    (2147499168#64) 1 = 2147499168#64 by bsimp []]
+  have q2 : R1 2 = BitVec.ofNat 64 (sp - 64) := by rw [hk1.get 2]; bsimp []
+  have q8 : R1 8 = R 8 := by rw [hk1.get 8]; bsimp []
+  have q9 : R1 9 = BitVec.ofNat 64 i := by rw [hk1.get 9]; bsimp [h11]
+  have q18 : R1 18 = BitVec.ofNat 64 r := by rw [hk1.get 18]; bsimp [h10]
+  have hK1 : AsK live S Q sp M1 R1 (R 1) (R 8) (R 9) (R 18) hs (arraySet st r i v) :=
+    fun R' M' H' F' L' C' G' hk2 => hK R' M' H' F' L' C' G'
+      (hk2.trans (by keeps_tac ((hk1.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))
+  obtain ⟨hch, -, -⟩ := h1.topArr hr
+  rcases hlr : G.regs r with _ | ⟨⟨b, e⟩, l⟩
+  · refine as_case_none hlive h1 hr hlr hi hd hv hsf (by simp only [heapEnd]; omega) R1 q2
+      (by rw [e10, hlr]; rfl) q8 q9 q18 l16 l24 l56 l40 l32 hal hK1 hoom'
+  · rw [hlr] at hch e10
+    rcases harr : e.arr with _ | ⟨bx0, rest⟩
+    · simp only [topArr, harr] at hch
+      exact as_case_emp hlive h1 hr hlr harr hi hd hv hsf (by simp only [heapEnd]; omega) R1 q2
+        (by rw [e10]; exact hch.nil_eq) q8 q9 q18 l16 l24 l56 l40 l32 hal hK1 hoom'
+    · simp only [topArr, harr] at hch
+      exact as_case_walk hlive h1 hr hlr harr hi hd hv hsf (by simp only [heapEnd]; omega) R1 q2
+        (by rw [e10]; exact hch.head_eq) q8 q9 q18 l16 l24 l56 l40 l32 hal hK1 hoom'
+
 end Dc.Mach

@@ -100,9 +100,9 @@ theorem DcAt.newNum {S : Nat → Prop} {M M' : Mem} {H H' : Heap} {F F' : List B
   have hb' : BcHeap S (G.raws M') M' H' F' (y :: L') :=
     hb.subRaw (X' := G.raws M') (fun c hc => hc) fun c hc a ha => (hag a ⟨c, hc, ha⟩).symm
   cases hr with
-  | dec _ =>
+  | dec h2 =>
     exact ⟨_, ⟨hb', h.nodup, (h.view.frame hag hgl).subst (x := x) (x' := x.decRef) rfl rfl,
-      (h.den.dec h.heap.p_ne_all).addNum hne h1 hno hpos how, h.glob, h.col⟩,
+      (h.den.dec h.heap.p_ne_all h2).addNum hne h1 hno hpos how, h.glob, h.col⟩,
       (HsKeep.decRef hs).trans (HsKeep.cons hs)⟩
   | rel h1' =>
     exact ⟨C, ⟨hb', h.nodup, h.view.frame hag hgl,

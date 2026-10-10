@@ -122,6 +122,7 @@ theorem DcDen.bump {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {
     pos := fun y hy => ?_
     numRefs := fun y hy => ?_
     strRefs := fun o ho => ?_
+    live := fun y hy => ?_
     lkIn := fun p hp => by
       obtain ⟨y, hy, e⟩ := d.lkIn p hp
       exact ⟨_, hcz y hy, (ite_rep hp' hn' y _).1.trans e⟩
@@ -150,6 +151,9 @@ theorem DcDen.bump {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {
       rw [count_cons_self]; have := d.numRefs x hx; omega
     · rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hne y hy (GV.num.inj e).symm]
   · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+  · rcases mem_split_cases hy with rfl | hy
+    · show 1 ≤ x.rep.refs + 1; omega
+    · exact d.live y (mem_split_of hy)
 
 /-- **`n_refs` of a heap number incremented**: the handle `.num p` joins
 `hs`; the constants follow the bumped object. -/

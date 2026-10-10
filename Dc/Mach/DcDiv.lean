@@ -45,6 +45,7 @@ theorem DcDen.leak {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st
   owns := d.owns
   norm := d.norm
   pos := d.pos
+  live := d.live
   numRefs := fun x hx => by
     have e := d.numRefs x hx
     have ev : ({ G with lk := p :: G.lk } : DcG).vals = G.vals := rfl

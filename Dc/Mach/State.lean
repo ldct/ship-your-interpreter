@@ -258,6 +258,8 @@ structure DcDen (L : List NumObj) (C : BcConsts) (G : DcG) (hs : List GV) (st : 
   numRefs : ∀ x ∈ L, x.rep.refs = (G.vals ++ hs).count (.num x.rep.p) + C.cnt x.rep.p +
     G.lk.count x.rep.p
   strRefs : ∀ o ∈ G.strs, o.refs = (G.vals ++ hs).count (.str o.hb.pay)
+  /-- every number of the heap is referenced: a count reaching zero releases it -/
+  live : ∀ x ∈ L, 1 ≤ x.rep.refs
   lkLen : G.lk.length ≤ 2 ^ 29
   lkIn : ∀ p ∈ G.lk, ∃ x ∈ L, x.rep.p = p
   mz : C.z ∈ L

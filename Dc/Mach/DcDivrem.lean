@@ -41,8 +41,8 @@ theorem DcDen.dropAt {L Lm : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV
       HsKeep ⟨L, G.strs⟩ ⟨Lm, G.strs⟩ hs := by
   obtain ⟨L1, L2, x, rfl, rfl, hf⟩ := hm
   cases hf with
-  | dec _ =>
-    exact ⟨_, d.dec hd.ne, C.sameP_subst rfl rfl,
+  | dec h2 =>
+    exact ⟨_, d.dec hd.ne h2, C.sameP_subst rfl rfl,
       hd.congr (by simp only [List.map_append, List.map_cons]; rfl), HsKeep.decRef hs⟩
   | rel h1 =>
     exact ⟨C, d.rel hd.ne h1, .refl C,

@@ -99,6 +99,7 @@ theorem DcDen.rel {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
       numRefs := fun y hy => by
         rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hpn y hy (GV.num.inj e).symm]
       strRefs := fun o ho => by rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+      live := fun y hy => d.live y (mem_split_of hy)
       lkLen := d.lkLen
       lkIn := fun p hp => by
         obtain ⟨y, hy, e⟩ := d.lkIn p hp
@@ -121,7 +122,7 @@ theorem DcDen.rel {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
 decremented object. -/
 theorem DcDen.dec {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {hs : List GV}
     {st : St} (d : DcDen (L1 ++ x :: L2) C G (.num x.rep.p :: hs) st)
-    (hne : ∀ y ∈ L1 ++ L2, y.rep.p ≠ x.rep.p) :
+    (hne : ∀ y ∈ L1 ++ L2, y.rep.p ≠ x.rep.p) (h2 : 2 ≤ x.rep.refs) :
     DcDen (L1 ++ x.decRef :: L2) (C.subst x x.decRef) G hs st := by
   classical
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
@@ -141,6 +142,7 @@ theorem DcDen.dec {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
     pos := fun y hy => ?_
     numRefs := fun y hy => ?_
     strRefs := fun o ho => ?_
+    live := fun y hy => ?_
     lkIn := fun p hp => by
       obtain ⟨y, hy, e⟩ := d.lkIn p hp
       exact ⟨_, hcz y hy, (ite_rep hp' hn' y _).1.trans e⟩
@@ -166,6 +168,9 @@ theorem DcDen.dec {L1 L2 : List NumObj} {x : NumObj} {C : BcConsts} {G : DcG} {h
       have := d.numRefs x hx; rw [count_cons_self] at this; omega
     · rw [d.numRefs y (mem_split_of hy), count_cons_ne _ _ fun e => hne y hy (GV.num.inj e).symm]
   · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+  · rcases mem_split_cases hy with rfl | hy
+    · show 1 ≤ x.rep.refs - 1; omega
+    · exact d.live y (mem_split_of hy)
 
 /-- The constants' words read the same after a substitution keeping pointers. -/
 theorem DcView.subst {M : Mem} {G : DcG} {C : BcConsts} {st : St} (v : DcView M G C st)
@@ -244,6 +249,7 @@ theorem DcDen.addNum {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {
     pos := fun z hz => ?_
     numRefs := fun z hz => ?_
     strRefs := fun o ho => ?_
+    live := fun z hz => ?_
     lkIn := fun p hp => by
       obtain ⟨z, hz, e⟩ := d.lkIn p hp
       exact ⟨z, List.mem_cons_of_mem _ hz, e⟩
@@ -266,6 +272,9 @@ theorem DcDen.addNum {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {
     · rw [count_cons_self, List.count_eq_zero.mpr fun hm => hvy _ hm rfl, hc0, hl0, h1]
     · rw [d.numRefs z hz, count_cons_ne _ _ fun e => hne z hz (GV.num.inj e).symm]
   · rw [d.strRefs o ho, count_cons_ne _ _ (by simp)]
+  · rcases List.mem_cons.mp hz with rfl | hz
+    · omega
+    · exact d.live z hz
 
 /-- **Held handles keep their values** from objects `O` to `O'`. -/
 def HsKeep (O O' : DObjs) (hs : List GV) : Prop := ∀ g ∈ hs, ∀ v, g.Den O v → g.Den O' v
@@ -315,7 +324,7 @@ theorem DcAt.decNum {S : Nat → Prop} {M M' : Mem} {H : Heap} {F : List Blk} {L
     (hgl : ∀ a, DcGlob a → imgM M' a = imgM M a) :
     DcAt S M' H F (L1 ++ x.decRef :: L2) (C.subst x x.decRef) G hs st :=
   ⟨hb.subRaw (fun c hc => hc) fun c hc a ha => (hag a ⟨c, hc, ha⟩).symm, h.nodup,
-    (h.view.frame hag hgl).subst rfl rfl, h.den.dec h.heap.p_ne_all, h.glob, h.col⟩
+    (h.view.frame hag hgl).subst rfl rfl, h.den.dec h.heap.p_ne_all _h2, h.glob, h.col⟩
 
 /-- Different owners of the heap have different digit buffers. -/
 theorem db_ne_of_owns {L1 L2 : List NumObj} {x y : NumObj} (hd : (objBlocks (L1 ++ x :: L2)).Nodup)
@@ -434,10 +443,10 @@ theorem DcAt.freeEntry {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L
   have e := DcAt.freeEntryP (Pend.id G) (M := M) h hq (.above hqh) hw hsf hab hqf
   rwa [DcG.rawsOff_nil] at e
 
-/-- **`dc_free_num (&a)`** at `0x80002ba0` on a handle `.num p` held in the
+/-- **`bc_free_num (&a)`** at `0x800048c0` on a handle `.num p` held in the
 slot `q`, on a pending state: one reference fewer, or the object released;
 the slot is `NULL`. -/
-theorem dc_free_num_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+theorem bc_free_num_dcP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat} {E : List Blk}
     {W : Nat → Prop} {Φ : Mem → Mem} (hp : Pend G E W Φ)
@@ -454,7 +463,7 @@ theorem dc_free_num_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
         ∀ a, c.In a → ¬ slotBytes q a → imgM M' a = imgM M a) →
       HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs →
       DW live S Q (R 1) R' M') :
-    DW live S Q 0x80002ba0#64 R M := by
+    DW live S Q 0x800048c0#64 R M := by
   obtain ⟨L1, L2, x, rfl, rfl⟩ := h.handle_num
   have hx : x ∈ L1 ++ x :: L2 := List.mem_append_right _ List.mem_cons_self
   have e := h.freeEntryP hp hq hqs hw hsf hab hqf
@@ -484,8 +493,8 @@ theorem dc_free_num_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
     · have := ha.outHeap; simp only [OutHeap] at this; exact this.2.2 hf
   have hob : objBlocks (L1 ++ x.decRef :: L2) = objBlocks (L1 ++ x :: L2) := by
     rw [objBlocks_append, objBlocks_cons, objBlocks_append, objBlocks_cons]; rfl
-  refine st_80002ba0 hlive (bc_free_num_spec hlive e R h10 h2 hal ⟨fun h2r R' M' hk1 hb hz hm => ?_,
-    fun h1r R' M' H' hk1 hr => ?_⟩)
+  refine bc_free_num_spec hlive e R h10 h2 hal ⟨fun h2r R' M' hk1 hb hz hm => ?_,
+    fun h1r R' M' H' hk1 hr => ?_⟩
   · have hm' := hp.memOnlyW hm
     have hrx : ∀ a, refsBytes x.rep a → x.sb.In a := fun a ha => by
       have := hxb.sSz; have := hxb.sPay
@@ -558,6 +567,46 @@ theorem dc_free_num_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (
       · exact hnw (n3 c)
       · exact n4 c
       · exact n5 c
+
+/-- **`dc_free_num (&a)`** at `0x80002ba0` (a jump to `bc_free_num`) on a
+pending state. -/
+theorem dc_free_num_specP {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat} {E : List Blk}
+    {W : Nat → Prop} {Φ : Mem → Mem} (hp : Pend G E W Φ)
+    (h : DcAt S (Φ M) H F L C G (.num p :: hs) st) {q sp : Nat} (hq : PtrSlot S q)
+    (hqs : SlotPlace H F L G W q)
+    (hw : ldv .ld M q = BitVec.ofNat 64 p) (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
+    (hqf : q + 8 ≤ sp - 32 ∨ sp ≤ q)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S (Φ M') H' F' L' C' G hs st →
+      ldv .ld M' q = 0#64 →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      (∀ c, DcFresh H F L G c → DcFresh H' F' L' G c ∧
+        ∀ a, c.In a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x80002ba0#64 R M :=
+  st_80002ba0 hlive (bc_free_num_dcP hlive hp h hq hqs hw hsf hab hqf R h10 h2 hal hk)
+
+/-- **`bc_free_num (&a)`** at `0x800048c0` on a handle `.num p` held in the
+stack slot `q`. -/
+theorem bc_free_num_dc {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} {p : Nat}
+    (h : DcAt S M H F L C G (.num p :: hs) st) {q sp : Nat} (hq : PtrSlot S q) (hqh : heapEnd ≤ q)
+    (hw : ldv .ld M q = BitVec.ofNat 64 p) (hsf : StackFrame S sp 32) (hab : heapEnd + 32 ≤ sp)
+    (hqf : q + 8 ≤ sp - 32 ∨ sp ≤ q)
+    (R : Nat → BitVec 64) (h10 : R 10 = BitVec.ofNat 64 q) (h2 : R 2 = BitVec.ofNat 64 sp)
+    (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M' H' F' L' C', Keeps freeNumClob R' R → DcAt S M' H' F' L' C' G hs st →
+      ldv .ld M' q = 0#64 →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 32 a → ¬ slotBytes q a → imgM M' a = imgM M a) →
+      DW live S Q (R 1) R' M') :
+    DW live S Q 0x800048c0#64 R M :=
+  bc_free_num_dcP hlive (Pend.id G) (M := M) h hq (.above hqh) hw hsf hab hqf R h10 h2 hal
+    fun R' M' H' F' L' C' k1 k2 k3 k4 _ _ => hk R' M' H' F' L' C' k1 k2 k3 k4
 
 /-- **`dc_free_num (&a)`** at `0x80002ba0` on a handle `.num p` held in the
 stack slot `q`: one reference fewer, or the object released; the slot is
@@ -679,6 +728,7 @@ theorem DcAt.dropStr {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L :
           obtain ⟨v, hv⟩ := d.hsDen g (List.mem_cons_of_mem _ hg)
           rw [he] at hv
           exact ⟨v, hv.dropStr (hne g (List.mem_append_right _ hg))⟩
+        live := d.live
         owns := d.owns
         norm := d.norm
         pos := d.pos

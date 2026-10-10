@@ -85,8 +85,8 @@ theorem DcDen.raPost {L Lm Lf : List NumObj} {C : BcConsts} {G : DcG} {hs : List
       subst hx
       have hdf' : PDist ([] ++ y :: L'') := hdf
       cases hfr with
-      | dec _ =>
-        exact ⟨_, (d.dec hd.ne).addNum (fun z hz => hdf'.ne z hz) hy1 hno hpos how,
+      | dec h2 =>
+        exact ⟨_, (d.dec hd.ne h2).addNum (fun z hz => hdf'.ne z hz) hy1 hno hpos how,
           C.sameP_subst rfl rfl⟩
       | rel h1 =>
         exact ⟨C, (d.rel hd.ne h1).addNum (fun z hz => hdf'.ne z hz) hy1 hno hpos how, .refl C⟩
@@ -110,8 +110,8 @@ theorem DcDen.raPost {L Lm Lf : List NumObj} {C : BcConsts} {G : DcG} {hs : List
       rw [e] at d1 hdm
       rw [← hxp] at d1
       cases hfr with
-      | dec _ =>
-        exact ⟨_, d1.dec hdm.ne, (C.sameP_subst (x := c) (x' := c.withRefs (c.rep.refs + 1)) rfl rfl).trans
+      | dec h2 =>
+        exact ⟨_, d1.dec hdm.ne h2, (C.sameP_subst (x := c) (x' := c.withRefs (c.rep.refs + 1)) rfl rfl).trans
           (BcConsts.sameP_subst _ (x := x) (x' := x.decRef) rfl rfl)⟩
       | rel h1 => exact ⟨_, d1.rel hdm.ne h1, C.sameP_subst rfl rfl⟩
 

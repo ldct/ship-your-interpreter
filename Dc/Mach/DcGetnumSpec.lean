@@ -332,7 +332,8 @@ theorem gn_after {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     {R : Nat → BitVec 64} {M : Mem} {j v : Nat} {H : Heap} {F : List Blk} {L : List NumObj}
     {C : BcConsts} {pr pt pd pb : Nat}
     (hI : GnI S M0 R0 sp G hs0 st o j0 ra (if neg then chW (some 95) else 0#64) L0 R M j v H F L C pr pt pd pb)
-    (hk : ∀ R' M' H' F' L' C' (lks : List Nat) pr' pd' og jE, lks.length ≤ 1 →
+    (hk : ∀ R' M' H' F' L' C' (lks : List Nat) pr' pd' og jE,
+      lks.length ≤ (if (rdW o j0)[j]? = some 46 then 1 else 0) →
       GnX S M0 R0 sp { G with lk := lks ++ G.lk } hs0 st o j0 ra (if neg then chW (some 95) else 0#64)
         L0 R' M' jE
         (if neg then Num.sub (Num.zero 0) (rdFrac st.ibase ⟨false, v, 0⟩ ((rdW o j0).drop j)).1 0
@@ -371,7 +372,7 @@ theorem gn_after {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
       (frac_size hib.2 hd16 (Nat.zero_add _).symm (by omega)) fun R3 M3 H3 F3 L3 C3 pr3 pd3 hX3 => ?_
     refine gn_neg1 hlive cx hoom hX3 fun R4 M4 H4 F4 L4 C4 pr4 hX4 => ?_
     refine hk R4 M4 H4 F4 L4 C4 [pv2] pr4 pd3 og2
-      (j + 1 + (takeDigits ((rdW o j0).drop (j + 1))).1.length) (by simp) ?_ ?_
+      (j + 1 + (takeDigits ((rdW o j0).drop (j + 1))).1.length) (by simp [ed]) ?_ ?_
     · rw [rdFrac_dot (by omega) _ ed]
       simpa [ofDigits] using hX4
     · rw [rdFrac_dot (by omega) _ ed, drop_drop_takeDigits]
@@ -386,8 +387,9 @@ theorem gn_after {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
 
 /-- **`dc_getnum (input_str, ibase, readahead)`** on the text `w` of a
 string of the state from byte `j0` (starting with a digit, `_` or `.`): the
-result handle holds `(readNum ibase w).1`, at most one reference lost (a
-fraction's divisor), the reader after `w[jE]`, the first character not
+result handle holds `(readNum ibase w).1`, at most one reference lost, and
+only after a `.` following the sign and the integer digits (the fraction's
+divisor), the reader after `w[jE]`, the first character not
 consumed, which `readahead` receives; `(readNum ibase w).2 = w.drop jE`. -/
 theorem dc_getnum_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
     {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
@@ -398,7 +400,9 @@ theorem dc_getnum_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
     (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
     (h10 : R 10 = 0x80000b70#64) (h11 : R 11 = BitVec.ofNat 64 st.ibase) (h12 : R 12 = BitVec.ofNat 64 ra)
     (hp : ldv .ld M inPtrAddr = BitVec.ofNat 64 (o.tb.pay + j0))
-    (hk : ∀ R' M' H' F' L' C' (lks : List Nat) pr jE, lks.length ≤ 1 → Keeps cClob R' R → R' 2 = R 2 →
+    (hk : ∀ R' M' H' F' L' C' (lks : List Nat) pr jE,
+      lks.length ≤ (if (takeDigits (rdSign (rdW o j0)).2).2.head? = some 46 then 1 else 0) →
+      Keeps cClob R' R → R' 2 = R 2 →
       DcAt S M' H' F' L' C' { G with lk := lks ++ G.lk } (.num pr :: hs0) st →
       (GV.num pr).Den ⟨L', G.strs⟩ (.num (readNum st.ibase (rdW o j0)).1) →
       HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs0 → R' 11 = BitVec.ofNat 64 pr → (R' 10).toNat % 2 ^ 32 = 1 →
@@ -428,7 +432,8 @@ theorem dc_getnum_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 6
        (rdFrac st.ibase ⟨false, ((takeDigits ((rdW o j0).drop jS)).1.foldl (digF st.ibase) 0), 0⟩
             ((rdW o j0).drop (jS + (takeDigits ((rdW o j0).drop jS)).1.length))).2) := by
     rw [readNum_eq, rdRest_eq, esg, drop_drop_takeDigits]; rfl
-  refine hk R' M' H' F' L' C' lks pr5 jE hlks k2 r2 hd (by rw [em]; exact hden) hkp r11 r10
+  refine hk R' M' H' F' L' C' lks pr5 jE
+    (by rw [esg, drop_drop_takeDigits, List.head?_drop]; exact hlks) k2 r2 hd (by rw [em]; exact hden) hkp r11 r10
     (by rw [em]; exact erest) ptr hra' hout
 
 end Dc.Mach

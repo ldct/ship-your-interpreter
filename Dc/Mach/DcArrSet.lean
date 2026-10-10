@@ -1727,4 +1727,67 @@ theorem as_ins {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → Bit
     (by simp only [frameIn] at hf ⊢; omega)]
   exact hM2 x hf
 
+/-! ## The empty path -/
+
+/-- `dc_array_set` with no array on register `r`'s top (`0x80003da4`, `sp`
+lowered by 64, `s0` untouched): a fresh node holding index `i` and the
+datum, then `dc_set_stacked_array (r, node)` (continued by `hss`), or
+`dc_memfail`. -/
+theorem as_empty {live S : Nat → Prop} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
+    {C : BcConsts} {G : DcG} {g : GV} {hs : List GV} {st : St} {r i sp : Nat}
+    {w0 w1 ra s1 s2 : BitVec 64}
+    (h : DcAt S M H F L C G (g :: hs) st) (hsf : StackFrame S sp 112) (hab : heapEnd + 112 ≤ sp)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 64))
+    (h9 : R 9 = BitVec.ofNat 64 i) (h18 : R 18 = BitVec.ofNat 64 r)
+    (l16 : ldv .ld M (sp - 64 + 16) = w0) (l24 : ldv .ld M (sp - 64 + 24) = w1)
+    (l56 : ldv .ld M (sp - 64 + 56) = ra)
+    (l40 : ldv .ld M (sp - 64 + 40) = s1) (l32 : ldv .ld M (sp - 64 + 32) = s2)
+    (hss : ∀ R1 Mm H' c, DcAt S Mm H' F L C G (g :: hs) st → DcFresh H' F L G c → 32 ≤ c.sz →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp 112 a → imgM Mm a = imgM M a) →
+      Keeps [1, 2, 9, 10, 11, 12, 13, 14, 15, 18] R1 R → R1 1 = ra → R1 2 = BitVec.ofNat 64 sp →
+      R1 9 = s1 → R1 18 = s2 → R1 10 = BitVec.ofNat 64 r → R1 11 = BitVec.ofNat 64 c.pay →
+      DW live S Q 0x8000391c#64 R1 (nodeW Mm c.pay i 0#64 w0 w1))
+    (hoom : ∀ R' M', StkOut sp 112 M' M → DW live S Q 0x80001e74#64 R' M') :
+    DW live S Q 0x80003da4#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  simp only [heapEnd] at hab
+  bc_run hlive hS [h2] at 0x80001ea0
+  refine dc_malloc_spec hlive h.heap.heap (n := 32) (by decide)
+    (StackFrame.shrink (StackFrame.sub (m := 64) (n := 48) hsf (by decide)) (by decide))
+    (by simp only [heapEnd]; omega) _ (by bsimp []) (by bsimp [h2]) (by bsimp [])
+    (fun R1 Mm H' c hk1 hp e10 => ?_) fun R1 Mm _ hfr => hoom R1 Mm fun x ho hg hf => ?_
+  rotate_left
+  · exact hfr x (OutHeap.not_alloc h.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)
+  obtain ⟨h3, hfc⟩ := h.malloc hp (by decide) (by simp only [heapEnd]; omega)
+  have hfl : ∀ k, k + 8 ≤ 64 → ldv .ld Mm (sp - 64 + k) = ldv .ld M (sp - 64 + k) := fun k hk =>
+    ldv_congr .ld fun j hj => hp.frame _
+      (OutHeap.not_alloc h.heap.heap (outHeap_of_ge (by simp only [heapEnd, widthOfM] at hj ⊢; omega)))
+      (by simp only [frameIn, widthOfM] at hj ⊢; omega)
+  obtain ⟨hc1, hc2, hc3⟩ := blk_bounds h3.heap.heap hfc.live
+  have hcsz := hp.size
+  show DW live S Q 0x80003dac#64 R1 Mm
+  refine as_nstore0 (a := c.pay) (i := i) hlive hS hsf (by simp only [heapEnd]; omega)
+    ⟨by omega, by omega, by omega⟩ R1
+    (by rw [hk1.get 2]; bsimp [h2]) e10 (by rw [hk1.get 9]; bsimp [h9])
+    ((hfl 16 (by omega)).trans l16) ((hfl 24 (by omega)).trans l24) fun R2 hk2 => ?_
+  have hn : ∀ k, k + 8 ≤ 64 → ldv .ld (nodeW Mm c.pay i 0#64 w0 w1) (sp - 64 + k) =
+      ldv .ld M (sp - 64 + k) := fun k hk => by
+    simp only [heapStart, heapEnd] at hc1 hc2
+    simp only [nodeW]
+    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega),
+      ldv_ld_miss _ _ (by omega), hfl k hk]
+  refine as_ss hlive hS hsf (by simp only [heapEnd]; omega) R2
+    (by rw [hk2.get 2, hk1.get 2]; bsimp [h2]) ((hn 56 (by omega)).trans l56)
+    ((hn 40 (by omega)).trans l40) ((hn 32 (by omega)).trans l32)
+    fun R3 hk3 e1 e2 e9 e18 e10' e11 => hss R3 Mm H' c h3 hfc hp.size (fun x ho hg hf => ?_) ?_
+      e1 e2 e9 e18 ?_ ?_
+  · rw [hp.frame x (OutHeap.not_alloc h.heap.heap ho) (by simp only [frameIn] at hf ⊢; omega)]
+  · exact (hk3.mono (by decide)).trans ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
+      (by keeps_tac Keeps.refl _ _))))
+  · rw [e10', hk2.get 18, hk1.get 18]; bsimp [h18]
+  · rw [e11, hk2.get 10]; exact e10
+
 end Dc.Mach

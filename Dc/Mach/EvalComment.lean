@@ -65,14 +65,14 @@ theorem skipEol_find (f : Nat → BitVec 8) : ∀ (s : List Nat) (a : Nat),
       have hle : (skipEol cs).length ≤ cs.length := by rw [skipEol_drop cs]; simp
       exact ⟨fun p hp => by have := ih.1 p hp; omega, ih.2⟩
 
-theorem findFrom_range {f : Nat → BitVec 8} {c : BitVec 8} :
+theorem findFrom_bounds {f : Nat → BitVec 8} {c : BitVec 8} :
     ∀ {a n p : Nat}, findFrom f c a n = some p → a ≤ p ∧ p < a + n
   | _, 0, _, h => by simp [findFrom] at h
   | a, n + 1, p, h => by
     unfold findFrom at h
     split at h
     · cases h; omega
-    · have := findFrom_range h; omega
+    · have := findFrom_bounds h; omega
 
 /-- **`DC_COMMENT`** (`0x800015a8`, `s7` the position after the command,
 `OwnedBytes` of the rest): `memchr` then `s0 = p + 1`, `a2 = 0` and the
@@ -103,7 +103,7 @@ theorem rt_comment {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
   | some p =>
     rw [hf] at e10'
     have ep : R1 10 = BitVec.ofNat 64 p := e10'
-    have hpa : a ≤ p ∧ p < a + n := findFrom_range hf
+    have hpa : a ≤ p ∧ p < a + n := findFrom_bounds hf
     have hnz : BitVec.ofNat 64 p ≠ 0#64 := by
       intro h; have := congrArg BitVec.toNat h; simp at this; omega
     bc_run hlive hlive [ep] at 0x800015c4

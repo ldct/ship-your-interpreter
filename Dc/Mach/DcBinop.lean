@@ -1,4 +1,4 @@
-import Dc.Mach.DcPop
+import Dc.Mach.DcStkCheckSites
 import Dc.Mach.DcInt
 
 /-!
@@ -149,25 +149,6 @@ theorem binop_push_none {st : St} {a b : Num} {g : Num → Num → Option Num} (
 
 /-! ## The checks -/
 
-/-- A stack node's payload in the heap. -/
-theorem DcAt.stkPay {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L : List NumObj}
-    {C : BcConsts} {G : DcG} {hs : List GV} {st : St} (h : DcAt S M H F L C G hs st)
-    {c : Blk} {g : GV} (hc : (c, g) ∈ G.stk) :
-    2147603936 ≤ c.pay ∧ c.pay + 32 ≤ 2273312768 ∧ c.pay % 16 = 0 := by
-  have hn := h.view.stk.forall _ hc
-  have fbb := h.heap.heap.blk (List.mem_append_right _ (h.heap.raw.live c (DcG.stk_mem hc)))
-  have hblo : 2147603920 ≤ c.h := fbb.lo
-  have hbhi : c.fin ≤ 2273312768 := Nat.le_trans fbb.fin fbb.top
-  have hbal : c.h % 16 = 0 := fbb.al
-  have hbsz := hn.sz
-  simp only [Blk.pay, Blk.fin] at *; omega
-
-theorem ofNat_pos_ne {p : Nat} (h1 : 0 < p) (h2 : p < 2 ^ 64) : BitVec.ofNat 64 p ≠ 0#64 :=
-  fun hc => by
-    have := congrArg BitVec.toNat hc
-    simp only [BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.zero_mod] at this
-    rw [Nat.mod_eq_of_lt h2] at this; omega
-
 theorem nonNumMsg : ProgMsg 0x80007de0 20 :=
   ⟨by decide +kernel, by decide +kernel, ⟨by decide +kernel, by decide +kernel, by decide +kernel,
     by decide, by decide⟩, by decide⟩
@@ -209,57 +190,6 @@ theorem binop_msg {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     exact msg stackEmptyMsg (by decide) _ (by keeps_tac Keeps.refl _ _) (by bsimp [])
       (by bsimp []) (by bsimp []; decide) (by bsimp []) (by bsimp [])
 
-/-- `dc_binop`'s checks with two nodes on the stack. -/
-theorem binop_two {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
-    {t : String} (hlive : ∀ p ∈ dcText, live p.1) (hS : HeapOwn S) {M : Mem} {R : Nat → BitVec 64}
-    {c1 c2 : Blk} {g1 g2 : GV}
-    (h0 : ldv .ld M dcStackAddr = BitVec.ofNat 64 c1.pay)
-    (h0' : ldv .ld M (c1.pay + 24) = BitVec.ofNat 64 c2.pay)
-    (ht1 : ldv .lw M c1.pay = BitVec.ofNat 64 g1.tag) (ht2 : ldv .lw M c2.pay = BitVec.ofNat 64 g2.tag)
-    (hc1 : 2147603936 ≤ c1.pay ∧ c1.pay + 32 ≤ 2273312768 ∧ c1.pay % 16 = 0)
-    (hc2 : 2147603936 ≤ c2.pay ∧ c2.pay + 32 ≤ 2273312768 ∧ c2.pay % 16 = 0)
-    (hG : ∀ a, DcGlob a → S a)
-    (hno : (g1.tag ≠ 1 ∨ g2.tag ≠ 1) → ∀ R', Keeps [11, 12, 13, 14, 15] R' R →
-      DWO live S Q t 0x800031f0#64 R' M)
-    (hgo : g1.tag = 1 → g2.tag = 1 → ∀ R', Keeps [13, 14, 15] R' R → R' 14 = 1#64 →
-      DWO live S Q t 0x80003228#64 R' M) :
-    DWO live S Q t 0x800031c8#64 R M := by
-  have htx : tohostAddr = 0x8001ad00 := rfl
-  have hc0 : BitVec.ofNat 64 c1.pay ≠ 0#64 := ofNat_pos_ne (by omega) (by omega)
-  have hc0' : BitVec.ofNat 64 c2.pay ≠ 0#64 := ofNat_pos_ne (by omega) (by omega)
-  bc_run hlive hS [h0, h0', ht1, ht2] at 0x800031f0
-  all_goals try (intro hc; exact absurd hc hc0)
-  intro _
-  bsimp []
-  bc_run hlive hS [h0, h0', ht1, ht2] at 0x800031f0
-  all_goals try (intro hc; exact absurd hc hc0')
-  intro _
-  bsimp []
-  obtain e1 | e1 : g1.tag = 1 ∨ g1.tag = 2 := by cases g1 <;> simp [GV.tag]
-  · rw [e1] at ht1
-    obtain e2 | e2 : g2.tag = 1 ∨ g2.tag = 2 := by cases g2 <;> simp [GV.tag]
-    · rw [e2] at ht2
-      bc_run hlive hS [h0, h0', ht1, ht2] at 0x80003228
-      all_goals try (intro hc; exact absurd hc (by decide))
-      (try intro _); (try bsimp [])
-      bc_run hlive hS [h0, h0', ht1, ht2] at 0x80003228
-      all_goals try (intro hc; exact absurd hc (by decide))
-      (try intro _); (try bsimp [])
-      exact hgo e1 e2 _ (by keeps_tac Keeps.refl _ _) (by bsimp [])
-    · rw [e2] at ht2
-      bc_run hlive hS [h0, h0', ht1, ht2] at 0x800031f0
-      all_goals try (intro hc; exact absurd hc (by decide))
-      (try intro _); (try bsimp [])
-      bc_run hlive hS [h0, h0', ht1, ht2] at 0x800031f0
-      all_goals try (intro hc; exact absurd hc (by decide))
-      (try intro _); (try bsimp [])
-      exact hno (.inr (by omega)) _ (by keeps_tac Keeps.refl _ _)
-  · rw [e1] at ht1
-    bc_run hlive hS [h0, h0', ht1, ht2] at 0x800031f0
-    all_goals try (intro hc; exact absurd hc (by decide))
-    (try intro _); (try bsimp [])
-    exact hno (.inl (by omega)) _ (by keeps_tac Keeps.refl _ _)
-
 /-- **`dc_binop`'s checks** at `0x800031c8`: with two numbers on top the run
 goes on at `0x80003228` (`a4` the second's type `1`); otherwise one of the
 two messages goes to `stderr` and `dc_binop` returns with the state kept. -/
@@ -276,8 +206,6 @@ theorem binop_entry {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
     DWO live S Q t 0x800031c8#64 R M := by
   have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
   have hG := h.glob
-  have hden := h.den.stk
-  have hv := h.view.stk
   have hmsg : ∀ {pc : BitVec 64}, (pc = 0x800031f0#64 ∨ pc = 0x8000320c#64) →
       (∀ b a rest, st.stack ≠ .num b :: .num a :: rest) → ∀ R1, Keeps [11, 12, 13, 14, 15] R1 R →
       DWO live S Q t pc R1 M := fun hpc hno R1 hk1 =>
@@ -285,59 +213,11 @@ theorem binop_entry {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) 
       (by rw [hk1.get 1 (by decide)]; exact hal) fun R' M' hk2 hfr => by
         rw [hk1.get 1 (by decide)]
         exact hk0 hno R' M' (hk2.trans ((hk1.mono (by decide)))) hfr
-  cases hstk : G.stk with
-  | nil =>
-    rw [hstk] at hv hden
-    have hno : ∀ b a rest, st.stack ≠ .num b :: .num a :: rest := fun b a rest e => by
-      rw [e] at hden; cases hden
-    cases hv with
-    | nil h0 =>
-    bc_run hlive hS [h0] at 0x8000320c
-    exact hmsg (.inr rfl) hno _ (by keeps_tac Keeps.refl _ _)
-  | cons n1 rest1 =>
-    obtain ⟨c1, g1⟩ := n1
-    have hc1 := h.stkPay (c := c1) (g := g1) (by rw [hstk]; exact List.mem_cons_self)
-    rw [hstk] at hv hden
-    have hc0 : BitVec.ofNat 64 c1.pay ≠ 0#64 := ofNat_pos_ne (by omega) (by omega)
-    cases hv with
-    | cons h0 hn1 hl1 =>
-    cases rest1 with
-    | nil =>
-      cases hl1 with
-      | nil hl0 =>
-      have hno : ∀ b a rest, st.stack ≠ .num b :: .num a :: rest := fun b a rest e => by
-        rw [e] at hden; cases hden with | cons _ hr => cases hr
-      bc_run hlive hS [h0, hl0] at 0x8000320c
-      all_goals try (intro hc; exact absurd hc hc0)
-      (try intro _); (try bsimp [])
-      bc_run hlive hS [h0, hl0] at 0x8000320c
-      exact hmsg (.inr rfl) hno _ (by keeps_tac Keeps.refl _ _)
-    | cons n2 rest2 =>
-      obtain ⟨c2, g2⟩ := n2
-      have hc2 := h.stkPay (c := c2) (g := g2) (by rw [hstk]; simp)
-      cases hl1 with
-      | cons h0' hn2 hl2 =>
-      refine binop_two hlive hS h0 h0' hn1.dat.lw hn2.dat.lw hc1 hc2 hG (fun hn R1 hk1 => ?_)
-        fun e1 e2 R1 hk1 e14 => ?_
-      · refine hmsg (.inl rfl) (fun b a rest e => ?_) R1 hk1
-        rw [e] at hden
-        cases hden with
-        | cons hh hr =>
-        cases hr with
-        | cons hh2 _ =>
-        rcases hn with hn | hn
-        · cases g1 with
-          | num _ => exact hn rfl
-          | str _ => exact hh
-        · cases g2 with
-          | num _ => exact hn rfl
-          | str _ => exact hh2
-      · cases g1 with
-        | str _ => simp [GV.tag] at e1
-        | num pb =>
-        cases g2 with
-        | str _ => simp [GV.tag] at e2
-        | num pa => exact hgo c1 c2 pb pa rest2 hstk R1 hk1 e14
+  bc_run hlive hS [h2] at 0x800031d0
+  refine stkchk_800031d0 hlive h _ (by bsimp []) (fun hpc hno R1 hk1 => ?_)
+    fun cb ca pb pa rest hstk R1 hk1 e14 => ?_
+  · exact hmsg hpc hno R1 (hk1.trans (by keeps_tac Keeps.refl _ _))
+  · exact hgo cb ca pb pa rest hstk R1 (hk1.trans (by keeps_tac Keeps.refl _ _)) e14
 
 /-! ## The pops -/
 

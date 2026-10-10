@@ -200,7 +200,7 @@ structure EvAt (S : Nat → Prop) (sp W d k q : Nat) (M0 : Mem) (R0 : Nat → Bi
   stk : 176 * (d + 1) + 1216 + rmStack (2 ^ 30) ≤ W
   stkPr : 176 * (d + 1) + 192 + 336 + prN ≤ W
   stkDn : 176 * (d + 1) + 192 + 336 + dnN ≤ W
-  budget : G.lk.length + xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20
+  budget : G.lk.length + xs.length + hs.length + 4 * k + d + 8 ≤ 2 ^ 20
   mb : MulBase S M
   err : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a
   globs : EvGlobs S M
@@ -314,7 +314,7 @@ def EvalstrSpec (live S : Nat → Prop) (Q : String → (Nat → BitVec 64) → 
     StackFrame S sp W → heapEnd + W ≤ sp →
     176 * (d + 1) + 1216 + rmStack (2 ^ 30) ≤ W → 176 * (d + 1) + 192 + 336 + prN ≤ W →
     176 * (d + 1) + 192 + 336 + dnN ≤ W →
-    G.lk.length + xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20 →
+    G.lk.length + xs.length + hs.length + 4 * k + d + 8 ≤ 2 ^ 20 →
     MulBase S M → (∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a) → EvGlobs S M →
     EvOom live S Q sp W q M →
     EvK live S Q t0 sp W k q M R G hs xs st' r →

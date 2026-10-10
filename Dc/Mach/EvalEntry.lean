@@ -39,7 +39,7 @@ structure EvEntry (S : Nat → Prop) (sp W d k q : Nat) (M : Mem) (R : Nat → B
   stk : 176 * (d + 1) + 1216 + rmStack (2 ^ 30) ≤ W
   stkPr : 176 * (d + 1) + 192 + 336 + prN ≤ W
   stkDn : 176 * (d + 1) + 192 + 336 + dnN ≤ W
-  budget : G.lk.length + xs.length + hs.length + 4 * k + 8 ≤ 2 ^ 20
+  budget : G.lk.length + xs.length + hs.length + 4 * k + d + 8 ≤ 2 ^ 20
   mb : MulBase S M
   err : ∀ a, errnoAddr ≤ a → a < errnoAddr + 4 → S a
   globs : EvGlobs S M

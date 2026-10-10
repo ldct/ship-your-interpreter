@@ -22,6 +22,8 @@
 #                                     capstones land (e.g. ssprint_iov2_spec
 #                                     once SnprintfSpec20 is wired into
 #                                     Vsa.lean).
+#   (c4) dc axiom audit             — scripts/dc/check_dc_axioms.sh: dc's headline
+#                                     theorems and `Dc.endToEnd`, on the Dc build.
 #
 # Dependencies: bash, grep, python3, lake/lean (elan toolchain).
 
@@ -1339,6 +1341,18 @@ if [ -f .lake/build/lib/lean/Vsa/Sim/Boot/Audit.olean ]; then
   echo "stage c3: OK"
 else
   echo "stage c3: SKIPPED (no VsaBoot build; run \`lake build VsaBoot\` then \`lake env lean --run experiments/review-v2/Replay.lean proof\`)"
+fi
+
+# ---------------------------------------- (c4) dc's headline theorems
+# The dc development (Dc/, `lake build Dc`): every headline spec and the
+# end-to-end theorem `Dc.endToEnd` (Dc/PLAN.md M12), audited against the Dc
+# build when one is present.
+if [ -f .lake/build/lib/lean/Dc/EndToEnd.olean ]; then
+  echo "== stage c4: #print axioms on dc's headline theorems (Dc)"
+  scripts/dc/check_dc_axioms.sh || fail "stage c4: dc axiom audit failed (see above)"
+  echo "stage c4: OK"
+else
+  echo "stage c4: SKIPPED (no Dc build; run \`lake build Dc\` then scripts/dc/check_dc_axioms.sh)"
 fi
 
 # ------------------------------------------------- (d) encoder differential

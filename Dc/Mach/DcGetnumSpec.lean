@@ -382,4 +382,53 @@ theorem gn_after {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) →
     · rw [rdFrac_no _ ed]; exact hX4
     · rw [rdFrac_no _ ed]
 
+/-! ## The whole function -/
+
+/-- **`dc_getnum (input_str, ibase, readahead)`** on the text `w` of a
+string of the state from byte `j0` (starting with a digit, `_` or `.`): the
+result handle holds `(readNum ibase w).1`, at most one reference lost (a
+fraction's divisor), the reader after `w[jE]`, the first character not
+consumed, which `readahead` receives; `(readNum ibase w).2 = w.drop jE`. -/
+theorem dc_getnum_spec {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {hs0 : List GV} {st : St} {sp : Nat}
+    {o : StrObj} {j0 ra : Nat} (h : DcAt S M H F L C G hs0 st) (gx : GnCtx S M sp G o j0)
+    (hhs : hs0.length + 6 ≤ 2 ^ 20) (hl : G.lk.length < 2 ^ 29) (hoom : GnOom live S Q t M sp)
+    (hra : ra = 0 ∨ RaOK S sp ra) (hhd : HeadOK (rdW o j0)[0]?) (hsz : (rdW o j0).length < 2 ^ 24)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 sp) (hal : (R 1).toNat % 4 = 0)
+    (h10 : R 10 = 0x80000b70#64) (h11 : R 11 = BitVec.ofNat 64 st.ibase) (h12 : R 12 = BitVec.ofNat 64 ra)
+    (hp : ldv .ld M inPtrAddr = BitVec.ofNat 64 (o.tb.pay + j0))
+    (hk : ∀ R' M' H' F' L' C' (lks : List Nat) pr jE, lks.length ≤ 1 → Keeps cClob R' R → R' 2 = R 2 →
+      DcAt S M' H' F' L' C' { G with lk := lks ++ G.lk } (.num pr :: hs0) st →
+      (GV.num pr).Den ⟨L', G.strs⟩ (.num (readNum st.ibase (rdW o j0)).1) →
+      HsKeep ⟨L, G.strs⟩ ⟨L', G.strs⟩ hs0 → R' 11 = BitVec.ofNat 64 pr → (R' 10).toNat % 2 ^ 32 = 1 →
+      (readNum st.ibase (rdW o j0)).2 = (rdW o j0).drop jE →
+      ldv .ld M' inPtrAddr = BitVec.ofNat 64 (o.tb.pay + j0 + min (jE + 1) (rdW o j0).length) →
+      (ra ≠ 0 → imgLE (imgM M') ra 4 = (chW (rdW o j0)[jE]?).toNat % 2 ^ 32) →
+      (∀ a, OutHeap a → ¬ DcGlob a → ¬ frameIn sp (144 + cfW) a → ¬ InP a → ¬ RaB ra a →
+        imgM M' a = imgM M a) →
+      DWO live S Q t (R 1) R' M') :
+    DWO live S Q t 0x80002714#64 R M := by
+  refine gn_pro hlive h gx hhs hoom R h2 h10 h11 h12 hp fun R1 M1 H1 F1 L1 C1 pr pt pd pb hQ => ?_
+  refine gn_first hlive gx hQ hhd fun R2 M2 jS s6' hQ2 hjS e8 esg es6 => ?_
+  subst es6
+  refine gn_go hlive hQ2 hjS e8 fun R3 hI3 => ?_
+  refine gn_int hlive gx hhs hoom _ jS 0 R3 M2 H1 F1 L1 C1 pr pt rfl hI3
+    fun R4 M4 H4 F4 L4 C4 pr4 pt4 hI4 => ?_
+  refine gn_after hlive gx hhs hoom hl hsz hI4
+    fun R5 M5 H5 F5 L5 C5 lks pr5 pd5 og jE hlks hX5 erest => ?_
+  refine gn_exit hlive gx.cx hra h2 hal hX5
+    fun R' M' H' F' L' C' k2 r2 hd hden hkp r11 r10 ptr hra' hout => ?_
+  have em : readNum st.ibase (rdW o j0) =
+      ((if (rdSign (rdW o j0)).1 then Num.sub (Num.zero 0)
+          (rdFrac st.ibase ⟨false, ((takeDigits ((rdW o j0).drop jS)).1.foldl (digF st.ibase) 0), 0⟩
+            ((rdW o j0).drop (jS + (takeDigits ((rdW o j0).drop jS)).1.length))).1 0
+        else (rdFrac st.ibase ⟨false, ((takeDigits ((rdW o j0).drop jS)).1.foldl (digF st.ibase) 0), 0⟩
+            ((rdW o j0).drop (jS + (takeDigits ((rdW o j0).drop jS)).1.length))).1),
+       (rdFrac st.ibase ⟨false, ((takeDigits ((rdW o j0).drop jS)).1.foldl (digF st.ibase) 0), 0⟩
+            ((rdW o j0).drop (jS + (takeDigits ((rdW o j0).drop jS)).1.length))).2) := by
+    rw [readNum_eq, rdRest_eq, esg, drop_drop_takeDigits]; rfl
+  refine hk R' M' H' F' L' C' lks pr5 jE hlks k2 r2 hd (by rw [em]; exact hden) hkp r11 r10
+    (by rw [em]; exact erest) ptr hra' hout
+
 end Dc.Mach

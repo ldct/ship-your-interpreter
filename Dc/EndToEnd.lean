@@ -1,6 +1,8 @@
 import Dc.Mach.BootEvalCall
 import Dc.Mach.OomMemfail
 import Dc.Refinement
+import Dc.Mach.EvalMain
+import Dc.Mach.EvalDivSpec
 
 /-!
 # The end-to-end theorem (M12), from `evalstr`'s specification
@@ -170,5 +172,15 @@ theorem endToEnd_of_evalstr (hev : ∀ Q, EvalstrSpec dcLive dcOwn Q)
     (∀ s, Halts (dcBoot prog) s 0 → ∃ out, Runs 70 prog out ∧ s = outStr out) ∧
     (Diverges (dcBoot prog) → ¬ ∃ out, Runs 70 prog out) :=
   refinement (L := dcLayout) ⟨dc_term_sim hev, dc_stuck_sim hdiv⟩ prog hp
+
+/-- **THE END-TO-END THEOREM**, unconditionally: `evalstr`'s term direction
+(`evalstr_spec`) and stuck direction (`evalstrDiv_of_term`) discharged. -/
+theorem endToEnd (prog : List Nat) (hp : DcAdmissible prog) :
+    (∀ out, Runs 70 prog out →
+       Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
+    (∀ s, Halts (dcBoot prog) s 0 → ∃ out, Runs 70 prog out ∧ s = outStr out) ∧
+    (Diverges (dcBoot prog) → ¬ ∃ out, Runs 70 prog out) :=
+  endToEnd_of_evalstr (fun _ => Mach.evalstr_spec Mach.dcText_live)
+    (Mach.evalstrDiv_of_term fun _ n => Mach.evEntrySpec_all Mach.dcText_live n) prog hp
 
 end Dc

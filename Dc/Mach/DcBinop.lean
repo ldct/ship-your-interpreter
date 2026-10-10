@@ -478,4 +478,69 @@ theorem binop_pops {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) �
     hout1 a ho hg hf1 (by simp only [frameIn] at hf; omega)]
   exact hM1 a fun h' => hf (by simp only [frameIn] at h' ⊢; omega)
 
+/-! ## After `op` -/
+
+/-- **`op` failed** (`0x80003264`, `a0 ≠ 0`): `a` then `b` pushed back, the
+state as before the pops. -/
+theorem binop_fail {live S : Nat → Prop} {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}
+    {t : String} (hlive : ∀ p ∈ dcText, live p.1) {M : Mem} {H : Heap} {F : List Blk}
+    {L : List NumObj} {C : BcConsts} {G : DcG} {hs : List GV} {st : St}
+    {pa pb : Nat} {na nb : Num} (h : DcAt S M H F L C G (.num pa :: .num pb :: hs) st)
+    (hda : (GV.num pa).Den ⟨L, G.strs⟩ (.num na)) (hdb : (GV.num pb).Den ⟨L, G.strs⟩ (.num nb))
+    {sp fa k : Nat} {ra : BitVec 64} (hsf : StackFrame S sp 176) (hab : heapEnd + 176 ≤ sp)
+    (hfr : BoFrame M (sp - 112) fa k ra) (hsa : DatAt M (sp - 112 + 32) (.num pa))
+    (hsb : DatAt M (sp - 112 + 48) (.num pb)) (hral : ra.toNat % 4 = 0)
+    (R : Nat → BitVec 64) (h2 : R 2 = BitVec.ofNat 64 (sp - 112)) (h10 : R 10 ≠ 0#64)
+    (hk : ∀ R' M' H' G', Keeps (1 :: 2 :: pushClob) R' R → R' 1 = ra → R' 2 = BitVec.ofNat 64 sp →
+      DcAt S M' H' F L C G' hs ((st.push (.num na)).push (.num nb)) → StkOut (sp - 112) 64 M' M →
+      DWO live S Q t ra R' M')
+    (hoom : ∀ R' M', R' 2 = BitVec.ofNat 64 (sp - 112 - 64) → StkOut (sp - 112) 64 M' M →
+      DWO live S Q t 0x80001e74#64 R' M') :
+    DWO live S Q t 0x80003264#64 R M := by
+  have hsl := hsf.lo; have hsh := hsf.hi; have hsa' := hsf.al
+  have hab' := hab
+  simp only [heapEnd] at hab'
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hab2 : heapEnd ≤ sp - 112 := by omega
+  have hS : HeapOwn S := fun a h1 h2 => h.heap.heap.own a h1 h2
+  have hfs : StackFrame S (sp - 112) 64 := hsf.within (by omega) (by decide)
+  have wa0 := hsa.ptr
+  refine st_80003264 hlive (fun _ => ?_) fun hc => absurd h10 hc
+  bc_run hlive hS [h2, wa0] at 0x80002da4
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  have habv : ∀ a, sp - 112 ≤ a → ∀ M1 : Mem, StkOut (sp - 112) 64 M1 M → imgM M1 a = imgM M a :=
+    fun a ha M1 ho => by
+      have ⟨o1, o2, o3⟩ := above_sp hab2 ha
+      exact ho a o1 o2 (o3 _)
+  refine dc_push_spec hlive h hda hfs (by simp only [heapEnd]; omega) _ ⟨by bsimp []; exact hsa.tag,
+    by bsimp []⟩ (by bsimp [h2]) (by bsimp [])
+    (fun R1 M1 H1 c1 hk1 h1 hout1 => ?_) (fun R1 M1 e2 hout1 => hoom R1 M1 e2 hout1)
+  have q1 : R1 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk1.get 2 (by decide)]; bsimp [h2]
+  have wb0 : ldv .ld M1 (sp - 112 + 48) = ldv .ld M (sp - 112 + 48) :=
+    ldv_congr .ld fun j hj => habv _ (by omega) _ hout1
+  have wb1 : ldv .ld M1 (sp - 112 + 48 + 8) = BitVec.ofNat 64 pb := by
+    rw [ldv_congr .ld fun j hj => habv _ (by omega) _ hout1]; exact hsb.ptr
+  have wra : ldv .ld M1 (sp - 112 + 104) = ra := by
+    rw [ldv_congr .ld fun j hj => habv _ (by omega) _ hout1]; exact hfr.wra
+  have hS1 : HeapOwn S := fun a e1 e2 => h1.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS1 [q1, wb0, wb1] at 0x80002da4
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  refine dc_push_spec hlive h1 hdb hfs (by simp only [heapEnd]; omega) _ ⟨by bsimp []; exact hsb.tag,
+    by bsimp []; rfl⟩ (by bsimp [q1]) (by bsimp [])
+    (fun R2 M2 H2 c2 hk2 h2' hout2 => ?_) (fun R2 M2 e2 hout2 => hoom R2 M2 e2 fun a o1 o2 o3 => by
+      rw [hout2 a o1 o2 o3, hout1 a o1 o2 o3])
+  have q2 : R2 2 = BitVec.ofNat 64 (sp - 112) := by rw [hk2.get 2 (by decide)]; bsimp [q1]
+  have wra2 : ldv .ld M2 (sp - 112 + 104) = ra := by
+    rw [ldv_congr .ld fun j hj => habv _ (by omega) _ (fun a o1 o2 o3 => by
+      rw [hout2 a o1 o2 o3, hout1 a o1 o2 o3])]; exact hfr.wra
+  have hS2 : HeapOwn S := fun a e1 e2 => h2'.heap.heap.own a e1 e2
+  bsimp []
+  bc_run hlive hS2 [q2, wra2]
+  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  · exact hral
+  refine hk _ M2 H2 _ (by keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac ((hk1.mono (by decide)).trans
+      (by keeps_tac Keeps.refl _ _))))) (by bsimp []) (by bsimp [q2]; congr 1; omega) h2'
+    fun a o1 o2 o3 => by rw [hout2 a o1 o2 o3, hout1 a o1 o2 o3]
+
 end Dc.Mach

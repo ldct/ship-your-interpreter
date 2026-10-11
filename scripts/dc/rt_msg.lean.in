@@ -1,0 +1,177 @@
+/-- `@FN@`'s epilogue at `@EPI@`. -/
+theorem @P@_epi {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 M : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp : Nat} {R0 R : Nat → BitVec 64}
+    (hfr : StackFrame S sp 416) (hat : RtAt S M0 M sp R0 R) (hsp : (R0 2).toNat = sp)
+    (hal : (R0 1).toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps fprintfClob R' R0 →
+      (∀ a, (a < sp - 416 ∨ sp ≤ a) → imgM M' a = imgM M0 a) →
+      DWO live S Q t0 (R0 1) R' M') :
+    DWO live S Q t0 @EPI@#64 R M := by
+  have hlo := hfr.lo
+  have hhi := hfr.hi
+  have hal2 := hfr.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have u2 := hat.sp2
+  have f40 : (R 2 + 40#64).toNat = sp - 112 + 40 := by
+    rw [BitVec.toNat_add, u2]; simp only [BitVec.toNat_ofNat]; omega
+  have f32 : (R 2 + 32#64).toNat = sp - 112 + 32 := by
+    rw [BitVec.toNat_add, u2]; simp only [BitVec.toNat_ofNat]; omega
+  have f24 : (R 2 + 24#64).toNat = sp - 112 + 24 := by
+    rw [BitVec.toNat_add, u2]; simp only [BitVec.toNat_ofNat]; omega
+  dx_run hlive
+  all_goals (try dc_frame hfr)
+  all_goals simp only [f40, f32, f24, hat.ra, hat.s0, hat.s1]
+  · gnorm; exact hal
+  have hv : R 2 + 112#64 = R0 2 := by
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_add, u2, hsp]; simp only [BitVec.toNat_ofNat]; omega
+  refine hk _ M (Keeps.restore hv (Keeps.restore rfl (Keeps.restore rfl (Keeps.restore rfl
+    (hat.keep.mono fun z hz => by
+      simp only [rtKeep, fprintfClob, List.mem_cons, List.not_mem_nil, or_false] at hz ⊢
+      omega))))) hat.out
+
+set_option maxRecDepth 8000 in
+/-- `@FN@` from `@NL@` (after the message): `fprintf (stderr, "\n")`
+and the epilogue. -/
+theorem @P@_nl {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 M : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp : Nat} {R0 R : Nat → BitVec 64}
+    (hfr : StackFrame S sp 416) (hfar : stderrAddr + 4 ≤ sp - 416) (hat : RtAt S M0 M sp R0 R)
+    (hsp : (R0 2).toNat = sp) (hal : (R0 1).toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps fprintfClob R' R0 →
+      (∀ a, (a < sp - 416 ∨ sp ≤ a) → imgM M' a = imgM M0 a) →
+      DWO live S Q t0 (R0 1) R' M') :
+    DWO live S Q t0 @NL@#64 R M := by
+  have hlo := hfr.lo
+  have hhi := hfr.hi
+  have hal2 := hfr.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hfar' := hfar
+  simp only [stderrAddr] at hfar'
+  have ht : ∀ s, t0 ++ fdOut 2 s = t0 := fun s => by simp [fdOut]
+  dx_run hlive at 0x80000774
+  have hnl := rtNewline
+  refine fprintf_spec hlive (sp := sp - 112) (args := []) (ps := lits (msgBytes 0x80007b60 1))
+    (hfr.sub (m := 112) (n := 304) (by omega)) hat.fd (.inl (by omega)) hnl.ok
+    (by rw [fmtBytes_lits]; exact hnl.ro_bytes) (argStrs_lits _ _)
+    (by rw [fmt_lits, msgBytes_length]; omega) _ (by simp) (fun i h => absurd h (by simp))
+    (by gnorm; exact hat.sp2) (by gnorm; rw [hat.w8]; simp [stderrAddr]) (by gnorm) (by gnorm)
+    fun R3 M3 kk3 _ hfr3 => ?_
+  rw [ht]; gnorm
+  exact @P@_epi hlive hfr
+    (hat.call (cl := 1 :: fprintfClob) (fun _ h => h)
+      ((kk3.mono fun z hz => List.mem_cons_of_mem _ hz).trans (by keeps_tac Keeps.refl _ _))
+      hfar fun a ha =>
+      hfr3 a (by omega)) hsp hal hk
+
+set_option maxRecDepth 8000 in
+/-- `@FN@` from `@VF@` (after the prefix): `vfprintf (stderr, mesg,
+args)` for a message without conversions, then `@P@_nl`. -/
+theorem @P@_vf {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M0 M : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp p n : Nat} {R0 R : Nat → BitVec 64}
+    (hm : RtMsg p n) (hn : n < 2 ^ 60)
+    (hfr : StackFrame S sp 416) (hfar : stderrAddr + 4 ≤ sp - 416) (hat : RtAt S M0 M sp R0 R)
+    (h9 : (R 9).toNat = p) (hsp : (R0 2).toNat = sp) (hal : (R0 1).toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps fprintfClob R' R0 →
+      (∀ a, (a < sp - 416 ∨ sp ≤ a) → imgM M' a = imgM M0 a) →
+      DWO live S Q t0 (R0 1) R' M') :
+    DWO live S Q t0 @VF@#64 R M := by
+  have hlo := hfr.lo
+  have hhi := hfr.hi
+  have hal2 := hfr.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hfar' := hfar
+  simp only [stderrAddr] at hfar'
+  have ht : ∀ s, t0 ++ fdOut 2 s = t0 := fun s => by simp [fdOut]
+  have r2 := hat.sp2
+  dx_run hlive at 0x80000748
+  all_goals (try dc_frame hfr)
+  have e8 : (R 2 + 8#64).toNat = sp - 112 + 8 := by
+    rw [BitVec.toNat_add, r2]; simp only [BitVec.toNat_ofNat]; omega
+  have e56 : (R 2 + 56#64).toNat = sp - 112 + 56 := by
+    rw [BitVec.toNat_add, r2]; simp only [BitVec.toNat_ofNat]; omega
+  simp only [e8]
+  have hat2 := hat.store8 (R 2 + 56#64) hfar
+  refine vfprintf_spec hlive (sp := sp - 112) (f := stderrAddr) (fd := 2) (p := p)
+    (ap := sp - 112 + 56) (ps := lits (msgBytes p n)) (args := [])
+    ((hfr.sub (m := 112) (n := 304) (by omega)).shrink (by omega)) hat2.fd (.inl (by omega)) hm.ok
+    (by rw [fmtBytes_lits]; exact hm.ro_bytes) (fun i h => absurd h (by simp))
+    (argStrs_lits _ _) (fun j h1 h2 => absurd h2 (by simp; omega))
+    (by rw [fmt_lits, msgBytes_length]; omega) _ (by gnorm; exact r2)
+    (by gnorm; rw [hat.w8]; simp [stderrAddr]) (by gnorm; exact h9) (by gnorm; exact e56)
+    (by gnorm) fun R2 M2 kk2 _ hfr2 => ?_
+  rw [ht]; gnorm
+  exact @P@_nl hlive hfr hfar
+    (hat2.call (cl := 1 :: fprintfClob) (fun z hz => by
+        simp only [fprintfClob, List.mem_cons, List.not_mem_nil, or_false] at hz ⊢; omega)
+      ((kk2.mono fun z hz => by
+        simp only [euClob, fprintfClob, List.mem_cons, List.not_mem_nil, or_false] at hz ⊢
+        omega).trans (by keeps_tac Keeps.refl _ _))
+      hfar fun a ha => hfr2 a (by omega)) hsp hal hk
+
+set_option maxRecDepth 8000 in
+/-- **`@FN@ (mesg)`** at `@ENTRY@` for a `.rodata` message without
+conversions: "@TEXT@: ", the message and a newline to `stderr`, so
+the console is unchanged; only `[sp - 416, sp)` changes. -/
+theorem @SPEC@ {live : Nat → Prop} {S : Nat → Prop}
+    {Q : String → (Nat → BitVec 64) → (Nat → BitVec 8) → Prop} {t0 : String} {M : Mem}
+    (hlive : ∀ p ∈ dcText, live p.1) {sp p n : Nat} (hm : RtMsg p n) (hn : n < 2 ^ 60)
+    (hfr : StackFrame S sp 416) (hfar : stderrAddr + 4 ≤ sp - 416)
+    (hfd : FdAt S M stderrAddr 2) (R : Nat → BitVec 64) (hsp : (R 2).toNat = sp)
+    (h10 : (R 10).toNat = p) (hal : (R 1).toNat % 4 = 0)
+    (hk : ∀ R' M', Keeps fprintfClob R' R →
+      (∀ a, (a < sp - 416 ∨ sp ≤ a) → imgM M' a = imgM M a) →
+      DWO live S Q t0 (R 1) R' M') :
+    DWO live S Q t0 @ENTRY@#64 R M := by
+  have hlo := hfr.lo
+  have hhi := hfr.hi
+  have hal2 := hfr.al
+  have htx : tohostAddr = 0x8001ad00 := rfl
+  have hfar' := hfar
+  simp only [stderrAddr] at hfar'
+  have ht : ∀ s, t0 ++ fdOut 2 s = t0 := fun s => by simp [fdOut]
+  dx_run hlive at 0x80000774
+  all_goals (try dc_frame hfr)
+  have e0 : (R 2 + 18446744073709551504#64).toNat = sp - 112 := by
+    rw [BitVec.toNat_add, hsp]; simp only [BitVec.toNat_ofNat]; omega
+  have e : ∀ o, o < 112 → (R 2 + 18446744073709551504#64 + BitVec.ofNat 64 o).toNat =
+      sp - 112 + o :=
+    fun o ho => by rw [BitVec.toNat_add, e0]; simp only [BitVec.toNat_ofNat]; omega
+  simp only [e 32 (by omega), e 24 (by omega), e 56 (by omega), e 40 (by omega), e 72 (by omega),
+    e 80 (by omega), e 88 (by omega), e 96 (by omega), e 104 (by omega), e 64 (by omega),
+    stderr_word]
+  refine DW.memEq fun Mb hMb => ?_
+  have hag : ∀ a, (a < sp - 112 ∨ sp ≤ a) → imgM Mb a = imgM M a := fun a ha => by
+    rw [hMb]; simp (disch := omega) only [imgM_store_miss]
+  have hra : ldv .ld Mb (sp - 112 + 40) = R 1 := by
+    rw [hMb]; simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss]
+  have hs0 : ldv .ld Mb (sp - 112 + 32) = R 8 := by
+    rw [hMb]; simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss]
+  have hs1 : ldv .ld Mb (sp - 112 + 24) = R 9 := by
+    rw [hMb]; simp (disch := omega) only [ldv_ld_hit_eq, ldv_ld_miss]
+  have hfdb : FdAt S Mb stderrAddr 2 := hfd.transport fun j hj => hag _ (by simp only [stderrAddr]; omega)
+  have hpre := @PRE@
+  refine fprintf_spec hlive (sp := sp - 112) (args := []) (ps := lits (msgBytes @PREMSG@))
+    (hfr.sub (m := 112) (n := 304) (by omega)) hfdb (.inl (by omega)) hpre.ok
+    (by rw [fmtBytes_lits]; exact hpre.ro_bytes) (argStrs_lits _ _)
+    (by rw [fmt_lits, msgBytes_length]; omega) _ (by simp) (fun i h => absurd h (by simp))
+    (by gnorm; exact e0) (by gnorm; simp [stderrAddr]) (by gnorm) (by gnorm) fun R1 M1 kk1 _ hfr1 => ?_
+  rw [ht]; gnorm
+  have hat : RtAt S M Mb sp R (upd (upd (upd (upd (upd (upd (upd (upd R 2
+      (R 2 + 18446744073709551504#64)) 8 @S0A@#64) 8 (BitVec.ofNat 64 stderrAddr)) 9 (R 10))
+      11 @A1A@#64) 11 @PREA@#64) 10 (BitVec.ofNat 64 stderrAddr)) 1 @RA1@#64) :=
+    { sp2 := by gnorm; exact e0
+      fd := hfdb
+      ra := hra
+      s0 := hs0
+      s1 := hs1
+      out := fun a ha => hag a (by omega)
+      keep := by keeps_tac Keeps.refl _ _
+      w8 := by gnorm }
+  exact @P@_vf hlive hm hn hfr hfar
+    (hat.call (cl := 1 :: fprintfClob) (fun _ h => h)
+      (kk1.mono fun z hz => List.mem_cons_of_mem _ hz)
+      hfar fun a ha => hfr1 a (by omega))
+    (by rw [kk1.get 9]; gnorm; exact h10) hsp hal hk

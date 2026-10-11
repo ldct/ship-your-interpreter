@@ -8,11 +8,12 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 
-TOOL_VERSION = "1"
+TOOL_VERSION = "2"
 MANIFEST_NAME = "build-private-manifest.json"
 
 
@@ -27,6 +28,7 @@ class Module:
     name: str
     source: Path
     imports: tuple[str, ...]
+    source_root: Path | None = None
 
 
 def strip_comments(text: str) -> str:
@@ -40,7 +42,19 @@ def strip_comments(text: str) -> str:
     depth = 0
     while index < len(text):
         pair = text[index : index + 2]
-        if pair == "/-":
+        if not depth and text[index] == '"':
+            end = index + 1
+            while end < len(text):
+                if text[end] == "\\":
+                    end += 2
+                elif text[end] == '"':
+                    end += 1
+                    break
+                else:
+                    end += 1
+            result.append(text[index:end])
+            index = end
+        elif pair == "/-":
             depth += 1
             index += 2
         elif pair == "-/" and depth:
@@ -75,9 +89,13 @@ def parse_header_imports(text: str) -> tuple[str, ...]:
         words = line.split()
         if not words:
             continue
-        if words[0] != "import":
+        if words[0] in {"module", "prelude"}:
+            continue
+        while words and words[0] in {"public", "private", "meta"}:
+            words = words[1:]
+        if not words or words[0] != "import":
             break
-        imports.extend(word.replace("«", "").replace("»", "") for word in words[1:])
+        imports.extend(word.replace("«", "").replace("»", "") for word in words[1:] if word != "all")
     return tuple(imports)
 
 
@@ -86,23 +104,73 @@ def module_name(source: Path) -> str:
     return ".".join(source.with_suffix("").parts)
 
 
-def discover_modules(repo: Path, include_executable: bool = False) -> dict[str, Module]:
-    """Discover current Vsa library modules and parse their imports."""
-    sources = sorted((repo / "Vsa").rglob("*.lean")) + [repo / "Vsa.lean"]
-    if include_executable:
-        sources.append(repo / "VsaRun.lean")
+def dependency_source_roots(repo: Path) -> list[Path]:
+    """Find already-fetched dependency sources using the pinned Lake manifest."""
+    manifest = repo / "lake-manifest.json"
+    if not manifest.is_file():
+        raise BuildError(f"missing dependency manifest: {manifest}")
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    roots = []
+    for package in data["packages"]:
+        if package["type"] == "path":
+            root = repo / package["dir"]
+        else:
+            root = repo / data.get("packagesDir", ".lake/packages") / package["name"]
+            if package.get("subDir"):
+                root /= package["subDir"]
+        if not root.is_dir():
+            raise BuildError(f"dependency source is missing (fetch first): {root}")
+        roots.append(root.resolve())
+    return roots
+
+
+def discover_modules(
+    repo: Path, include_executable: bool = False,
+    roots: tuple[str, ...] = ("Vsa",), with_dependencies: bool = False,
+    module_roots_only: bool = False,
+) -> dict[str, Module]:
+    """Discover selected libraries and their transitive source imports.
+
+    External package sources are included only with ``with_dependencies``.
+    No dependency fetching or Lake builds are performed. ``module_roots_only``
+    selects exact modules instead of every source in their library trees.
+    """
+    source_roots = [repo]
+    if with_dependencies:
+        source_roots.extend(dependency_source_roots(repo))
     modules: dict[str, Module] = {}
-    for source in sources:
-        relative = source.relative_to(repo)
-        name = module_name(relative)
+
+    def add(source: Path, source_root: Path) -> None:
+        name = module_name(source.relative_to(source_root))
+        if name in modules:
+            return
         imports = parse_header_imports(source.read_text(encoding="utf-8"))
-        modules[name] = Module(name, relative, imports)
-    for module in modules.values():
-        for dependency in module.imports:
-            if dependency.startswith("Vsa") and dependency not in modules:
-                raise BuildError(
-                    f"{module.source}: unknown internal import {dependency}"
-                )
+        relative = source.relative_to(repo) if source_root == repo else source
+        modules[name] = Module(name, relative, imports,
+                               None if source_root == repo else source_root)
+        for dependency in imports:
+            path = Path(*dependency.split(".")).with_suffix(".lean")
+            matches = [(base / path, base) for base in source_roots
+                       if (base / path).is_file()]
+            if len(matches) > 1:
+                raise BuildError(f"ambiguous import {dependency}: {matches}")
+            if matches:
+                add(*matches[0])
+            elif dependency.split(".")[0] in {"Vsa", "VsaIris", "VsaBoot", "Dc", *roots}:
+                raise BuildError(f"{source}: unknown internal import {dependency}")
+            elif with_dependencies and dependency.split(".")[0] not in {"Init", "Lean", "Std", "Lake"}:
+                raise BuildError(f"{source}: cannot find dependency source {dependency}")
+
+    for root in (*roots, *(("VsaRun",) if include_executable else ())):
+        path = repo / Path(*root.split("."))
+        sources = (sorted(path.rglob("*.lean"))
+                   if path.is_dir() and not module_roots_only else [])
+        if path.with_suffix(".lean").is_file():
+            sources.append(path.with_suffix(".lean"))
+        if not sources:
+            raise BuildError(f"no Lean sources for root {root}")
+        for source in sources:
+            add(source, repo)
     return modules
 
 
@@ -170,7 +238,9 @@ def module_fingerprints(
             for name in sorted(module.imports)
             if name in fingerprints
         ]
-        payload = "\n".join([context, hash_file(repo / module.source), *dependencies])
+        config = (module.source_root or repo) / "lakefile.toml"
+        payload = "\n".join([context, hash_file(repo / module.source),
+                             hash_file(config), *dependencies])
         fingerprints[module.name] = hashlib.sha256(payload.encode()).hexdigest()
     return fingerprints
 
@@ -208,7 +278,7 @@ def write_manifest(path: Path, entries: dict[str, str]) -> None:
 
 def output_path(output_root: Path, module: Module) -> Path:
     """Return the private olean path for a module."""
-    return output_root / module.source.with_suffix(".olean")
+    return output_root / Path(*module.name.split(".")).with_suffix(".olean")
 
 
 def log_path(output_root: Path, module: Module) -> Path:
@@ -216,21 +286,91 @@ def log_path(output_root: Path, module: Module) -> Path:
     return output_root / "logs" / f"{module.name.replace('.', '_')}.log"
 
 
-def compile_module(repo: Path, output_root: Path, module: Module) -> None:
-    """Compile one module through `lake env` and reject unsafe proof warnings."""
+def configured_lean_args(repo: Path, module: Module) -> list[str]:
+    """Apply package and owning target options from the source package's TOML.
+
+    This covers the repository's TOML libraries and dependencies; executable
+    Lean Lake configurations are not evaluated by this private driver.
+    """
+    config_path = (module.source_root or repo) / "lakefile.toml"
+    if not config_path.is_file():
+        return []
+    with config_path.open("rb") as stream:
+        config = tomllib.load(stream)
+    candidates = []
+    for target in config.get("lean_lib", []) + config.get("lean_exe", []):
+        roots = target.get("roots", [target.get("root", target["name"])])
+        if any(module.name == root or module.name.startswith(root + ".")
+               for root in roots):
+            candidates.append(target)
+    if len(candidates) > 1:
+        raise BuildError(f"ambiguous Lean target configuration for {module.name}")
+    layers = [config, *candidates]
+    options: dict[str, str] = {}
+
+    def flatten(table: dict, prefix: str = "") -> None:
+        for key, value in table.items():
+            name = prefix + key
+            if isinstance(value, dict):
+                flatten(value, name + ".")
+            elif isinstance(value, bool):
+                options[name] = str(value).lower()
+            elif isinstance(value, str):
+                options[name] = json.dumps(value, ensure_ascii=False)
+            elif isinstance(value, int) and value >= 0:
+                options[name] = str(value)
+            else:
+                raise BuildError(f"invalid Lean option {name} in {config_path}")
+
+    for layer in layers:
+        flatten(layer.get("leanOptions", {}))
+    args = [f"-D{name}={value}" for name, value in sorted(options.items())]
+    for key in ("weakLeanArgs", "moreLeanArgs"):
+        for layer in layers:
+            args.extend(layer.get(key, []))
+    return args
+
+
+def resolve_lean_environment(repo: Path) -> dict[str, str]:
+    """Resolve Lake's toolchain and dependency environment for this build only."""
+    result = subprocess.run(
+        ["lake", "env", sys.executable, "-c",
+         "import json, os; print(json.dumps(dict(os.environ)))"],
+        cwd=repo, capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise BuildError(f"cannot resolve Lake environment: {result.stderr.strip()}")
+    try:
+        environment = json.loads(result.stdout)
+    except json.JSONDecodeError as err:
+        raise BuildError("Lake returned an invalid environment") from err
+    if not isinstance(environment, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in environment.items()
+    ):
+        raise BuildError("Lake returned an invalid environment")
+    return environment
+
+
+def compile_module(
+    repo: Path, output_root: Path, module: Module,
+    *, environment: dict[str, str] | None = None,
+) -> None:
+    """Compile serially using a resolved environment, or Lake for standalone calls."""
     output = output_path(output_root, module)
     log = log_path(output_root, module)
     output.parent.mkdir(parents=True, exist_ok=True)
     log.parent.mkdir(parents=True, exist_ok=True)
-    shell = 'LEAN_PATH="$1${LEAN_PATH:+:$LEAN_PATH}" lean -o "$2" "$3"'
+    shell = ('export LEAN_PATH="$1${LEAN_PATH:+:$LEAN_PATH}"; '
+             'output="$2"; source="$3"; root="$4"; shift 4; '
+             'exec lean --root="$root" "$@" -o "$output" "$source"')
     with tempfile.TemporaryDirectory(
         prefix=f".{output.stem}-", dir=output.parent
     ) as staging:
         staged = Path(staging) / output.name
         result = subprocess.run(
             [
-                "lake",
-                "env",
+                *(["lake", "env"] if environment is None else []),
                 "sh",
                 "-c",
                 shell,
@@ -238,8 +378,11 @@ def compile_module(repo: Path, output_root: Path, module: Module) -> None:
                 str(output_root),
                 str(staged),
                 str(module.source),
+                str(module.source_root or repo),
+                *configured_lean_args(repo, module),
             ],
             cwd=repo,
+            env=environment,
             capture_output=True,
             text=True,
             check=False,
@@ -254,7 +397,8 @@ def compile_module(repo: Path, output_root: Path, module: Module) -> None:
             raise BuildError(f"unsafe proof reported for {module.source}; see {log}")
         if not staged.is_file():
             raise BuildError(f"Lean produced no object for {module.source}; see {log}")
-        staged.replace(output)
+        for artifact in Path(staging).iterdir():
+            artifact.replace(output.parent / artifact.name)
 
 
 def build(
@@ -264,9 +408,13 @@ def build(
     include_executable: bool,
     list_only: bool,
     resume: bool,
+    roots: tuple[str, ...] = ("Vsa",),
+    with_dependencies: bool = False,
+    module_roots_only: bool = False,
 ) -> None:
     """Build or list all current modules in deterministic dependency order."""
-    modules = discover_modules(repo, include_executable)
+    modules = discover_modules(repo, include_executable, roots,
+                               with_dependencies, module_roots_only)
     order = topological_order(modules)
     if list_only:
         for module in order:
@@ -278,6 +426,7 @@ def build(
     fingerprints = module_fingerprints(repo, order, input_context(repo))
     completed: dict[str, str] = {}
     retained = dict(prior)
+    environment: dict[str, str] | None = None
     for index, module in enumerate(order, start=1):
         fingerprint = fingerprints[module.name]
         if (
@@ -293,7 +442,9 @@ def build(
         # installation and fingerprint publication must not reuse the old hash.
         retained.pop(module.name, None)
         write_manifest(manifest_path, retained)
-        compile_module(repo, output_root, module)
+        if environment is None:
+            environment = resolve_lean_environment(repo)
+        compile_module(repo, output_root, module, environment=environment)
         completed[module.name] = fingerprint
         retained[module.name] = fingerprint
         write_manifest(manifest_path, retained)
@@ -307,6 +458,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--include-executable", action="store_true")
     parser.add_argument("--list", action="store_true", dest="list_only")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--root", action="append", dest="roots",
+                        help="module to build with its imports (repeatable; default: all Vsa sources)")
+    parser.add_argument("--with-dependencies", action="store_true",
+                        help="build imported package sources from the pinned manifest")
     return parser.parse_args(argv)
 
 
@@ -322,6 +477,9 @@ def main(argv: list[str] | None = None) -> int:
             include_executable=args.include_executable,
             list_only=args.list_only,
             resume=args.resume,
+            roots=tuple(args.roots or ("Vsa",)),
+            with_dependencies=args.with_dependencies,
+            module_roots_only=bool(args.roots),
         )
     except BuildError as err:
         print(f"build_private: {err}", file=sys.stderr)

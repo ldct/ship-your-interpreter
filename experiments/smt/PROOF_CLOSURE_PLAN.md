@@ -5304,7 +5304,15 @@ binary's limits on length and NUL:
   8 MiB stack less the deepest library chain (12704 bytes), at 176 bytes per
   nested `evalstr`. Each nesting level also costs one handle of the budget
   slack (`+ d`).
-- SizeBound per `dc_func` call (`EvBudget.size`, `FnSize`).
+- SizeBound per `dc_func` call (`EvBudget.size`, `FnSize st c`), asked only
+  of the command that uses it (`/` div, `% ~` rem, `^` exp, `|` modexp, `v`
+  sqrt; `n p P` the top; `f` all). `bc_sqrt` is total (`Dc.sqrt_total`), so
+  there is no square-root premise.
+
+Capstones (`Dc/Capstones.lean`): `DcAdmissible` is decided by `admCheck`
+(`EvalStable.lean`, `EvalCheck.lean`); `Dc.endToEnd` holds at 24 of the 25
+validation programs by `decide +kernel`. `tail` (1000 tail calls) is
+admissible but too deep for the kernel's recursion.
 
 String lengths below `2^24` (`StrBound`) and sorted register arrays
 (`ArrSorted`) are invariants proved from the semantics, not premises.

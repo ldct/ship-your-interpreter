@@ -283,6 +283,8 @@ import VsaIris.Interp.ProofStrcpyH
 -- lane N1: newlib's stdout path
 import VsaIris.LocalRunO
 import VsaIris.Vsa.SymRunO
+import VsaIris.Vsa.SymRunRO
+import VsaIris.Vsa.BootSplit
 import VsaIris.Vsa.SymJalr
 import VsaIris.Vsa.ErrnoOwn
 import VsaIris.Vsa.Stdout.Fputc
@@ -305,3 +307,4 @@ import VsaIris.Vsa.Stderr.SprintHook
 import VsaIris.Vsa.Stderr.SEmpty
 import VsaIris.Vsa.Fprintf.End
 import VsaIris.Vsa.Fprintf.Inner
+import VsaIris.LocalRunOLater

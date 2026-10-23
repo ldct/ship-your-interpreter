@@ -16,10 +16,15 @@ SOURCE_STAGES = (
     "gen_m4_term_row",
     "gen_ih_clause",
     "gen_footprint_row",
+    "gen_interp_steps",
+    "gen_interp_steps_stdio",
+    "gen_iris_cases",
+    "gen_resp",
+    "gen_dc_steps",
     "check_discipline",
     "ih_clause_status",
 )
-COMPILED_STAGES = {"build", "freshness", "boundary", "axioms"}
+COMPILED_STAGES = {"build", "freshness", "gen_dc_decode", "boundary", "axioms"}
 
 
 class CheckAllTests(unittest.TestCase):
@@ -51,6 +56,8 @@ class CheckAllTests(unittest.TestCase):
             import sys
 
             name = Path(__file__).stem
+            if name == "gen_interp_steps" and "stdio" in sys.argv:
+                name = "gen_interp_steps_stdio"
             if name == "check_validation":
                 if "--build-backend" in sys.argv:
                     stage = "build"
@@ -71,12 +78,19 @@ class CheckAllTests(unittest.TestCase):
             "gen_m4_term_row",
             "gen_ih_clause",
             "gen_footprint_row",
+            "gen_interp_steps",
+            "gen_iris_cases",
+            "gen_resp",
+            "dc/gen_dc_steps",
+            "dc/gen_dc_decode",
             "check_discipline",
             "ih_clause_status",
             "check_validation",
         )
         for name in names:
-            (self.root / "scripts" / f"{name}.py").write_text(
+            target = self.root / "scripts" / f"{name}.py"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
                 textwrap.dedent(stub), encoding="utf-8"
             )
 
@@ -132,7 +146,7 @@ class CheckAllTests(unittest.TestCase):
         self.assertTrue(COMPILED_STAGES.isdisjoint(self._trace()), self._trace())
 
     def test_each_generator_failure_aborts_before_compiled_stages(self) -> None:
-        for generator in SOURCE_STAGES[:5]:
+        for generator in SOURCE_STAGES[:-2]:
             with self.subTest(generator=generator):
                 self.trace_path.unlink(missing_ok=True)
                 result = self._run(fail_stage=generator)
@@ -167,14 +181,14 @@ class CheckAllTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(
             self._trace(),
-            [*SOURCE_STAGES, "build", "freshness", "boundary", "axioms"],
+            [*SOURCE_STAGES, "build", "freshness", "gen_dc_decode", "boundary", "axioms"],
         )
 
     def test_skip_build_still_checks_freshness_boundary_and_axioms(self) -> None:
         result = self._run("--skip-build")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(
-            self._trace(), [*SOURCE_STAGES, "freshness", "boundary", "axioms"]
+            self._trace(), [*SOURCE_STAGES, "freshness", "gen_dc_decode", "boundary", "axioms"]
         )
 
     def test_skip_build_cannot_bypass_fingerprint_check(self) -> None:

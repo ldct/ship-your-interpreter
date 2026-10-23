@@ -183,3 +183,90 @@ sources, including `VsaRun.lean`.
 Use the Lean version in `lean-toolchain`. Follow [CLAUDE.md](CLAUDE.md) for
 proof discipline and [TOOLING.md](TOOLING.md) for focused verification.
 Preserve the proof ELF; build interpreter variants in a temporary copy of `c/`.
+
+## GNU dc
+
+A second interpreter, GNU dc 1.4.1 (GNU bc 1.07.1), with a formal semantics,
+a RISC-V build for the same machine model, and a kernel-checked refinement
+proof for that binary (`Dc/`, plan and status in [Dc/PLAN.md](Dc/PLAN.md)).
+
+### The theorem
+
+```lean
+theorem Dc.endToEnd (prog : List Nat) (hp : DcAdmissible prog) :
+    (∀ out, Runs 70 prog out →
+       Halts (dcBoot prog) (outStr out) 0 ∨ ∃ s, Halts (dcBoot prog) s 1) ∧
+    (∀ s, Halts (dcBoot prog) s 0 → ∃ out, Runs 70 prog out ∧ s = outStr out) ∧
+    (Diverges (dcBoot prog) → ¬ ∃ out, Runs 70 prog out)
+```
+
+`Dc/EndToEnd.lean`, axioms `propext`, `Classical.choice`, `Quot.sound`.
+`dcBoot prog` is the loader state of `dc-port/dc-riscv-htif.elf` with `prog`
+in `dc_script.text`. A terminating run halts cleanly with the same output, or
+exits with status 1 when the heap is exhausted (`dc_memfail`). Every clean
+halt is a terminating run with that output. Divergence excludes termination.
+The proof is `Dc.refinement` over `term_sim`/`stuck_sim`. These come from the
+boot and exit runs (`dc_halts_loaded`, `dc_stuck_loaded`) and `evalstr`'s two
+specifications (`evalstr_spec`, `evalstrDiv_of_term`). Those rest on
+`dc_func_spec` and the specs of the bc library and dc's helpers (M3–M9).
+
+### Admissibility
+
+`DcAdmissible prog` (`Dc/EndToEnd.lean`) has these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `len`, `nz`, `byte` | the program fits the 8 KiB buffer with its `NUL` and holds no `NUL` |
+| `nest : NestBound 70 prog dcD` | macro nesting at most `dcD` = 47,589 at every fuel (the 8 MiB stack) |
+| `leak : LeakBound 70 prog dcK` | at most `dcK` = 250,000 runs, at every fuel, of the commands that may lose a bc reference (`leakAllow`/`numLeak`, `Dc/Mach/EvalLeak.lean`) |
+| `size` | every `dc_func` call meets `FnSize st c`: the operand-size bound of the bc callee of that command (`/ % ~ ^ | v` and the printing commands) |
+| `tail : TailBound 70 prog` | `evalstr`'s 32-bit tail depth stays below `2^31` |
+
+The bounds are quantified over every fuel, so they also bound
+non-terminating evaluations. Known limitation: `LeakBound` counts the
+commands that may lose a reference, not the references actually lost.
+The counted commands are `~ :` (2 each), `/ % | v X i k o Q R ;` (1 each,
+mostly on error routes) and a fractional number literal (1, `dc_getnum`'s
+divisor). A program that runs these commands without bound is outside the
+theorem even when GNU dc's reference counts would not overflow. This
+includes any non-terminating loop that divides.
+
+| File | Content |
+| --- | --- |
+| `Dc/Num.lean` | `bc_num` arithmetic: sign flag, magnitude and scale, with the library's truncation, sign and scale rules, output in any base with line wrapping, and `bc_num2long`'s fallback `LONG_MAX` of `0x7fffffff` |
+| `Dc/Machine.lean` | the machine state and `dcFunc`, a transcription of `dc_func` |
+| `Dc/Semantics.lean` | **the big-step semantics** `Loop`/`Tos` of `evalstr` (macros, tail calls, `q`/`Q` unwinding, `bc_sqrt`'s Newton iteration) and `Runs lm prog out` for `dc -e prog` with standard output `out` at line length `lm`, in the bare-metal environment: `!` finds no command processor and `?` reads an empty standard input |
+| `Dc/Refinement.lean` | the target statement: `refinement` derives the correspondence between `Runs 70` and the machine's `Halts`/`Diverges` from the obligations `DcSim` |
+| `Dc/Interp.lean`, `Dc/Adequacy.lean` | a fuel-bounded interpreter with `run_iff` (it computes exactly the derivable evaluations) and `Runs.det` (a program has at most one output) |
+| `Dc/Capstones.lean` | `Dc.endToEnd` at 24 of the 25 validation programs of `scripts/dc/gen_validation.py`: the binary halts with the semantics' output (or exhausts the heap), and every clean halt prints exactly that output; `DcAdmissible` and the output by kernel `decide` (`admCheck`, `DcAdmissible.of_check`) |
+| `Dc/Mach/` | the proof: machine layer, the C library, bc (`Bc/`), dc's state and helpers, `dc_func`, `evalstr`, boot and exit |
+| `Dc/EndToEnd.lean` | **`Dc.endToEnd`** |
+| `dc-port/` | the bare-metal HTIF port: `htif_main.c` runs `dc -e` on a program in an 8 KiB buffer; `libc/` is a minimal C library (standard output to the HTIF console, standard error discarded, empty standard input, a first-fit allocator); `dc-riscv-htif.elf` is built with the compiler of the WHILE binary |
+| `scripts/dc/` | `difftest.py` (Lean interpreter against host dc), `elf_difftest.py` (the ELF on `Vsa.runElf` against the Lean interpreter), `gen_validation.py` (the validation corpus; writing `Dc/Validation.lean` needs GNU dc on the host) |
+
+```sh
+# The ELF (xPack GNU RISC-V Embedded GCC 15.2.0).
+make -C dc-port RISCV_CC=/path/to/riscv-none-elf-gcc BUILD=/tmp/dc-port-build
+
+# Compile Dc/*.lean into DC_OLEAN (Num, Machine, Semantics, Interp,
+# Adequacy, in that order) with `lake env lean -o`, then:
+python3 -B scripts/dc/difftest.py --olean DC_OLEAN --random 1500
+python3 -B scripts/dc/elf_difftest.py --vsa-olean VSA_PRIVATE_BUILD \
+  --dc-olean DC_OLEAN --random 1500 --host-dc
+```
+
+`elf_difftest.py` needs `Vsa.ElfRun` compiled in the private build.
+`difftest.py` compares with GNU dc. Another `dc` on `PATH` (for example
+macOS's `dc` 7.x) differs in output format and is not a check of the
+semantics.
+
+### Gates
+
+```sh
+lake build Dc                         # every dc module, including Dc.endToEnd
+scripts/dc/check_dc_axioms.sh         # axioms of the headline theorems (check_all stage c4)
+```
+
+`scripts/check_all.sh` also runs every dc generator's `--check` (stage a3:
+decode and step tables, the generated site families, `dc_func`'s dispatch and
+spec, the boot image) and the proof-discipline gate (stage a4) on `Dc/`.

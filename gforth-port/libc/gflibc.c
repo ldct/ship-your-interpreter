@@ -399,14 +399,35 @@ void *memcpy(void *d, const void *s, size_t n)
 	return d;
 }
 
+/* memmove and memset move whole 8-byte words where the alignment allows:
+ * the kernel image's boot moves and clears ~300 KB (`move`, `erase`), and
+ * the loader copies the 455 KB image, which byte loops make the bulk of
+ * every run. memcpy stays dc's byte loop (its spec carries over). */
 void *memmove(void *d, const void *s, size_t n)
 {
 	unsigned char *dp = d;
 	const unsigned char *sp = s;
+	int words = (((uintptr_t)dp ^ (uintptr_t)sp) & 7) == 0;
 	if (dp <= sp) {
+		if (words) {
+			while (n && ((uintptr_t)dp & 7)) {
+				*dp++ = *sp++;
+				n--;
+			}
+			for (; n >= 8; n -= 8, dp += 8, sp += 8)
+				*(uint64_t *)dp = *(const uint64_t *)sp;
+		}
 		while (n--)
 			*dp++ = *sp++;
 	} else {
+		if (words) {
+			while (n && ((uintptr_t)(dp + n) & 7)) {
+				n--;
+				dp[n] = sp[n];
+			}
+			for (; n >= 8; n -= 8)
+				*(uint64_t *)(dp + n - 8) = *(const uint64_t *)(sp + n - 8);
+		}
 		while (n--)
 			dp[n] = sp[n];
 	}
@@ -416,6 +437,13 @@ void *memmove(void *d, const void *s, size_t n)
 void *memset(void *d, int c, size_t n)
 {
 	unsigned char *dp = d;
+	uint64_t w = (unsigned char)c * 0x0101010101010101ULL;
+	while (n && ((uintptr_t)dp & 7)) {
+		*dp++ = (unsigned char)c;
+		n--;
+	}
+	for (; n >= 8; n -= 8, dp += 8)
+		*(uint64_t *)dp = w;
 	while (n--)
 		*dp++ = (unsigned char)c;
 	return d;
@@ -588,7 +616,7 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off)
 		if (fd != f->fd || !f->data || off < 0 || (size_t)off > f->size)
 			return MAP_FAILED;
 		size_t n = f->size - (size_t)off;
-		memcpy(addr, f->data + off, n < len ? n : len);
+		memmove(addr, f->data + off, n < len ? n : len);
 		return addr;
 	}
 	if (!(flags & MAP_ANONYMOUS) || fd != -1)

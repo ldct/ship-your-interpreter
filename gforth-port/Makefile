@@ -11,7 +11,8 @@
 # (GF_CPP, without -O so that no glibc inline functions are used) and
 # compiled freestanding for rv64i/lp64 (RISCV_CC), with the engine flags of
 # Gforth's own Makefile, then linked with libc/ instead of glibc and with
-# libgcc. Startup code and linker script are the dc port's.
+# libgcc. Startup code and linker script are the dc port's. The boot image
+# is relocated at build time and linked in as the dictionary (gf_loader.c).
 
 GF_BUILD  ?= ../../gforth-build/brv
 GF_ENGINE  = $(GF_BUILD)/engine
@@ -36,11 +37,37 @@ ENGINE_FLAGS := -fno-gcse -fcaller-saves -fno-defer-pop -fno-inline -fwrapv \
                 -fno-delete-null-pointer-checks -fno-lto -fno-tree-slp-vectorize
 
 GF_C := main support io signals dblsub getopt getopt1 wcwidth
-GF_OBJ := $(BUILD)/engine.o $(addprefix $(BUILD)/,$(addsuffix .o,$(GF_C)))
+GF_OBJ := $(BUILD)/engine.o $(BUILD)/main-port.o $(addprefix $(BUILD)/,$(addsuffix .o,$(GF_C)))
 
-gforth-riscv-htif.elf: $(GF_OBJ) htif_main.c libc/gflibc.c libc/setjmp.S image.S crt0.S link.ld
-	$(RISCV_CC) $(RISCV_CFLAGS) -nostdlib -T link.ld -DGF_IMAGE='"$(GF_IMAGE)"' -o $@ \
-	    crt0.S libc/gflibc.c libc/setjmp.S htif_main.c image.S $(GF_OBJ) -lgcc
+# Two links: the first with a zero image of the right size fixes every
+# address; gen_gf_image.py then relocates the image for that ELF (primitive
+# table, group table, `gf_dict`), and the second link puts it in. The
+# addresses cannot move, since only the contents of .gf_dict change; the
+# rule checks that by relocating again against the final ELF.
+GF_DICT_SIZE = $(shell python3 $(GEN_IMAGE) --size $(GF_IMAGE))
+GF_DICT_FREE = $(shell python3 $(GEN_IMAGE) --free $(GF_IMAGE))
+GEN_IMAGE   := ../scripts/gforth/gen_gf_image.py
+PORT_SRC    := crt0.S libc/gflibc.c libc/setjmp.S htif_main.c dict.S
+LINK = $(RISCV_CC) $(RISCV_CFLAGS) -nostdlib -T link.ld \
+       -Wl,--defsym=GF_DICT_FREE=$(GF_DICT_FREE)
+
+gforth-riscv-htif.elf: $(GF_OBJ) $(BUILD)/gf_loader.o $(PORT_SRC) link.ld $(GEN_IMAGE)
+	head -c $(GF_DICT_SIZE) /dev/zero > $(BUILD)/dict0.bin
+	$(LINK) -DGF_DICT='"$(BUILD)/dict0.bin"' -o $(BUILD)/pass1.elf \
+	    $(PORT_SRC) $(GF_LINK_OBJ) -lgcc
+	python3 $(GEN_IMAGE) $(BUILD)/pass1.elf $(GF_IMAGE) $(BUILD)/dict.bin
+	$(LINK) -DGF_DICT='"$(BUILD)/dict.bin"' -o $@ $(PORT_SRC) $(GF_LINK_OBJ) -lgcc
+	python3 $(GEN_IMAGE) $@ $(GF_IMAGE) $(BUILD)/dict.check.bin --check-elf
+
+# main.c's gforth_loader is replaced by gf_loader.c's.
+$(BUILD)/main-port.o: $(BUILD)/main.o
+	riscv64-unknown-elf-objcopy --weaken-symbol=gforth_loader $< $@
+
+GF_LINK_OBJ = $(BUILD)/engine.o $(BUILD)/main-port.o $(BUILD)/gf_loader.o \
+              $(addprefix $(BUILD)/,$(addsuffix .o,$(filter-out main,$(GF_C))))
+
+$(BUILD)/gf_loader.i: gf_loader.c | $(BUILD)
+	$(GF_CPP) $(GF_CPPFLAGS) -E $< -o $@
 
 # One hart, no threads: `-D__thread=` turns Gforth's thread-local variables
 # (`PER_THREAD`, e.g. gforth_SPs) into ordinary globals, so nothing uses tp.

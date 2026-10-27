@@ -1,6 +1,8 @@
 /* Linker script of the Gforth port: the dc port's (from c/src/link.ld),
- * with the boot image (`.gf_image`, 455 KB) placed after .bss because
- * it does not fit below .tohost.
+ * plus the Gforth dictionary after .bss: `.gf_dict` holds the relocated
+ * boot image (455 KB, too large to fit below .tohost), `.gf_dict_free` the
+ * rest of the dictionary space as zero memory (GF_DICT_FREE bytes, from the
+ * Makefile). The heap starts after it.
  * dc port: Two addresses are
  * fixed to the WHILE binary's, which the step layer (`Vsa.Sim.GoodState`,
  * `LdOK`/`StOK`, `VsaIris.MallocFast.roR`) takes as constants: `.tohost` at
@@ -52,8 +54,12 @@ SECTIONS
         __bss_end = .;
     } > RAM
 
-    .gf_image : ALIGN(8) {
-        *(.gf_image)
+    .gf_dict : ALIGN(4096) {
+        *(.gf_dict)
+    } > RAM
+
+    .gf_dict_free (NOLOAD) : ALIGN(8) {
+        . += GF_DICT_FREE;
     } > RAM
 
     . = ALIGN(16);

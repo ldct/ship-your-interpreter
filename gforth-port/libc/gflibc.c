@@ -8,8 +8,8 @@
  *
  *  - Standard output goes to the HTIF console one byte per `tohost` store;
  *    standard error is discarded; standard input is at end of file.
- *  - No terminal (`isatty` is 0), no environment, no files except the
- *    boot image, which `fopen` serves read-only from memory (`gf_image`).
+ *  - No terminal (`isatty` is 0), no environment, no files: the boot image
+ *    is linked in already relocated (gf_loader.c), so nothing opens it.
  *  - `mmap` (anonymous only) hands out fresh, never reused memory from the
  *    same bump pointer as `malloc`; fresh RAM is zero, so it needs no clearing.
  *  - Floating point, libm, dynamic loading, processes and directories are
@@ -62,12 +62,9 @@ int *__errno_location(void) { return &errno; }
 
 typedef struct gf_file {
 	int fd;
-	const unsigned char *data;	/* read-only contents, or NULL */
-	size_t size, pos;
-	int eof;
 } FILE;
 
-static FILE files[4] = { {0}, {1}, {2}, {3} };
+static FILE files[3] = { {0}, {1}, {2} };
 FILE *const stdin = &files[0];
 FILE *const stdout = &files[1];
 FILE *const stderr = &files[2];
@@ -105,8 +102,6 @@ int fputs(const char *s, FILE *f)
 int ungetc(int c, FILE *f) { (void)f; return c; }
 int fflush(FILE *f) { (void)f; return 0; }
 int ferror(FILE *f) { (void)f; return 0; }
-void clearerr(FILE *f) { f->eof = 0; }
-int feof(FILE *f) { return f->eof; }
 int fileno(FILE *f) { return f->fd; }
 int isatty(int fd) { (void)fd; return 0; }
 void perror(const char *s) { (void)s; }
@@ -118,79 +113,18 @@ FILE *fdopen(int fd, const char *mode) { (void)fd; (void)mode; return NULL_FILE;
 FILE *popen(const char *cmd, const char *mode) { (void)cmd; (void)mode; return NULL_FILE; }
 int pclose(FILE *f) { (void)f; return -1; }
 
-/* The boot image, linked in by image.S. */
-extern const unsigned char gf_image[], gf_image_end[];
-#define GF_IMAGE_NAME "kernl64l.fi"
-
-static int ends_with(const char *s, const char *suffix)
-{
-	size_t n = 0, m = 0;
-	while (s[n])
-		n++;
-	while (suffix[m])
-		m++;
-	if (m > n)
-		return 0;
-	for (size_t i = 0; i < m; i++)
-		if (s[n - m + i] != suffix[i])
-			return 0;
-	return n == m || s[n - m - 1] == '/';
-}
-
-FILE *fopen(const char *path, const char *mode)
-{
-	if (mode[0] != 'r' || !ends_with(path, GF_IMAGE_NAME))
-		return NULL_FILE;
-	FILE *f = &files[3];
-	f->data = gf_image;
-	f->size = (size_t)(gf_image_end - gf_image);
-	f->pos = 0;
-	f->eof = 0;
-	return f;
-}
-
+FILE *fopen(const char *path, const char *mode) { (void)path; (void)mode; return NULL_FILE; }
 int fclose(FILE *f) { (void)f; return 0; }
-
-size_t fread(void *p, size_t size, size_t n, FILE *f)
-{
-	unsigned char *d = p;
-	if (!f->data || size == 0) {
-		f->eof = 1;
-		return 0;
-	}
-	size_t want = size * n, got = 0;
-	while (got < want && f->pos < f->size)
-		d[got++] = f->data[f->pos++];
-	if (got < want)
-		f->eof = 1;
-	return got / size;
-}
-
-int fgetc(FILE *f)
-{
-	if (!f->data || f->pos >= f->size) {
-		f->eof = 1;
-		return EOF;
-	}
-	return f->data[f->pos++];
-}
-
-int getc(FILE *f) { return fgetc(f); }
-int getc_unlocked(FILE *f) { return fgetc(f); }
-
-int fseeko(FILE *f, long off, int whence)
-{
-	long base = whence == 0 ? 0 : whence == 1 ? (long)f->pos : (long)f->size;
-	if (!f->data || base + off < 0)
-		return -1;
-	f->pos = (size_t)(base + off);
-	f->eof = 0;
-	return 0;
-}
-
+void clearerr(FILE *f) { (void)f; }
+int feof(FILE *f) { (void)f; return 1; }
+size_t fread(void *p, size_t size, size_t n, FILE *f) { (void)p; (void)size; (void)n; (void)f; return 0; }
+int fgetc(FILE *f) { (void)f; return EOF; }
+int getc(FILE *f) { (void)f; return EOF; }
+int getc_unlocked(FILE *f) { (void)f; return EOF; }
+int fseeko(FILE *f, long off, int whence) { (void)f; (void)off; (void)whence; return -1; }
 int fseek(FILE *f, long off, int whence) { return fseeko(f, off, whence); }
-long ftello(FILE *f) { return f->data ? (long)f->pos : -1; }
-void rewind(FILE *f) { fseeko(f, 0, 0); }
+long ftello(FILE *f) { (void)f; return -1; }
+void rewind(FILE *f) { (void)f; }
 
 /* The formatter writes through a sink: a stream, or a bounded buffer. */
 struct sink {
@@ -400,9 +334,8 @@ void *memcpy(void *d, const void *s, size_t n)
 }
 
 /* memmove and memset move whole 8-byte words where the alignment allows:
- * the kernel image's boot moves and clears ~300 KB (`move`, `erase`), and
- * the loader copies the 455 KB image, which byte loops make the bulk of
- * every run. memcpy stays dc's byte loop (its spec carries over). */
+ * the kernel image's boot moves and clears ~300 KB (`move`, `erase`),
+ * which byte loops would make the bulk of every run. memcpy stays dc's byte loop (its spec carries over). */
 void *memmove(void *d, const void *s, size_t n)
 {
 	unsigned char *dp = d;
@@ -601,24 +534,13 @@ int mprobe(void *p) { (void)p; return 0; }
 
 /* Anonymous mappings: page-aligned fresh memory from the bump pointer,
  * never returned. Fresh RAM is zero, as an anonymous mapping must be. */
-#define MAP_FIXED 0x10
 #define MAP_ANONYMOUS 0x20
 #define MAP_FAILED ((void *)-1)
 #define PAGE 4096
 
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off)
 {
-	(void)prot;
-	if (flags & MAP_FIXED) {
-		/* The loader maps the image file over memory it has just
-		 * allocated (`dict_alloc_read`): copy the file's bytes. */
-		FILE *f = &files[3];
-		if (fd != f->fd || !f->data || off < 0 || (size_t)off > f->size)
-			return MAP_FAILED;
-		size_t n = f->size - (size_t)off;
-		memmove(addr, f->data + off, n < len ? n : len);
-		return addr;
-	}
+	(void)addr; (void)prot; (void)off;
 	if (!(flags & MAP_ANONYMOUS) || fd != -1)
 		return MAP_FAILED;
 	if (!brk_ptr)

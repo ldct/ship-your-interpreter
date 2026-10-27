@@ -9,6 +9,10 @@ leanOptions.backward.isDefEq.respectTransparency = false
 name = "vsa_run"
 root = "VsaRun"
 
+[[lean_exe]]
+name = "gf_elf_run"
+root = "scripts.gforth.GfElfRun"
+
 [[lean_lib]]
 name = "VsaIris"
 

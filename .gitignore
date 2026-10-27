@@ -10,3 +10,4 @@ __pycache__/
 # local tooling state
 .claude/
 .DS_Store
+gforth-port/build/

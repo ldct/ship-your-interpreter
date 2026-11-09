@@ -71,9 +71,6 @@ theorem dc_array_init_spec (hk : LeafRet live S Q R Mt [] fun _ => True) :
 
 end Leaves
 
-/-- `__bss_end` (`heapStart`), the end of `dc_register`. -/
-theorem dcReg_end : dcRegAddr + 2048 = heapStart := rfl
-
 /-- `dc_register_init`'s loop at `0x80002ce0` with `a5 = dc_register + i`
 (`i` a multiple of 8 below 2048). -/
 theorem reg_init_loop {live : Nat → Prop} {S : Nat → Prop}

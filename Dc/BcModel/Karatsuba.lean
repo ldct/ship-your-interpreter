@@ -29,12 +29,6 @@ theorem dvalLE_map_mul (d : Nat) : ∀ xs : List Nat, dvalLE (xs.map (d * ·)) =
     simp only [List.map_cons, dvalLE]
     rw [dvalLE_map_mul d xs, Nat.mul_add, Nat.mul_left_comm]
 
-theorem oneMultLE_val (d : Nat) (xs : List Nat) : dvalLE (oneMultLE d xs) = d * dvalLE xs := by
-  rw [oneMultLE, propLE_val, dvalLE_map_mul, Nat.add_zero]
-
-theorem oneMultLE_length (d : Nat) (xs : List Nat) : (oneMultLE d xs).length = xs.length + 1 := by
-  rw [oneMultLE, propLE_length, List.length_map]
-
 /-! ## `_bc_shift_addsub` -/
 
 /-- The addition loops: digits `acc + val + c` with carry, then the carry
@@ -127,19 +121,6 @@ theorem addRip_digits : ∀ (acc val : List Nat) (c : Nat), IsDigits acc → IsD
         · omega
         · exact ha' d hd
 
-/-- With the sum below `10 ^ acc.length`, no carry is lost. -/
-theorem addRip_exact {acc val : List Nat} {c : Nat} (ha : IsDigits acc) (hv : IsDigits val)
-    (hc : c ≤ 1) (hl : val.length ≤ acc.length)
-    (hb : dvalLE acc + dvalLE val + c < 10 ^ acc.length) :
-    dvalLE (addRip acc val c) = dvalLE acc + dvalLE val + c := by
-  have h := addRip_val acc val c ha hv hc hl
-  have : addRipC acc val c = 0 := by
-    refine Nat.eq_zero_of_not_pos fun hp => ?_
-    have : 10 ^ acc.length ≤ 10 ^ acc.length * addRipC acc val c := Nat.le_mul_of_pos_right _ hp
-    omega
-  rw [this, Nat.mul_zero, Nat.add_zero] at h
-  exact h
-
 /-- The subtraction loops: digits `acc - val - b` with borrow, then the borrow
 ripple until it is absorbed. -/
 def subRip : List Nat → List Nat → Nat → List Nat
@@ -229,20 +210,6 @@ theorem subRip_digits : ∀ (acc val : List Nat) (b : Nat), IsDigits acc → IsD
       · intro d hd; rcases List.mem_cons.mp hd with rfl | hd
         · omega
         · exact ha' d hd
-
-/-- With the subtrahend at most the accumulator, no borrow is lost. -/
-theorem subRip_exact {acc val : List Nat} {b : Nat} (ha : IsDigits acc) (hv : IsDigits val)
-    (hb : b ≤ 1) (hl : val.length ≤ acc.length) (hle : dvalLE val + b ≤ dvalLE acc) :
-    dvalLE (subRip acc val b) = dvalLE acc - dvalLE val - b := by
-  have h := subRip_val acc val b ha hv hb hl
-  have hd := dvalLE_lt (subRip_digits acc val b ha hv hb)
-  rw [subRip_length] at hd
-  have : subRipB acc val b = 0 := by
-    refine Nat.eq_zero_of_not_pos fun hp => ?_
-    have : 10 ^ acc.length ≤ 10 ^ acc.length * subRipB acc val b := Nat.le_mul_of_pos_right _ hp
-    omega
-  rw [this, Nat.mul_zero, Nat.add_zero] at h
-  omega
 
 /-! ## The Karatsuba identity -/
 

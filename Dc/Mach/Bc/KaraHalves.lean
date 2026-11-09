@@ -43,11 +43,6 @@ theorem khalf_zero {M : Mem} {z : NumObj} {k : Nat} (kz : KZero M z k) : KHalf z
   pos := fun h => absurd rfl h
   lenS := fun _ e => nomatch e
 
-/-- A view's handle after `_bc_rm_leading_zeros`. -/
-theorem Hd.o_trim_view (z w : NumObj) (sb : Blk) (off k : Nat) :
-    Hd.o z (Hd.trim (Hd.lz (some (viewObj sb w off k))) (some (viewObj sb w off k))) =
-      ⟨(viewRep sb.pay w.rep off k).rmLeadingZeros, sb, w.db⟩ := rfl
-
 /-- **A trimmed view** of `k` digits of `w` from `off` is the half of those
 digits. -/
 theorem khalf_view {z w : NumObj} {sb : Blk} {off k : Nat} (hw : NumShape w.rep)

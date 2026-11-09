@@ -73,14 +73,6 @@ theorem ldv_zero_touch {M Mt : Mem} (h : MemOnly KTouch M Mt) :
       widthOfM] at hj ⊢
     omega)
 
-/-- A word at `mulBase`'s slot survives the scratch. -/
-theorem ldv_mulBase_touch {M Mt : Mem} (h : MemOnly KTouch M Mt) :
-    ldv .lw M mulBaseAddr = ldv .lw Mt mulBaseAddr :=
-  ldv_congr .lw fun j hj => h _ (by
-    simp only [KTouch, bcFreeBytes, bcFreeAddr, freeListAddr, heapStart, heapEnd, mulBaseAddr,
-      widthOfM] at hj ⊢
-    omega)
-
 /-- Bytes above the heap survive the scratch. -/
 theorem touch_above {M Mt : Mem} (h : MemOnly KTouch M Mt) {a : Nat} (ha : heapEnd ≤ a) :
     imgM M a = imgM Mt a :=

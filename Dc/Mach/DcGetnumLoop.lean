@@ -108,15 +108,6 @@ theorem sxw_addK {x : Int} {K k : Nat} (hK : K + k = 2 ^ 64) (h1 : -1 ≤ x) (h2
   simp only [BitVec.extractLsb_toNat, BitVec.toNat_ofInt]
   split <;> split <;> omega
 
-theorem sxw_addK' {c K k : Nat} (hK : K + k = 2 ^ 64) (hc : c < 256) (hk : k ≤ 256) :
-    BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 (c + K))) =
-      BitVec.ofInt 64 ((c : Int) - k) := by
-  rw [← sxw_addK hK (by omega) (by omega) hk]
-  congr 2
-  apply BitVec.eq_of_toNat_eq
-  simp only [BitVec.toNat_add, BitVec.toNat_ofInt, BitVec.toNat_ofNat]
-  omega
-
 /-- The frame with saved registers the body changed (`sp` kept). -/
 theorem CFr.sregs {P : Nat → Prop} {fs : Nat} {sv : List (Nat × Nat)} {M0 M : Mem} {R0 R R' : Nat → BitVec 64}
     {sp : Nat} (hfr : CFr P fs sv M0 M R0 R sp) (k : Keeps (sv.map Prod.snd ++ cClob) R' R)

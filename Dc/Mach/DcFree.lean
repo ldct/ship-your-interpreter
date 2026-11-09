@@ -20,8 +20,6 @@ namespace Dc.Mach
 open Vsa.MemRepr Vsa.Sim VsaIris VsaIris.Inst VsaIris.Sym VsaIris.MallocFast
 open LeanRV64DExecutable LeanRV64DExecutable.Functions Sail
 
-theorem NumObj.decRef_withRefs (x : NumObj) : x.decRef = x.withRefs (x.rep.refs - 1) := rfl
-
 /-- A pairwise relation carried over with membership in the left list. -/
 theorem forall₂_imp_mem {α β : Type} {P P' : α → β → Prop} :
     ∀ {l : List α} {m : List β}, (∀ a ∈ l, ∀ b, P a b → P' a b) → List.Forall₂ P l m →

@@ -317,11 +317,6 @@ theorem SqEnv.sqc_eq {S : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp
     (env : SqEnv S Mt0 R0 sp W q Lb x zb o p5 k rs) : sqc x k = max 3 (rs + 1) := by
   simp only [sqc, Dc.BcModel.sqC, NumRep.num_scale, env.rsk]
 
-/-- `x` below `10 ^ (n_len + n_scale)`. -/
-theorem sq_xmag {x : NumObj} (hs : NumShape x.rep) :
-    x.rep.num.mag < 10 ^ (x.rep.len + x.rep.num.scale) :=
-  NumRep.mag_lt hs
-
 /-- A guess's digits. -/
 theorem SqEnv.gsize {S : Nat → Prop} {Mt0 : Mem} {R0 : Nat → BitVec 64} {sp W q : Nat}
     {Lb : List NumObj} {x zb o p5 : NumObj} {k rs : Nat}

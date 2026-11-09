@@ -41,9 +41,6 @@ theorem ite_T {α : Type} {c : Prop} [Decidable c] (h : c) {a b : α} : (if c th
 theorem ite_F {α : Type} {c : Prop} [Decidable c] (h : ¬ c) {a b : α} : (if c then a else b) = b := by
   simp [h]
 
-theorem St.push_pop (st : St) (v : Val) : { st.push v with stack := st.stack } = st := by
-  cases st; rfl
-
 /-- `bltz`/`blez` on `dc_num2int`'s word. -/
 theorem toInt_n2i (n : Num) : (BitVec.ofInt 64 n.toInt.1).toInt = n.toInt.1 :=
   BitVec.toInt_ofInt_eq_self (by decide) (by have := Num.toInt_range n; omega)

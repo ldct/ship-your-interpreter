@@ -317,12 +317,4 @@ theorem longDiv_digits (D : Nat) (hD : 0 < D) : ∀ (R : Nat) (xs : List Nat), R
       rw [Nat.mul_comm]; omega
     · exact longDiv_digits D hD _ xs (Nat.mod_lt _ hD) (fun e he => hx e (List.mem_cons_of_mem _ he)) d hd
 
-/-- From a zero remainder, the quotient of `xs` is its value divided by `D`. -/
-theorem longDiv_quot (D : Nat) (hD : 0 < D) (xs : List Nat) :
-    dvalBE (longDiv D 0 xs).1 = dvalBE xs / D := by
-  have hv := longDiv_val D 0 xs
-  have hr := longDiv_rem D hD 0 xs hD
-  rw [Nat.zero_mul, Nat.zero_add] at hv
-  rw [← hv, Nat.add_comm, Nat.add_mul_div_right _ _ hD, Nat.div_eq_of_lt hr, Nat.zero_add]
-
 end Dc.BcModel

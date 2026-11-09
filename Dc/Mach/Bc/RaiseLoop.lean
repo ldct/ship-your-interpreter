@@ -67,10 +67,6 @@ theorem NumObj.inK_len (y x1 : NumObj) (c : Nat) :
     (y.inK x1 c).rep.len = y.rep.len := by
   obtain ⟨r, e, -, -⟩ := y.inK_rep x1 c; rw [e]
 
-theorem NumObj.inK_scale (y x1 : NumObj) (c : Nat) :
-    (y.inK x1 c).rep.scale = y.rep.scale := by
-  obtain ⟨r, e, -, -⟩ := y.inK_rep x1 c; rw [e]
-
 /-- `_zero_` as the handles' heap holds it. -/
 theorem KZero.inK {M : Mem} {z : NumObj} {k : Nat} (x1 : NumObj) (c : Nat) (h : KZero M z (k + c)) :
     KZero M (z.inK x1 c) k := by

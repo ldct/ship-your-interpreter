@@ -124,12 +124,6 @@ theorem HeapInv.brk_hi {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S 
 theorem HeapInv.brk_lo {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H) :
     heapStart ≤ H.brk := H.brk_lo hi.brkLo
 
-theorem HeapInv.brk_al {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H) :
-    H.brk % 16 = 0 := by
-  unfold Heap.brk; split
-  · decide
-  · exact hi.brkAl
-
 /-! ## The free list in memory -/
 
 /-- The pointer words a chain reads. -/
@@ -485,13 +479,6 @@ theorem HeapInv.push {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt
 
 
 /-! ## Frames and results -/
-
-/-- A store whose bytes all satisfy `P` leaves every other byte. -/
-theorem imgM_store_off {P : Nat → Prop} (Mt : Mem) {x w a : Nat} (v : BitVec 64)
-    (hw : ∀ j, j < w → P (x + j)) (ha : ¬ P a) : imgM (writeLog Mt [(x, w, v)]) a = imgM Mt a := by
-  refine imgM_store_miss _ _ (Classical.byContradiction fun hc => ha ?_)
-  have := hw (a - x) (by omega)
-  rwa [Nat.add_sub_cancel' (by omega)] at this
 
 /-- The allocator's bytes lie in its globals or the heap. -/
 theorem AllocByte.bound {S : Nat → Prop} {Mt : Mem} {H : Heap} (hi : HeapInv S Mt H) {a : Nat}

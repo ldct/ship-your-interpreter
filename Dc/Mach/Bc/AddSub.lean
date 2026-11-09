@@ -220,10 +220,6 @@ theorem NumRep.num_eq (o : NumRep) : o.num = ⟨o.neg, dvalBE o.ds, o.scale⟩ :
 theorem signWord_toNat (b : Bool) : (signWord b).toNat % 2 ^ 32 = b.toNat := by
   cases b <;> decide
 
-/-- Equal sign words, equal signs. -/
-theorem signWord_inj {a b : Bool} (h : signWord a = signWord b) : a = b := by
-  cases a <;> cases b <;> simp_all [signWord]
-
 /-! ## Inside `bc_add`/`bc_sub` -/
 
 /-- The registers changed inside `bc_add`/`bc_sub` before the epilogue. -/

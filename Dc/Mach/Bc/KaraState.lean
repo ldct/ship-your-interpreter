@@ -92,13 +92,6 @@ theorem KList_none (P : List NumObj) (hs : List Hd) (A B : List NumObj) (z : Num
       z.withRefs (z.rep.refs + zeroCount (none :: hs)) :: B := by
   simp only [KList, temps, List.filterMap_cons, id]
 
-theorem KList_rest (P : List NumObj) (hs : List Hd) (A B : List NumObj) (z : NumObj) :
-    KList P hs A B z = P ++ (temps hs ++ A ++ z.withRefs (z.rep.refs + zeroCount hs) :: B) := by
-  simp only [KList, List.append_assoc]
-
-theorem KList_single (y : NumObj) (hs : List Hd) (A B : List NumObj) (z : NumObj) :
-    KList [y] hs A B z = y :: KList [] hs A B z := rfl
-
 theorem KList_nil (P A B : List NumObj) (z : NumObj) : KList P [] A B z = P ++ (A ++ z :: B) := by
   simp only [KList, temps, List.filterMap_nil, zeroCount_nil, Nat.add_zero, NumObj.withRefs_self,
     List.append_nil, List.append_assoc]

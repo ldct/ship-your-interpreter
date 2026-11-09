@@ -46,13 +46,6 @@ theorem digits_step (b : Nat) (hb : 2 ≤ b) (n : Nat) (hn : n ≠ 0) :
   have h := digits_snoc b hb (n / b) (n % b) (Nat.mod_lt _ (by omega)) (by rw [Nat.div_add_mod]; exact hn)
   rwa [Nat.div_add_mod] at h
 
-/-- The invariant of that loop: the digits still to compute, then the
-pushed stack (top first). -/
-theorem digits_stack (b : Nat) (hb : 2 ≤ b) (n0 cur : Nat) (stk : List Nat)
-    (h : Num.digits b n0 = Num.digits b cur ++ stk) (hc : cur ≠ 0) :
-    Num.digits b n0 = Num.digits b (cur / b) ++ (cur % b :: stk) := by
-  rw [h, digits_step b hb cur hc]; simp
-
 /-- The decimal digits of a digit list without a leading zero are the list. -/
 theorem digits_dvalBE_len : ∀ (n : Nat) (ds : List Nat), ds.length = n → IsDigits ds →
     (∀ d ∈ ds.head?, d ≠ 0) → Num.digits 10 (dvalBE ds) = ds

@@ -735,6 +735,11 @@ theorem free_num_release {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   intro _
   bc_run hlive hS [h10, h2, hw, hrf, hr1, ldv_ld_miss, hpt] at 0x800048f0
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  -- `bc_run` rewrote the `rfl` facts of `free_facts`: state them again
+  have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
+  have hdfin : x.db.fin = x.db.h + 16 + x.db.sz := rfl
+  have hsph : x.sb.pay = x.sb.h + 16 := rfl
+  have hdph : x.db.pay = x.db.h + 16 := rfl
   generalize hM2e : writeLog (writeLog (writeLog Mt [(x.rep.p + 12, 4, 0#64)])
     [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)] = M2
   have hM2 : ∀ a, ¬ (x.sb.pay + 12 ≤ a ∧ a < x.sb.pay + 16) → ¬ frameIn sp 32 a →

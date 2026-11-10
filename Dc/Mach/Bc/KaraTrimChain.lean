@@ -87,13 +87,6 @@ theorem zeroCount_append : ∀ (a b : List Hd), zeroCount (a ++ b) = zeroCount a
   | some _ :: a, b => by
     simp only [List.cons_append, zeroCount_some, zeroCount_append a b]
 
-/-- Replacing one handle by its trim leaves the references to `_zero_`. -/
-theorem zeroCount_trim (pre post : List Hd) (h : Hd) (j : Nat) :
-    zeroCount (pre ++ h.trim j :: post) = zeroCount (pre ++ h :: post) := by
-  cases h with
-  | none => rfl
-  | some x => simp only [Hd.trim, zeroCount_append, zeroCount_some]
-
 /-- **One handle trimmed**: the site's span applied to the handle `h` of
 `KList [] (pre ++ h :: post) A B z`. -/
 theorem ktrimHd {live S : Nat → Prop} {X : Raws} {Q : (Nat → BitVec 64) → (Nat → BitVec 8) → Prop}

@@ -61,9 +61,6 @@ theorem rdRest_eq (ib : Nat) (neg : Bool) (s : List Nat) :
   dsimp only
   cases neg <;> simp only [Bool.false_eq_true, ↓reduceIte] <;> (unfold rdFrac; split <;> rfl)
 
-theorem readNum_us (ib : Nat) (rest : List Nat) :
-    readNum ib (95 :: rest) = rdRest ib true (rest.dropWhile isSpace) := rfl
-
 theorem readNum_no (ib : Nat) {w : List Nat} (h : w[0]? ≠ some 95) : readNum ib w = rdRest ib false w := by
   match w with
   | [] => rfl

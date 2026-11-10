@@ -161,19 +161,6 @@ theorem BcHeap.popNext {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F F'
   cases hb.dead with
   | cons _ ht => exact ht.head
 
-/-- A chain's head is a heap address, so it fits a word. -/
-theorem BcHeap.deadHead_lt {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
-    {L : List NumObj} (hb : BcHeap S X Mt H F L) : deadHead F < 2 ^ 64 := by
-  cases F with
-  | nil => simp only [deadHead]; omega
-  | cons b t =>
-    have fb := hb.heap.blk (List.mem_append_right _ (hb.deadLive b List.mem_cons_self).1)
-    have h1 := fb.fin; have h2 := fb.top
-    simp only [heapEnd] at h2
-    have h3 : b.pay = b.h + 16 := rfl
-    have h4 : b.fin = b.h + 16 + b.sz := rfl
-    simp only [deadHead]; omega
-
 /-- **The head word is `NULL` exactly when the chain is empty**: the test that
 sends an inlined `new_sub_num` to `malloc`. -/
 theorem BcHeap.deadHead_eq_zero_iff {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
@@ -228,16 +215,6 @@ theorem ViewStruct.sb_off {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H H' : Hea
     (hb : BcHeap S X Mt H F L) {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.sb.In a) : ¬ sb.In a :=
   fun hin => live_apart hv.inv (hv.mono _ (hb.blocks x hx).sLive) hv.live
     (fun he => hv.notObj (he ▸ mem_objBlocks hx)) ha hin
-
-/-- A byte of an object's digit buffer is off the view's struct. -/
-theorem ViewStruct.db_off {S : Nat → Prop} {X : Raws} {Mt M : Mem} {H H' : Heap} {F F' : List Blk}
-    {L : List NumObj} {sb : Blk} (hv : ViewStruct S Mt M H H' F F' sb L)
-    (hb : BcHeap S X Mt H F L) {x : NumObj} (hx : x ∈ L) {a : Nat} (ha : x.db.In a) : ¬ sb.In a := by
-  obtain ⟨y, hy, ho, he⟩ := hb.views.owner hx
-  refine fun hin => live_apart hv.inv (hv.mono _ (hb.blocks x hx).dLive) hv.live
-    (fun hne => hv.notObj ?_) ha hin
-  rw [← hne, ← he]
-  exact mem_objBlocks_db hy ho
 
 
 /-- The struct block's bounds and alignment. -/

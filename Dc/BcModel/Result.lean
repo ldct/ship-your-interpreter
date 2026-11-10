@@ -28,14 +28,6 @@ theorem dvalBE_take {ds : List Nat} (h : IsDigits ds) (k : Nat) :
   rw [hsplit, Nat.add_comm, Nat.add_mul_div_right _ _ (Nat.pow_pos (by decide)),
     Nat.div_eq_of_lt hlt, Nat.zero_add]
 
-/-- `bc_multiply`: the product array holds `a·b` in `len` digits with `full`
-fraction digits; reading `len - full + ps` of them (`n_len`, `n_scale = ps`)
-gives `Num.mul`'s magnitude. -/
-theorem mul_trunc {ds : List Nat} (h : IsDigits ds) {full ps : Nat} (hps : ps ≤ full)
-    (hfull : full ≤ ds.length) :
-    dvalBE (ds.take (ds.length - full + ps)) = dvalBE ds / 10 ^ (full - ps) := by
-  rw [dvalBE_take h]; congr 2; omega
-
 /-- `Num.mul`'s magnitude through the product array. -/
 theorem num_mul_mag (a b : Num) (k : Nat) :
     (Num.mul a b k).mag = a.mag * b.mag / 10 ^ (a.scale + b.scale -
@@ -71,37 +63,10 @@ theorem shift_value (A sa t : Nat) :
       ← Nat.div_div_eq_div_mul, Nat.mul_div_cancel _ (Nat.pow_pos (by decide))]
     congr 2; omega
 
-/-- Normalisation by `norm` (`_one_mult` of both operands) leaves each
-quotient unchanged. -/
-theorem norm_div (n X V : Nat) (hn : 0 < n) : n * X / (n * V) = X / V :=
-  Nat.mul_div_mul_left _ _ hn
-
-/-- The zero-quotient branch (`len2 > len1 + scale`): a dividend with fewer
-digits than the divisor divides to zero. -/
-theorem div_small {X V m : Nat} (hX : X < 10 ^ m) (hV : 10 ^ m ≤ V) : X / V = 0 :=
-  Nat.div_eq_of_lt (Nat.lt_of_lt_of_le hX hV)
-
 /-- A divisor whose top digit is nonzero is at least `10^(len-1)`. -/
 theorem dvalBE_ge_top {d : Nat} {ds : List Nat} (hd : 0 < d) :
     10 ^ ds.length ≤ dvalBE (d :: ds) := by
   rw [dvalBE_cons]
   exact Nat.le_add_right_of_le (Nat.le_mul_of_pos_left _ hd)
-
-/-- The remainder entering the first division step: a leading zero followed
-by `len2 - 1` digits is below a divisor with a nonzero top digit of `len2`
-digits. -/
-theorem first_window_lt {xs : List Nat} (hx : IsDigits xs) {d : Nat} {ds : List Nat} (hd : 0 < d)
-    (hlen : xs.length ≤ ds.length) : dvalBE xs < dvalBE (d :: ds) :=
-  Nat.lt_of_lt_of_le (dvalBE_lt hx)
-    (Nat.le_trans (Nat.pow_le_pow_right (by decide) hlen) (dvalBE_ge_top hd))
-
-/-- `bc_divide`'s loop: long division of the window digits from the first
-remainder computes the quotient of the whole prefix. -/
-theorem longDiv_prefix (D : Nat) (hD : 0 < D) (pre xs : List Nat) (hpre : dvalBE pre < D) :
-    dvalBE (longDiv D (dvalBE pre) xs).1 = dvalBE (pre ++ xs) / D := by
-  have hv := longDiv_val D (dvalBE pre) xs
-  have hr := longDiv_rem D hD (dvalBE pre) xs hpre
-  rw [dvalBE_append, ← hv, Nat.add_comm, Nat.add_mul_div_right _ _ hD, Nat.div_eq_of_lt hr,
-    Nat.zero_add]
 
 end Dc.BcModel

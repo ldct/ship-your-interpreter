@@ -56,208 +56,120 @@ theorem DcAt.binArgs {S : Nat → Prop} {M : Mem} {H : Heap} {F : List Blk} {L :
 theorem GV.Den.numObj {L : List NumObj} {ss : List StrObj} {p : Nat} {n : Num}
     (h : (GV.num p).Den ⟨L, ss⟩ (.num n)) : ∃ x ∈ L, x.rep.p = p ∧ x.rep.num = n := h
 
+set_option hygiene false in
+/-- **`dc_add`/`dc_sub`**: the two functions are the same code around their bc
+callee. `bc_init_num (result)`, then the callee `spec` (entered at `tgt`,
+computing `op a b 0`) on the slot, then the epilogue. -/
+macro "dc_addsub " tgt:num spec:ident op:ident : tactic =>
+  `(tactic| (
+    intro Q t M H F L C G hs st pa pb na nb R sp q hin _ hret hfail hoom
+    have hsf := hin.frame
+    have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
+    have hab := hin.above
+    simp only [heapEnd] at hab
+    have htx : tohostAddr = 0x8001ad00 := rfl
+    have hqs := hin.slotHi
+    have hql := hin.slot.lo; have hqh := hin.slot.hi; have hqa := hin.slot.al
+    have hS : HeapOwn S := fun a e1 e2 => hin.h.heap.heap.own a e1 e2
+    have h2 := hin.r2; have h10 := hin.r10; have h11 := hin.r11; have h13 := hin.r13
+    bc_run hlive hS [h2, h10, h11, h13] at 0x800049bc
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    have hM1 : MemOnly (frameIn sp 32) (writeLog (writeLog (writeLog (writeLog M
+        [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
+        [(sp - 32, 8, BitVec.ofNat 64 pb)]) M := fun a ha => by
+      simp only [frameIn] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
+    have l0 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
+        [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
+        [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32) = BitVec.ofNat 64 pb := ldv_store_hit _ _ _
+    have l8 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
+        [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
+        [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 8) = BitVec.ofNat 64 q := by
+      rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
+    have l16 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
+        [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
+        [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 16) = R 8 := by
+      repeat rw [ldv_ld_miss _ _ (by omega)]
+      rw [ldv_store_hit]
+    have l24 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
+        [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
+        [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 24) = R 1 := by
+      rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
+    generalize (writeLog (writeLog (writeLog (writeLog M
+        [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
+        [(sp - 32, 8, BitVec.ofNat 64 pb)]) = M1 at hM1 l0 l8 l16 l24 ⊢
+    have hab2 : heapEnd ≤ sp - 32 := by simp only [heapEnd]; omega
+    have h1 := hin.h.outWrite hM1 fun a ha =>
+      ⟨(above_sp (sp := sp - 32) hab2 (a := a) (by simp only [frameIn] at ha; omega)).1,
+       (above_sp (sp := sp - 32) hab2 (a := a) (by simp only [frameIn] at ha; omega)).2.1⟩
+    have hlen : (GV.num pa :: GV.num pb :: hs).length ≤ 2 ^ 30 := by
+      have := hin.hsLen; simp only [List.length_cons]; omega
+    refine dc_init_num_spec hlive h1 hlen hin.slot (by simp only [heapEnd]; omega) _ (by bsimp [])
+      (by bsimp []) fun R2 M2 L2 C2 hk2 hd2 hkeep hw2 hfr2 => ?_
+    obtain ⟨x1, hx1, e1p, e1n⟩ := (hkeep _ List.mem_cons_self _ hin.da).numObj
+    obtain ⟨x2, hx2, e2p, e2n⟩ := (hkeep _ (List.mem_cons_of_mem _ List.mem_cons_self) _ hin.db).numObj
+    obtain ⟨L1, L2, x, rfl, hxp⟩ := hd2.handle_num
+    rw [← hxp] at hd2 hw2
+    have ag2 : ∀ a, sp - 32 ≤ a → a < sp → imgM M2 a = imgM M1 a := fun a h1 h2 =>
+      hfr2 a (above_sp hab2 h1).1 fun hs => by simp only [slotBytes] at hs; omega
+    have m0 : ldv .ld M2 (sp - 32) = BitVec.ofNat 64 pb := by
+      rw [ldv_congr .ld fun j hj => ag2 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l0
+    have m8 : ldv .ld M2 (sp - 32 + 8) = BitVec.ofNat 64 q := by
+      rw [ldv_congr .ld fun j hj => ag2 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l8
+    have q2 : R2 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk2.get 2 (by decide)]; bsimp []
+    have r8 : R2 8 = BitVec.ofNat 64 pa := by rw [hk2.get 8 (by decide)]; bsimp []
+    have hS2 : HeapOwn S := fun a e1 e2 => hd2.heap.heap.own a e1 e2
+    bsimp []
+    bc_run hlive hS2 [q2, r8, m0, m8] at $tgt
+    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+    refine $spec hlive (smin := 0) ⟨hsf.within (m := 32) (n := 176) (by omega) (by decide),
+        by simp only [heapEnd]; omega, hin.slot,
+        fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega), .inr (by omega),
+        by bsimp [q2], by bsimp []⟩
+      (hd2.binArgs hx1 hx2 (by decide)) (fun _ => ⟨hd2.den.pos x1 hx1, hd2.den.pos x2 hx2⟩)
+      hd2.heap (hd2.resSlot hw2) (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp [])
+      ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hal16 hout => ?_⟩
+    · obtain ⟨C3, hd3, hkeep3⟩ := hd2.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
+        hp.out a ha.outHeap (fun hs => by have := ha.lt; simp only [heapStart, slotBytes] at this hs; omega)
+          (fun hf => by have := ha.lt; simp only [heapStart, frameIn] at this hf; omega)
+      have agT : ∀ a, sp - 32 ≤ a → a < sp → imgM Mt a = imgM M1 a := fun a e1 e2 => by
+        rw [hp.out a (above_sp hab2 e1).1 (fun hs => by simp only [slotBytes] at hs; omega)
+          ((above_sp hab2 e1).2.2 176)]
+        exact ag2 a e1 e2
+      have e16 : ldv .ld Mt (sp - 32 + 16) = R 8 := by
+        rw [ldv_congr .ld fun j hj => agT _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l16
+      have e24 : ldv .ld Mt (sp - 32 + 24) = R 1 := by
+        rw [ldv_congr .ld fun j hj => agT _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l24
+      have q3 : R3 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk3.get 2 (by decide)]; bsimp [q2]
+      have hS3 : HeapOwn S := fun a e1 e2 => hd3.heap.heap.own a e1 e2
+      bsimp []
+      bc_run hlive hS3 [q3, e16, e24]
+      all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+      · exact hin.al
+      refine hret _ Mt H3 F3 (y :: L3) C3 G y.rep.p ($op na nb 0)
+        (Keeps.restore (by rw [h2]; congr 1; omega) (Keeps.upd _ (by decide) (Keeps.restore rfl
+          (by keeps_tac ((hk3.mono (by decide)).trans
+            (by keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))))))
+        ⟨by bsimp [], hd3, rfl, ⟨y, List.mem_cons_self, rfl, by rw [hp.num, e1n, e2n]⟩,
+          by rw [hp.slot, (hp.heap.blocks y List.mem_cons_self).sPay], rfl, by omega,
+          fun a ho hg hf hs => ?_⟩
+      rw [hp.out a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
+      exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
+    · bc_run hlive hS2 [] at 0x80001e74
+      refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_, by sp_al⟩
+      rw [hout a ho fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
+      exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)))
+
 /-- **`dc_add`** at `0x80002230`: `bc_init_num (result)`, then
 `bc_add (a, b, result, 0)`; a 208-byte window, no reference lost. -/
 theorem dc_add_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1) :
     DcOp live S 0x80002230 208 0 (fun _ _ _ => True) (fun _ a b => some (Num.add a b 0)) := by
-  intro Q t M H F L C G hs st pa pb na nb R sp q hin _ hret hfail hoom
-  have hsf := hin.frame
-  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
-  have hab := hin.above
-  simp only [heapEnd] at hab
-  have htx : tohostAddr = 0x8001ad00 := rfl
-  have hqs := hin.slotHi
-  have hql := hin.slot.lo; have hqh := hin.slot.hi; have hqa := hin.slot.al
-  have hS : HeapOwn S := fun a e1 e2 => hin.h.heap.heap.own a e1 e2
-  have h2 := hin.r2; have h10 := hin.r10; have h11 := hin.r11; have h13 := hin.r13
-  bc_run hlive hS [h2, h10, h11, h13] at 0x800049bc
-  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-  have hM1 : MemOnly (frameIn sp 32) (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) M := fun a ha => by
-    simp only [frameIn] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
-  have l0 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32) = BitVec.ofNat 64 pb := ldv_store_hit _ _ _
-  have l8 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 8) = BitVec.ofNat 64 q := by
-    rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
-  have l16 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 16) = R 8 := by
-    repeat rw [ldv_ld_miss _ _ (by omega)]
-    rw [ldv_store_hit]
-  have l24 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 24) = R 1 := by
-    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
-  generalize (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) = M1 at hM1 l0 l8 l16 l24 ⊢
-  have hab2 : heapEnd ≤ sp - 32 := by simp only [heapEnd]; omega
-  have h1 := hin.h.outWrite hM1 fun a ha =>
-    ⟨(above_sp (sp := sp - 32) hab2 (a := a) (by simp only [frameIn] at ha; omega)).1,
-     (above_sp (sp := sp - 32) hab2 (a := a) (by simp only [frameIn] at ha; omega)).2.1⟩
-  have hlen : (GV.num pa :: GV.num pb :: hs).length ≤ 2 ^ 30 := by
-    have := hin.hsLen; simp only [List.length_cons]; omega
-  refine dc_init_num_spec hlive h1 hlen hin.slot (by simp only [heapEnd]; omega) _ (by bsimp [])
-    (by bsimp []) fun R2 M2 L2 C2 hk2 hd2 hkeep hw2 hfr2 => ?_
-  obtain ⟨x1, hx1, e1p, e1n⟩ := (hkeep _ List.mem_cons_self _ hin.da).numObj
-  obtain ⟨x2, hx2, e2p, e2n⟩ := (hkeep _ (List.mem_cons_of_mem _ List.mem_cons_self) _ hin.db).numObj
-  obtain ⟨L1, L2, x, rfl, hxp⟩ := hd2.handle_num
-  rw [← hxp] at hd2 hw2
-  have ag2 : ∀ a, sp - 32 ≤ a → a < sp → imgM M2 a = imgM M1 a := fun a h1 h2 =>
-    hfr2 a (above_sp hab2 h1).1 fun hs => by simp only [slotBytes] at hs; omega
-  have m0 : ldv .ld M2 (sp - 32) = BitVec.ofNat 64 pb := by
-    rw [ldv_congr .ld fun j hj => ag2 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l0
-  have m8 : ldv .ld M2 (sp - 32 + 8) = BitVec.ofNat 64 q := by
-    rw [ldv_congr .ld fun j hj => ag2 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l8
-  have q2 : R2 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk2.get 2 (by decide)]; bsimp []
-  have r8 : R2 8 = BitVec.ofNat 64 pa := by rw [hk2.get 8 (by decide)]; bsimp []
-  have hS2 : HeapOwn S := fun a e1 e2 => hd2.heap.heap.own a e1 e2
-  bsimp []
-  bc_run hlive hS2 [q2, r8, m0, m8] at 0x80005634
-  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-  refine bc_add_spec hlive (smin := 0) ⟨hsf.within (m := 32) (n := 176) (by omega) (by decide),
-      by simp only [heapEnd]; omega, hin.slot,
-      fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega), .inr (by omega),
-      by bsimp [q2], by bsimp []⟩
-    (hd2.binArgs hx1 hx2 (by decide)) (fun _ => ⟨hd2.den.pos x1 hx1, hd2.den.pos x2 hx2⟩)
-    hd2.heap (hd2.resSlot hw2) (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp [])
-    ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hal16 hout => ?_⟩
-  · obtain ⟨C3, hd3, hkeep3⟩ := hd2.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
-      hp.out a ha.outHeap (fun hs => by have := ha.lt; simp only [heapStart, slotBytes] at this hs; omega)
-        (fun hf => by have := ha.lt; simp only [heapStart, frameIn] at this hf; omega)
-    have agT : ∀ a, sp - 32 ≤ a → a < sp → imgM Mt a = imgM M1 a := fun a e1 e2 => by
-      rw [hp.out a (above_sp hab2 e1).1 (fun hs => by simp only [slotBytes] at hs; omega)
-        ((above_sp hab2 e1).2.2 176)]
-      exact ag2 a e1 e2
-    have e16 : ldv .ld Mt (sp - 32 + 16) = R 8 := by
-      rw [ldv_congr .ld fun j hj => agT _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l16
-    have e24 : ldv .ld Mt (sp - 32 + 24) = R 1 := by
-      rw [ldv_congr .ld fun j hj => agT _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l24
-    have q3 : R3 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk3.get 2 (by decide)]; bsimp [q2]
-    have hS3 : HeapOwn S := fun a e1 e2 => hd3.heap.heap.own a e1 e2
-    bsimp []
-    bc_run hlive hS3 [q3, e16, e24]
-    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-    · exact hin.al
-    refine hret _ Mt H3 F3 (y :: L3) C3 G y.rep.p (Num.add na nb 0)
-      (Keeps.restore (by rw [h2]; congr 1; omega) (Keeps.upd _ (by decide) (Keeps.restore rfl
-        (by keeps_tac ((hk3.mono (by decide)).trans
-          (by keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))))))
-      ⟨by bsimp [], hd3, rfl, ⟨y, List.mem_cons_self, rfl, by rw [hp.num, e1n, e2n]⟩,
-        by rw [hp.slot, (hp.heap.blocks y List.mem_cons_self).sPay], rfl, by omega,
-        fun a ho hg hf hs => ?_⟩
-    rw [hp.out a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
-    exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
-  · bc_run hlive hS2 [] at 0x80001e74
-    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_, by sp_al⟩
-    rw [hout a ho fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
-    exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
+  dc_addsub 0x80005634 bc_add_spec Num.add
 
 /-- **`dc_sub`** at `0x80002278`: `bc_init_num (result)`, then
 `bc_sub (a, b, result, 0)`; a 208-byte window, no reference lost. -/
 theorem dc_sub_spec {live S : Nat → Prop} (hlive : ∀ p ∈ dcText, live p.1) :
     DcOp live S 0x80002278 208 0 (fun _ _ _ => True) (fun _ a b => some (Num.sub a b 0)) := by
-  intro Q t M H F L C G hs st pa pb na nb R sp q hin _ hret hfail hoom
-  have hsf := hin.frame
-  have hsl := hsf.lo; have hsh := hsf.hi; have hsa := hsf.al
-  have hab := hin.above
-  simp only [heapEnd] at hab
-  have htx : tohostAddr = 0x8001ad00 := rfl
-  have hqs := hin.slotHi
-  have hql := hin.slot.lo; have hqh := hin.slot.hi; have hqa := hin.slot.al
-  have hS : HeapOwn S := fun a e1 e2 => hin.h.heap.heap.own a e1 e2
-  have h2 := hin.r2; have h10 := hin.r10; have h11 := hin.r11; have h13 := hin.r13
-  bc_run hlive hS [h2, h10, h11, h13] at 0x800049bc
-  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-  have hM1 : MemOnly (frameIn sp 32) (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) M := fun a ha => by
-    simp only [frameIn] at ha; repeat rw [imgM_store_miss _ _ (by omega)]
-  have l0 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32) = BitVec.ofNat 64 pb := ldv_store_hit _ _ _
-  have l8 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 8) = BitVec.ofNat 64 q := by
-    rw [ldv_ld_miss _ _ (by omega), ldv_store_hit]
-  have l16 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 16) = R 8 := by
-    repeat rw [ldv_ld_miss _ _ (by omega)]
-    rw [ldv_store_hit]
-  have l24 : ldv .ld (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) (sp - 32 + 24) = R 1 := by
-    rw [ldv_ld_miss _ _ (by omega), ldv_ld_miss _ _ (by omega), ldv_store_hit]
-  generalize (writeLog (writeLog (writeLog (writeLog M
-      [(sp - 32 + 16, 8, R 8)]) [(sp - 32 + 24, 8, R 1)]) [(sp - 32 + 8, 8, BitVec.ofNat 64 q)])
-      [(sp - 32, 8, BitVec.ofNat 64 pb)]) = M1 at hM1 l0 l8 l16 l24 ⊢
-  have hab2 : heapEnd ≤ sp - 32 := by simp only [heapEnd]; omega
-  have h1 := hin.h.outWrite hM1 fun a ha =>
-    ⟨(above_sp (sp := sp - 32) hab2 (a := a) (by simp only [frameIn] at ha; omega)).1,
-     (above_sp (sp := sp - 32) hab2 (a := a) (by simp only [frameIn] at ha; omega)).2.1⟩
-  have hlen : (GV.num pa :: GV.num pb :: hs).length ≤ 2 ^ 30 := by
-    have := hin.hsLen; simp only [List.length_cons]; omega
-  refine dc_init_num_spec hlive h1 hlen hin.slot (by simp only [heapEnd]; omega) _ (by bsimp [])
-    (by bsimp []) fun R2 M2 L2 C2 hk2 hd2 hkeep hw2 hfr2 => ?_
-  obtain ⟨x1, hx1, e1p, e1n⟩ := (hkeep _ List.mem_cons_self _ hin.da).numObj
-  obtain ⟨x2, hx2, e2p, e2n⟩ := (hkeep _ (List.mem_cons_of_mem _ List.mem_cons_self) _ hin.db).numObj
-  obtain ⟨L1, L2, x, rfl, hxp⟩ := hd2.handle_num
-  rw [← hxp] at hd2 hw2
-  have ag2 : ∀ a, sp - 32 ≤ a → a < sp → imgM M2 a = imgM M1 a := fun a h1 h2 =>
-    hfr2 a (above_sp hab2 h1).1 fun hs => by simp only [slotBytes] at hs; omega
-  have m0 : ldv .ld M2 (sp - 32) = BitVec.ofNat 64 pb := by
-    rw [ldv_congr .ld fun j hj => ag2 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l0
-  have m8 : ldv .ld M2 (sp - 32 + 8) = BitVec.ofNat 64 q := by
-    rw [ldv_congr .ld fun j hj => ag2 _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l8
-  have q2 : R2 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk2.get 2 (by decide)]; bsimp []
-  have r8 : R2 8 = BitVec.ofNat 64 pa := by rw [hk2.get 8 (by decide)]; bsimp []
-  have hS2 : HeapOwn S := fun a e1 e2 => hd2.heap.heap.own a e1 e2
-  bsimp []
-  bc_run hlive hS2 [q2, r8, m0, m8] at 0x80004ac4
-  all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-  refine bc_sub_spec hlive (smin := 0) ⟨hsf.within (m := 32) (n := 176) (by omega) (by decide),
-      by simp only [heapEnd]; omega, hin.slot,
-      fun a ha => outHeap_of_ge (by simp only [slotBytes, heapEnd] at ha ⊢; omega), .inr (by omega),
-      by bsimp [q2], by bsimp []⟩
-    (hd2.binArgs hx1 hx2 (by decide)) (fun _ => ⟨hd2.den.pos x1 hx1, hd2.den.pos x2 hx2⟩)
-    hd2.heap (hd2.resSlot hw2) (by bsimp [e1p]) (by bsimp [e2p]) (by bsimp []) (by bsimp [])
-    ⟨fun R3 Mt H3 F3 L3 y hk3 hp => ?_, fun R3 Mt sp' o1 o2 hr2 hal16 hout => ?_⟩
-  · obtain ⟨C3, hd3, hkeep3⟩ := hd2.newNum hp.rest hp.heap hp.refs hp.norm hp.pos hp.owns fun a ha =>
-      hp.out a ha.outHeap (fun hs => by have := ha.lt; simp only [heapStart, slotBytes] at this hs; omega)
-        (fun hf => by have := ha.lt; simp only [heapStart, frameIn] at this hf; omega)
-    have agT : ∀ a, sp - 32 ≤ a → a < sp → imgM Mt a = imgM M1 a := fun a e1 e2 => by
-      rw [hp.out a (above_sp hab2 e1).1 (fun hs => by simp only [slotBytes] at hs; omega)
-        ((above_sp hab2 e1).2.2 176)]
-      exact ag2 a e1 e2
-    have e16 : ldv .ld Mt (sp - 32 + 16) = R 8 := by
-      rw [ldv_congr .ld fun j hj => agT _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l16
-    have e24 : ldv .ld Mt (sp - 32 + 24) = R 1 := by
-      rw [ldv_congr .ld fun j hj => agT _ (by omega) (by simp only [widthOfM] at hj; omega)]; exact l24
-    have q3 : R3 2 = BitVec.ofNat 64 (sp - 32) := by rw [hk3.get 2 (by decide)]; bsimp [q2]
-    have hS3 : HeapOwn S := fun a e1 e2 => hd3.heap.heap.own a e1 e2
-    bsimp []
-    bc_run hlive hS3 [q3, e16, e24]
-    all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
-    · exact hin.al
-    refine hret _ Mt H3 F3 (y :: L3) C3 G y.rep.p (Num.sub na nb 0)
-      (Keeps.restore (by rw [h2]; congr 1; omega) (Keeps.upd _ (by decide) (Keeps.restore rfl
-        (by keeps_tac ((hk3.mono (by decide)).trans
-          (by keeps_tac ((hk2.mono (by decide)).trans (by keeps_tac Keeps.refl _ _))))))))
-      ⟨by bsimp [], hd3, rfl, ⟨y, List.mem_cons_self, rfl, by rw [hp.num, e1n, e2n]⟩,
-        by rw [hp.slot, (hp.heap.blocks y List.mem_cons_self).sPay], rfl, by omega,
-        fun a ho hg hf hs => ?_⟩
-    rw [hp.out a ho hs fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
-    exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
-  · bc_run hlive hS2 [] at 0x80001e74
-    refine hoom R3 Mt sp' ⟨by omega, by omega, hr2, fun a ho hg hf hs => ?_, by sp_al⟩
-    rw [hout a ho fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega), hfr2 a ho hs]
-    exact hM1 a fun hf' => hf (by simp only [frameIn] at hf' ⊢; omega)
-
+  dc_addsub 0x80004ac4 bc_sub_spec Num.sub
 
 /-- **`_zero_` as the Karatsuba steps need it**: the one digit `0`, with
 room for `2^30 + 8` more references while the caller holds at most `2^20`

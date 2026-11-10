@@ -40,9 +40,6 @@ theorem SqInv.mono {x g : Num} {c cs cs' : Nat} (h : SqInv x c g cs) (h1 : cs �
 theorem div_mul_le' (a b c : Nat) : a / b * c ≤ a * c / b := by
   rw [Nat.mul_comm (a / b), Nat.mul_comm a]; exact Nat.mul_div_le_mul_div_assoc c a b
 
-theorem pow_mul_pow_sub {a b : Nat} (h : a ≤ b) : 10 ^ a * 10 ^ (b - a) = 10 ^ b := by
-  rw [← Nat.pow_add, Nat.add_sub_cancel' h]
-
 /-- The quotient of a nonzero guess at scale `c`: at most `x·10^c`. -/
 theorem quot_align_le (x g : Num) {c cs : Nat} (hg : g.mag ≠ 0) (hgs : g.scale ≤ cs)
     (hcs : cs ≤ c) (hxs : x.scale ≤ c) :
@@ -117,12 +114,6 @@ theorem sqInv_step {x g : Num} {c cs : Nat} (hx : x.neg = false) (hxs : x.scale 
     generalize (Q + B) / 2 * P = L at hd ⊢
     generalize x.align c * 10 ^ c = XC at hq hU
     omega
-
-/-- The refined working scale. -/
-theorem sqInv_refine {x g : Num} {k cs : Nat} (h : SqInv x (sqC x k) g cs)
-    (hc : cs < max k x.scale + 1) :
-    SqInv x (sqC x k) g (min (cs * 3) (max k x.scale + 1)) :=
-  h.mono (by have := h.pos; omega) (by unfold sqC; omega)
 
 /-- `10^u` as `bc_raise (10, u, 0)` computes it. -/
 theorem raise_ten (u : Nat) (hu : u / 10 ≤ Num.longMax / 10) :

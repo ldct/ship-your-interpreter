@@ -150,26 +150,4 @@ theorem noCarry_sub {y w : NumRep} {s : Nat} (hyl : y.ds.length = y.len + y.scal
       subRipB (accLE y s) (valLE w) 0 := Nat.le_mul_of_pos_right _ hp
   omega
 
-/-- The accumulator's digits after the call: as many, all digits. -/
-theorem shiftDs_shape {y w : NumRep} {s : Nat} {sub : Bool} (hyl : y.ds.length = y.len + y.scale)
-    (hyd : IsDigits y.ds) (hfit : s + valCount w ≤ y.len + y.scale) (hwd : IsDigits w.ds) :
-    (shiftDs y w s sub).length = y.len + y.scale ∧ IsDigits (shiftDs y w s sub) := by
-  have ha : IsDigits (accLE y s) := fun d hd => hyd d (List.mem_of_mem_take (List.mem_reverse.mp hd))
-  have hv : IsDigits (valLE w) := fun d hd =>
-    hwd d (List.mem_of_mem_take (List.mem_reverse.mp (List.mem_of_mem_take hd)))
-  have hal : (accLE y s).length = y.len + y.scale - s := by
-    simp only [accLE, List.length_reverse, List.length_take]; omega
-  unfold shiftDs ripOp
-  cases sub
-  · simp only [Bool.false_eq_true, ↓reduceIte]
-    refine ⟨by simp [addRip_length, hal]; omega, fun d hd => ?_⟩
-    rcases List.mem_append.mp hd with hd | hd
-    · exact addRip_digits _ _ 0 ha hv (Nat.zero_le _) d (List.mem_reverse.mp hd)
-    · exact hyd d (List.mem_of_mem_drop hd)
-  · simp only [↓reduceIte]
-    refine ⟨by simp [subRip_length, hal]; omega, fun d hd => ?_⟩
-    rcases List.mem_append.mp hd with hd | hd
-    · exact subRip_digits _ _ 0 ha hv (Nat.zero_le _) d (List.mem_reverse.mp hd)
-    · exact hyd d (List.mem_of_mem_drop hd)
-
 end Dc.Mach

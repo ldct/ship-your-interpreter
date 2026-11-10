@@ -122,9 +122,6 @@ theorem SinkDst.read_of_byte {k : Nat} {dst : SinkDst} {a : Nat} (h : dst.Byte k
     · exact .inl ⟨by have := h.1; omega, h.2⟩
     · exact .inr h
 
-theorem lo8_zext (b : BitVec 8) : lo8 (zero_extend (m := 64) b) = b := by
-  rw [← sbData_eq]; exact sbData_zext b
-
 /-- The emit loop at `0x800000e8`: `a5` at the digit `j` (at `sp - 88 + j`),
 `a0` one below the first digit, `a4` the count, the digits `g (N-1), …,
 g (j+1)` already emitted. -/

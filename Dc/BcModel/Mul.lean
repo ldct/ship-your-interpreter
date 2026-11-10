@@ -88,10 +88,6 @@ theorem fval_dig : ∀ (ds : List Nat), fval (dig ds) ds.length = dvalLE ds
     simp only [dig, List.getD_cons_zero, List.getD_cons_succ]
     rw [fval_dig ds]
 
-/-- Entries beyond the list are zero. -/
-theorem dig_ge {ds : List Nat} {i : Nat} (h : ds.length ≤ i) : dig ds i = 0 := by
-  simp only [dig, List.getD_eq_getElem?_getD, List.getElem?_eq_none h, Option.getD_none]
-
 theorem fval_extend {f : Nat → Nat} {m n : Nat} (hmn : m ≤ n) (h : ∀ i, m ≤ i → f i = 0) :
     fval f n = fval f m := by
   unfold fval
@@ -218,36 +214,10 @@ theorem propLE_length : ∀ (cs : List Nat) (c : Nat), (propLE cs c).length = cs
   | [], _ => rfl
   | _ :: xs, c => by simp only [propLE, List.length_cons]; rw [propLE_length xs]
 
-theorem dvalLE_map_range (f : Nat → Nat) : ∀ n, dvalLE ((List.range n).map f) = fval f n := by
-  intro n
-  induction n generalizing f with
-  | zero => rfl
-  | succ n ih =>
-    rw [List.range_succ_eq_map, List.map_cons, List.map_map, dvalLE, fval_succ']
-    congr 2
-    exact ih (fun i => f (i + 1))
-
 /-- **`_bc_simp_mul`'s digits** (little-endian) for operands of `la`, `lb`
 digits: the column sums `conv` of the first `la + lb - 1` columns,
 propagated from carry `0`. Their value is the product. -/
 def simpMulLE (a : Nat → Nat) (la : Nat) (b : Nat → Nat) (lb : Nat) : List Nat :=
   propLE ((List.range (la + lb - 1)).map (conv a b)) 0
-
-theorem simpMulLE_val (a : Nat → Nat) (la : Nat) (b : Nat → Nat) (lb : Nat) (hla : 1 ≤ la)
-    (hlb : 1 ≤ lb) (ha : ∀ i, la ≤ i → a i = 0) (hb : ∀ j, lb ≤ j → b j = 0) :
-    dvalLE (simpMulLE a la b lb) = fval a la * fval b lb := by
-  unfold simpMulLE
-  rw [propLE_val, dvalLE_map_range, Nat.add_zero]
-  rw [← fval_conv la a b lb (la + lb) ha hb (Nat.le_refl _)]
-  refine (fval_extend (by omega) fun k hk => ?_).symm
-  unfold conv
-  exact sumR_zero fun i hi => by
-    rcases Nat.lt_or_ge i la with h1 | h1
-    · rw [hb (k - i) (by omega), Nat.mul_zero]
-    · rw [ha i h1, Nat.zero_mul]
-
-theorem simpMulLE_length (a : Nat → Nat) (la : Nat) (b : Nat → Nat) (lb : Nat) :
-    (simpMulLE a la b lb).length = la + lb - 1 + 1 := by
-  simp [simpMulLE, propLE_length]
 
 end Dc.BcModel

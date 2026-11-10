@@ -340,13 +340,6 @@ theorem NumAt.frame {Mt Mt' : Mem} {o : NumRep} (h : NumAt Mt o)
   · rw [← h.value]; exact hs 32 .ld (by decide)
   · rw [hag _ (.inr ⟨by omega, by omega⟩)]; exact h.digit i hi
 
-/-- The footprint lies in the heap. -/
-theorem NumAt.foot_heap {Mt : Mem} {o : NumRep} (h : NumAt Mt o) {a : Nat} (ha : o.Foot a) :
-    heapStart ≤ a ∧ a < heapEnd := by
-  have := h.shape.pLo; have := h.shape.pHi; have := h.shape.vLo; have := h.shape.vHi
-  have := h.shape.ptrLe
-  rcases ha with ⟨h1, h2⟩ | ⟨h1, h2⟩ <;> constructor <;> omega
-
 /-! ## Values of an object -/
 
 theorem NumRep.num_mag (o : NumRep) : o.num.mag = dval o.ds := rfl
@@ -496,10 +489,5 @@ theorem sx32_small {k : Nat} (hk : k < 2 ^ 31) : sx32 (BitVec.ofNat 64 k) = BitV
   rw [BitVec.toNat_signExtend]
   simp [msb32_small hk]
   omega
-
-/-- A word load reads the value of its signed 32-bit word. -/
-theorem sx32_toNat_mod (v : BitVec 64) : (sx32 v).toNat % 2 ^ 32 = v.toNat % 2 ^ 32 := by
-  simp only [sx32, BitVec.toNat_signExtend, BitVec.truncate_eq_setWidth, BitVec.toNat_setWidth]
-  split <;> omega
 
 end Dc.Mach

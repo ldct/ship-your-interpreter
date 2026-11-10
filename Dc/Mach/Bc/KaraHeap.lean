@@ -24,8 +24,6 @@ set_option linter.unusedSimpArgs false
 def NumObj.withRefs (x : NumObj) (k : Nat) : NumObj :=
   { x with rep := { x.rep with refs := k } }
 
-theorem NumObj.withRefs_sb (x : NumObj) (k : Nat) : (x.withRefs k).sb = x.sb := rfl
-theorem NumObj.withRefs_db (x : NumObj) (k : Nat) : (x.withRefs k).db = x.db := rfl
 theorem NumObj.withRefs_withRefs (x : NumObj) (k j : Nat) :
     (x.withRefs k).withRefs j = x.withRefs j := rfl
 theorem NumObj.withRefs_self (x : NumObj) : x.withRefs x.rep.refs = x := rfl

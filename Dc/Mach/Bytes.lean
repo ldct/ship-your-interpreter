@@ -85,10 +85,6 @@ theorem sbData_zext (b : BitVec 8) : sbData (zero_extend (m := 64) b) = b := by
 theorem ldv_lbu (Mt : Mem) (a : Nat) : ldv .lbu Mt a = zero_extend (m := 64) (imgM Mt a) := by
   simp [ldv, bytesAt, bytesVal, widthOfM]
 
-/-- A byte store of a loaded byte stores that byte. -/
-theorem sbData_lbu (Mt : Mem) (a : Nat) : sbData (ldv .lbu Mt a) = imgM Mt a := by
-  rw [ldv_lbu]; exact sbData_zext _
-
 /-- One more byte stored at the end of a fill. -/
 theorem Filled.snoc {Mt Mt0 : Mem} {d i : Nat} {g : Nat → BitVec 8} (h : Filled Mt Mt0 d i g)
     {A : Nat} (hA : A = d + i) {v : BitVec 64} (hv : sbData v = g i) :
@@ -125,13 +121,6 @@ theorem ofNat_eq_zero_iff {x : Nat} (hx : x < 2 ^ 64) : BitVec.ofNat 64 x = 0#64
 
 theorem ofNat_add_ofNat (x y : Nat) : BitVec.ofNat 64 x + BitVec.ofNat 64 y = BitVec.ofNat 64 (x + y) := by
   apply BitVec.eq_of_toNat_eq; simp [BitVec.toNat_add, Nat.add_mod]
-
-theorem ofNat_sub_one {x : Nat} (hx : 1 ≤ x) :
-    BitVec.ofNat 64 x + 0xffffffffffffffff#64 = BitVec.ofNat 64 (x - 1) := by
-  obtain ⟨y, rfl⟩ : ∃ y, x = y + 1 := ⟨x - 1, by omega⟩
-  rw [← ofNat_add_ofNat, BitVec.add_assoc,
-    show (BitVec.ofNat 64 1 + 0xffffffffffffffff#64 : BitVec 64) = 0#64 by decide,
-    BitVec.add_zero, Nat.add_sub_cancel]
 
 theorem toNat_ofNat_m1 {x : Nat} (h1 : 1 ≤ x) (h2 : x < 2 ^ 64) :
     (BitVec.ofNat 64 (x + 18446744073709551615)).toNat = x - 1 := by

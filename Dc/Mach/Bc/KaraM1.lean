@@ -120,11 +120,6 @@ theorem KAt.subCall {S : Nat → Prop} {M0 M M' : Mem} {R0 R : Nat → BitVec 64
   st.call cx o ho fun a h1 h2 h3 => hout a h1 h2 fun h => h3 (by
     simp only [frameIn] at h ⊢; omega)
 
-/-- A handle's object in the heap and the handle's object agree on the value. -/
-theorem Hd.objIn_num (hs : List Hd) (z : NumObj) (h : Hd) :
-    (Hd.objIn hs z h).rep.num = (Hd.o z h).rep.num := by
-  cases h <;> rfl
-
 /-- ... and on `bc_sub`'s machine result. -/
 theorem Hd.objIn_subM (hs : List Hd) (z : NumObj) (h1 h2 : Hd) (smin : Nat) :
     (Hd.objIn hs z h1).rep.subM (Hd.objIn hs z h2).rep smin = (Hd.o z h1).rep.subM (Hd.o z h2).rep smin := by
@@ -243,17 +238,6 @@ theorem kperm9_of {hu1 hu0 hv1 hv0 : Hd} {hs0 : List Hd} (hp : hs0.Perm [hu1, hu
     (h3 :: h2 :: hm1 :: y2 :: y1 :: hs0).Perm (kHs hu1 hu0 hv1 hm1 hv0 h2 h3 y1 y2) :=
   ((((hp.cons y1).cons y2).cons hm1).cons h2).cons h3 |>.trans
     (kperm9 hu1 hu0 hv1 hv0 hm1 h2 h3 y1 y2)
-
-/-- A number with scale `0`: its value is the digits' value. -/
-theorem hdVal_of_num {y : NumObj} {M : Mem} (hy : NumAt M y.rep) {b : Bool} {w : Nat}
-    (h : y.rep.num = ⟨b, w, 0⟩) : hdVal y = w := by
-  have hl := hy.shape.dsLen
-  have hs : y.rep.scale = 0 := by
-    have := congrArg Num.scale h; simpa [NumRep.num] using this
-  have hv := congrArg Num.mag h
-  show dvalBE (y.rep.ds.take y.rep.len) = w
-  rw [List.take_of_length_le (by omega)]
-  simpa [NumRep.num, dval_eq_dvalBE] using hv
 
 /-- `KSubs` through register changes off the step's registers. -/
 theorem KSubs.keeps {S : Nat → Prop} {M0 M : Mem} {R0 R R' : Nat → BitVec 64}

@@ -111,9 +111,4 @@ theorem RaiseInv.step {u T P e : Nat} (h : RaiseInv u T P e) :
 theorem RaiseInv.done {u T P : Nat} (h : RaiseInv u T P 0) : T = u := by
   have := h.total; simp at this; omega
 
-/-- The first loop: while the exponent is even, square. -/
-theorem raise_first_step {u i e : Nat} (hu : u = 2 ^ i * e) (he : e % 2 = 0) :
-    u = 2 ^ (i + 1) * (e / 2) := by
-  rw [hu, Nat.pow_succ, Nat.mul_assoc, Nat.mul_div_cancel' (Nat.dvd_of_mod_eq_zero he)]
-
 end Dc.BcModel

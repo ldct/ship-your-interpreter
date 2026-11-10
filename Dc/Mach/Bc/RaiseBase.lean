@@ -189,13 +189,6 @@ theorem KList.cons_some (y : NumObj) (hs : List Hd) (A B : List NumObj) (z : Num
   simp only [KList, temps, List.filterMap_cons, id, zeroCount_some, List.nil_append,
     List.cons_append]
 
-/-- The object a handle names in the heap. -/
-theorem KList.objIn_split (hs1 hs2 : List Hd) (h : Hd) (A B : List NumObj) (z : NumObj) :
-    ∃ L1 L2, KList [] (hs1 ++ h :: hs2) A B z = L1 ++ Hd.objIn (hs1 ++ h :: hs2) z h :: L2 := by
-  cases h with
-  | some x => exact ⟨_, _, KList.split_some hs1 hs2 x A B z⟩
-  | none => exact ⟨_, _, KList.split_none hs1 hs2 A B z⟩
-
 /-! ## Truncation by `n_scale` -/
 
 /-- The object with its scale cut to `s`: the digits past it are ignored. -/

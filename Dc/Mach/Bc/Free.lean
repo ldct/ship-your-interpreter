@@ -480,6 +480,75 @@ structure AfterFree (S : Nat → Prop) (Mt M2 Mt3 : Mem) (H : Heap) (x : NumObj)
   r2 : R1 2 = BitVec.ofNat 64 (sp - 32)
   regs : ∀ z, z ≠ 1 → z ≠ 2 → z ≠ 10 → z ≠ 13 → z ≠ 14 → z ≠ 15 → R1 z = R z
 
+set_option hygiene false in
+/-- The facts of the entry `e : FreeEntry …` on an owning `x` (`ho : x.Owns`) as
+`omega` and `bc_run` read them: the struct and digit blocks' bounds, the slot,
+the frame and the `_bc_Free_list` word's ownership. -/
+macro "free_facts" : tactic =>
+  `(tactic| (
+    have h := e.heap
+    have hi := h.heap
+    have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
+    have hx := e.mem
+    have hn := h.nums x hx
+    have hxb := h.blocks x hx
+    num_facts hn
+    have hq := e.slot
+    have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
+    have hsf := e.stack
+    have hspl := hsf.hi; have hspa := hsf.al
+    have hsp := e.above
+    simp only [heapEnd] at hsp
+    have hrf := hn.refs
+    have hpt := hn.ptr
+    have hw := e.word
+    have hpp : x.rep.p = x.sb.pay := hxb.sPay
+    have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
+    have hqs := e.slot_apart
+    have hsz := hxb.sSz
+    have sf := SplitFacts.of_nodup h.distinct
+    have fbs := hi.blk (List.mem_append_right _ hxb.sLive)
+    have fbd := hi.blk (List.mem_append_right _ hxb.dLive)
+    have hs1 : 2147603920 ≤ x.sb.h := fbs.lo
+    have hs2 : x.sb.fin ≤ H.brk := fbs.fin
+    have hs3 : H.brk ≤ 2273312768 := fbs.top
+    have hd1 : 2147603920 ≤ x.db.h := fbd.lo
+    have hd2 : x.db.fin ≤ H.brk := fbd.fin
+    have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
+    have hdfin : x.db.fin = x.db.h + 16 + x.db.sz := rfl
+    have hsph : x.sb.pay = x.sb.h + 16 := rfl
+    have hdph : x.db.pay = x.db.h + 16 := rfl
+    have hsd : x.sb.fin ≤ x.db.h ∨ x.db.fin ≤ x.sb.h :=
+      apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) (h.sb_ne_db hx hx)
+    have hgl : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
+      have := of_mem_accAddrs hb
+      exact h.globOwn b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
+    have hoffg := e.off.glob
+    have hofff := e.off.frame
+    simp only [bcFreeAddr] at hoffg
+    have htx : tohostAddr = 0x8001ad00 := rfl))
+
+set_option hygiene false in
+/-- The memory after `free` (`af : AfterFree …`) on the frame, the slot and
+the `_bc_Free_list` word. -/
+macro "after_free_facts" : tactic =>
+  `(tactic| (
+    have hfp := af.post
+    have hM2 := af.mem
+    have hnotA : ∀ a, frameIn sp 32 a → ¬ AllocByte H a := fun a hf ha => by
+      rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
+        simp only [freeListAddr, heapStart, heapEnd, frameIn] at h' hf <;> omega
+    have hM3 : ∀ a, ¬ AllocByte H a → imgM Mt3 a = imgM M2 a := hfp.frame
+    have hfr3 : ∀ a, frameIn sp 32 a → imgM Mt3 a = imgM M2 a := fun a ha => hM3 a (hnotA a ha)
+    have hq3 : ∀ a, slotBytes q a → imgM Mt3 a = imgM Mt a := fun a ha => by
+      rw [hM3 a (e.off.alloc a ha), hM2 a (by omega) (by simp only [frameIn]; omega)]
+    have hg3 : ∀ a, bcFreeBytes a → imgM Mt3 a = imgM Mt a := fun a ha => by
+      simp only [bcFreeBytes, bcFreeAddr] at ha
+      rw [hM3 a fun ha' => by
+          rcases AllocByte.glob_or_heap hi ha' with h' | h' <;>
+            simp only [freeListAddr, heapStart, heapEnd] at h' <;> omega,
+        hM2 a (by omega) (by simp only [frameIn]; omega)]))
+
 /-- The release path's final memory: `ReleasePost`. -/
 theorem release_post {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : List Blk}
     {L1 L2 : List NumObj} {x : NumObj} {q sp : Nat} (e : FreeEntry S X Mt H F L1 L2 x q sp)
@@ -490,66 +559,8 @@ theorem release_post {S : Nat → Prop} {X : Raws} {Mt : Mem} {H : Heap} {F : Li
       [(x.rep.p + 16, 8, BitVec.ofNat 64 (deadHead F))]) [(q, 8, 0#64)])
       [(2147601840, 8, BitVec.ofNat 64 x.rep.p)] = Mt') :
     ReleasePost S X Mt Mt' H ⟨H.braw, x.db :: H.free, lpre ++ lpost⟩ F L1 L2 x q sp := by
-  have h := e.heap
-  have hi := h.heap
-  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
-  have hx := e.mem
-  have hn := h.nums x hx
-  have hxb := h.blocks x hx
-  num_facts hn
-  have hq := e.slot
-  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
-  have hsf := e.stack
-  have hspl := hsf.hi; have hspa := hsf.al
-  have hsp := e.above
-  simp only [heapEnd] at hsp
-  have hrf := hn.refs
-  have hpt := hn.ptr
-  have hw := e.word
-  have hpp : x.rep.p = x.sb.pay := hxb.sPay
-  have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
-  have hqs := e.slot_apart
-  have hsz := hxb.sSz
-  have sf := SplitFacts.of_nodup h.distinct
-  have fbs := hi.blk (List.mem_append_right _ hxb.sLive)
-  have fbd := hi.blk (List.mem_append_right _ hxb.dLive)
-  have hs1 : 2147603920 ≤ x.sb.h := fbs.lo
-  have hs2 : x.sb.fin ≤ H.brk := fbs.fin
-  have hs3 : H.brk ≤ 2273312768 := fbs.top
-  have hd1 : 2147603920 ≤ x.db.h := fbd.lo
-  have hd2 : x.db.fin ≤ H.brk := fbd.fin
-  have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
-  have hdfin : x.db.fin = x.db.h + 16 + x.db.sz := rfl
-  have hsph : x.sb.pay = x.sb.h + 16 := rfl
-  have hdph : x.db.pay = x.db.h + 16 := rfl
-  have hsd : x.sb.fin ≤ x.db.h ∨ x.db.fin ≤ x.sb.h :=
-    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) (h.sb_ne_db hx hx)
-  have hgl : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
-    have := of_mem_accAddrs hb
-    exact h.globOwn b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
-  have hoffg := e.off.glob
-  have hofff := e.off.frame
-  simp only [bcFreeAddr] at hoffg
-  have htx : tohostAddr = 0x8001ad00 := rfl
-  have hfp := af.post
-  have hM2 := af.mem
-  have hnotA : ∀ a, frameIn sp 32 a → ¬ AllocByte H a := fun a hf ha => by
-    rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
-      simp only [freeListAddr, heapStart, heapEnd, frameIn] at h' hf <;> omega
-  have hM3 : ∀ a, ¬ AllocByte H a → imgM Mt3 a = imgM M2 a := hfp.frame
-  have hfr3 : ∀ a, frameIn sp 32 a → imgM Mt3 a = imgM M2 a := fun a ha => hM3 a (hnotA a ha)
-  have hq3 : ∀ a, slotBytes q a → imgM Mt3 a = imgM Mt a := fun a ha => by
-    rw [hM3 a (e.off.alloc a ha), hM2 a (by omega) (by simp only [frameIn]; omega)]
-  have hg3 : ∀ a, bcFreeBytes a → imgM Mt3 a = imgM Mt a := fun a ha => by
-    simp only [bcFreeBytes, bcFreeAddr] at ha
-    rw [hM3 a fun ha' => by
-        rcases AllocByte.glob_or_heap hi ha' with h' | h' <;>
-          simp only [freeListAddr, heapStart, heapEnd] at h' <;> omega,
-      hM2 a (by omega) (by simp only [frameIn]; omega)]
-  have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
-  have hdfin : x.db.fin = x.db.h + 16 + x.db.sz := rfl
-  have hsph : x.sb.pay = x.sb.h + 16 := rfl
-  have hdph : x.db.pay = x.db.h + 16 := rfl
+  free_facts
+  after_free_facts
   have hpp' : x.rep.p = x.sb.h + 16 := hpp
   have hM4 : ∀ a, ¬ (x.sb.pay + 16 ≤ a ∧ a < x.sb.pay + 24) → ¬ slotBytes q a →
       ¬ bcFreeBytes a → imgM Mt' a = imgM Mt3 a := by
@@ -670,68 +681,10 @@ theorem free_num_tail {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     {M2 Mt3 : Mem} {R1 : Nat → BitVec 64}
     (af : AfterFree S Mt M2 Mt3 H x lpre lpost q sp R R1) :
     DW live S Q 0x800048f4#64 R1 Mt3 := by
-  have h := e.heap
-  have hi := h.heap
-  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
-  have hx := e.mem
-  have hn := h.nums x hx
-  have hxb := h.blocks x hx
-  num_facts hn
-  have hq := e.slot
-  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
-  have hsf := e.stack
-  have hspl := hsf.hi; have hspa := hsf.al
-  have hsp := e.above
-  simp only [heapEnd] at hsp
-  have hrf := hn.refs
-  have hpt := hn.ptr
-  have hw := e.word
-  have hpp : x.rep.p = x.sb.pay := hxb.sPay
-  have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
-  have hqs := e.slot_apart
-  have hsz := hxb.sSz
-  have sf := SplitFacts.of_nodup h.distinct
-  have fbs := hi.blk (List.mem_append_right _ hxb.sLive)
-  have fbd := hi.blk (List.mem_append_right _ hxb.dLive)
-  have hs1 : 2147603920 ≤ x.sb.h := fbs.lo
-  have hs2 : x.sb.fin ≤ H.brk := fbs.fin
-  have hs3 : H.brk ≤ 2273312768 := fbs.top
-  have hd1 : 2147603920 ≤ x.db.h := fbd.lo
-  have hd2 : x.db.fin ≤ H.brk := fbd.fin
-  have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
-  have hdfin : x.db.fin = x.db.h + 16 + x.db.sz := rfl
-  have hsph : x.sb.pay = x.sb.h + 16 := rfl
-  have hdph : x.db.pay = x.db.h + 16 := rfl
-  have hsd : x.sb.fin ≤ x.db.h ∨ x.db.fin ≤ x.sb.h :=
-    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) (h.sb_ne_db hx hx)
-  have hgl : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
-    have := of_mem_accAddrs hb
-    exact h.globOwn b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
-  have hoffg := e.off.glob
-  have hofff := e.off.frame
-  simp only [bcFreeAddr] at hoffg
-  have htx : tohostAddr = 0x8001ad00 := rfl
-  have hfp := af.post
-  have hM2 := af.mem
-  have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
-  have hdfin : x.db.fin = x.db.h + 16 + x.db.sz := rfl
-  have hsph : x.sb.pay = x.sb.h + 16 := rfl
-  have hdph : x.db.pay = x.db.h + 16 := rfl
+  free_facts
+  after_free_facts
   have hpp' : x.rep.p = x.sb.h + 16 := hpp
   have hdp' : x.rep.ptr = x.db.h + 16 := hdp
-  have hnotA : ∀ a, frameIn sp 32 a → ¬ AllocByte H a := fun a hf ha => by
-    rcases AllocByte.glob_or_heap hi ha with h' | h' <;>
-      simp only [freeListAddr, heapStart, heapEnd, frameIn] at h' hf <;> omega
-  have hM3 : ∀ a, ¬ AllocByte H a → imgM Mt3 a = imgM M2 a := hfp.frame
-  have hfr3 : ∀ a, frameIn sp 32 a → imgM Mt3 a = imgM M2 a := fun a ha => hM3 a (hnotA a ha)
-  have hq3 : ∀ a, slotBytes q a → imgM Mt3 a = imgM Mt a := fun a ha => by
-    rw [hM3 a (e.off.alloc a ha), hM2 a (by omega) (by simp only [frameIn]; omega)]
-  have hg3 : ∀ a, bcFreeBytes a → imgM Mt3 a = imgM Mt a := fun a ha => by
-    simp only [bcFreeBytes, bcFreeAddr] at ha
-    rw [hM3 a fun ha' => by
-        rcases AllocByte.glob_or_heap hi ha' with h' | h' <;>
-          simp only [freeListAddr, heapStart, heapEnd] at h' <;> omega,
-      hM2 a (by omega) (by simp only [frameIn]; omega)]
   have w8 : ldv .ld Mt3 (sp - 32 + 8) = BitVec.ofNat 64 q := by
     rw [ldv_congr .ld fun j hj => hfr3 _ ⟨by omega, by simp only [widthOfM] at hj; omega⟩]
     exact af.w8
@@ -769,47 +722,7 @@ theorem free_num_release {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
     (hal : (R 1).toNat % 4 = 0) (hk : FreeNumK live S X Q R Mt H F L1 L2 x q sp)
     (hr1 : x.rep.refs = 1) (ho : x.Owns) :
     DW live S Q 0x800048c0#64 R Mt := by
-  have h := e.heap
-  have hi := h.heap
-  have hS : HeapOwn S := fun a h1 h2 => hi.own a h1 h2
-  have hx := e.mem
-  have hn := h.nums x hx
-  have hxb := h.blocks x hx
-  num_facts hn
-  have hq := e.slot
-  have hql := hq.lo; have hqh := hq.hi; have hqa := hq.al
-  have hsf := e.stack
-  have hspl := hsf.hi; have hspa := hsf.al
-  have hsp := e.above
-  simp only [heapEnd] at hsp
-  have hrf := hn.refs
-  have hpt := hn.ptr
-  have hw := e.word
-  have hpp : x.rep.p = x.sb.pay := hxb.sPay
-  have hdp : x.rep.ptr = x.db.pay := hxb.dPay ho
-  have hqs := e.slot_apart
-  have hsz := hxb.sSz
-  have sf := SplitFacts.of_nodup h.distinct
-  have fbs := hi.blk (List.mem_append_right _ hxb.sLive)
-  have fbd := hi.blk (List.mem_append_right _ hxb.dLive)
-  have hs1 : 2147603920 ≤ x.sb.h := fbs.lo
-  have hs2 : x.sb.fin ≤ H.brk := fbs.fin
-  have hs3 : H.brk ≤ 2273312768 := fbs.top
-  have hd1 : 2147603920 ≤ x.db.h := fbd.lo
-  have hd2 : x.db.fin ≤ H.brk := fbd.fin
-  have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
-  have hdfin : x.db.fin = x.db.h + 16 + x.db.sz := rfl
-  have hsph : x.sb.pay = x.sb.h + 16 := rfl
-  have hdph : x.db.pay = x.db.h + 16 := rfl
-  have hsd : x.sb.fin ≤ x.db.h ∨ x.db.fin ≤ x.sb.h :=
-    apart_of_mem hi.apart (List.mem_append_right _ hxb.sLive) (List.mem_append_right _ hxb.dLive) (h.sb_ne_db hx hx)
-  have hgl : ∀ b ∈ accAddrs 2147601840 8, S b := fun b hb => by
-    have := of_mem_accAddrs hb
-    exact h.globOwn b (by simp only [bcFreeAddr]; omega) (by simp only [bcFreeAddr]; omega)
-  have hoffg := e.off.glob
-  have hofff := e.off.frame
-  simp only [bcFreeAddr] at hoffg
-  have htx : tohostAddr = 0x8001ad00 := rfl
+  free_facts
   -- to the `free` call
   iterate 2
     try bc_run hlive hS [h10, h2, hw, hrf, hr1, ldv_ld_miss, hpt] at 0x800048f0
@@ -822,6 +735,7 @@ theorem free_num_release {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
   intro _
   bc_run hlive hS [h10, h2, hw, hrf, hr1, ldv_ld_miss, hpt] at 0x800048f0
   all_goals first | exact frame_acc hsf (by omega) (by omega) | skip
+  -- `bc_run` rewrote the `rfl` facts of `free_facts`: state them again
   have hsfin : x.sb.fin = x.sb.h + 16 + x.sb.sz := rfl
   have hdfin : x.db.fin = x.db.h + 16 + x.db.sz := rfl
   have hsph : x.sb.pay = x.sb.h + 16 := rfl

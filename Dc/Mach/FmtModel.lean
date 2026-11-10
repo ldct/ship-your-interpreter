@@ -123,9 +123,6 @@ def nargs : List Piece → Nat
 
 /-! ## Digits -/
 
-theorem digitChar_lt10 {i : Nat} (h : i < 10) : digitChar i = BitVec.ofNat 8 (48 + i) := by
-  simp [digitChar, h]
-
 theorem ndig_of_lt {b v : Nat} (h : v < b) : ndig b v = 1 := by
   rw [ndig]; simp only [dite_eq_right_iff]; intro h'; omega
 
@@ -318,13 +315,6 @@ theorem SinkDst.byte_count {k : Nat} {dst : SinkDst} {a : Nat} (h1 : k + 24 ≤ 
   cases dst with
   | stream => exact ⟨h1, h2⟩
   | buffer => exact .inl ⟨h1, h2⟩
-
-/-- A stream's word and a buffer's words lie outside the count word. -/
-theorem SinkAt.fw_ld {S : Nat → Prop} {Mt : Mem} {k : Nat} {dst : SinkDst}
-    {out : List (BitVec 8)} (h : SinkAt S Mt k dst out) {Mt' : Mem}
-    (hag : ∀ a, a < k + 24 → imgM Mt' a = imgM Mt a) :
-    ldv .ld Mt' k = BitVec.ofNat 64 dst.fw :=
-  (ldv_ld_congr fun j hj => hag _ (by omega)).trans h.fw
 
 /-- **One byte `c` counted** without a buffer store (a stream, or a full
 buffer): the count word takes `len + 1`. -/

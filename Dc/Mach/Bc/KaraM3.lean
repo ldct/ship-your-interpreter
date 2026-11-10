@@ -25,8 +25,6 @@ def Hd.o (z : NumObj) : Hd → NumObj
   | some x => x
   | none => z
 
-theorem Hd.objIn_ds (hs : List Hd) (z : NumObj) (h : Hd) :
-    (Hd.objIn hs z h).rep.ds = (Hd.o z h).rep.ds := by cases h <;> rfl
 theorem Hd.objIn_len (hs : List Hd) (z : NumObj) (h : Hd) :
     (Hd.objIn hs z h).rep.len = (Hd.o z h).rep.len := by cases h <;> rfl
 theorem Hd.objIn_neg (hs : List Hd) (z : NumObj) (h : Hd) :

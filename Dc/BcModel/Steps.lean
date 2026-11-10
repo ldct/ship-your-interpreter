@@ -64,12 +64,6 @@ theorem carryAt_le : ∀ (xs ys : List Nat) (c k : Nat), IsDigits xs → IsDigit
   | _ :: _, [], c, _, _, _, hc => hc
   | _ :: _, _ :: _, c, 0, _, _, hc => hc
 
-/-- One position of a sum: the digit and the carry out. -/
-theorem digit_add {x y c : Nat} (hx : x < 10) (hy : y < 10) (hc : c ≤ 1) :
-    (if 9 < x + y + c then x + y + c - 10 else x + y + c) = (x + y + c) % 10 ∧
-      (if 9 < x + y + c then 1 else 0) = (x + y + c) / 10 := by
-  constructor <;> split <;> omega
-
 /-! ## Aligned operands -/
 
 theorem padLE_getD (ds : List Nat) (sc s m k : Nat) :

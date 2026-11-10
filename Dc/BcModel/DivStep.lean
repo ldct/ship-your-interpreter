@@ -165,36 +165,6 @@ theorem step_zero {W V : Nat} (hlo : W / V ≤ 0) : W / V = 0 ∧ W % V = W := b
   rw [h0, Nat.mul_zero, Nat.add_zero] at this
   exact this
 
-/-- The top digit after the add-back: bumped mod 10 exactly when the carry
-fires. -/
-theorem addBack_top {s v : List Nat} (hs : IsDigits s) (hv : IsDigits v)
-    (hl : s.length = v.length + 1) :
-    (addLE (s.take v.length) v 0).getD v.length 0 ≤ 1 ∧
-      ((s.getD v.length 0 + (addLE (s.take v.length) v 0).getD v.length 0) % 10 =
-        if (addLE (s.take v.length) v 0).getD v.length 0 = 1 then (s.getD v.length 0 + 1) % 10
-        else s.getD v.length 0) := by
-  have had := addLE_digits (s.take v.length) v 0 (hs.take _) hv (by decide)
-    (by simp only [List.length_take]; omega)
-  have hal := addLE_length (s.take v.length) v 0 (by simp only [List.length_take]; omega)
-  have hav := addLE_val (s.take v.length) v 0 (by simp only [List.length_take]; omega)
-  have hat := dvalLE_take_last (xs := addLE (s.take v.length) v 0) (n := v.length)
-    (by rw [hal]; simp only [List.length_take]; omega)
-  have h1 : dvalLE (s.take v.length) < 10 ^ v.length := by
-    have := dvalLE_lt (hs.take v.length)
-    rwa [List.length_take, Nat.min_eq_left (by omega)] at this
-  have h2 := dvalLE_lt hv
-  have hc : (addLE (s.take v.length) v 0).getD v.length 0 ≤ 1 := by
-    refine Nat.le_of_not_lt fun hc => ?_
-    have : 10 ^ v.length * 2 ≤ 10 ^ v.length * (addLE (s.take v.length) v 0).getD v.length 0 :=
-      Nat.mul_le_mul_left _ hc
-    omega
-  have ht := hs.getD v.length
-  refine ⟨hc, ?_⟩
-  split
-  · rename_i h; rw [h]
-  · have : (addLE (s.take v.length) v 0).getD v.length 0 = 0 := by omega
-    rw [this, Nat.add_zero, Nat.mod_eq_of_lt ht]
-
 /-! ## Normalisation -/
 
 /-- `norm = 10 / (v1 + 1)` keeps a divisor `v1·E + Vr` below `10 E` and lifts
@@ -235,11 +205,6 @@ theorem norm_trunc {n X Y T V : Nat} (hn : 0 < n) (hV : 0 < V) (hY : Y < T) :
       rw [← Nat.mul_succ]; exact Nat.mul_le_mul_left _ hr
     omega
   rw [hsplit, Nat.add_mul_div_left _ _ (Nat.mul_pos hn hV), Nat.div_eq_of_lt hlt, Nat.zero_add]
-
-/-- `norm_trunc` with `n = 1`. -/
-theorem trunc_div {X Y T V : Nat} (hV : 0 < V) (hY : Y < T) : (X * T + Y) / T / V = X / V := by
-  have := norm_trunc (n := 1) (X := X) (Y := Y) (T := T) (V := V) (by decide) hV hY
-  simpa using this
 
 /-! ## The loop -/
 

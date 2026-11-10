@@ -69,8 +69,6 @@ def ordWord : Ordering → BitVec 64
 @[simp] theorem signWord_false : signWord false = 0#64 := rfl
 @[simp] theorem signWord_true : signWord true = 1#64 := rfl
 
-theorem signWord_eq (b : Bool) : signWord b = boolWord b := by cases b <;> rfl
-
 /-- `addiw`'s result on a small word. -/
 theorem sxw_ofNat {k : Nat} (hk : k < 2 ^ 31) :
     BitVec.signExtend 64 (BitVec.extractLsb 31 0 (BitVec.ofNat 64 k)) = BitVec.ofNat 64 k := by

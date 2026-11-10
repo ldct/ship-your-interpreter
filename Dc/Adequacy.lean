@@ -100,12 +100,6 @@ theorem run_mono {lm n m st f x} (h : run lm n st f = some x) (hle : n ≤ m) :
   | refl => exact h
   | step _ ih => exact (run_tos_succ lm _).1 _ _ _ ih
 
-theorem tos_mono {lm n m st rest td x} (h : tos lm n st rest td = some x) (hle : n ≤ m) :
-    tos lm m st rest td = some x := by
-  induction hle with
-  | refl => exact h
-  | step _ ih => exact (run_tos_succ lm _).2 _ _ _ _ ih
-
 theorem SqrtLoop.complete {x rs g cs y} (h : SqrtLoop x rs g cs y) :
     ∃ n, Num.sqrtLoopFuel x rs n g cs = some y := by
   induction h with

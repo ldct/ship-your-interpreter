@@ -104,9 +104,6 @@ theorem getD_rev (xs D : List Nat) (a : Nat) : (xs.reverse ++ a :: D).getD xs.le
 theorem rev_cons_append (a : Nat) (xs D : List Nat) :
     (a :: xs).reverse ++ D = xs.reverse ++ a :: D := by simp
 
-theorem length_rev_append (A D : List Nat) : (A.reverse ++ D).length = A.length + D.length := by
-  simp
-
 /-! ## Reading `val`'s digits with `lb` -/
 
 theorem sext8_digit {d : Nat} (hd : d < 10) :
@@ -884,9 +881,6 @@ theorem sh_dispatch {live : Nat → Prop} {S : Nat → Prop} {X : Raws}
       ⟨by bsimp [h12, h13, h14], by bsimp [h12, h13, h14], by bsimp [h12, h13, h14],
         by bsimp [h12, h13, h14], by bsimp [h12, h13, h14], by bsimp [h12, h13, h14],
         by bsimp [h12, h13, h14]⟩ (by omega) (by omega) (by omega) (by decide) hnc hk
-
-/-- `withDs` with the object's own digits. -/
-theorem withDs_self (y : NumObj) : withDs y y.rep.ds = y := rfl
 
 /-- The dispatch at `0x800040fc` as the entry leaves it: `val`'s count in
 `a7`, `a3` computed from the accumulator's fields. -/
